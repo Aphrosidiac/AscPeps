@@ -1,0 +1,232 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Search, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { adminGetOrders, adminUpdateOrder } from '@/lib/api';
+import { formatPrice, formatDate } from '@/lib/utils';
+import { Badge } from '@/components/ui/Badge';
+import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
+import type { Order } from '@/types';
+
+const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+
+export default function AdminOrdersPage() {
+  const { token } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<string | null>(null);
+
+  const load = () => {
+    if (!token) return;
+    const params: Record<string, string> = { limit: '50' };
+    if (statusFilter !== 'ALL') params.status = statusFilter;
+    if (search) params.search = search;
+    adminGetOrders(token, params)
+      .then((r) => setOrders(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [token, statusFilter, search]);
+
+  const handleStatusUpdate = async (orderId: string, status: string) => {
+    if (!token) return;
+    setUpdating(orderId);
+    try {
+      await adminUpdateOrder(token, orderId, { status });
+      load();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handlePaymentUpdate = async (orderId: string, paymentStatus: string) => {
+    if (!token) return;
+    setUpdating(orderId);
+    try {
+      await adminUpdateOrder(token, orderId, { paymentStatus });
+      load();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const statusCounts = orders.reduce((acc, o) => {
+    acc[o.status] = (acc[o.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-display text-2xl font-bold">Orders</h1>
+        <p className="text-sm text-text-muted">{orders.length} order{orders.length !== 1 ? 's' : ''}</p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Search by order #, name, or phone..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                statusFilter === s ? 'bg-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {s === 'ALL' ? 'All' : ORDER_STATUS_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-20 bg-surface-elevated rounded-xl" />)}
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="text-center py-16">
+          <p className="text-text-muted text-lg mb-1">No orders found</p>
+          <p className="text-text-muted text-sm">
+            {search ? 'Try a different search term.' : statusFilter !== 'ALL' ? 'No orders with this status.' : 'Orders will appear here once customers start purchasing.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((order) => {
+            const isExpanded = expandedOrder === order.id;
+            const isUpdating = updating === order.id;
+            return (
+              <div key={order.id} className={`bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'}`}>
+                <div
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
+                  onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                >
+                  <div className="flex items-center gap-4 sm:gap-6 min-w-0">
+                    <div className="min-w-0">
+                      <p className="font-display font-semibold">{order.orderNumber}</p>
+                      <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
+                    </div>
+                    <div className="hidden sm:block min-w-0">
+                      <p className="text-sm font-medium truncate">{order.customerName}</p>
+                      <p className="text-xs text-text-muted">{order.phone}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <p className="font-display font-bold hidden sm:block">{formatPrice(order.total)}</p>
+                    <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
+                    <Badge className={PAYMENT_STATUS_COLORS[order.paymentStatus]}>{order.paymentStatus}</Badge>
+                    {isExpanded ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t border-border p-4 sm:p-6 space-y-5">
+                    {/* Customer & Address */}
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Customer</p>
+                        <p className="text-sm font-medium">{order.customerName}</p>
+                        <p className="text-sm text-text-secondary">{order.phone}</p>
+                        {order.email && <p className="text-sm text-text-secondary">{order.email}</p>}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Shipping Address</p>
+                        <p className="text-sm text-text-secondary">{order.address}</p>
+                        <p className="text-sm text-text-secondary">{order.city}, {order.state} {order.postcode}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Payment</p>
+                        <p className="text-sm text-text-secondary">{order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : 'Online (Billplz)'}</p>
+                        <p className="font-display font-bold text-lg mt-1">{formatPrice(order.total)}</p>
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    <div>
+                      <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Items ({order.items.length})</p>
+                      <div className="bg-surface-elevated rounded-lg divide-y divide-border">
+                        {order.items.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between px-4 py-3">
+                            <div>
+                              <p className="text-sm font-medium">{item.product.name}</p>
+                              <p className="text-xs text-text-muted">{item.product.code} &times; {item.quantity}</p>
+                            </div>
+                            <p className="text-sm font-semibold">{formatPrice(item.unitPrice * item.quantity)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {order.notes && (
+                      <div>
+                        <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Notes</p>
+                        <p className="text-sm text-text-secondary bg-surface-elevated rounded-lg px-4 py-3">{order.notes}</p>
+                      </div>
+                    )}
+
+                    {/* Status Controls */}
+                    <div className="flex flex-wrap gap-4 pt-3 border-t border-border">
+                      <div>
+                        <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Order Status</label>
+                        <select
+                          value={order.status}
+                          onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+                          disabled={isUpdating}
+                          className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
+                        >
+                          {Object.entries(ORDER_STATUS_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Payment Status</label>
+                        <select
+                          value={order.paymentStatus}
+                          onChange={(e) => handlePaymentUpdate(order.id, e.target.value)}
+                          disabled={isUpdating}
+                          className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
+                        >
+                          <option value="UNPAID">Unpaid</option>
+                          <option value="PAID">Paid</option>
+                          <option value="FAILED">Failed</option>
+                          <option value="REFUNDED">Refunded</option>
+                        </select>
+                      </div>
+                      {order.paymentMethod === 'WHATSAPP' && (
+                        <div className="flex items-end">
+                          <a
+                            href={`https://wa.me/${order.phone.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" /> WhatsApp Customer
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
