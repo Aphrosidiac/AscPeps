@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Pencil, X, Search, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, getCategories } from '@/lib/api';
+import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, adminUploadImage, getCategories } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -22,13 +23,14 @@ interface ProductFormData {
   benefits: string;
   dosageInfo: string;
   stock: string;
+  imageUrl: string;
   active: boolean;
 }
 
 const emptyForm: ProductFormData = {
   code: '', name: '', slug: '', categoryId: '', size: '',
   price: '', description: '', benefits: '', dosageInfo: '',
-  stock: '0', active: true,
+  stock: '0', imageUrl: '', active: true,
 };
 
 function slugify(text: string) {
@@ -82,6 +84,7 @@ export default function AdminProductsPage() {
       benefits: benefits.join('\n'),
       dosageInfo: product.dosageInfo || '',
       stock: String(product.stock),
+      imageUrl: product.imageUrl || '',
       active: product.active,
     });
     setFormError('');
@@ -114,6 +117,7 @@ export default function AdminProductsPage() {
       benefits: benefitsArray.length > 0 ? JSON.stringify(benefitsArray) : undefined,
       dosageInfo: form.dosageInfo || undefined,
       stock: parseInt(form.stock) || 0,
+      imageUrl: form.imageUrl || undefined,
       active: form.active,
     };
 
@@ -213,7 +217,18 @@ export default function AdminProductsPage() {
             <tbody>
               {products.map((product) => (
                 <tr key={product.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
-                  <td className="px-4 py-3 font-mono text-xs">{product.code}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
+                        {product.imageUrl ? (
+                          <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[8px] font-bold text-text-muted">{product.code}</span>
+                        )}
+                      </div>
+                      {product.code}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 font-medium">{product.name}</td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{product.category.name}</td>
                   <td className="px-4 py-3 text-text-secondary">{product.size}</td>
@@ -284,6 +299,51 @@ export default function AdminProductsPage() {
                 />
                 <Input label="Price (RM)" id="price" type="number" step="0.01" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} placeholder="e.g. 100.00" required />
                 <Input label="Stock" id="stock" type="number" min="0" value={form.stock} onChange={(e) => updateField('stock', e.target.value)} />
+              </div>
+
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">Product Image</label>
+                <div className="flex items-start gap-4">
+                  <div className="w-28 h-28 rounded-lg border border-border bg-surface-elevated flex items-center justify-center overflow-hidden shrink-0">
+                    {form.imageUrl ? (
+                      <img src={form.imageUrl} alt="Product" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-text-muted" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-surface-elevated hover:bg-border rounded-lg text-sm font-medium cursor-pointer transition-colors">
+                      <Upload className="w-4 h-4" />
+                      Upload Image
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file || !token) return;
+                          try {
+                            const { url } = await adminUploadImage(token, file);
+                            updateField('imageUrl', url);
+                          } catch {
+                            setFormError('Failed to upload image');
+                          }
+                        }}
+                      />
+                    </label>
+                    <p className="text-xs text-text-muted">JPEG, PNG, or WebP. Max 5MB.</p>
+                    {form.imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => updateField('imageUrl', '')}
+                        className="text-xs text-danger hover:underline cursor-pointer"
+                      >
+                        Remove image
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div>

@@ -78,8 +78,12 @@ export default function ProductDetailPage() {
 
       <div className="grid md:grid-cols-2 gap-8">
         <Animate variant="fade" duration={0.6}>
-          <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center">
-            <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{product.code}</span>
+          <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
+            {product.imageUrl ? (
+              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{product.code}</span>
+            )}
           </div>
         </Animate>
 
