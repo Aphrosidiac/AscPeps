@@ -30,32 +30,44 @@ export default function HomePage() {
     <div>
       {/* Hero */}
       <section className="bg-primary text-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
-          <div className="max-w-2xl">
-            <Animate variant="fade" duration={0.8}>
-              <div className="flex items-center gap-3 mb-6">
-                <Image src="/images/pill-icon.png" alt="ASCEND" width={48} height={48} className="invert" />
-                <span className="font-display text-2xl font-bold tracking-tight">ASCEND</span>
-              </div>
-            </Animate>
-            <Animate variant="fadeUp" delay={0.15} duration={0.7}>
-              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-                Premium Research Peptides
-              </h1>
-            </Animate>
-            <Animate variant="fadeUp" delay={0.3} duration={0.7}>
-              <p className="text-lg text-neutral-300 mb-8 max-w-lg">
-                Lab-grade peptides for anti-aging, fat loss, muscle growth, and immune support. Fast shipping across Malaysia.
-              </p>
-            </Animate>
-            <Animate variant="fadeUp" delay={0.45} duration={0.7}>
-              <div className="flex flex-wrap gap-4">
-                <Link href="/products">
-                  <Button variant="secondary" size="lg">
-                    Browse Products <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
-              </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+          <div className="flex items-center gap-8 lg:gap-16">
+            <div className="flex-1 min-w-0">
+              <Animate variant="fade" duration={0.8}>
+                <div className="flex items-center gap-3 mb-6">
+                  <Image src="/images/pill-icon.png" alt="ASCEND" width={48} height={48} className="invert" />
+                  <span className="font-display text-2xl font-bold tracking-tight">ASCEND</span>
+                </div>
+              </Animate>
+              <Animate variant="fadeUp" delay={0.15} duration={0.7}>
+                <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
+                  Premium Research Peptides
+                </h1>
+              </Animate>
+              <Animate variant="fadeUp" delay={0.3} duration={0.7}>
+                <p className="text-lg text-neutral-300 mb-8 max-w-lg">
+                  Lab-grade peptides for anti-aging, fat loss, muscle growth, and immune support. Fast shipping across Malaysia.
+                </p>
+              </Animate>
+              <Animate variant="fadeUp" delay={0.45} duration={0.7}>
+                <div className="flex flex-wrap gap-4">
+                  <Link href="/products">
+                    <Button variant="secondary" size="lg">
+                      Browse Products <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </Link>
+                </div>
+              </Animate>
+            </div>
+            <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
+              <Image
+                src="/images/hero-vials.png"
+                alt="ASCEND peptide vials"
+                width={480}
+                height={480}
+                className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl"
+                priority
+              />
             </Animate>
           </div>
         </div>
