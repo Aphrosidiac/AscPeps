@@ -105,8 +105,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       postcode: order.postcode,
     });
   } else if (data.paymentMethod === 'BILLPLZ' && env.BILLPLZ_API_KEY && env.BILLPLZ_COLLECTION_ID) {
-    const backendUrl = env.BILLPLZ_SANDBOX
-      ? 'http://localhost:3105'
+    const backendUrl = env.FRONTEND_URL.startsWith('http://localhost')
+      ? `http://localhost:${env.PORT}`
       : `https://ascendpeptides.my`;
 
     const bill = await createBill({
