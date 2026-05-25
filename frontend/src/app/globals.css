@@ -123,7 +123,7 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
 }
 .hero-vials.jiggling {
-  animation: vial-jiggle 1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: vial-jiggle 1.4s ease-in-out;
 }
 
 @keyframes search-expand {
