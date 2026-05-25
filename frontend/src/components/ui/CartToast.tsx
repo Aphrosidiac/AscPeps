@@ -12,8 +12,8 @@ interface CartToastProps {
 export function CartToast({ item, onDone }: CartToastProps) {
   const [visible, setVisible] = useState(false);
   const [display, setDisplay] = useState<{ name: string } | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const fadeRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!item) return;
