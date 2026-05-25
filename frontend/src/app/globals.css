@@ -90,6 +90,15 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-text-primary);
 }
 
+@keyframes search-expand {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+.animate-search-expand {
+  animation: search-expand 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center;
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
