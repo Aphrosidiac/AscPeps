@@ -52,21 +52,18 @@ export function ProductCard({ product }: ProductCardProps) {
           )}
           <div className="flex items-center justify-between pt-2">
             <span className="font-display font-bold text-lg">{formatPrice(product.price)}</span>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleAddToCart}
-              disabled={product.stock === 0}
-            >
-              <ShoppingCart className="w-4 h-4" />
-            </Button>
+            {product.stock === 0 ? (
+              <span className="text-xs font-semibold text-danger">Out of stock</span>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleAddToCart}
+              >
+                <ShoppingCart className="w-4 h-4" />
+              </Button>
+            )}
           </div>
-          {product.stock === 0 && (
-            <p className="text-xs text-danger font-medium">Out of stock</p>
-          )}
-          {product.stock > 0 && product.stock <= 5 && (
-            <p className="text-xs text-warning font-medium">Low stock</p>
-          )}
         </div>
       </div>
     </Link>
