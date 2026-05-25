@@ -1,0 +1,16 @@
+{
+  "name": "ASCEND — Premium Peptides Malaysia",
+  "short_name": "ASCEND",
+  "description": "Malaysia's trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAFA",
+  "theme_color": "#0A0A0A",
+  "icons": [
+    {
+      "src": "/images/logo-transparent.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

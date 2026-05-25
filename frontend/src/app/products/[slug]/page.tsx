@@ -9,6 +9,7 @@ import { useCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
+import { ProductJsonLd } from '@/components/JsonLd';
 import type { Product } from '@/types';
 
 export default function ProductDetailPage() {
@@ -72,6 +73,16 @@ export default function ProductDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <ProductJsonLd
+        name={`${product.name}${product.size ? ` ${product.size}` : ''}`}
+        description={product.description || `Premium ${product.name} research peptide from ASCEND Malaysia.`}
+        price={product.price}
+        code={product.code}
+        slug={product.slug}
+        imageUrl={product.imageUrl}
+        inStock={product.stock > 0}
+        category={product.category.name}
+      />
       <Link href="/products" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-8 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Back to Products
       </Link>
