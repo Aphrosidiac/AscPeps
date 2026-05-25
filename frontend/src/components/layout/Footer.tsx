@@ -2,12 +2,12 @@ import Link from 'next/link';
 
 export function Footer() {
   return (
-    <footer className="bg-primary text-white mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div>
+    <footer className="bg-primary text-white mt-auto w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+          <div className="col-span-2 md:col-span-1">
             <h3 className="font-display font-bold text-lg mb-3">ASCEND</h3>
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-neutral-400 max-w-xs">
               Premium research peptides in Malaysia. Lab-grade quality with fast nationwide shipping.
             </p>
           </div>
