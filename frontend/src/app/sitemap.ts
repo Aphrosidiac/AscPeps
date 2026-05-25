@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const BASE_URL = 'https://ascend.apdevotion.my';
+const BASE_URL = 'https://ascendpeptides.my';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

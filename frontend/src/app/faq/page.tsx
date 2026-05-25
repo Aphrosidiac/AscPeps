@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions About Peptides',
   description: 'Frequently asked questions about buying research peptides in Malaysia. Purity, storage, shipping, ordering, and more. ASCEND peptides FAQ.',
   keywords: ['peptides FAQ', 'peptides questions malaysia', 'how to buy peptides malaysia', 'peptide storage', 'peptide purity'],
-  alternates: { canonical: 'https://ascend.apdevotion.my/faq' },
+  alternates: { canonical: 'https://ascendpeptides.my/faq' },
 };
 
 const faqs = [

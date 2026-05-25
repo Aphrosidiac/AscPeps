@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description: 'ASCEND privacy policy. How we collect, use, and protect your personal information when you shop for research peptides.',
-  alternates: { canonical: 'https://ascend.apdevotion.my/privacy' },
+  alternates: { canonical: 'https://ascendpeptides.my/privacy' },
 };
 
 export default function PrivacyPage() {
@@ -14,7 +14,7 @@ export default function PrivacyPage() {
 
       <div className="prose-custom">
         <p>
-          ASCEND (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) respects your privacy. This Privacy Policy explains how we collect, use, and protect your personal information when you visit our website (ascend.apdevotion.my) or make a purchase.
+          ASCEND (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) respects your privacy. This Privacy Policy explains how we collect, use, and protect your personal information when you visit our website (ascendpeptides.my) or make a purchase.
         </p>
 
         <h2>1. Information We Collect</h2>
