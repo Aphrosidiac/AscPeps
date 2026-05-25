@@ -32,12 +32,10 @@ const fastify = Fastify({
   },
 });
 
-await fastify.register(cors, {
-  origin: [env.FRONTEND_URL, 'https://ascend.apdevotion.my', 'http://localhost:3000'],
-  credentials: true,
-});
+const corsOrigins = [env.FRONTEND_URL, ...env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)];
+await fastify.register(cors, { origin: corsOrigins, credentials: true });
 await fastify.register(helmet, { contentSecurityPolicy: false });
-await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute', keyGenerator: (req) => req.ip });
 await fastify.register(formbody);
 await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
 await fastify.register(fastifyStatic, {

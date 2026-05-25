@@ -114,9 +114,10 @@ export default function AdminSettingsPage() {
             value={settings.whatsapp_number || ''}
             onChange={(e) => updateSetting('whatsapp_number', e.target.value)}
             placeholder="601161092723"
+            pattern="[0-9]{10,15}"
           />
           <p className="text-xs text-text-muted">
-            Use international format without + sign (e.g. 601161092723 for Malaysian number 012-3456789). This is the number customers will message when they choose WhatsApp checkout.
+            Use international format without + sign (e.g. 601161092723 for Malaysian number 011-6109 2723). Numbers only, 10-15 digits.
           </p>
         </div>
 
@@ -126,6 +127,9 @@ export default function AdminSettingsPage() {
           <Input
             label="Shipping Fee (RM)"
             id="shipping_fee"
+            type="number"
+            min="0"
+            step="0.01"
             value={settings.shipping_fee || ''}
             onChange={(e) => updateSetting('shipping_fee', e.target.value)}
             placeholder="0 for free shipping"

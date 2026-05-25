@@ -6,19 +6,20 @@ import { getSettings } from '@/lib/api';
 
 export function AnnouncementBar() {
   const [text, setText] = useState('');
-  const [visible, setVisible] = useState(false);
+  const [show, setShow] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     getSettings().then((s) => {
       if (s.announcement_enabled === 'true' && s.announcement_text) {
         setText(s.announcement_text);
-        setVisible(true);
+        setShow(true);
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
-  if (!visible || dismissed) return null;
+  if (!loaded || !show || dismissed) return null;
 
   return (
     <div className="bg-primary text-white text-center text-xs sm:text-sm py-2 px-8 relative">

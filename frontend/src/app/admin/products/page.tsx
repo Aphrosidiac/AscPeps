@@ -76,7 +76,8 @@ export default function AdminProductsPage() {
 
   const openEdit = (product: Product) => {
     setEditingId(product.id);
-    const benefits: string[] = product.benefits ? JSON.parse(product.benefits) : [];
+    let benefits: string[] = [];
+    try { if (product.benefits) benefits = JSON.parse(product.benefits); } catch {}
     setForm({
       code: product.code,
       name: product.name,

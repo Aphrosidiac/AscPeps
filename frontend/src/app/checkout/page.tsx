@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, CreditCard, ArrowLeft, CheckCircle } from 'lucide-react';
@@ -36,8 +36,12 @@ export default function CheckoutPage() {
     return null;
   }
 
+  const submitting = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     setError('');
 
@@ -61,6 +65,7 @@ export default function CheckoutPage() {
       setError(message || 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
+      submitting.current = false;
     }
   };
 
