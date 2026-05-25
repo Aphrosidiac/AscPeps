@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'Peptide Guide — Reconstitution, Storage & Handling',
   description: 'Complete guide to handling research peptides. Learn how to reconstitute, store, and handle lyophilized peptides properly. ASCEND Malaysia peptide guide.',
   keywords: ['how to reconstitute peptides', 'peptide reconstitution guide', 'peptide storage guide', 'how to mix peptides', 'peptide handling malaysia', 'BAC water peptides'],
-  alternates: { canonical: 'https://ascend.apdevotion.my/guide' },
+  alternates: { canonical: 'https://ascendpeptides.my/guide' },
 };
 
 export default function GuidePage() {

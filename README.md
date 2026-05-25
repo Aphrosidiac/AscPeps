@@ -2,7 +2,7 @@
 
 Full-stack e-commerce platform for peptide products. Built with Next.js 16, Fastify 5, Prisma 7, and PostgreSQL.
 
-**Live**: https://ascend.apdevotion.my
+**Live**: https://ascendpeptides.my
 
 ## Tech Stack
 
@@ -136,7 +136,7 @@ cd ../frontend && npm install && npx next build \
 
 ### Nginx
 
-Config at `/etc/nginx/sites-available/ascend.apdevotion.my` — proxies `/api/*` and `/uploads/*` to backend, everything else to frontend. SSL via Let's Encrypt (auto-renews Aug 22 2026).
+Config at `/etc/nginx/sites-available/ascendpeptides.my` — proxies `/api/*` and `/uploads/*` to backend, everything else to frontend. SSL via Let's Encrypt (auto-renews Aug 22 2026).
 
 ### Database Backups
 

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const BASE_URL = 'https://ascend.apdevotion.my';
+const BASE_URL = 'https://ascendpeptides.my';
 
 interface Props {
   params: Promise<{ slug: string }>;

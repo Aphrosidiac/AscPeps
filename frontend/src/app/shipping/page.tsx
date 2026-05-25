@@ -4,7 +4,7 @@ export const metadata: Metadata = {
   title: 'Shipping Policy',
   description: 'ASCEND shipping policy for research peptides in Malaysia. Free shipping, delivery times, packaging details, and tracking information.',
   keywords: ['peptide shipping malaysia', 'free shipping peptides', 'peptide delivery malaysia'],
-  alternates: { canonical: 'https://ascend.apdevotion.my/shipping' },
+  alternates: { canonical: 'https://ascendpeptides.my/shipping' },
 };
 
 export default function ShippingPage() {

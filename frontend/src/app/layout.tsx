@@ -19,7 +19,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ascend.apdevotion.my'),
+  metadataBase: new URL('https://ascendpeptides.my'),
   title: {
     default: 'ASCEND — #1 Premium Peptides Malaysia | Retatrutide, GHK-Cu, BPC-157',
     template: '%s | ASCEND Peptides Malaysia',
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_MY',
-    url: 'https://ascend.apdevotion.my',
+    url: 'https://ascendpeptides.my',
     siteName: 'ASCEND',
     title: 'ASCEND — #1 Premium Peptides Malaysia',
     description: 'Malaysia\'s trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Lab-grade quality with fast nationwide shipping.',
@@ -84,7 +84,7 @@ export const metadata: Metadata = {
     images: ['/images/pill-icon-512.png'],
   },
   alternates: {
-    canonical: 'https://ascend.apdevotion.my',
+    canonical: 'https://ascendpeptides.my',
   },
   manifest: '/manifest.json',
   icons: {

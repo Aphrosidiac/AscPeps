@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Disclaimer & Waiver',
   description: 'ASCEND product disclaimer and liability waiver. All products are for research and laboratory use only, not for human consumption.',
-  alternates: { canonical: 'https://ascend.apdevotion.my/disclaimer' },
+  alternates: { canonical: 'https://ascendpeptides.my/disclaimer' },
 };
 
 export default function DisclaimerPage() {
@@ -23,7 +23,7 @@ export default function DisclaimerPage() {
 
         <h2>1. Research Use Only</h2>
         <p>
-          All products available on ASCEND (ascend.apdevotion.my) are sold exclusively for legitimate research and laboratory use. They are not intended for use as drugs, food additives, household chemicals, or any form of human or animal consumption. Purchasers must be qualified researchers or individuals purchasing for legitimate research purposes.
+          All products available on ASCEND (ascendpeptides.my) are sold exclusively for legitimate research and laboratory use. They are not intended for use as drugs, food additives, household chemicals, or any form of human or animal consumption. Purchasers must be qualified researchers or individuals purchasing for legitimate research purposes.
         </p>
 
         <h2>2. No Medical Claims</h2>

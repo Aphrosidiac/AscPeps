@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
   description: 'Terms and conditions for purchasing research peptides from ASCEND Malaysia. Read before placing an order.',
-  alternates: { canonical: 'https://ascend.apdevotion.my/terms' },
+  alternates: { canonical: 'https://ascendpeptides.my/terms' },
 };
 
 export default function TermsPage() {
@@ -15,7 +15,7 @@ export default function TermsPage() {
 
       <div className="prose-custom">
         <p>
-          By accessing and using the ASCEND website (ascend.apdevotion.my) and purchasing products from us, you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our website or purchase our products.
+          By accessing and using the ASCEND website (ascendpeptides.my) and purchasing products from us, you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our website or purchase our products.
         </p>
 
         <h2>1. Research Use Only</h2>

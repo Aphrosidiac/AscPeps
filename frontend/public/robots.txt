@@ -4,4 +4,4 @@ Disallow: /admin/
 Disallow: /cart
 Disallow: /checkout
 
-Sitemap: https://ascend.apdevotion.my/sitemap.xml
+Sitemap: https://ascendpeptides.my/sitemap.xml
