@@ -38,9 +38,17 @@ export default function AboutPage() {
         <div className="bg-surface rounded-xl border border-border p-8">
           <Clock className="w-8 h-8 mb-4 text-text-primary" />
           <h3 className="font-display font-semibold text-lg mb-2">Responsive Support</h3>
-          <p className="text-text-secondary text-sm leading-relaxed">
+          <p className="text-text-secondary text-sm leading-relaxed mb-3">
             Have questions? Reach out to us via WhatsApp for quick, knowledgeable support from our team.
           </p>
+          <a
+            href="https://wa.me/601161092723"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm font-medium text-green-700 hover:text-green-800 transition-colors"
+          >
+            +60 11-6109 2723
+          </a>
         </div>
       </Stagger>
 
