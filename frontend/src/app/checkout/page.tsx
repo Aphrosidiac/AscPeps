@@ -69,7 +69,6 @@ export default function CheckoutPage() {
         ? (err as { response: { data: { message?: string } } }).response?.data?.message
         : undefined;
       setError(message || 'Failed to place order. Please try again.');
-    } finally {
       setLoading(false);
       submitting.current = false;
     }
