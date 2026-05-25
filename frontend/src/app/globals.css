@@ -109,21 +109,26 @@ h1, h2, h3, h4, h5, h6 {
 
 @keyframes vial-jiggle {
   0% { transform: scale(1) rotate(0deg); }
-  8% { transform: scale(1.1) rotate(0deg); }
-  16% { transform: scale(1.1) rotate(6deg); }
-  28% { transform: scale(1.1) rotate(-5deg); }
-  40% { transform: scale(1.1) rotate(4deg); }
-  52% { transform: scale(1.1) rotate(-3deg); }
-  64% { transform: scale(1.1) rotate(2deg); }
-  76% { transform: scale(1.1) rotate(-1deg); }
-  88% { transform: scale(1.05) rotate(0deg); }
+  6% { transform: scale(1.08) rotate(0deg); }
+  14% { transform: scale(1.08) rotate(5deg); }
+  24% { transform: scale(1.08) rotate(-4deg); }
+  34% { transform: scale(1.08) rotate(3.5deg); }
+  44% { transform: scale(1.08) rotate(-3deg); }
+  54% { transform: scale(1.07) rotate(2deg); }
+  62% { transform: scale(1.06) rotate(-1.2deg); }
+  70% { transform: scale(1.05) rotate(0.8deg); }
+  77% { transform: scale(1.04) rotate(-0.4deg); }
+  84% { transform: scale(1.03) rotate(0deg); }
+  90% { transform: scale(1.02) rotate(0deg); }
+  95% { transform: scale(1.01) rotate(0deg); }
   100% { transform: scale(1) rotate(0deg); }
 }
 .hero-vials {
   cursor: pointer;
+  will-change: transform;
 }
 .hero-vials.jiggling {
-  animation: vial-jiggle 1.4s ease-in-out;
+  animation: vial-jiggle 1.6s ease-out;
 }
 
 @keyframes search-expand {
