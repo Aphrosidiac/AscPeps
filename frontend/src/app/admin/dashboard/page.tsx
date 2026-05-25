@@ -62,14 +62,14 @@ export default function AdminDashboardPage() {
     <div>
       <h1 className="font-display text-2xl font-bold mb-6">Dashboard</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
         {statCards.map((card) => (
-          <Link key={card.label} href={card.href} className="bg-surface rounded-xl border border-border p-5 hover:border-border-hover hover:shadow-sm transition-all group">
+          <Link key={card.label} href={card.href} className="bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover hover:shadow-sm transition-all group">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-text-secondary">{card.label}</span>
               <card.icon className="w-4 h-4 text-text-muted group-hover:text-text-primary transition-colors" />
             </div>
-            <p className="font-display text-2xl font-bold">{card.value}</p>
+            <p className="font-display text-xl sm:text-2xl font-bold">{card.value}</p>
           </Link>
         ))}
       </div>
