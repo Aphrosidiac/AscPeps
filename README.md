@@ -21,20 +21,42 @@ Full-stack e-commerce platform for peptide products. Built with Next.js 16, Fast
 
 ## Features
 
+### Store
 - Product catalog with 5 categories, 21 peptide products
 - Featured products (admin toggle) with horizontal scroll showcase
 - Shopping cart (localStorage, no login required)
 - Dual checkout: WhatsApp order + online payment (Billplz)
 - Order tracking by phone number
-- Product image uploads
+- Product image uploads with admin management
+- Certificate of Analysis (COA) per product with Janoshik verification links
+- Trust badges (3rd Party Verified, Free Shipping) on product pages
+- "Research use only" disclaimers throughout
+
+### UX
 - Scroll-triggered animations (Animate/Stagger components)
 - Video strip dividers with lab footage on homepage
-- Full admin panel: dashboard, product CRUD, order management, settings
+- Floating WhatsApp button on all pages
+- Announcement bar (admin-configurable text, toggle on/off)
+- Navbar search (mobile + desktop)
 - Mobile-responsive with collapsible admin sidebar
+
+### Admin Panel (`/admin`)
+- Dashboard with stats, recent orders, low stock alerts
+- Product CRUD: images, pricing, stock, featured toggle, COA URL
+- Order management: status updates, payment tracking, WhatsApp customer link
+- Settings: announcement bar, WhatsApp number, business info, shipping fee
+
+### Content Pages
+- `/faq` — 18 questions across 4 categories with accordion UI
+- `/guide` — Peptide reconstitution guide, storage table, solvent comparison
+- `/shipping` — Shipping policy with delivery times by region
+- `/terms` — Terms & conditions
+- `/privacy` — Privacy policy
+- `/disclaimer` — Research use disclaimer & liability waiver
 
 ## SEO
 
-- Dynamic `sitemap.xml` auto-generated from product catalog
+- Dynamic `sitemap.xml` (31 URLs, auto-generated from product catalog)
 - `robots.txt` with crawl rules
 - Per-page metadata optimized for Malaysia peptide keywords
 - JSON-LD structured data (Organization + Product schemas)
@@ -114,7 +136,7 @@ cd ../frontend && npm install && npx next build \
 
 ### Nginx
 
-Config at `/etc/nginx/sites-available/ascend.apdevotion.my` — proxies `/api/*` and `/uploads/*` to backend, everything else to frontend. SSL via Let's Encrypt (auto-renews).
+Config at `/etc/nginx/sites-available/ascend.apdevotion.my` — proxies `/api/*` and `/uploads/*` to backend, everything else to frontend. SSL via Let's Encrypt (auto-renews Aug 22 2026).
 
 ### Database Backups
 
@@ -131,14 +153,26 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - `GET /api/v1/categories` — list categories
 - `GET /api/v1/products?category=&search=&featured=true` — list products
 - `GET /api/v1/products/:slug` — product detail
-- `POST /api/v1/orders` — create order (returns WhatsApp URL for WhatsApp method)
+- `GET /api/v1/settings` — public store settings
+- `POST /api/v1/orders` — create order (atomic: stock check + order number inside transaction)
 - `GET /api/v1/orders/lookup?phone=` — track orders by phone
 
 ### Admin (requires Bearer token)
 
-- `POST /api/v1/auth/login` — admin login
+- `POST /api/v1/auth/login` — admin login (JWT, 24h expiry)
+- `GET /api/v1/auth/me` — current admin user
 - `GET /api/v1/admin/dashboard/stats` — dashboard stats
-- `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (with featured toggle)
+- `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (featured, COA URL)
 - `GET/PATCH /api/v1/admin/orders` — order management
-- `GET/PUT /api/v1/admin/settings` — store settings (WhatsApp number, business info)
+- `GET/PUT /api/v1/admin/settings` — store settings (announcement, WhatsApp, shipping)
 - `POST /api/v1/admin/upload/image` — product image upload (JPEG/PNG/WebP, max 5MB)
+
+## Security
+
+- Order creation fully transactional (no race conditions on stock or order numbers)
+- File uploads: type validation, size limit enforced, truncated files deleted
+- Rate limiting per-IP (100 req/min)
+- CORS origins from environment variable
+- JWT auth with 24h expiry on all admin routes
+- Helmet security headers
+- Input validation via Zod on all endpoints
