@@ -49,7 +49,7 @@ export default function HomePage() {
                   Lab-grade peptides for anti-aging, fat loss, muscle growth, and immune support. Fast shipping across Malaysia.
                 </p>
               </Animate>
-              <Animate variant="fadeUp" delay={0.45} duration={0.7}>
+              <Animate variant="fadeUp" delay={0.45} duration={0.7} className="hidden md:block">
                 <div className="flex flex-wrap gap-4">
                   <Link href="/products">
                     <Button variant="secondary" size="lg">
@@ -59,7 +59,7 @@ export default function HomePage() {
                 </div>
               </Animate>
             </div>
-            <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex justify-center">
+            <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex flex-col items-center gap-6">
               <Image
                 src="/images/hero-vials.png"
                 alt="ASCEND peptide vials"
@@ -68,6 +68,11 @@ export default function HomePage() {
                 className="w-[220px] h-auto drop-shadow-2xl"
                 priority
               />
+              <Link href="/products">
+                <Button variant="secondary" size="lg">
+                  Browse Products <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
             </Animate>
             <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
               <Image
