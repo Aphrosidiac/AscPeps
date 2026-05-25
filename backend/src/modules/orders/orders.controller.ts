@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
+import { createBill } from '../../utils/billplz.js';
+import { env } from '../../config/env.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -84,6 +86,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
   });
 
   let whatsappUrl: string | undefined;
+  let billplzUrl: string | undefined;
+
   if (data.paymentMethod === 'WHATSAPP') {
     whatsappUrl = buildWhatsAppUrl({
       orderNumber: order.orderNumber,
@@ -100,9 +104,32 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       state: order.state,
       postcode: order.postcode,
     });
+  } else if (data.paymentMethod === 'BILLPLZ' && env.BILLPLZ_API_KEY && env.BILLPLZ_COLLECTION_ID) {
+    const backendUrl = env.BILLPLZ_SANDBOX
+      ? 'http://localhost:3105'
+      : `https://ascendpeptides.my`;
+
+    const bill = await createBill({
+      collectionId: env.BILLPLZ_COLLECTION_ID,
+      name: order.customerName,
+      email: order.email || undefined,
+      mobile: order.phone.startsWith('60') ? order.phone : `60${order.phone.replace(/^0/, '')}`,
+      amount: order.total,
+      description: `ASCEND Order ${order.orderNumber}`,
+      callbackUrl: `${backendUrl}/api/v1/payments/billplz/callback`,
+      redirectUrl: `${backendUrl}/api/v1/payments/billplz/redirect`,
+      referenceOne: order.orderNumber,
+    });
+
+    await fastify.prisma.order.update({
+      where: { id: order.id },
+      data: { paymentRef: bill.id },
+    });
+
+    billplzUrl = bill.url;
   }
 
-  return { order, whatsappUrl };
+  return { order, whatsappUrl, billplzUrl };
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string) {

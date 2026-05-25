@@ -22,6 +22,7 @@ import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
 import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
 import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
+import paymentRoutes from './modules/payments/payments.routes.js';
 
 const fastify = Fastify({
   logger: {
@@ -60,6 +61,7 @@ await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
 await fastify.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
+await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });

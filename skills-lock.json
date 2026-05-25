@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "skills": {
+    "malaysia-payment-gateway": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "malaysia-payment-gateway/SKILL.md",
+      "computedHash": "37b7128a6a876d82113bab9d62bd17699be5c834c33d68a509e6fbe91416a13d"
+    },
+    "setup-bayarcash": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-bayarcash/SKILL.md",
+      "computedHash": "4bd366ae53d5680aae4394651ebb93cf3c3d7540ac815de2d5b38e519492ab77"
+    },
+    "setup-bcl": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-bcl/SKILL.md",
+      "computedHash": "8e3a73d6b84d8684ecd1adeb735e16bfe92dcbe29e1fa58b58b7d334f6fd26a2"
+    },
+    "setup-billplz": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-billplz/SKILL.md",
+      "computedHash": "662eae33d6ace6baf0d63092f14587374edd65f8924d1feedc3dd5da7eab6069"
+    },
+    "setup-chip": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-chip/SKILL.md",
+      "computedHash": "68d28c9060134bf0106648c97d6ee35643469ef93bd51194ed45081715be25d3"
+    },
+    "setup-curlec": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-curlec/SKILL.md",
+      "computedHash": "d3db06698a84f82f608217209cfef05b0785fe903abf0cc6b41e06be543bdcfc"
+    },
+    "setup-fiuu": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-fiuu/SKILL.md",
+      "computedHash": "e9ceb471c44df7aee2ca796cd397ffd75d5f177f0b31e0c9c5098d14e630c235"
+    },
+    "setup-hitpay": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-hitpay/SKILL.md",
+      "computedHash": "a120c4df27bed06da75e3216408a75e2002045cab78e214bdd6e7947796cf5e9"
+    },
+    "setup-senangpay": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-senangpay/SKILL.md",
+      "computedHash": "d45ee304b1f3107d56e20b00f17d166c591fcf12db28dcd62a2c9b8b94c64ba4"
+    },
+    "setup-stripe-malaysia": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-stripe-malaysia/SKILL.md",
+      "computedHash": "25b06abc719c3f42635137f6fc08e26d9b586d7e0ea71d9ff73dd708aa4e1259"
+    },
+    "setup-toyyibpay": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-toyyibpay/SKILL.md",
+      "computedHash": "e28c9909e73a887411763b8fddae94696199090c859925b54dc220a6b45bdb3a"
+    },
+    "setup-xendit": {
+      "source": "afu-it/malaysia-payment-gateway",
+      "sourceType": "github",
+      "skillPath": "setup-xendit/SKILL.md",
+      "computedHash": "266dedef8d95aae39df127aeb8694088cd99956286f6349a6b3113ae14b2cf08"
+    }
+  }
+}
