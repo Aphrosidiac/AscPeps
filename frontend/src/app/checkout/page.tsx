@@ -31,7 +31,7 @@ export default function CheckoutPage() {
     notes: '',
   });
 
-  if (items.length === 0 && !success) {
+  if (items.length === 0 && !success && !loading) {
     router.push('/cart');
     return null;
   }
@@ -52,13 +52,13 @@ export default function CheckoutPage() {
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       });
 
-      clearCart();
-
       if (paymentMethod === 'BILLPLZ' && result.billplzUrl) {
+        clearCart();
         window.location.href = result.billplzUrl;
         return;
       }
 
+      clearCart();
       setSuccess({ orderNumber: result.order.orderNumber, whatsappUrl: result.whatsappUrl });
 
       if (paymentMethod === 'WHATSAPP' && result.whatsappUrl) {
