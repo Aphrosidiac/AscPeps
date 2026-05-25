@@ -52,8 +52,14 @@ export default function CheckoutPage() {
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       });
 
-      setSuccess({ orderNumber: result.order.orderNumber, whatsappUrl: result.whatsappUrl });
       clearCart();
+
+      if (paymentMethod === 'BILLPLZ' && result.billplzUrl) {
+        window.location.href = result.billplzUrl;
+        return;
+      }
+
+      setSuccess({ orderNumber: result.order.orderNumber, whatsappUrl: result.whatsappUrl });
 
       if (paymentMethod === 'WHATSAPP' && result.whatsappUrl) {
         window.open(result.whatsappUrl, '_blank');
