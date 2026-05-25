@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Shield, Truck, FlaskConical } from 'lucide-react';
@@ -14,6 +14,13 @@ import type { Product, Category } from '@/types';
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+
+  const triggerJiggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const el = e.currentTarget as HTMLElement;
+    if (el.classList.contains('jiggling')) return;
+    el.classList.add('jiggling');
+    el.addEventListener('animationend', () => el.classList.remove('jiggling'), { once: true });
+  }, []);
 
   useEffect(() => {
     getProducts({ limit: 8, featured: 'true' } as Parameters<typeof getProducts>[0]).then((r) => {
@@ -67,6 +74,8 @@ export default function HomePage() {
                 height={300}
                 className="w-[220px] h-auto drop-shadow-2xl hero-vials"
                 priority
+                onMouseEnter={triggerJiggle}
+                onTouchStart={triggerJiggle}
               />
               <Link href="/products">
                 <Button variant="secondary" size="lg">
@@ -82,6 +91,8 @@ export default function HomePage() {
                 height={480}
                 className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
                 priority
+                onMouseEnter={triggerJiggle}
+                onTouchStart={triggerJiggle}
               />
             </Animate>
           </div>
