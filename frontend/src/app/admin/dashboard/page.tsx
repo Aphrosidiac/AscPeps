@@ -29,12 +29,24 @@ interface DashboardStats {
 export default function AdminDashboardPage() {
   const { token } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    if (token) {
-      adminGetDashboard(token).then(setStats).catch(() => {});
-    }
-  }, [token]);
+  const loadStats = () => {
+    if (!token) return;
+    setError(false);
+    adminGetDashboard(token).then(setStats).catch(() => setError(true));
+  };
+
+  useEffect(() => { loadStats(); }, [token]);
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-text-muted mb-4">Failed to load dashboard data.</p>
+        <button onClick={loadStats} className="text-sm font-medium text-primary underline cursor-pointer">Try again</button>
+      </div>
+    );
+  }
 
   if (!stats) {
     return (

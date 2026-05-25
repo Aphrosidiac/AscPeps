@@ -71,7 +71,8 @@ export default function ProductDetailPage() {
     );
   }
 
-  const benefits: string[] = product.benefits ? JSON.parse(product.benefits) : [];
+  let benefits: string[] = [];
+  try { if (product.benefits) benefits = JSON.parse(product.benefits); } catch {}
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

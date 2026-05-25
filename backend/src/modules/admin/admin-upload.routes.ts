@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import { createWriteStream } from 'fs';
-import { mkdir } from 'fs/promises';
+import { mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
-const MAX_SIZE = 5 * 1024 * 1024;
 
 export default async function adminUploadRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -31,7 +30,8 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     await pipeline(data.file, createWriteStream(filepath));
 
     if (data.file.truncated) {
-      return reply.status(400).send({ error: `File too large. Max ${MAX_SIZE / 1024 / 1024}MB.` });
+      await unlink(filepath).catch(() => {});
+      return reply.status(400).send({ error: 'File too large. Max 5MB.' });
     }
 
     const url = `/uploads/products/${filename}`;

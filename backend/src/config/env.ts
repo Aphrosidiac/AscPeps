@@ -7,6 +7,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3105),
   HOST: z.string().default('0.0.0.0'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
+  CORS_ORIGINS: z.string().default(''),
   WHATSAPP_NUMBER: z.string().default('601161092723'),
   BILLPLZ_API_KEY: z.string().optional(),
   BILLPLZ_COLLECTION_ID: z.string().optional(),

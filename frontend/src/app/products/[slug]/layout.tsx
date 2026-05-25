@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
 
   try {
-    const apiBase = API_URL || 'http://localhost:3105';
+    const apiBase = API_URL || '';
     const res = await fetch(`${apiBase}/api/v1/products/${slug}`, { next: { revalidate: 3600 } });
     if (!res.ok) return {};
     const product = await res.json();

@@ -24,31 +24,31 @@ const createOrderSchema = z.object({
 export async function createOrder(fastify: FastifyInstance, body: unknown) {
   const data = createOrderSchema.parse(body);
 
-  const products = await fastify.prisma.product.findMany({
-    where: { id: { in: data.items.map((i) => i.productId) }, active: true },
-  });
-
-  if (products.length !== data.items.length) {
-    throw { statusCode: 400, message: 'One or more products not found or inactive' };
-  }
-
-  const productMap = new Map(products.map((p) => [p.id, p]));
-
-  for (const item of data.items) {
-    const product = productMap.get(item.productId)!;
-    if (product.stock < item.quantity) {
-      throw { statusCode: 400, message: `Insufficient stock for ${product.name}` };
-    }
-  }
-
-  const total = data.items.reduce((sum, item) => {
-    const product = productMap.get(item.productId)!;
-    return sum + product.price * item.quantity;
-  }, 0);
-
-  const orderNumber = await generateOrderNumber(fastify.prisma);
-
   const order = await fastify.prisma.$transaction(async (tx) => {
+    const products = await tx.product.findMany({
+      where: { id: { in: data.items.map((i) => i.productId) }, active: true },
+    });
+
+    if (products.length !== data.items.length) {
+      throw { statusCode: 400, message: 'One or more products not found or inactive' };
+    }
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    for (const item of data.items) {
+      const product = productMap.get(item.productId)!;
+      if (product.stock < item.quantity) {
+        throw { statusCode: 400, message: `Insufficient stock for ${product.name}` };
+      }
+    }
+
+    const total = data.items.reduce((sum, item) => {
+      const product = productMap.get(item.productId)!;
+      return sum + product.price * item.quantity;
+    }, 0);
+
+    const orderNumber = await generateOrderNumber(tx);
+
     const created = await tx.order.create({
       data: {
         orderNumber,
@@ -106,8 +106,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string) {
-  if (!phone) {
-    throw { statusCode: 400, message: 'Phone number is required' };
+  if (!phone || phone.length < 3) {
+    throw { statusCode: 400, message: 'Please enter a valid phone number' };
   }
 
   const orders = await fastify.prisma.order.findMany({
