@@ -90,6 +90,23 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-text-primary);
 }
 
+@keyframes icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+@keyframes icon-shake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}
+@keyframes icon-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.icon-animate:hover .lucide { animation: icon-pulse 0.5s ease; }
+.icon-animate-shake:hover .lucide { animation: icon-shake 0.4s ease; }
+.icon-animate-bounce:hover .lucide { animation: icon-bounce 0.4s ease; }
+
 @keyframes search-expand {
   from { transform: scaleX(0); opacity: 0; }
   to { transform: scaleX(1); opacity: 1; }

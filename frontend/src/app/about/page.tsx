@@ -67,28 +67,28 @@ export default function AboutPage() {
         </Animate>
 
         <Stagger className="grid md:grid-cols-2 gap-6" stagger={0.08}>
-          <div className="bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
+          <div className="icon-animate bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
             <FlaskConical className="w-7 h-7 mb-4 text-text-primary" />
             <h3 className="font-display font-semibold text-lg mb-2">Lab-Grade Quality</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
               Every product undergoes rigorous testing to ensure purity and potency. We source exclusively from verified manufacturers with established quality control processes.
             </p>
           </div>
-          <div className="bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
+          <div className="icon-animate bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
             <Award className="w-7 h-7 mb-4 text-text-primary" />
             <h3 className="font-display font-semibold text-lg mb-2">Third-Party Verified</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
               Every batch is independently tested by accredited laboratories. Certificates of Analysis are available for all products — full transparency from synthesis to delivery.
             </p>
           </div>
-          <div className="bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
+          <div className="icon-animate-shake bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
             <Shield className="w-7 h-7 mb-4 text-text-primary" />
             <h3 className="font-display font-semibold text-lg mb-2">Discreet Packaging</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
               Your privacy matters. All orders are shipped in plain, unmarked packaging with no external branding or indication of contents.
             </p>
           </div>
-          <div className="bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
+          <div className="icon-animate-bounce bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
             <Truck className="w-7 h-7 mb-4 text-text-primary" />
             <h3 className="font-display font-semibold text-lg mb-2">Fast Nationwide Delivery</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
