@@ -127,7 +127,7 @@ export function Stagger({ children, className, stagger = 0.06, variant = 'fadeUp
               willChange: 'opacity, transform',
             };
             return (
-              <div key={i} style={style}>
+              <div key={i} style={{ ...style, display: 'flex', flexDirection: 'column' }}>
                 {child}
               </div>
             );
