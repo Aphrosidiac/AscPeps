@@ -34,7 +34,7 @@ export default function HomePage() {
           <div className="max-w-2xl">
             <Animate variant="fade" duration={0.8}>
               <div className="flex items-center gap-3 mb-6">
-                <Image src="/images/logo-transparent.png" alt="ASCEND" width={48} height={48} className="invert" />
+                <Image src="/images/pill-icon.png" alt="ASCEND" width={48} height={48} className="invert" />
                 <span className="font-display text-2xl font-bold tracking-tight">ASCEND</span>
               </div>
             </Animate>

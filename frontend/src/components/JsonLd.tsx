@@ -4,7 +4,7 @@ export function OrganizationJsonLd() {
     '@type': 'Organization',
     name: 'ASCEND',
     url: 'https://ascend.apdevotion.my',
-    logo: 'https://ascend.apdevotion.my/images/logo-transparent.png',
+    logo: 'https://ascend.apdevotion.my/images/pill-icon-512.png',
     description: 'Malaysia\'s #1 premium research peptides provider. Lab-grade Retatrutide, GHK-Cu, BPC-157, Tesamorelin and more with fast nationwide shipping.',
     address: {
       '@type': 'PostalAddress',
@@ -45,7 +45,7 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
     description,
     sku: code,
     url: `https://ascend.apdevotion.my/products/${slug}`,
-    image: imageUrl || 'https://ascend.apdevotion.my/images/logo-transparent.png',
+    image: imageUrl || 'https://ascend.apdevotion.my/images/pill-icon-512.png',
     category,
     brand: {
       '@type': 'Brand',
