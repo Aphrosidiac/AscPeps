@@ -50,7 +50,7 @@ export default function ProductDetailPage() {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
         <div className="h-4 bg-surface-elevated rounded w-24 mb-8" />
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid md:grid-cols-2 gap-6 md:gap-8">
           <div className="aspect-square bg-surface-elevated rounded-xl" />
           <div className="space-y-4">
             <div className="h-3 bg-surface-elevated rounded w-1/3" />
@@ -90,7 +90,7 @@ export default function ProductDetailPage() {
         <ArrowLeft className="w-4 h-4" /> Back to Products
       </Link>
 
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className="grid md:grid-cols-2 gap-6 md:gap-8">
         <Animate variant="fade" duration={0.6}>
           <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
             {product.imageUrl ? (
