@@ -76,7 +76,7 @@ async function main() {
     await prisma.product.upsert({
       where: { code: product.code },
       update: {},
-      create: product,
+      create: { ...product, coaUrl: 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRFFNYY' },
     });
   }
 
