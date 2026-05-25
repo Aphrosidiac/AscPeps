@@ -55,6 +55,9 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Video Divider */}
+      <VideoStrip src="/videos/test-tubes.mp4" height="100px" overlay={0.3} />
+
       {/* Trust Signals */}
       <section className="border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -135,7 +138,7 @@ export default function HomePage() {
       )}
 
       {/* Video Divider */}
-      <VideoStrip src="/videos/test-tubes.mp4" height="100px" overlay={0.45} />
+      <VideoStrip src="/videos/lab-glassware.mp4" height="100px" overlay={0.45} />
     </div>
   );
 }
