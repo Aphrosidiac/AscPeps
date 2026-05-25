@@ -7,6 +7,7 @@ import { ArrowRight, Shield, Truck, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Animate, Stagger } from '@/components/ui/Animate';
+import { VideoStrip } from '@/components/ui/VideoStrip';
 import { getProducts, getCategories } from '@/lib/api';
 import type { Product, Category } from '@/types';
 
@@ -111,6 +112,9 @@ export default function HomePage() {
         </section>
       )}
 
+      {/* Video Divider */}
+      <VideoStrip src="/videos/lab-glassware.mp4" height="120px" overlay={0.35} />
+
       {/* Featured Products */}
       {products.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -129,6 +133,9 @@ export default function HomePage() {
           </Stagger>
         </section>
       )}
+
+      {/* Video Divider */}
+      <VideoStrip src="/videos/test-tubes.mp4" height="100px" overlay={0.45} />
     </div>
   );
 }
