@@ -30,9 +30,9 @@ export function Footer() {
               href="https://wa.me/601161092723"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors"
+              className="inline-flex items-center gap-2 text-sm text-neutral-300 hover:text-white transition-colors"
             >
-              +60 11-6109 2723
+              WhatsApp &rarr;
             </a>
           </div>
         </div>
