@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { FlaskConical, Thermometer, Clock, AlertTriangle, Droplets, Snowflake } from 'lucide-react';
+import { FlaskConical, Thermometer, Clock, AlertTriangle, Droplets, Snowflake, Syringe, Pipette } from 'lucide-react';
 import { Animate, Stagger } from '@/components/ui/Animate';
 
 export const metadata: Metadata = {
@@ -55,18 +55,14 @@ export default function GuidePage() {
             </div>
           </div>
           <div className="bg-surface rounded-xl border border-border p-4 flex items-start gap-3">
-            <div className="w-5 h-5 flex items-center justify-center text-text-muted mt-0.5 shrink-0">
-              <span className="text-sm font-bold">💉</span>
-            </div>
+            <Syringe className="w-5 h-5 text-text-muted mt-0.5 shrink-0" />
             <div>
               <p className="font-medium text-sm">Insulin Syringes</p>
               <p className="text-xs text-text-muted">For precise measurement</p>
             </div>
           </div>
           <div className="bg-surface rounded-xl border border-border p-4 flex items-start gap-3">
-            <div className="w-5 h-5 flex items-center justify-center text-text-muted mt-0.5 shrink-0">
-              <span className="text-sm font-bold">🧴</span>
-            </div>
+            <Pipette className="w-5 h-5 text-text-muted mt-0.5 shrink-0" />
             <div>
               <p className="font-medium text-sm">Alcohol Swabs</p>
               <p className="text-xs text-text-muted">For sterilizing vial tops</p>
