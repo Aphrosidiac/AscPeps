@@ -61,6 +61,31 @@ export default function AdminSettingsPage() {
       <h1 className="font-display text-2xl font-bold mb-6">Settings</h1>
 
       <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
+        {/* Announcement Bar */}
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Announcement Bar</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="announcement_enabled"
+              checked={settings.announcement_enabled === 'true'}
+              onChange={(e) => updateSetting('announcement_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded"
+            />
+            <label htmlFor="announcement_enabled" className="text-sm font-medium text-text-secondary">
+              Show announcement bar on the website
+            </label>
+          </div>
+          <Input
+            label="Announcement Text"
+            id="announcement_text"
+            value={settings.announcement_text || ''}
+            onChange={(e) => updateSetting('announcement_text', e.target.value)}
+            placeholder="e.g. Free shipping on all orders across Malaysia 🇲🇾"
+          />
+          <p className="text-xs text-text-muted">This text appears in a bar above the navigation on every page.</p>
+        </div>
+
         {/* Business Info */}
         <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Business Information</h2>

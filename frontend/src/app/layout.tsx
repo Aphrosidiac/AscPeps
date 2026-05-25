@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
+import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
+import { WhatsAppButton } from '@/components/layout/WhatsAppButton';
 import { OrganizationJsonLd } from '@/components/JsonLd';
 import './globals.css';
 
@@ -102,9 +104,11 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
         <OrganizationJsonLd />
         <CartProvider>
+          <AnnouncementBar />
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
+          <WhatsAppButton />
         </CartProvider>
       </body>
     </html>
