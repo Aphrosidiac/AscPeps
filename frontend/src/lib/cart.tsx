@@ -1,7 +1,8 @@
 'use client';
 
-import { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback, type ReactNode } from 'react';
 import type { CartItem } from '@/types';
+import { CartToast } from '@/components/ui/CartToast';
 
 interface CartState {
   items: CartItem[];
@@ -60,6 +61,7 @@ const CartContext = createContext<CartContextType | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
+  const [toastItem, setToastItem] = useState<{ name: string; imageUrl?: string | null; code: string } | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('ascend-cart');
@@ -77,10 +79,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const total = state.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
 
+  const addItem = useCallback((item: CartItem) => {
+    dispatch({ type: 'ADD_ITEM', payload: item });
+    setToastItem({ name: item.name, imageUrl: item.imageUrl, code: item.code });
+  }, []);
+
+  const clearToast = useCallback(() => setToastItem(null), []);
+
   return (
     <CartContext value={{
       items: state.items,
-      addItem: (item) => dispatch({ type: 'ADD_ITEM', payload: item }),
+      addItem,
       removeItem: (id) => dispatch({ type: 'REMOVE_ITEM', payload: id }),
       updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { productId: id, quantity: qty } }),
       clearCart: () => dispatch({ type: 'CLEAR' }),
@@ -88,6 +97,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       itemCount,
     }}>
       {children}
+      <CartToast item={toastItem} onDone={clearToast} />
     </CartContext>
   );
 }
