@@ -17,6 +17,7 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     }
 
     if (!ALLOWED_TYPES.includes(data.mimetype)) {
+      await data.file.resume();
       return reply.status(400).send({ error: 'Invalid file type. Use JPEG, PNG, or WebP.' });
     }
 
@@ -27,7 +28,13 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     await mkdir(uploadsDir, { recursive: true });
 
     const filepath = path.join(uploadsDir, filename);
-    await pipeline(data.file, createWriteStream(filepath));
+
+    try {
+      await pipeline(data.file, createWriteStream(filepath));
+    } catch {
+      await unlink(filepath).catch(() => {});
+      return reply.status(400).send({ error: 'File upload failed. File may be too large (max 5MB).' });
+    }
 
     if (data.file.truncated) {
       await unlink(filepath).catch(() => {});
