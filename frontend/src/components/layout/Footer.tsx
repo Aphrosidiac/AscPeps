@@ -23,9 +23,17 @@ export function Footer() {
 
           <div>
             <h4 className="font-semibold text-sm mb-3 uppercase tracking-wider text-neutral-400">Contact</h4>
-            <p className="text-sm text-neutral-300">
+            <p className="text-sm text-neutral-300 mb-3">
               WhatsApp us for inquiries and support.
             </p>
+            <a
+              href="https://wa.me/601161092723"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors"
+            >
+              +60 11-6109 2723
+            </a>
           </div>
         </div>
 

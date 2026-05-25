@@ -88,10 +88,10 @@ export default function AdminSettingsPage() {
             id="whatsapp_number"
             value={settings.whatsapp_number || ''}
             onChange={(e) => updateSetting('whatsapp_number', e.target.value)}
-            placeholder="60123456789"
+            placeholder="601161092723"
           />
           <p className="text-xs text-text-muted">
-            Use international format without + sign (e.g. 60123456789 for Malaysian number 012-3456789). This is the number customers will message when they choose WhatsApp checkout.
+            Use international format without + sign (e.g. 601161092723 for Malaysian number 012-3456789). This is the number customers will message when they choose WhatsApp checkout.
           </p>
         </div>
 
