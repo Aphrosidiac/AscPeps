@@ -124,8 +124,8 @@ export default function AdminProductsPage() {
       benefits: benefitsArray.length > 0 ? JSON.stringify(benefitsArray) : undefined,
       dosageInfo: form.dosageInfo || undefined,
       stock: parseInt(form.stock) || 0,
-      imageUrl: form.imageUrl || undefined,
-      coaUrl: form.coaUrl || undefined,
+      imageUrl: form.imageUrl || null,
+      coaUrl: form.coaUrl || null,
       featured: form.featured,
       active: form.active,
     };
@@ -343,6 +343,7 @@ export default function AdminProductsPage() {
                           } catch {
                             setFormError('Failed to upload image');
                           }
+                          e.target.value = '';
                         }}
                       />
                     </label>
