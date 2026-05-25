@@ -19,6 +19,30 @@ Full-stack e-commerce platform for peptide products. Built with Next.js 16, Fast
 └── README.md
 ```
 
+## Features
+
+- Product catalog with 5 categories, 21 peptide products
+- Featured products (admin toggle) with horizontal scroll showcase
+- Shopping cart (localStorage, no login required)
+- Dual checkout: WhatsApp order + online payment (Billplz)
+- Order tracking by phone number
+- Product image uploads
+- Scroll-triggered animations (Animate/Stagger components)
+- Video strip dividers with lab footage on homepage
+- Full admin panel: dashboard, product CRUD, order management, settings
+- Mobile-responsive with collapsible admin sidebar
+
+## SEO
+
+- Dynamic `sitemap.xml` auto-generated from product catalog
+- `robots.txt` with crawl rules
+- Per-page metadata optimized for Malaysia peptide keywords
+- JSON-LD structured data (Organization + Product schemas)
+- Open Graph + Twitter Card tags on all pages
+- Dynamic `generateMetadata` for product detail pages
+- PWA manifest
+- Target keywords: peptides malaysia, retatrutide malaysia, reta malaysia, buy peptides malaysia, #1 peptides provider malaysia
+
 ## Local Development
 
 ### Prerequisites
@@ -90,22 +114,31 @@ cd ../frontend && npm install && npx next build \
 
 ### Nginx
 
-Config at `/etc/nginx/sites-available/ascend.apdevotion.my` — proxies `/api/*` to backend, everything else to frontend. SSL via Let's Encrypt (auto-renews).
+Config at `/etc/nginx/sites-available/ascend.apdevotion.my` — proxies `/api/*` and `/uploads/*` to backend, everything else to frontend. SSL via Let's Encrypt (auto-renews).
+
+### Database Backups
+
+Daily `pg_dump` at 3am via cron. 14-day retention.
+
+- Backups: `/home/ubuntu/backups/ascend/`
+- Logs: `/home/ubuntu/backups/ascend/backup.log`
+- Restore: `gunzip -c ascend_YYYYMMDD_HHMMSS.sql.gz | psql -U ascend_user ascend`
 
 ## API Endpoints
 
 ### Public
 
 - `GET /api/v1/categories` — list categories
-- `GET /api/v1/products?category=&search=` — list products
+- `GET /api/v1/products?category=&search=&featured=true` — list products
 - `GET /api/v1/products/:slug` — product detail
-- `POST /api/v1/orders` — create order
+- `POST /api/v1/orders` — create order (returns WhatsApp URL for WhatsApp method)
 - `GET /api/v1/orders/lookup?phone=` — track orders by phone
 
 ### Admin (requires Bearer token)
 
 - `POST /api/v1/auth/login` — admin login
 - `GET /api/v1/admin/dashboard/stats` — dashboard stats
-- `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD
+- `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (with featured toggle)
 - `GET/PATCH /api/v1/admin/orders` — order management
-- `GET/PUT /api/v1/admin/settings` — store settings
+- `GET/PUT /api/v1/admin/settings` — store settings (WhatsApp number, business info)
+- `POST /api/v1/admin/upload/image` — product image upload (JPEG/PNG/WebP, max 5MB)
