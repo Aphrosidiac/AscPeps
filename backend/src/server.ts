@@ -20,6 +20,7 @@ import adminProductRoutes from './modules/admin/admin-products.routes.js';
 import adminOrderRoutes from './modules/admin/admin-orders.routes.js';
 import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
 import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
+import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 
 const fastify = Fastify({
@@ -55,6 +56,7 @@ await fastify.register(categoryRoutes, { prefix: '/api/v1/categories' });
 await fastify.register(productRoutes, { prefix: '/api/v1/products' });
 await fastify.register(orderRoutes, { prefix: '/api/v1/orders' });
 await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
+await fastify.register(publicSettingsRoutes, { prefix: '/api/v1/settings' });
 await fastify.register(adminProductRoutes, { prefix: '/api/v1/admin/products' });
 await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
 await fastify.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
