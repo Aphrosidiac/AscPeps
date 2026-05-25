@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ShoppingCart, ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
-import { getProduct } from '@/lib/api';
+import { getProduct, getSettings } from '@/lib/api';
 import { useCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +18,7 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
+  const [shippingFee, setShippingFee] = useState<string>('');
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function ProductDetailPage() {
         .catch(() => {})
         .finally(() => setLoading(false));
     }
+    getSettings().then((s) => setShippingFee(s.shipping_fee || '')).catch(() => {});
   }, [params.slug]);
 
   const handleAddToCart = () => {
@@ -168,8 +170,12 @@ export default function ProductDetailPage() {
             <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
               <Truck className="w-4 h-4 text-text-muted shrink-0" />
               <div>
-                <p className="text-xs font-semibold">Free Shipping</p>
-                <p className="text-[11px] text-text-muted">All orders, nationwide</p>
+                <p className="text-xs font-semibold">
+                  {!shippingFee || shippingFee === '0' ? 'Free Shipping' : `Shipping: RM${shippingFee}`}
+                </p>
+                <p className="text-[11px] text-text-muted">
+                  {!shippingFee || shippingFee === '0' ? 'All orders, nationwide' : 'Nationwide delivery'}
+                </p>
               </div>
             </div>
           </div>

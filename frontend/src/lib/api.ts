@@ -31,6 +31,9 @@ export const createOrder = (data: {
 export const lookupOrders = (phone: string) =>
   api.get<Order[]>('/api/v1/orders/lookup', { params: { phone } }).then((r) => r.data);
 
+export const getSettings = () =>
+  api.get<Record<string, string>>('/api/v1/settings').then((r) => r.data);
+
 // Admin
 export const adminLogin = (email: string, password: string) =>
   api.post<{ token: string; user: { id: string; email: string; name: string } }>('/api/v1/auth/login', { email, password }).then((r) => r.data);
