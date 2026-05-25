@@ -8,6 +8,7 @@ import { getProduct } from '@/lib/api';
 import { useCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { Animate } from '@/components/ui/Animate';
 import type { Product } from '@/types';
 
 export default function ProductDetailPage() {
@@ -76,10 +77,13 @@ export default function ProductDetailPage() {
       </Link>
 
       <div className="grid md:grid-cols-2 gap-8">
-        <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center">
-          <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{product.code}</span>
-        </div>
+        <Animate variant="fade" duration={0.6}>
+          <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center">
+            <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{product.code}</span>
+          </div>
+        </Animate>
 
+        <Animate variant="fadeUp" delay={0.15} duration={0.6}>
         <div className="space-y-6">
           <div>
             <p className="text-sm text-text-muted font-medium uppercase tracking-wider mb-1">{product.category.name}</p>
@@ -137,6 +141,7 @@ export default function ProductDetailPage() {
 
           <p className="text-xs text-text-muted">Product Code: {product.code}</p>
         </div>
+        </Animate>
       </div>
     </div>
   );
