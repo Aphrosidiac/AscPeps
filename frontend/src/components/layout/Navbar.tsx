@@ -53,7 +53,7 @@ export function Navbar() {
           {/* Center: Nav links or Search input */}
           <div className="flex-1 flex justify-center mx-4">
             {searchOpen ? (
-              <form onSubmit={handleSearch} className="w-full max-w-md">
+              <form onSubmit={handleSearch} className="w-full max-w-md animate-search-expand">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                   <input
