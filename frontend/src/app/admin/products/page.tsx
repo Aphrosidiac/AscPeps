@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon, Star } from 'lucide-react';
+import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, adminUploadImage, getCategories } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
@@ -240,7 +240,7 @@ export default function AdminProductsPage() {
                   <td className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-1.5">
                       {product.name}
-                      {product.featured && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 shrink-0" />}
+                      {product.featured && <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-medium shrink-0">Featured</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{product.category.name}</td>
@@ -407,7 +407,7 @@ export default function AdminProductsPage() {
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="featured" checked={form.featured} onChange={(e) => updateField('featured', e.target.checked)} className="rounded accent-yellow-500" />
                   <label htmlFor="featured" className="text-sm font-medium text-text-secondary flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5 text-yellow-500" /> Featured
+                    Featured
                   </label>
                 </div>
                 <div className="flex items-center gap-2">

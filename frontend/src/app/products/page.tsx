@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search, Star } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { getProducts, getCategories } from '@/lib/api';
 import { ProductCard } from '@/components/products/ProductCard';
 import { CategoryFilter } from '@/components/products/CategoryFilter';
@@ -56,7 +56,6 @@ function ProductsContent() {
         <Animate variant="fadeUp" delay={0.05} duration={0.5}>
           <div className="mb-10">
             <div className="flex items-center gap-2 mb-4">
-              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
               <h2 className="font-display font-semibold text-lg">Featured</h2>
             </div>
             <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
