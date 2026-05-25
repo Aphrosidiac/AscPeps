@@ -24,14 +24,17 @@ interface ProductFormData {
   dosageInfo: string;
   stock: string;
   imageUrl: string;
+  coaUrl: string;
   featured: boolean;
   active: boolean;
 }
 
+const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRFFNYY';
+
 const emptyForm: ProductFormData = {
   code: '', name: '', slug: '', categoryId: '', size: '',
   price: '', description: '', benefits: '', dosageInfo: '',
-  stock: '0', imageUrl: '', featured: false, active: true,
+  stock: '0', imageUrl: '', coaUrl: DEFAULT_COA, featured: false, active: true,
 };
 
 function slugify(text: string) {
@@ -86,6 +89,7 @@ export default function AdminProductsPage() {
       dosageInfo: product.dosageInfo || '',
       stock: String(product.stock),
       imageUrl: product.imageUrl || '',
+      coaUrl: product.coaUrl || DEFAULT_COA,
       featured: product.featured,
       active: product.active,
     });
@@ -120,6 +124,7 @@ export default function AdminProductsPage() {
       dosageInfo: form.dosageInfo || undefined,
       stock: parseInt(form.stock) || 0,
       imageUrl: form.imageUrl || undefined,
+      coaUrl: form.coaUrl || undefined,
       featured: form.featured,
       active: form.active,
     };
@@ -353,6 +358,14 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
               </div>
+
+              <Input
+                label="Certificate of Analysis URL"
+                id="coaUrl"
+                value={form.coaUrl}
+                onChange={(e) => updateField('coaUrl', e.target.value)}
+                placeholder="https://verify.janoshik.com/tests/..."
+              />
 
               <div>
                 <label htmlFor="description" className="block text-sm font-medium text-text-secondary mb-1">Description</label>
