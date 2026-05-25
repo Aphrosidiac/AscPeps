@@ -1,29 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { Check, ShoppingCart } from 'lucide-react';
 
 interface CartToastProps {
-  item: { name: string; imageUrl?: string | null; code: string } | null;
+  item: { name: string; key: number } | null;
   onDone: () => void;
 }
 
 export function CartToast({ item, onDone }: CartToastProps) {
   const [visible, setVisible] = useState(false);
+  const [display, setDisplay] = useState<{ name: string } | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const fadeRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    if (item) {
-      setVisible(true);
-      const timer = setTimeout(() => {
-        setVisible(false);
-        setTimeout(onDone, 300);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
+    if (!item) return;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (fadeRef.current) clearTimeout(fadeRef.current);
+
+    setDisplay({ name: item.name });
+    setVisible(true);
+
+    timerRef.current = setTimeout(() => {
+      setVisible(false);
+      fadeRef.current = setTimeout(onDone, 300);
+    }, 2500);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (fadeRef.current) clearTimeout(fadeRef.current);
+    };
   }, [item, onDone]);
 
-  if (!item) return null;
+  if (!display) return null;
 
   return (
     <div className={`fixed top-20 right-4 sm:right-6 z-50 transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
@@ -32,7 +44,7 @@ export function CartToast({ item, onDone }: CartToastProps) {
           <Check className="w-5 h-5 text-success" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{item.name}</p>
+          <p className="text-sm font-medium truncate">{display.name}</p>
           <p className="text-xs text-text-muted">Added to cart</p>
         </div>
         <Link
