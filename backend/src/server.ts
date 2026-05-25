@@ -1,8 +1,11 @@
+import path from 'path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import formbody from '@fastify/formbody';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 
 import { env } from './config/env.js';
 import prismaPlugin from './plugins/prisma.js';
@@ -17,6 +20,7 @@ import adminProductRoutes from './modules/admin/admin-products.routes.js';
 import adminOrderRoutes from './modules/admin/admin-orders.routes.js';
 import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
 import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
+import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 
 const fastify = Fastify({
   logger: {
@@ -31,9 +35,15 @@ await fastify.register(cors, {
   origin: [env.FRONTEND_URL, 'https://ascend.apdevotion.my', 'http://localhost:3000'],
   credentials: true,
 });
-await fastify.register(helmet);
+await fastify.register(helmet, { contentSecurityPolicy: false });
 await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 await fastify.register(formbody);
+await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+await fastify.register(fastifyStatic, {
+  root: path.join(process.cwd(), 'uploads'),
+  prefix: '/uploads/',
+  decorateReply: false,
+});
 
 await fastify.register(prismaPlugin);
 await fastify.register(authPlugin);
@@ -49,6 +59,7 @@ await fastify.register(adminProductRoutes, { prefix: '/api/v1/admin/products' })
 await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
 await fastify.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
+await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });

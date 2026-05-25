@@ -64,3 +64,11 @@ export const adminGetSettings = (token: string) =>
 
 export const adminUpdateSettings = (token: string, data: Record<string, string>) =>
   api.put<Record<string, string>>('/api/v1/admin/settings', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminUploadImage = (token: string, file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post<{ url: string; filename: string }>('/api/v1/admin/upload/image', form, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+  }).then((r) => r.data);
+};
