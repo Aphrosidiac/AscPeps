@@ -87,9 +87,9 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        <div className="flex gap-4 justify-center">
-          <Link href="/products"><Button variant="outline">Continue Shopping</Button></Link>
-          <Link href="/track"><Button variant="secondary">Track Order</Button></Link>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link href="/products"><Button variant="outline" className="w-full sm:w-auto">Continue Shopping</Button></Link>
+          <Link href="/track"><Button variant="secondary" className="w-full sm:w-auto">Track Order</Button></Link>
         </div>
       </div>
     );
