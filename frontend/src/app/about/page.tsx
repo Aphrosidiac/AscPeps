@@ -104,7 +104,7 @@ export default function AboutPage() {
           <Animate variant="fadeUp">
             <h2 className="font-display text-2xl md:text-3xl font-bold text-center mb-12">Our Promise</h2>
           </Animate>
-          <Stagger className="grid sm:grid-cols-2 md:grid-cols-3 gap-8" stagger={0.08}>
+          <Stagger className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8" stagger={0.08}>
             <div className="text-center">
               <CheckCircle className="w-6 h-6 mx-auto mb-3 text-success" />
               <h3 className="font-semibold text-sm mb-1">Purity You Can Verify</h3>

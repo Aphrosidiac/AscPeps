@@ -112,7 +112,7 @@ export default function CheckoutPage() {
         <h1 className="font-display text-3xl font-bold mb-8">Checkout</h1>
       </Animate>
 
-      <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-8">
+      <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6 lg:gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Customer Info */}
           <Animate variant="fadeUp" delay={0.05}>

@@ -30,6 +30,7 @@ export default function ShippingPage() {
         </p>
 
         <h2>Delivery Time</h2>
+        <div className="overflow-x-auto -mx-4 px-4">
         <table>
           <thead>
             <tr><th>Region</th><th>Estimated Delivery</th></tr>
@@ -40,6 +41,7 @@ export default function ShippingPage() {
             <tr><td>East Malaysia (Sabah & Sarawak)</td><td>3-7 business days</td></tr>
           </tbody>
         </table>
+        </div>
         <p className="text-sm text-text-muted">
           Delivery times are estimates and may vary due to courier capacity, weather conditions, or public holidays.
         </p>

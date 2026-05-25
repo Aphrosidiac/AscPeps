@@ -160,6 +160,7 @@ export default function GuidePage() {
 
         <Animate variant="fadeUp" delay={0.35}>
           <h2>Choosing a Solvent</h2>
+          <div className="overflow-x-auto -mx-4 px-4">
           <table>
             <thead>
               <tr><th>Solvent</th><th>Best For</th><th>Shelf Life</th></tr>
@@ -170,6 +171,7 @@ export default function GuidePage() {
               <tr><td><strong>Acetic Acid (0.6%)</strong></td><td>Peptides with solubility issues (e.g., GHK-Cu)</td><td>~30 days refrigerated</td></tr>
             </tbody>
           </table>
+          </div>
           <p className="text-sm text-text-muted">
             ASCEND offers Acetic Acid in our <a href="/products" className="underline">store</a> for peptides that require it.
           </p>
