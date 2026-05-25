@@ -65,7 +65,7 @@ export default function HomePage() {
                 alt="ASCEND peptide vials"
                 width={300}
                 height={300}
-                className="w-[220px] h-auto drop-shadow-2xl"
+                className="w-[220px] h-auto drop-shadow-2xl hero-vials"
                 priority
               />
               <Link href="/products">
@@ -80,7 +80,7 @@ export default function HomePage() {
                 alt="ASCEND peptide vials"
                 width={480}
                 height={480}
-                className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl"
+                className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
                 priority
               />
             </Animate>
