@@ -14,6 +14,7 @@ const productSchema = z.object({
   dosageInfo: z.string().optional(),
   stock: z.number().int().min(0).default(0),
   imageUrl: z.string().optional(),
+  featured: z.boolean().default(false),
   active: z.boolean().default(true),
 });
 
