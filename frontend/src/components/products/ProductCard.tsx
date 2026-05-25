@@ -29,7 +29,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
   return (
     <Link href={`/products/${product.slug}`} className="group">
-      <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md transition-all p-4">
+      <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md hover:-translate-y-1 transition-all duration-300 p-4">
         <div className="aspect-square bg-surface-elevated rounded-lg mb-4 flex items-center justify-center overflow-hidden">
           <div className="text-4xl font-display font-bold text-text-muted/30 select-none">
             {product.code}

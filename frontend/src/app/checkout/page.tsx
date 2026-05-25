@@ -11,6 +11,7 @@ import { MALAYSIAN_STATES } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Animate } from '@/components/ui/Animate';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -102,11 +103,14 @@ export default function CheckoutPage() {
         <ArrowLeft className="w-4 h-4" /> Back to Cart
       </Link>
 
-      <h1 className="font-display text-3xl font-bold mb-8">Checkout</h1>
+      <Animate variant="fadeUp" duration={0.5}>
+        <h1 className="font-display text-3xl font-bold mb-8">Checkout</h1>
+      </Animate>
 
       <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Customer Info */}
+          <Animate variant="fadeUp" delay={0.05}>
           <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
             <h2 className="font-display font-semibold text-lg">Customer Information</h2>
             <div className="grid sm:grid-cols-2 gap-4">
@@ -115,8 +119,10 @@ export default function CheckoutPage() {
             </div>
             <Input label="Email (optional)" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} />
           </div>
+          </Animate>
 
           {/* Address */}
+          <Animate variant="fadeUp" delay={0.1}>
           <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
             <h2 className="font-display font-semibold text-lg">Shipping Address</h2>
             <Input label="Address" id="address" value={form.address} onChange={(e) => updateField('address', e.target.value)} required />
@@ -133,8 +139,10 @@ export default function CheckoutPage() {
               <Input label="Postcode" id="postcode" value={form.postcode} onChange={(e) => updateField('postcode', e.target.value)} required />
             </div>
           </div>
+          </Animate>
 
           {/* Payment */}
+          <Animate variant="fadeUp" delay={0.15}>
           <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
             <h2 className="font-display font-semibold text-lg">Payment Method</h2>
             <div className="grid sm:grid-cols-2 gap-4">
@@ -164,8 +172,10 @@ export default function CheckoutPage() {
               </button>
             </div>
           </div>
+          </Animate>
 
           {/* Notes */}
+          <Animate variant="fadeUp" delay={0.2}>
           <div className="bg-surface rounded-xl border border-border p-6">
             <label htmlFor="notes" className="block text-sm font-medium text-text-secondary mb-1">Order Notes (optional)</label>
             <textarea
@@ -177,6 +187,8 @@ export default function CheckoutPage() {
               placeholder="Any special instructions..."
             />
           </div>
+
+          </Animate>
 
           {error && <p className="text-danger text-sm">{error}</p>}
         </div>

@@ -5,6 +5,7 @@ import { Trash2, ShoppingCart } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { Animate, Stagger } from '@/components/ui/Animate';
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, total, itemCount } = useCart();
@@ -12,20 +13,24 @@ export default function CartPage() {
   if (items.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+        <Animate variant="scale" duration={0.5}>
         <ShoppingCart className="w-16 h-16 text-text-muted mx-auto mb-4" />
         <h1 className="font-display text-2xl font-bold mb-2">Your cart is empty</h1>
         <p className="text-text-secondary mb-6">Browse our products and add items to your cart.</p>
         <Link href="/products"><Button>Browse Products</Button></Link>
+        </Animate>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="font-display text-3xl font-bold mb-8">Shopping Cart</h1>
+      <Animate variant="fadeUp" duration={0.5}>
+        <h1 className="font-display text-3xl font-bold mb-8">Shopping Cart</h1>
+      </Animate>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-4">
+        <Stagger className="lg:col-span-2 space-y-4" stagger={0.08}>
           {items.map((item) => (
             <div key={item.productId} className="bg-surface rounded-xl border border-border p-4 flex items-center gap-4">
               <div className="w-16 h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0">
@@ -60,8 +65,9 @@ export default function CartPage() {
               </button>
             </div>
           ))}
-        </div>
+        </Stagger>
 
+        <Animate variant="fadeUp" delay={0.2}>
         <div className="bg-surface rounded-xl border border-border p-6 h-fit sticky top-24">
           <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
           <div className="space-y-2 mb-4">
@@ -80,6 +86,7 @@ export default function CartPage() {
             <Button className="w-full" size="lg">Proceed to Checkout</Button>
           </Link>
         </div>
+        </Animate>
       </div>
     </div>
   );
