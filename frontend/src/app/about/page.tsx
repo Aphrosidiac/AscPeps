@@ -1,5 +1,18 @@
+import type { Metadata } from 'next';
 import { FlaskConical, Shield, Truck, Clock } from 'lucide-react';
 import { Animate, Stagger } from '@/components/ui/Animate';
+
+export const metadata: Metadata = {
+  title: 'About ASCEND — Malaysia\'s Trusted Peptides Provider',
+  description: 'ASCEND is Malaysia\'s trusted source for premium lab-grade research peptides. Quality assurance, discreet packaging, fast nationwide delivery, and responsive WhatsApp support.',
+  keywords: ['about ASCEND', 'peptides provider malaysia', 'trusted peptides malaysia', 'lab grade peptides'],
+  alternates: { canonical: 'https://ascend.apdevotion.my/about' },
+  openGraph: {
+    title: 'About ASCEND — Malaysia\'s Trusted Peptides Provider',
+    description: 'Quality assurance, discreet packaging, fast nationwide delivery. Malaysia\'s trusted peptides source.',
+    url: 'https://ascend.apdevotion.my/about',
+  },
+};
 
 export default function AboutPage() {
   return (
