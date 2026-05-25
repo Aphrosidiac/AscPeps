@@ -31,7 +31,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className="bg-primary text-white overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-          <div className="flex items-center gap-8 lg:gap-16">
+          <div className="flex flex-col md:flex-row md:items-center gap-8 lg:gap-16">
             <div className="flex-1 min-w-0">
               <Animate variant="fade" duration={0.8}>
                 <div className="flex items-center gap-3 mb-6">
@@ -59,6 +59,16 @@ export default function HomePage() {
                 </div>
               </Animate>
             </div>
+            <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex justify-center">
+              <Image
+                src="/images/hero-vials.png"
+                alt="ASCEND peptide vials"
+                width={300}
+                height={300}
+                className="w-[220px] h-auto drop-shadow-2xl"
+                priority
+              />
+            </Animate>
             <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
               <Image
                 src="/images/hero-vials.png"
