@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { Category, Product, Order, PaginatedResponse } from '@/types';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105',
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
 });
 
 // Public
