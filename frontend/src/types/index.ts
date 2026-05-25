@@ -19,6 +19,7 @@ export interface Product {
   dosageInfo: string | null;
   stock: number;
   imageUrl: string | null;
+  featured: boolean;
   active: boolean;
   category: {
     name: string;

@@ -16,7 +16,13 @@ export default function HomePage() {
   const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
-    getProducts({ limit: 8 }).then((r) => setProducts(r.data)).catch(() => {});
+    getProducts({ limit: 8, featured: 'true' } as Parameters<typeof getProducts>[0]).then((r) => {
+      if (r.data.length > 0) {
+        setProducts(r.data);
+      } else {
+        getProducts({ limit: 8 }).then((r2) => setProducts(r2.data)).catch(() => {});
+      }
+    }).catch(() => {});
     getCategories().then(setCategories).catch(() => {});
   }, []);
 

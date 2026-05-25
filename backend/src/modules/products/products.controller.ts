@@ -6,6 +6,10 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
 
   const where: Record<string, unknown> = { active: true };
 
+  if (query.featured === 'true') {
+    where.featured = true;
+  }
+
   if (query.category) {
     where.category = { slug: query.category };
   }
@@ -22,7 +26,7 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
     fastify.prisma.product.findMany({
       where,
       include: { category: { select: { name: true, slug: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
       skip,
       take: limit,
     }),

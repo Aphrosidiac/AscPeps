@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { Search, Star } from 'lucide-react';
 import { getProducts, getCategories } from '@/lib/api';
 import { ProductCard } from '@/components/products/ProductCard';
 import { CategoryFilter } from '@/components/products/CategoryFilter';
@@ -20,6 +20,7 @@ export default function ProductsPage() {
 function ProductsContent() {
   const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
+  const [featured, setFeatured] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(searchParams.get('category'));
   const [search, setSearch] = useState('');
@@ -27,6 +28,9 @@ function ProductsContent() {
 
   useEffect(() => {
     getCategories().then(setCategories).catch(() => {});
+    getProducts({ featured: 'true', limit: 10 } as Parameters<typeof getProducts>[0])
+      .then((r) => setFeatured(r.data))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -46,6 +50,25 @@ function ProductsContent() {
       <Animate variant="fadeUp" duration={0.5}>
         <h1 className="font-display text-3xl font-bold mb-6">Products</h1>
       </Animate>
+
+      {/* Featured Products Row */}
+      {featured.length > 0 && !search && !selectedCategory && (
+        <Animate variant="fadeUp" delay={0.05} duration={0.5}>
+          <div className="mb-10">
+            <div className="flex items-center gap-2 mb-4">
+              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+              <h2 className="font-display font-semibold text-lg">Featured</h2>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
+              {featured.map((product) => (
+                <div key={product.id} className="w-[200px] sm:w-[220px] shrink-0 snap-start">
+                  <ProductCard product={product} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </Animate>
+      )}
 
       <Animate variant="fadeUp" delay={0.1} duration={0.5}>
         <div className="space-y-6 mb-8">

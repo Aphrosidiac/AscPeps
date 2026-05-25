@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon } from 'lucide-react';
+import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon, Star } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, adminUploadImage, getCategories } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
@@ -24,13 +24,14 @@ interface ProductFormData {
   dosageInfo: string;
   stock: string;
   imageUrl: string;
+  featured: boolean;
   active: boolean;
 }
 
 const emptyForm: ProductFormData = {
   code: '', name: '', slug: '', categoryId: '', size: '',
   price: '', description: '', benefits: '', dosageInfo: '',
-  stock: '0', imageUrl: '', active: true,
+  stock: '0', imageUrl: '', featured: false, active: true,
 };
 
 function slugify(text: string) {
@@ -85,6 +86,7 @@ export default function AdminProductsPage() {
       dosageInfo: product.dosageInfo || '',
       stock: String(product.stock),
       imageUrl: product.imageUrl || '',
+      featured: product.featured,
       active: product.active,
     });
     setFormError('');
@@ -118,6 +120,7 @@ export default function AdminProductsPage() {
       dosageInfo: form.dosageInfo || undefined,
       stock: parseInt(form.stock) || 0,
       imageUrl: form.imageUrl || undefined,
+      featured: form.featured,
       active: form.active,
     };
 
@@ -229,7 +232,12 @@ export default function AdminProductsPage() {
                       {product.code}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-medium">{product.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <div className="flex items-center gap-1.5">
+                      {product.name}
+                      {product.featured && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 shrink-0" />}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{product.category.name}</td>
                   <td className="px-4 py-3 text-text-secondary">{product.size}</td>
                   <td className="px-4 py-3 text-right font-semibold">{formatPrice(product.price)}</td>
@@ -382,9 +390,17 @@ export default function AdminProductsPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="active" checked={form.active} onChange={(e) => updateField('active', e.target.checked)} className="rounded" />
-                <label htmlFor="active" className="text-sm font-medium text-text-secondary">Active (visible on store)</label>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="featured" checked={form.featured} onChange={(e) => updateField('featured', e.target.checked)} className="rounded accent-yellow-500" />
+                  <label htmlFor="featured" className="text-sm font-medium text-text-secondary flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5 text-yellow-500" /> Featured
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="active" checked={form.active} onChange={(e) => updateField('active', e.target.checked)} className="rounded" />
+                  <label htmlFor="active" className="text-sm font-medium text-text-secondary">Active (visible on store)</label>
+                </div>
               </div>
 
               {formError && <p className="text-sm text-danger">{formError}</p>}
