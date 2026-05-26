@@ -61,9 +61,9 @@ export default function CheckoutPage() {
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       });
 
-      if (paymentMethod === 'BILLPLZ' && result.billplzUrl) {
+      if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
         clearCart();
-        window.location.href = result.billplzUrl;
+        window.location.href = result.paymentUrl;
         return;
       }
 

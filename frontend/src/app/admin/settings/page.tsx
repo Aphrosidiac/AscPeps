@@ -88,7 +88,7 @@ export default function AdminSettingsPage() {
 
         {/* Online Payment */}
         <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Online Payment (Billplz)</h2>
+          <h2 className="font-display font-semibold text-lg">Online Payment</h2>
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -101,7 +101,19 @@ export default function AdminSettingsPage() {
               Enable online payment at checkout
             </label>
           </div>
-          <p className="text-xs text-text-muted">When disabled, customers can only use WhatsApp checkout. Enable this once your Billplz account is set up and verified.</p>
+          <div>
+            <label htmlFor="payment_gateway" className="block text-sm font-medium text-text-secondary mb-1">Payment Gateway</label>
+            <select
+              id="payment_gateway"
+              value={settings.payment_gateway || 'billplz'}
+              onChange={(e) => updateSetting('payment_gateway', e.target.value)}
+              className="w-full max-w-xs px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            >
+              <option value="billplz">Billplz (FPX, eWallets, Cards)</option>
+              <option value="toyyibpay">ToyyibPay (FPX, Cards)</option>
+            </select>
+          </div>
+          <p className="text-xs text-text-muted">Choose which payment gateway to use for online payments. Make sure the gateway credentials are configured in the server environment variables.</p>
         </div>
 
         {/* Business Info */}

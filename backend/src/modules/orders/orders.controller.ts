@@ -2,8 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
-import { createBill } from '../../utils/billplz.js';
-import { env } from '../../config/env.js';
+import { getActiveGateway } from '../../utils/payment-gateway.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -86,7 +85,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
   });
 
   let whatsappUrl: string | undefined;
-  let billplzUrl: string | undefined;
+  let paymentUrl: string | undefined;
 
   if (data.paymentMethod === 'WHATSAPP') {
     whatsappUrl = buildWhatsAppUrl({
@@ -104,32 +103,34 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       state: order.state,
       postcode: order.postcode,
     });
-  } else if (data.paymentMethod === 'BILLPLZ' && env.BILLPLZ_API_KEY && env.BILLPLZ_COLLECTION_ID) {
-    const backendUrl = env.FRONTEND_URL.startsWith('http://localhost')
-      ? `http://localhost:${env.PORT}`
-      : `https://ascendpeptides.my`;
-
-    const bill = await createBill({
-      collectionId: env.BILLPLZ_COLLECTION_ID,
-      name: order.customerName,
-      email: order.email || undefined,
-      mobile: order.phone.startsWith('60') ? order.phone : `60${order.phone.replace(/^0/, '')}`,
-      amount: order.total,
-      description: `ASCEND Order ${order.orderNumber}`,
-      callbackUrl: `${backendUrl}/api/v1/payments/billplz/callback`,
-      redirectUrl: `${backendUrl}/api/v1/payments/billplz/redirect`,
-      referenceOne: order.orderNumber,
+  } else if (data.paymentMethod === 'BILLPLZ') {
+    const settings = await fastify.prisma.setting.findMany({
+      where: { key: { in: ['payment_gateway'] } },
     });
+    const gatewayName = settings.find(s => s.key === 'payment_gateway')?.value || 'billplz';
+    const gateway = getActiveGateway(gatewayName);
 
-    await fastify.prisma.order.update({
-      where: { id: order.id },
-      data: { paymentRef: bill.id },
-    });
+    if (gateway) {
+      const bill = await gateway.createBill({
+        name: order.customerName,
+        email: order.email || undefined,
+        phone: order.phone,
+        amount: order.total,
+        description: `ASCEND Order ${order.orderNumber}`,
+        orderNumber: order.orderNumber,
+        orderId: order.id,
+      });
 
-    billplzUrl = bill.url;
+      await fastify.prisma.order.update({
+        where: { id: order.id },
+        data: { paymentRef: bill.billId, paymentGateway: bill.gateway },
+      });
+
+      paymentUrl = bill.paymentUrl;
+    }
   }
 
-  return { order, whatsappUrl, billplzUrl };
+  return { order, whatsappUrl, paymentUrl };
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string) {
