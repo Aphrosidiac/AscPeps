@@ -86,6 +86,24 @@ export default function AdminSettingsPage() {
           <p className="text-xs text-text-muted">This text appears in a bar above the navigation on every page.</p>
         </div>
 
+        {/* Online Payment */}
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Online Payment (Billplz)</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="online_payment_enabled"
+              checked={settings.online_payment_enabled === 'true'}
+              onChange={(e) => updateSetting('online_payment_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded"
+            />
+            <label htmlFor="online_payment_enabled" className="text-sm font-medium text-text-secondary">
+              Enable online payment at checkout
+            </label>
+          </div>
+          <p className="text-xs text-text-muted">When disabled, customers can only use WhatsApp checkout. Enable this once your Billplz account is set up and verified.</p>
+        </div>
+
         {/* Business Info */}
         <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Business Information</h2>
