@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
-const PUBLIC_KEYS = ['business_name', 'business_tagline', 'shipping_fee', 'whatsapp_number', 'announcement_enabled', 'announcement_text'];
+const PUBLIC_KEYS = ['business_name', 'business_tagline', 'shipping_fee', 'whatsapp_number', 'announcement_enabled', 'announcement_text', 'online_payment_enabled'];
 
 export default async function publicSettingsRoutes(fastify: FastifyInstance) {
   fastify.get('/', async () => {

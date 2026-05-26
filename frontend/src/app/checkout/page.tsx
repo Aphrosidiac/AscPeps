@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, CreditCard, ArrowLeft, CheckCircle } from 'lucide-react';
 import { useCart } from '@/lib/cart';
-import { createOrder } from '@/lib/api';
+import { createOrder, getSettings } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +20,7 @@ export default function CheckoutPage() {
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ'>('WHATSAPP');
+  const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
   const [form, setForm] = useState({
     customerName: '',
     phone: '',
@@ -30,6 +31,10 @@ export default function CheckoutPage() {
     postcode: '',
     notes: '',
   });
+
+  useEffect(() => {
+    getSettings().then((s) => setOnlinePaymentEnabled(s.online_payment_enabled === 'true')).catch(() => {});
+  }, []);
 
   if (items.length === 0 && !success && !loading) {
     router.push('/cart');
@@ -170,15 +175,24 @@ export default function CheckoutPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setPaymentMethod('BILLPLZ')}
+                onClick={() => onlinePaymentEnabled && setPaymentMethod('BILLPLZ')}
+                disabled={!onlinePaymentEnabled}
                 className={cn(
-                  'p-4 rounded-xl border-2 text-left transition-all cursor-pointer',
-                  paymentMethod === 'BILLPLZ' ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
+                  'p-4 rounded-xl border-2 text-left transition-all relative',
+                  !onlinePaymentEnabled
+                    ? 'border-border opacity-50 cursor-not-allowed'
+                    : paymentMethod === 'BILLPLZ'
+                      ? 'border-primary bg-primary/5 cursor-pointer'
+                      : 'border-border hover:border-border-hover cursor-pointer'
                 )}
               >
                 <CreditCard className="w-6 h-6 mb-2" />
                 <p className="font-medium">Online Payment</p>
-                <p className="text-xs text-text-secondary mt-1">FPX / Credit Card via Billplz</p>
+                {onlinePaymentEnabled ? (
+                  <p className="text-xs text-text-secondary mt-1">FPX / Credit Card via Billplz</p>
+                ) : (
+                  <p className="text-xs text-danger mt-1">Currently unavailable. Please use WhatsApp checkout.</p>
+                )}
               </button>
             </div>
           </div>
