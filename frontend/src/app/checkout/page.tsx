@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, ArrowLeft, CheckCircle } from 'lucide-react';
+import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, User, MapPin, Wallet } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { createOrder, getSettings } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
@@ -82,30 +82,32 @@ export default function CheckoutPage() {
   if (success) {
     return (
       <div className="max-w-lg mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
-        <h1 className="font-display text-2xl font-bold mb-2">Order Placed!</h1>
-        <p className="text-text-secondary mb-2">Your order number is:</p>
-        <p className="font-display text-xl font-bold mb-6">{success.orderNumber}</p>
+        <Animate variant="scale" duration={0.5}>
+          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
+          <h1 className="font-display text-2xl font-bold mb-2">Order Placed!</h1>
+          <p className="text-text-secondary mb-2">Your order number is:</p>
+          <p className="font-display text-xl font-bold mb-6">{success.orderNumber}</p>
 
-        {paymentMethod === 'WHATSAPP' && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-            <p className="text-sm text-green-800">
-              A WhatsApp message has been prepared with your order details. Complete the payment via bank transfer and send proof of payment through WhatsApp.
-            </p>
-            {success.whatsappUrl && (
-              <a href={success.whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-3">
-                <Button variant="primary" size="sm">
-                  <MessageCircle className="w-4 h-4" /> Open WhatsApp
-                </Button>
-              </a>
-            )}
+          {paymentMethod === 'WHATSAPP' && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-6 text-left">
+              <p className="text-sm text-green-800 leading-relaxed">
+                A WhatsApp message has been prepared with your order details. Complete the payment via bank transfer and send proof of payment through WhatsApp.
+              </p>
+              {success.whatsappUrl && (
+                <a href={success.whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-3">
+                  <Button variant="primary" size="sm">
+                    <MessageCircle className="w-4 h-4" /> Open WhatsApp
+                  </Button>
+                </a>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/products"><Button variant="outline" className="w-full sm:w-auto">Continue Shopping</Button></Link>
+            <Link href="/track"><Button variant="secondary" className="w-full sm:w-auto">Track Order</Button></Link>
           </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link href="/products"><Button variant="outline" className="w-full sm:w-auto">Continue Shopping</Button></Link>
-          <Link href="/track"><Button variant="secondary" className="w-full sm:w-auto">Track Order</Button></Link>
-        </div>
+        </Animate>
       </div>
     );
   }
@@ -123,11 +125,14 @@ export default function CheckoutPage() {
       </Animate>
 
       <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6 lg:gap-8">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-5">
           {/* Customer Info */}
           <Animate variant="fadeUp" delay={0.05}>
-          <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
-            <h2 className="font-display font-semibold text-lg">Customer Information</h2>
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
+              <h2 className="font-display font-semibold text-lg">Customer Information</h2>
+            </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <Input label="Full Name" id="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} required />
               <Input label="Phone Number" id="phone" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" required />
@@ -138,8 +143,11 @@ export default function CheckoutPage() {
 
           {/* Address */}
           <Animate variant="fadeUp" delay={0.1}>
-          <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
-            <h2 className="font-display font-semibold text-lg">Shipping Address</h2>
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
+              <h2 className="font-display font-semibold text-lg">Shipping Address</h2>
+            </div>
             <Input label="Address" id="address" value={form.address} onChange={(e) => updateField('address', e.target.value)} required />
             <div className="grid sm:grid-cols-3 gap-4">
               <Input label="City" id="city" value={form.city} onChange={(e) => updateField('city', e.target.value)} required />
@@ -158,20 +166,27 @@ export default function CheckoutPage() {
 
           {/* Payment */}
           <Animate variant="fadeUp" delay={0.15}>
-          <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
-            <h2 className="font-display font-semibold text-lg">Payment Method</h2>
-            <div className="grid sm:grid-cols-2 gap-4">
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
+              <h2 className="font-display font-semibold text-lg">Payment Method</h2>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setPaymentMethod('WHATSAPP')}
                 className={cn(
-                  'p-4 rounded-xl border-2 text-left transition-all cursor-pointer',
+                  'p-4 rounded-xl border-2 text-left transition-all cursor-pointer group',
                   paymentMethod === 'WHATSAPP' ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
                 )}
               >
-                <MessageCircle className="w-6 h-6 mb-2" />
-                <p className="font-medium">WhatsApp</p>
-                <p className="text-xs text-text-secondary mt-1">Pay via bank transfer, confirm on WhatsApp</p>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'WHATSAPP' ? 'bg-green-100' : 'bg-surface-elevated')}>
+                    <MessageCircle className={cn('w-5 h-5', paymentMethod === 'WHATSAPP' ? 'text-green-600' : 'text-text-muted')} />
+                  </div>
+                  <p className="font-semibold">WhatsApp</p>
+                </div>
+                <p className="text-xs text-text-secondary leading-relaxed">Pay via bank transfer, confirm on WhatsApp</p>
               </button>
               <button
                 type="button"
@@ -186,12 +201,16 @@ export default function CheckoutPage() {
                       : 'border-border hover:border-border-hover cursor-pointer'
                 )}
               >
-                <CreditCard className="w-6 h-6 mb-2" />
-                <p className="font-medium">Online Payment</p>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'BILLPLZ' ? 'bg-blue-100' : 'bg-surface-elevated')}>
+                    <CreditCard className={cn('w-5 h-5', paymentMethod === 'BILLPLZ' ? 'text-blue-600' : 'text-text-muted')} />
+                  </div>
+                  <p className="font-semibold">Online Payment</p>
+                </div>
                 {onlinePaymentEnabled ? (
-                  <p className="text-xs text-text-secondary mt-1">FPX / Credit Card via Billplz</p>
+                  <p className="text-xs text-text-secondary leading-relaxed">FPX / Credit Card via Billplz</p>
                 ) : (
-                  <p className="text-xs text-danger mt-1">Currently unavailable. Please use WhatsApp checkout.</p>
+                  <p className="text-xs text-danger leading-relaxed">Currently unavailable. Please use WhatsApp checkout.</p>
                 )}
               </button>
             </div>
@@ -200,44 +219,83 @@ export default function CheckoutPage() {
 
           {/* Notes */}
           <Animate variant="fadeUp" delay={0.2}>
-          <div className="bg-surface rounded-xl border border-border p-6">
-            <label htmlFor="notes" className="block text-sm font-medium text-text-secondary mb-1">Order Notes (optional)</label>
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
+            <label htmlFor="notes" className="block text-sm font-medium text-text-secondary mb-2">Order Notes (optional)</label>
             <textarea
               id="notes"
               value={form.notes}
               onChange={(e) => updateField('notes', e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               placeholder="Any special instructions..."
             />
           </div>
-
           </Animate>
 
-          {error && <p className="text-danger text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3">{error}</p>}
         </div>
 
         {/* Order Summary */}
-        <div className="bg-surface rounded-xl border border-border p-6 h-fit sticky top-24">
-          <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
-          <div className="space-y-3 mb-4">
-            {items.map((item) => (
-              <div key={item.productId} className="flex justify-between text-sm">
-                <span className="text-text-secondary">{item.name} x{item.quantity}</span>
-                <span>{formatPrice(item.price * item.quantity)}</span>
+        <Animate variant="fadeUp" delay={0.1}>
+        <div className="h-fit sticky top-24 space-y-4">
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
+            <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
+            <div className="space-y-3 mb-4">
+              {items.map((item) => (
+                <div key={item.productId} className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-[8px] font-bold text-text-muted">{item.code}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-text-muted">Qty: {item.quantity}</p>
+                  </div>
+                  <p className="text-sm font-semibold shrink-0">{formatPrice(item.price * item.quantity)}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-border pt-4 space-y-2 mb-5">
+              <div className="flex justify-between text-sm text-text-secondary">
+                <span>Subtotal</span>
+                <span>{formatPrice(total)}</span>
               </div>
-            ))}
+              <div className="flex justify-between text-sm text-text-secondary">
+                <span>Shipping</span>
+                <span className="text-success font-medium">Free</span>
+              </div>
+              <div className="flex justify-between font-display font-bold text-lg pt-2 border-t border-border">
+                <span>Total</span>
+                <span>{formatPrice(total)}</span>
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full" size="lg" disabled={loading}>
+              {loading ? 'Placing Order...' : 'Place Order'}
+            </Button>
           </div>
-          <div className="border-t border-border pt-4 mb-6">
-            <div className="flex justify-between font-display font-bold text-lg">
-              <span>Total</span>
-              <span>{formatPrice(total)}</span>
+
+          {/* Trust Signals */}
+          <div className="flex items-center justify-center gap-4 text-text-muted">
+            <div className="flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" />
+              <span className="text-xs">Secure</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span className="text-xs">Verified</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Truck className="w-3.5 h-3.5" />
+              <span className="text-xs">Free Shipping</span>
             </div>
           </div>
-          <Button type="submit" className="w-full" size="lg" disabled={loading}>
-            {loading ? 'Placing Order...' : 'Place Order'}
-          </Button>
         </div>
+        </Animate>
       </form>
     </div>
   );
