@@ -80,9 +80,10 @@ model Order {
   postcode      String
   total         Int
   status        OrderStatus   @default(PENDING)
-  paymentMethod PaymentMethod
-  paymentStatus PaymentStatus @default(UNPAID)
-  paymentRef    String?
+  paymentMethod  PaymentMethod
+  paymentGateway String?
+  paymentStatus  PaymentStatus @default(UNPAID)
+  paymentRef     String?
   notes         String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt

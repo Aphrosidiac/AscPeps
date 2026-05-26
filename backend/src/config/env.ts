@@ -13,6 +13,9 @@ const envSchema = z.object({
   BILLPLZ_COLLECTION_ID: z.string().optional(),
   BILLPLZ_SIGNATURE_KEY: z.string().optional(),
   BILLPLZ_SANDBOX: z.coerce.boolean().default(true),
+  TOYYIBPAY_SECRET_KEY: z.string().optional(),
+  TOYYIBPAY_CATEGORY_CODE: z.string().optional(),
+  TOYYIBPAY_SANDBOX: z.coerce.boolean().default(true),
 });
 
 export const env = envSchema.parse(process.env);

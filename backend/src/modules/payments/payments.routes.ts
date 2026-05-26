@@ -1,15 +1,15 @@
 import type { FastifyInstance } from 'fastify';
-import { handleBillplzCallback, handleBillplzRedirect } from './payments.controller.js';
+import { handlePaymentCallback, handlePaymentRedirect } from './payments.controller.js';
 
 export default async function paymentRoutes(fastify: FastifyInstance) {
-  fastify.post('/billplz/callback', async (request, reply) => {
+  fastify.post('/callback', async (request) => {
     const body = request.body as Record<string, string>;
-    return handleBillplzCallback(fastify, body);
+    return handlePaymentCallback(fastify, body);
   });
 
-  fastify.get('/billplz/redirect', async (request, reply) => {
+  fastify.get('/redirect', async (request, reply) => {
     const query = request.query as Record<string, string>;
-    const redirectUrl = handleBillplzRedirect(query);
+    const redirectUrl = handlePaymentRedirect(query);
     return reply.redirect(redirectUrl);
   });
 }

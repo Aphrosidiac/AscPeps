@@ -1,23 +1,30 @@
 import type { FastifyInstance } from 'fastify';
-import { verifyCallbackSignature, verifyRedirectSignature } from '../../utils/billplz.js';
-import { env } from '../../config/env.js';
+import { getGatewayByBillId } from '../../utils/payment-gateway.js';
 
-export async function handleBillplzCallback(fastify: FastifyInstance, body: Record<string, string>) {
-  if (!verifyCallbackSignature(body)) {
-    fastify.log.warn('Billplz callback: invalid signature');
+export async function handlePaymentCallback(fastify: FastifyInstance, body: Record<string, string>) {
+  const isBillplz = !!body.x_signature;
+  const billId = isBillplz ? body.id : body.billcode;
+  const gatewayName = isBillplz ? 'billplz' : 'toyyibpay';
+
+  const gateway = getGatewayByBillId(billId, gatewayName);
+  if (!gateway) {
+    fastify.log.warn(`Payment callback: unknown gateway for bill ${billId}`);
+    return { status: 'ok' };
+  }
+
+  if (!gateway.verifyCallback(body)) {
+    fastify.log.warn(`${gateway.name} callback: invalid signature`);
     throw { statusCode: 400, message: 'Invalid signature' };
   }
 
-  const billId = body.id;
-  const paid = body.paid === 'true';
-  const state = body.state;
+  const result = gateway.parseCallback(body);
 
   const order = await fastify.prisma.order.findFirst({
-    where: { paymentRef: billId },
+    where: { paymentRef: result.billId },
   });
 
   if (!order) {
-    fastify.log.warn(`Billplz callback: no order found for bill ${billId}`);
+    fastify.log.warn(`${gateway.name} callback: no order for bill ${result.billId}`);
     return { status: 'ok' };
   }
 
@@ -25,36 +32,30 @@ export async function handleBillplzCallback(fastify: FastifyInstance, body: Reco
     return { status: 'ok' };
   }
 
-  if (paid && state === 'paid') {
+  if (result.paid) {
     await fastify.prisma.order.update({
       where: { id: order.id },
-      data: {
-        paymentStatus: 'PAID',
-        status: 'CONFIRMED',
-      },
+      data: { paymentStatus: 'PAID', status: 'CONFIRMED' },
     });
-    fastify.log.info(`Order ${order.orderNumber} paid via Billplz (bill ${billId})`);
+    fastify.log.info(`Order ${order.orderNumber} paid via ${gateway.name} (bill ${result.billId})`);
   } else {
     await fastify.prisma.order.update({
       where: { id: order.id },
       data: { paymentStatus: 'FAILED' },
     });
-    fastify.log.info(`Order ${order.orderNumber} payment failed (bill ${billId})`);
+    fastify.log.info(`Order ${order.orderNumber} payment failed via ${gateway.name} (bill ${result.billId})`);
   }
 
   return { status: 'ok' };
 }
 
-export function handleBillplzRedirect(query: Record<string, string>) {
-  const valid = verifyRedirectSignature(query);
-  const paid = query['billplz[paid]'] === 'true';
-  const billId = query['billplz[id]'] || '';
+export function handlePaymentRedirect(query: Record<string, string>) {
+  const isBillplz = !!query['billplz[id]'];
+  const gatewayName = isBillplz ? 'billplz' : 'toyyibpay';
+  const billId = isBillplz ? query['billplz[id]'] : query.billcode || '';
 
-  const frontendUrl = env.FRONTEND_URL || 'https://ascendpeptides.my';
+  const gateway = getGatewayByBillId(billId, gatewayName);
+  if (!gateway) return 'https://ascendpeptides.my/checkout/failed';
 
-  if (valid && paid) {
-    return `${frontendUrl}/checkout/success?bill=${billId}`;
-  } else {
-    return `${frontendUrl}/checkout/failed?bill=${billId}`;
-  }
+  return gateway.buildRedirectUrl(query);
 }

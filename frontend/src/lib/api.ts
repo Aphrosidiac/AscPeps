@@ -26,7 +26,7 @@ export const createOrder = (data: {
   paymentMethod: 'WHATSAPP' | 'BILLPLZ';
   notes?: string;
   items: { productId: string; quantity: number }[];
-}) => api.post<{ order: Order; whatsappUrl?: string; billplzUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
+}) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
 export const lookupOrders = (phone: string) =>
   api.get<Order[]>('/api/v1/orders/lookup', { params: { phone } }).then((r) => r.data);
