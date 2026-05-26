@@ -21,6 +21,7 @@ export default function CheckoutPage() {
   const [error, setError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ'>('WHATSAPP');
   const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
+  const [shippingFee, setShippingFee] = useState('');
   const [form, setForm] = useState({
     customerName: '',
     phone: '',
@@ -33,7 +34,10 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
-    getSettings().then((s) => setOnlinePaymentEnabled(s.online_payment_enabled === 'true')).catch(() => {});
+    getSettings().then((s) => {
+      setOnlinePaymentEnabled(s.online_payment_enabled === 'true');
+      setShippingFee(s.shipping_fee || '');
+    }).catch(() => {});
   }, []);
 
   if (items.length === 0 && !success && !loading) {
@@ -266,11 +270,13 @@ export default function CheckoutPage() {
               </div>
               <div className="flex justify-between text-sm text-text-secondary">
                 <span>Shipping</span>
-                <span className="text-success font-medium">Free</span>
+                <span className={!shippingFee || shippingFee === '0' ? 'text-success font-medium' : ''}>
+                  {!shippingFee || shippingFee === '0' ? 'Free' : `RM${shippingFee}`}
+                </span>
               </div>
               <div className="flex justify-between font-display font-bold text-lg pt-2 border-t border-border">
                 <span>Total</span>
-                <span>{formatPrice(total)}</span>
+                <span>{formatPrice(total + (shippingFee && shippingFee !== '0' ? Math.round(parseFloat(shippingFee) * 100) : 0))}</span>
               </div>
             </div>
 
@@ -291,7 +297,7 @@ export default function CheckoutPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5" />
-              <span className="text-xs">Free Shipping</span>
+              <span className="text-xs">{!shippingFee || shippingFee === '0' ? 'Free Shipping' : 'Nationwide Shipping'}</span>
             </div>
           </div>
         </div>
