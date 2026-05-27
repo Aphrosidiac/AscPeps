@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { env } from '../../config/env.js';
 import { getGatewayByBillId } from '../../utils/payment-gateway.js';
 
 export async function handlePaymentCallback(fastify: FastifyInstance, body: Record<string, string>) {
@@ -13,7 +14,7 @@ export async function handlePaymentCallback(fastify: FastifyInstance, body: Reco
   }
 
   if (!gateway.verifyCallback(body)) {
-    fastify.log.warn(`${gateway.name} callback: invalid signature`);
+    fastify.log.warn({ gateway: gateway.name, body }, 'Payment callback: invalid signature');
     throw { statusCode: 400, message: 'Invalid signature' };
   }
 
@@ -28,22 +29,36 @@ export async function handlePaymentCallback(fastify: FastifyInstance, body: Reco
     return { status: 'ok' };
   }
 
-  if (order.paymentStatus === 'PAID') {
+  if (order.paymentStatus === 'PAID' || order.paymentStatus === 'FAILED') {
     return { status: 'ok' };
   }
 
   if (result.paid) {
-    await fastify.prisma.order.update({
-      where: { id: order.id },
+    const { count } = await fastify.prisma.order.updateMany({
+      where: { id: order.id, paymentStatus: 'UNPAID' },
       data: { paymentStatus: 'PAID', status: 'CONFIRMED' },
     });
+    if (count === 0) return { status: 'ok' };
     fastify.log.info(`Order ${order.orderNumber} paid via ${gateway.name} (bill ${result.billId})`);
   } else {
-    await fastify.prisma.order.update({
-      where: { id: order.id },
+    const { count } = await fastify.prisma.order.updateMany({
+      where: { id: order.id, paymentStatus: 'UNPAID' },
       data: { paymentStatus: 'FAILED' },
     });
-    fastify.log.info(`Order ${order.orderNumber} payment failed via ${gateway.name} (bill ${result.billId})`);
+    if (count === 0) return { status: 'ok' };
+    const failedOrder = await fastify.prisma.order.findUnique({
+      where: { id: order.id },
+      include: { items: true },
+    });
+    if (failedOrder) {
+      for (const item of failedOrder.items) {
+        await fastify.prisma.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+    }
+    fastify.log.info(`Order ${order.orderNumber} payment failed via ${gateway.name} — stock restored`);
   }
 
   return { status: 'ok' };
@@ -55,7 +70,7 @@ export function handlePaymentRedirect(query: Record<string, string>) {
   const billId = isBillplz ? query['billplz[id]'] : query.billcode || '';
 
   const gateway = getGatewayByBillId(billId, gatewayName);
-  if (!gateway) return 'https://ascendpeptides.my/checkout/failed';
+  if (!gateway) return `${env.FRONTEND_URL}/checkout/failed`;
 
   return gateway.buildRedirectUrl(query);
 }

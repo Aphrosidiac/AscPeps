@@ -38,7 +38,7 @@ export async function createBill(params: CreateBillParams): Promise<string> {
   const { data } = await axios.post(
     `${getBaseUrl()}/index.php/api/createBill`,
     formData.toString(),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000 }
   );
 
   if (Array.isArray(data) && data[0]?.BillCode) {

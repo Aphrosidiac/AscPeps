@@ -49,7 +49,7 @@ export async function createBill(params: CreateBillParams): Promise<BillResponse
       reference_1_label: 'Order Number',
       reference_1: params.referenceOne || '',
     },
-    { auth: getAuth() }
+    { auth: getAuth(), timeout: 30000 }
   );
   return data;
 }
@@ -57,7 +57,7 @@ export async function createBill(params: CreateBillParams): Promise<BillResponse
 export async function getBill(billId: string): Promise<BillResponse> {
   const { data } = await axios.get<BillResponse>(
     `${getBaseUrl()}/v3/bills/${billId}`,
-    { auth: getAuth() }
+    { auth: getAuth(), timeout: 30000 }
   );
   return data;
 }
@@ -83,10 +83,14 @@ export function verifyCallbackSignature(body: Record<string, string>): boolean {
     .update(sourceString)
     .digest('hex');
 
-  return crypto.timingSafeEqual(
-    Buffer.from(computed, 'hex'),
-    Buffer.from(receivedSignature, 'hex')
-  );
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(computed, 'hex'),
+      Buffer.from(receivedSignature, 'hex')
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function verifyRedirectSignature(query: Record<string, string>): boolean {

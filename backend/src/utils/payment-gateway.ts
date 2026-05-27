@@ -33,9 +33,13 @@ export interface PaymentGateway {
 }
 
 function getBackendUrl(): string {
-  return env.FRONTEND_URL.startsWith('http://localhost')
-    ? `http://localhost:${env.PORT}`
-    : 'https://ascendpeptides.my';
+  if (env.FRONTEND_URL.startsWith('http://localhost')) return `http://localhost:${env.PORT}`;
+  const url = new URL(env.FRONTEND_URL);
+  return `https://${url.hostname}`;
+}
+
+function getFrontendUrl(): string {
+  return env.FRONTEND_URL;
 }
 
 const billplzGateway: PaymentGateway = {
@@ -68,9 +72,7 @@ const billplzGateway: PaymentGateway = {
   buildRedirectUrl(query) {
     const valid = billplz.verifyRedirectSignature(query);
     const paid = query['billplz[paid]'] === 'true';
-    const frontendUrl = env.FRONTEND_URL.startsWith('http://localhost')
-      ? env.FRONTEND_URL
-      : 'https://ascendpeptides.my';
+    const frontendUrl = getFrontendUrl();
     return valid && paid
       ? `${frontendUrl}/checkout/success`
       : `${frontendUrl}/checkout/failed`;
@@ -107,10 +109,8 @@ const toyyibpayGateway: PaymentGateway = {
     };
   },
   buildRedirectUrl(query) {
-    const paid = query.status_id === '1';
-    const frontendUrl = env.FRONTEND_URL.startsWith('http://localhost')
-      ? env.FRONTEND_URL
-      : 'https://ascendpeptides.my';
+    const paid = query.status_id === '1' && !!query.billcode;
+    const frontendUrl = getFrontendUrl();
     return paid
       ? `${frontendUrl}/checkout/success`
       : `${frontendUrl}/checkout/failed`;
