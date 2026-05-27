@@ -93,6 +93,7 @@ model Order {
   @@index([phone])
   @@index([status])
   @@index([orderNumber])
+  @@index([paymentRef])
   @@map("orders")
 }
 

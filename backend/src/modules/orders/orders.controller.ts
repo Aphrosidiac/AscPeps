@@ -43,10 +43,14 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       }
     }
 
-    const total = data.items.reduce((sum, item) => {
+    const subtotal = data.items.reduce((sum, item) => {
       const product = productMap.get(item.productId)!;
       return sum + product.price * item.quantity;
     }, 0);
+
+    const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
+    const shippingFee = shippingSetting ? Math.round(parseFloat(shippingSetting.value) * 100) : 0;
+    const total = subtotal + shippingFee;
 
     const orderNumber = await generateOrderNumber(tx);
 
