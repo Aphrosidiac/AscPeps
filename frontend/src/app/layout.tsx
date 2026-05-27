@@ -88,7 +88,12 @@ export const metadata: Metadata = {
   },
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/favicon.png', sizes: '48x48', type: 'image/png' },
+      { url: '/images/pill-icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/images/pill-icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
     apple: '/images/pill-icon-192.png',
   },
   verification: {},
