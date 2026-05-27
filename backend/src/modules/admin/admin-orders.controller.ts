@@ -42,6 +42,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
       where,
       include: {
         items: { include: { product: { select: { name: true, code: true } } } },
+        discountCode: { select: { code: true, discountType: true, discountValue: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -58,6 +59,7 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
     where: { id },
     include: {
       items: { include: { product: true } },
+      discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });
 
@@ -76,6 +78,21 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     if (!allowed.includes(data.status)) {
       throw { statusCode: 400, message: `Cannot change status from ${order.status} to ${data.status}` };
     }
+    if (data.status === 'CANCELLED') {
+      for (const item of order.items) {
+        await fastify.prisma.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+      if (order.discountCodeId) {
+        await fastify.prisma.discountCode.update({
+          where: { id: order.discountCodeId },
+          data: { usedCount: { decrement: 1 } },
+        });
+      }
+      fastify.log.info(`Order ${order.orderNumber} cancelled — stock restored`);
+    }
   }
 
   if (data.paymentStatus) {
@@ -90,19 +107,33 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
           data: { stock: { increment: item.quantity } },
         });
       }
+      if (order.discountCodeId) {
+        await fastify.prisma.discountCode.update({
+          where: { id: order.discountCodeId },
+          data: { usedCount: { decrement: 1 } },
+        });
+      }
     }
-    if (data.paymentStatus === 'REFUNDED' && order.paymentRef && order.paymentGateway === 'billplz') {
-      try {
-        await refundBill(order.paymentRef, `Refund for order ${order.orderNumber}`);
-        fastify.log.info(`Billplz refund initiated for order ${order.orderNumber}`);
-      } catch (err) {
-        fastify.log.error({ err, orderId: order.id }, 'Billplz refund failed');
-        throw { statusCode: 400, message: 'Refund API call failed — check logs for details' };
+    if (data.paymentStatus === 'REFUNDED') {
+      if (order.paymentRef && order.paymentGateway === 'billplz') {
+        try {
+          await refundBill(order.paymentRef, `Refund for order ${order.orderNumber}`);
+          fastify.log.info(`Billplz refund initiated for order ${order.orderNumber}`);
+        } catch (err) {
+          fastify.log.error({ err, orderId: order.id }, 'Billplz refund failed');
+          throw { statusCode: 400, message: 'Refund API call failed — check logs for details' };
+        }
       }
       for (const item of order.items) {
         await fastify.prisma.product.update({
           where: { id: item.productId },
           data: { stock: { increment: item.quantity } },
+        });
+      }
+      if (order.discountCodeId) {
+        await fastify.prisma.discountCode.update({
+          where: { id: order.discountCodeId },
+          data: { usedCount: { decrement: 1 } },
         });
       }
     }

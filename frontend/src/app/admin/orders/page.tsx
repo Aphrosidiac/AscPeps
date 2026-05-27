@@ -150,8 +150,10 @@ export default function AdminOrdersPage() {
                       </div>
                       <div>
                         <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Payment</p>
-                        <p className="text-sm text-text-secondary">{order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : 'Online (Billplz)'}</p>
-                        <p className="font-display font-bold text-lg mt-1">{formatPrice(order.total)}</p>
+                        <p className="text-sm text-text-secondary">{order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : `Online (${order.paymentGateway || 'Billplz'})`}</p>
+                        {order.discountCode?.code && (
+                          <p className="text-xs text-success mt-1">Discount: {order.discountCode.code}</p>
+                        )}
                       </div>
                     </div>
 
@@ -168,6 +170,28 @@ export default function AdminOrdersPage() {
                             <p className="text-sm font-semibold">{formatPrice(item.unitPrice * item.quantity)}</p>
                           </div>
                         ))}
+                      </div>
+                    </div>
+
+                    {/* Price Breakdown */}
+                    <div className="bg-surface-elevated rounded-lg px-4 py-3 space-y-1">
+                      <div className="flex justify-between text-sm text-text-secondary">
+                        <span>Subtotal</span>
+                        <span>{formatPrice(order.subtotal || order.total)}</span>
+                      </div>
+                      {order.discountAmount > 0 && (
+                        <div className="flex justify-between text-sm text-success">
+                          <span>Discount</span>
+                          <span>-{formatPrice(order.discountAmount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm text-text-secondary">
+                        <span>Shipping</span>
+                        <span>{!order.shippingFee ? 'Free' : formatPrice(order.shippingFee)}</span>
+                      </div>
+                      <div className="flex justify-between font-display font-bold text-base border-t border-border pt-1">
+                        <span>Total</span>
+                        <span>{formatPrice(order.total)}</span>
                       </div>
                     </div>
 

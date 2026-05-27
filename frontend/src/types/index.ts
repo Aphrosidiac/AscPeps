@@ -69,6 +69,7 @@ export interface Order {
   paymentGateway: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
   discountCodeId: string | null;
+  discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;
   createdAt: string;
   items: OrderItem[];
