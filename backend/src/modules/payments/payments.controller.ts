@@ -57,8 +57,14 @@ export async function handlePaymentCallback(fastify: FastifyInstance, body: Reco
           data: { stock: { increment: item.quantity } },
         });
       }
+      if (failedOrder.discountCodeId) {
+        await fastify.prisma.discountCode.update({
+          where: { id: failedOrder.discountCodeId },
+          data: { usedCount: { decrement: 1 } },
+        });
+      }
     }
-    fastify.log.info(`Order ${order.orderNumber} payment failed via ${gateway.name} — stock restored`);
+    fastify.log.info(`Order ${order.orderNumber} payment failed via ${gateway.name} — stock & discount restored`);
   }
 
   return { status: 'ok' };

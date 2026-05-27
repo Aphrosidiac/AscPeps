@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, User, MapPin, Wallet, X, Tag } from 'lucide-react';
+import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { createOrder, getSettings, validateDiscount } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
@@ -43,6 +43,8 @@ export default function CheckoutPage() {
     notes: '',
   });
 
+  const submitting = useRef(false);
+
   useEffect(() => {
     getSettings().then((s) => {
       setOnlinePaymentEnabled(s.online_payment_enabled === 'true');
@@ -57,8 +59,6 @@ export default function CheckoutPage() {
     router.push('/cart');
     return null;
   }
-
-  const submitting = useRef(false);
 
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) return;
@@ -85,7 +85,7 @@ export default function CheckoutPage() {
 
   const discountAmount = appliedDiscount?.discountAmount ?? 0;
   const shippingInSen = shippingFee && shippingFee !== '0' ? Math.round(parseFloat(shippingFee) * 100) : 0;
-  const orderTotal = total + shippingInSen - discountAmount;
+  const orderTotal = Math.max(0, total + shippingInSen - discountAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -361,7 +361,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between text-sm text-text-secondary">
                 <span>Shipping</span>
                 <span className={!shippingFee || shippingFee === '0' ? 'text-success font-medium' : ''}>
-                  {!shippingFee || shippingFee === '0' ? 'Free' : `RM${shippingFee}`}
+                  {!shippingFee || shippingFee === '0' ? 'Free' : formatPrice(shippingInSen)}
                 </span>
               </div>
               <div className="flex justify-between font-display font-bold text-lg pt-2 border-t border-border">

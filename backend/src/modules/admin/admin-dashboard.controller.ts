@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import type { OrderStatus, PaymentStatus } from '@prisma/client';
 
 export async function getDashboardStats(fastify: FastifyInstance) {
   const today = new Date();
