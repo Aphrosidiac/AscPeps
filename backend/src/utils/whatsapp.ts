@@ -9,6 +9,9 @@ interface WhatsAppOrderItem {
 interface WhatsAppOrderData {
   orderNumber: string;
   items: WhatsAppOrderItem[];
+  subtotal: number;
+  shippingFee: number;
+  discountAmount: number;
   total: number;
   customerName: string;
   phone: string;
@@ -23,12 +26,17 @@ export function buildWhatsAppUrl(data: WhatsAppOrderData): string {
     .map((item) => `${item.quantity}x ${item.name} - RM${(item.unitPrice / 100).toFixed(2)}`)
     .join('\n');
 
+  let breakdown = `*Subtotal: RM${(data.subtotal / 100).toFixed(2)}*`;
+  if (data.shippingFee > 0) breakdown += `\n*Shipping: RM${(data.shippingFee / 100).toFixed(2)}*`;
+  if (data.discountAmount > 0) breakdown += `\n*Discount: -RM${(data.discountAmount / 100).toFixed(2)}*`;
+  breakdown += `\n*Total: RM${(data.total / 100).toFixed(2)}*`;
+
   const message = `*ASCEND Order #${data.orderNumber}*
 
 *Items:*
 ${itemLines}
 
-*Total: RM${(data.total / 100).toFixed(2)}*
+${breakdown}
 
 *Customer:* ${data.customerName}
 *Phone:* ${data.phone}

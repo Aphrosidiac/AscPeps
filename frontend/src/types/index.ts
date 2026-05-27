@@ -60,13 +60,32 @@ export interface Order {
   city: string;
   state: string;
   postcode: string;
+  subtotal: number;
+  shippingFee: number;
+  discountAmount: number;
   total: number;
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentMethod: 'WHATSAPP' | 'BILLPLZ';
+  paymentGateway: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
+  discountCodeId: string | null;
   notes: string | null;
   createdAt: string;
   items: OrderItem[];
+}
+
+export interface DiscountCode {
+  id: string;
+  code: string;
+  description: string | null;
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  discountValue: number;
+  minOrderAmount: number | null;
+  maxUses: number | null;
+  usedCount: number;
+  isActive: boolean;
+  expiresAt: string | null;
+  createdAt: string;
 }
 
 export interface PaginatedResponse<T> {

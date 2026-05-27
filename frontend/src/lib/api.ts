@@ -26,6 +26,7 @@ export const createOrder = (data: {
   paymentMethod: 'WHATSAPP' | 'BILLPLZ';
   notes?: string;
   items: { productId: string; quantity: number }[];
+  discountCode?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
 export const lookupOrders = (phone: string) =>
@@ -75,3 +76,24 @@ export const adminUploadImage = (token: string, file: File) => {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
   }).then((r) => r.data);
 };
+
+// Analytics
+export const adminGetAnalytics = (token: string, days?: number) =>
+  api.get('/api/v1/admin/dashboard/analytics', { headers: { Authorization: `Bearer ${token}` }, params: { days } }).then((r) => r.data);
+
+// Discounts
+export const adminGetDiscounts = (token: string, params?: Record<string, string>) =>
+  api.get('/api/v1/admin/discounts', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
+
+export const adminCreateDiscount = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/discounts', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminUpdateDiscount = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch(`/api/v1/admin/discounts/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminDeleteDiscount = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/discounts/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+// Validate discount (public)
+export const validateDiscount = (code: string, subtotal: number) =>
+  api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number }>('/api/v1/orders/validate-discount', { code, subtotal }).then((r) => r.data);

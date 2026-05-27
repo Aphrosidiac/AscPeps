@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
+import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -13,6 +14,7 @@ const createOrderSchema = z.object({
   state: z.string().min(1),
   postcode: z.string().min(1),
   paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ']),
+  discountCode: z.string().optional(),
   notes: z.string().optional(),
   items: z.array(
     z.object({
@@ -50,8 +52,16 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
     const shippingFee = shippingSetting ? Math.round(parseFloat(shippingSetting.value) * 100) : 0;
-    const total = subtotal + shippingFee;
 
+    let discountAmount = 0;
+    let discountCodeId: string | undefined;
+    if (data.discountCode) {
+      const result = await validateDiscountCode(fastify, data.discountCode, subtotal);
+      discountAmount = result.discountAmount;
+      discountCodeId = result.discount.id;
+    }
+
+    const total = Math.max(subtotal + shippingFee - discountAmount, 0);
     const orderNumber = await generateOrderNumber(tx);
 
     const created = await tx.order.create({
@@ -64,8 +74,12 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         city: data.city,
         state: data.state,
         postcode: data.postcode,
+        subtotal,
+        shippingFee,
+        discountAmount,
         total,
         paymentMethod: data.paymentMethod,
+        discountCodeId,
         notes: data.notes,
         items: {
           create: data.items.map((item) => ({
@@ -77,6 +91,13 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       },
       include: { items: { include: { product: true } } },
     });
+
+    if (discountCodeId) {
+      await tx.discountCode.update({
+        where: { id: discountCodeId },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
 
     for (const item of data.items) {
       await tx.product.update({
@@ -99,6 +120,9 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
       })),
+      subtotal: order.subtotal,
+      shippingFee: order.shippingFee,
+      discountAmount: order.discountAmount,
       total: order.total,
       customerName: order.customerName,
       phone: order.phone,

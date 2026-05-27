@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, User, MapPin, Wallet } from 'lucide-react';
+import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, User, MapPin, Wallet, X, Tag } from 'lucide-react';
 import { useCart } from '@/lib/cart';
-import { createOrder, getSettings } from '@/lib/api';
+import { createOrder, getSettings, validateDiscount } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
@@ -22,6 +22,16 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ'>('WHATSAPP');
   const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
   const [shippingFee, setShippingFee] = useState('');
+  const [paymentGateway, setPaymentGateway] = useState<'billplz' | 'toyyibpay'>('billplz');
+  const [discountCode, setDiscountCode] = useState('');
+  const [discountLoading, setDiscountLoading] = useState(false);
+  const [discountError, setDiscountError] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<{
+    code: string;
+    discountType: string;
+    discountValue: number;
+    discountAmount: number;
+  } | null>(null);
   const [form, setForm] = useState({
     customerName: '',
     phone: '',
@@ -37,6 +47,9 @@ export default function CheckoutPage() {
     getSettings().then((s) => {
       setOnlinePaymentEnabled(s.online_payment_enabled === 'true');
       setShippingFee(s.shipping_fee || '');
+      if (s.payment_gateway === 'billplz' || s.payment_gateway === 'toyyibpay') {
+        setPaymentGateway(s.payment_gateway);
+      }
     }).catch(() => {});
   }, []);
 
@@ -46,6 +59,33 @@ export default function CheckoutPage() {
   }
 
   const submitting = useRef(false);
+
+  const handleApplyDiscount = async () => {
+    if (!discountCode.trim()) return;
+    setDiscountLoading(true);
+    setDiscountError('');
+    try {
+      const result = await validateDiscount(discountCode.trim(), total);
+      setAppliedDiscount(result);
+      setDiscountCode('');
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response: { data: { message?: string } } }).response?.data?.message
+        : undefined;
+      setDiscountError(message || 'Invalid discount code');
+    } finally {
+      setDiscountLoading(false);
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+    setAppliedDiscount(null);
+    setDiscountError('');
+  };
+
+  const discountAmount = appliedDiscount?.discountAmount ?? 0;
+  const shippingInSen = shippingFee && shippingFee !== '0' ? Math.round(parseFloat(shippingFee) * 100) : 0;
+  const orderTotal = total + shippingInSen - discountAmount;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +99,7 @@ export default function CheckoutPage() {
         ...form,
         paymentMethod,
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
 
       if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
@@ -212,7 +253,9 @@ export default function CheckoutPage() {
                   <p className="font-semibold">Online Payment</p>
                 </div>
                 {onlinePaymentEnabled ? (
-                  <p className="text-xs text-text-secondary leading-relaxed">FPX / Credit Card via Billplz</p>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    {paymentGateway === 'toyyibpay' ? 'FPX via ToyyibPay' : 'FPX / Credit Card via Billplz'}
+                  </p>
                 ) : (
                   <p className="text-xs text-danger leading-relaxed">Currently unavailable. Please use WhatsApp checkout.</p>
                 )}
@@ -263,11 +306,58 @@ export default function CheckoutPage() {
               ))}
             </div>
 
+            {/* Discount Code */}
+            <div className="border-t border-border pt-4 mb-4">
+              {appliedDiscount ? (
+                <div className="flex items-center justify-between bg-success/10 border border-success/30 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-success" />
+                    <span className="text-sm font-medium text-success">{appliedDiscount.code}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveDiscount}
+                    className="p-0.5 rounded hover:bg-success/20 transition-colors"
+                  >
+                    <X className="w-4 h-4 text-success" />
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex gap-2">
+                    <Input
+                      id="discount"
+                      value={discountCode}
+                      onChange={(e) => { setDiscountCode(e.target.value); setDiscountError(''); }}
+                      placeholder="Discount code"
+                      className="flex-1 text-sm"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleApplyDiscount}
+                      disabled={discountLoading || !discountCode.trim()}
+                    >
+                      {discountLoading ? '...' : 'Apply'}
+                    </Button>
+                  </div>
+                  {discountError && <p className="text-xs text-danger mt-1.5">{discountError}</p>}
+                </div>
+              )}
+            </div>
+
             <div className="border-t border-border pt-4 space-y-2 mb-5">
               <div className="flex justify-between text-sm text-text-secondary">
                 <span>Subtotal</span>
                 <span>{formatPrice(total)}</span>
               </div>
+              {appliedDiscount && (
+                <div className="flex justify-between text-sm text-success">
+                  <span>Discount</span>
+                  <span>-{formatPrice(appliedDiscount.discountAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm text-text-secondary">
                 <span>Shipping</span>
                 <span className={!shippingFee || shippingFee === '0' ? 'text-success font-medium' : ''}>
@@ -276,7 +366,7 @@ export default function CheckoutPage() {
               </div>
               <div className="flex justify-between font-display font-bold text-lg pt-2 border-t border-border">
                 <span>Total</span>
-                <span>{formatPrice(total + (shippingFee && shippingFee !== '0' ? Math.round(parseFloat(shippingFee) * 100) : 0))}</span>
+                <span>{formatPrice(orderTotal)}</span>
               </div>
             </div>
 

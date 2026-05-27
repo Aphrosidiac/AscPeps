@@ -62,6 +62,17 @@ export async function getBill(billId: string): Promise<BillResponse> {
   return data;
 }
 
+export async function refundBill(billId: string, reason: string): Promise<{ id: string; status: string }> {
+  const bill = await getBill(billId);
+  if (!bill.paid) throw new Error('Cannot refund an unpaid bill');
+  const { data } = await axios.post(
+    `${getBaseUrl()}/v4/bills/${billId}/refund`,
+    { reason },
+    { auth: getAuth(), timeout: 30000 }
+  );
+  return data;
+}
+
 export function verifyCallbackSignature(body: Record<string, string>): boolean {
   const signatureKey = env.BILLPLZ_SIGNATURE_KEY;
   if (!signatureKey) return false;
