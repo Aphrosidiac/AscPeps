@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+// Server-side fetch needs an absolute URL. NEXT_PUBLIC_API_URL is empty in prod
+// (the browser uses the nginx-proxied relative /api), so fall back to the internal
+// API origin — otherwise this fetch throws server-side and every product page
+// inherits the parent /products canonical + generic title (breaks indexing).
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 const BASE_URL = 'https://ascendpeptides.my';
 
 interface Props {
@@ -12,9 +16,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
 
   try {
-    const apiBase = API_URL || '';
-    const res = await fetch(`${apiBase}/api/v1/products/${slug}`, { next: { revalidate: 3600 } });
-    if (!res.ok) return {};
+    const res = await fetch(`${API_URL}/api/v1/products/${slug}`, { next: { revalidate: 3600 } });
+    // Even on failure, never let a product page canonicalize to /products.
+    if (!res.ok) return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
     const product = await res.json();
 
     const title = `${product.name} ${product.size || ''} — Buy in Malaysia`.trim();
@@ -46,7 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       },
     };
   } catch {
-    return {};
+    return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
   }
 }
 
