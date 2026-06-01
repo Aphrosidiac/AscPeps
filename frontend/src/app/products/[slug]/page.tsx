@@ -1,77 +1,27 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ShoppingCart, ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
-import { getProduct, getSettings } from '@/lib/api';
-import { useCart } from '@/lib/cart';
+import { notFound } from 'next/navigation';
+import { ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
+import { getProductServer, getSettingsServer } from '@/lib/server-api';
 import { formatPrice } from '@/lib/utils';
-import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
-import type { Product } from '@/types';
+import { AddToCartPanel } from './AddToCartPanel';
 
-export default function ProductDetailPage() {
-  const params = useParams();
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [quantity, setQuantity] = useState(1);
-  const [added, setAdded] = useState(false);
-  const [shippingFee, setShippingFee] = useState<string>('');
-  const { addItem } = useCart();
+interface Props {
+  params: Promise<{ slug: string }>;
+}
 
-  useEffect(() => {
-    if (params.slug) {
-      getProduct(params.slug as string)
-        .then(setProduct)
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }
-    getSettings().then((s) => setShippingFee(s.shipping_fee || '')).catch(() => {});
-  }, [params.slug]);
+export default async function ProductDetailPage({ params }: Props) {
+  const { slug } = await params;
+  const product = await getProductServer(slug);
+  if (!product) notFound();
 
-  const handleAddToCart = () => {
-    if (!product) return;
-    addItem({
-      productId: product.id,
-      code: product.code,
-      name: `${product.name}${product.size ? ` ${product.size}` : ''}`,
-      size: product.size,
-      price: product.price,
-      quantity,
-      imageUrl: product.imageUrl,
-    });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
-  };
-
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
-        <div className="h-4 bg-surface-elevated rounded w-24 mb-8" />
-        <div className="grid md:grid-cols-2 gap-6 md:gap-8">
-          <div className="aspect-square bg-surface-elevated rounded-xl" />
-          <div className="space-y-4">
-            <div className="h-3 bg-surface-elevated rounded w-1/3" />
-            <div className="h-8 bg-surface-elevated rounded w-2/3" />
-            <div className="h-6 bg-surface-elevated rounded w-1/4" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!product) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <p className="text-text-muted text-lg mb-4">Product not found.</p>
-        <Link href="/products"><Button variant="outline">Back to Products</Button></Link>
-      </div>
-    );
-  }
+  const settings = await getSettingsServer();
+  const shippingFee = settings.shipping_fee || '';
 
   let benefits: string[] = [];
-  try { if (product.benefits) benefits = JSON.parse(product.benefits); } catch {}
+  try {
+    if (product.benefits) benefits = JSON.parse(product.benefits);
+  } catch {}
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -83,7 +33,8 @@ export default function ProductDetailPage() {
         <Animate variant="fade" duration={0.6}>
           <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
             {product.imageUrl ? (
-              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={product.imageUrl} alt={`${product.name}${product.size ? ` ${product.size}` : ''} — research peptide available in Malaysia`} className="w-full h-full object-cover" />
             ) : (
               <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{product.code}</span>
             )}
@@ -91,95 +42,90 @@ export default function ProductDetailPage() {
         </Animate>
 
         <Animate variant="fadeUp" delay={0.15} duration={0.6}>
-        <div className="space-y-6">
-          <div>
-            <p className="text-sm text-text-muted font-medium uppercase tracking-wider mb-1">{product.category.name}</p>
-            <h1 className="font-display text-3xl font-bold">{product.name}</h1>
-            {product.size && <p className="text-text-secondary mt-1">{product.size}</p>}
-          </div>
-
-          <p className="font-display text-3xl font-bold">{formatPrice(product.price)}</p>
-
-          {product.description && (
-            <p className="text-text-secondary leading-relaxed">{product.description}</p>
-          )}
-
-          {benefits.length > 0 && (
+          <div className="space-y-6">
             <div>
-              <h3 className="font-display font-semibold mb-3">Benefits</h3>
-              <ul className="space-y-2">
-                {benefits.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
-                    <Check className="w-4 h-4 text-success mt-0.5 shrink-0" />
-                    {b}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-sm text-text-muted font-medium uppercase tracking-wider mb-1">{product.category.name}</p>
+              <h1 className="font-display text-3xl font-bold">{product.name}</h1>
+              {product.size && <p className="text-text-secondary mt-1">{product.size}</p>}
             </div>
-          )}
 
-          <div className="flex items-center gap-4 pt-4">
-            <div className="flex items-center border border-border rounded-lg">
-              <button
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="px-3 py-2 text-text-secondary hover:text-text-primary cursor-pointer"
-              >
-                -
-              </button>
-              <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
-              <button
-                onClick={() => setQuantity(quantity + 1)}
-                className="px-3 py-2 text-text-secondary hover:text-text-primary cursor-pointer"
-              >
-                +
-              </button>
-            </div>
-            <Button onClick={handleAddToCart} disabled={product.stock === 0} size="lg" className="flex-1">
-              {added ? (
-                <><Check className="w-4 h-4" /> Added</>
-              ) : (
-                <><ShoppingCart className="w-4 h-4" /> Add to Cart</>
-              )}
-            </Button>
-          </div>
+            <p className="font-display text-3xl font-bold">{formatPrice(product.price)}</p>
 
-          {product.stock === 0 && <p className="text-danger font-medium">Out of stock</p>}
-          {product.stock > 0 && product.stock <= 5 && <p className="text-warning text-sm">Only {product.stock} left in stock</p>}
+            {product.description && (
+              <p className="text-text-secondary leading-relaxed">{product.description}</p>
+            )}
 
-          <p className="text-xs text-text-muted italic">For research purposes only — not for human consumption.</p>
-
-          {/* Trust Badges */}
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
-              <ShieldCheck className="w-4 h-4 text-text-muted shrink-0" />
+            {benefits.length > 0 && (
               <div>
-                <p className="text-xs font-semibold">3rd Party Verified</p>
-                <p className="text-[11px] text-text-muted">Identity & purity tested</p>
+                <h2 className="font-display font-semibold mb-3 text-base">Benefits</h2>
+                <ul className="space-y-2">
+                  {benefits.map((b, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
+                      <Check className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <AddToCartPanel
+              productId={product.id}
+              code={product.code}
+              name={product.name}
+              size={product.size}
+              price={product.price}
+              imageUrl={product.imageUrl}
+              stock={product.stock}
+            />
+
+            {product.stock === 0 && <p className="text-danger font-medium">Out of stock</p>}
+            {product.stock > 0 && product.stock <= 5 && <p className="text-warning text-sm">Only {product.stock} left in stock</p>}
+
+            <p className="text-xs text-text-muted italic">For research purposes only — not for human consumption.</p>
+
+            {/* Trust Badges */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
+                <ShieldCheck className="w-4 h-4 text-text-muted shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold">3rd Party Verified</p>
+                  <p className="text-[11px] text-text-muted">Identity & purity tested</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
+                <Truck className="w-4 h-4 text-text-muted shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold">
+                    {!shippingFee || shippingFee === '0' ? 'Free Shipping' : `Shipping: RM${shippingFee}`}
+                  </p>
+                  <p className="text-[11px] text-text-muted">
+                    {!shippingFee || shippingFee === '0' ? 'All orders, nationwide' : 'Nationwide delivery'}
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
-              <Truck className="w-4 h-4 text-text-muted shrink-0" />
-              <div>
-                <p className="text-xs font-semibold">
-                  {!shippingFee || shippingFee === '0' ? 'Free Shipping' : `Shipping: RM${shippingFee}`}
-                </p>
-                <p className="text-[11px] text-text-muted">
-                  {!shippingFee || shippingFee === '0' ? 'All orders, nationwide' : 'Nationwide delivery'}
-                </p>
-              </div>
-            </div>
-          </div>
 
-          <p className="text-xs text-text-muted">Product Code: {product.code}</p>
-        </div>
+            <p className="text-xs text-text-muted">Product Code: {product.code}</p>
+          </div>
         </Animate>
       </div>
+
+      {/* Dosage / research information */}
+      {product.dosageInfo && (
+        <Animate variant="fadeUp" delay={0.2}>
+          <div className="mt-10 bg-surface rounded-xl border border-border p-6">
+            <h2 className="font-display font-semibold text-lg mb-2">Research &amp; Reconstitution Information</h2>
+            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">{product.dosageInfo}</p>
+          </div>
+        </Animate>
+      )}
 
       {/* Certificate of Analysis */}
       {product.coaUrl && (
         <Animate variant="fadeUp" delay={0.25}>
-          <div className="mt-10 bg-surface rounded-xl border border-border p-6">
-            <h3 className="font-display font-semibold text-lg mb-2">Certificate of Analysis</h3>
+          <div className="mt-6 bg-surface rounded-xl border border-border p-6">
+            <h2 className="font-display font-semibold text-lg mb-2">Certificate of Analysis</h2>
             <p className="text-sm text-text-secondary mb-4">
               All products are independently tested by accredited third-party laboratories. Results confirm identity, purity, and potency.
             </p>
