@@ -72,6 +72,7 @@ export default async function ProductLayout({ params, children }: Props) {
             imageUrl={product.imageUrl}
             inStock={(product.stock ?? 0) > 0}
             category={product.category?.name || 'Research Peptides'}
+            size={product.size}
           />
           <BreadcrumbJsonLd
             items={[
