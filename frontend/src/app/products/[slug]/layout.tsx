@@ -1,49 +1,31 @@
 import type { Metadata } from 'next';
 import { ProductJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
+import { getProductServer } from '@/lib/server-api';
 
-// Server-side fetch needs an absolute URL. NEXT_PUBLIC_API_URL is empty in prod
-// (the browser uses the nginx-proxied relative /api), so fall back to the internal
-// API origin — otherwise this fetch throws server-side and every product page
-// inherits the parent /products canonical + generic title (breaks indexing).
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 const BASE_URL = 'https://ascendpeptides.my';
-
-interface ProductData {
-  name: string;
-  size?: string | null;
-  description?: string | null;
-  price: number;
-  code: string;
-  slug: string;
-  imageUrl?: string | null;
-  stock?: number;
-  category?: { name?: string } | null;
-}
 
 interface Props {
   params: Promise<{ slug: string }>;
   children: React.ReactNode;
 }
 
-async function fetchProduct(slug: string): Promise<ProductData | null> {
-  try {
-    const res = await fetch(`${API_URL}/api/v1/products/${slug}`, { next: { revalidate: 3600 } });
-    if (!res.ok) return null;
-    return (await res.json()) as ProductData;
-  } catch {
-    return null;
-  }
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const product = await fetchProduct(slug);
+  const product = await getProductServer(slug);
 
   // Even on failure, never let a product page canonicalize to /products.
   if (!product) return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
 
-  const title = `${product.name} ${product.size || ''} — Buy in Malaysia`.trim();
-  const description = product.description || `Buy ${product.name} ${product.size || ''} online in Malaysia. Lab-grade quality from ASCEND. RM${(product.price / 100).toFixed(2)}. Fast nationwide shipping.`;
+  const sizePart = product.size ? ` ${product.size}` : '';
+  const priceMyr = `RM${(product.price / 100).toFixed(2)}`;
+  const title = `${product.name}${sizePart} — Buy in Malaysia`;
+
+  // Build a rich description (target ~120-160 chars). Use the product's own copy as the
+  // lead when it's substantial; otherwise compose one with name + locale + price + shipping.
+  const lead = product.description?.trim();
+  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${product.name}${sizePart} in Malaysia from ASCEND — lab-grade 99%+ purity, ${priceMyr}, free fast nationwide shipping.`;
+  const full = lead && lead.length >= 110 ? lead : composed;
+  const description = full.length > 160 ? full.slice(0, 157).trimEnd() + '…' : full;
 
   return {
     title,
@@ -58,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ],
     alternates: { canonical: `${BASE_URL}/products/${slug}` },
     openGraph: {
-      title: `${product.name} ${product.size || ''} | ASCEND Peptides Malaysia`,
+      title: `${product.name}${sizePart} | ASCEND Peptides Malaysia`,
       description,
       url: `${BASE_URL}/products/${slug}`,
       images: product.imageUrl ? [{ url: product.imageUrl, alt: product.name }] : undefined,
@@ -66,7 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     twitter: {
       card: 'summary',
-      title: `${product.name} ${product.size || ''} | ASCEND`,
+      title: `${product.name}${sizePart} | ASCEND`,
       description,
     },
   };
@@ -74,7 +56,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductLayout({ params, children }: Props) {
   const { slug } = await params;
-  const product = await fetchProduct(slug);
+  const product = await getProductServer(slug);
   const fullName = product ? `${product.name}${product.size ? ` ${product.size}` : ''}` : '';
 
   return (
