@@ -23,7 +23,7 @@ function ProductsContent() {
   const [featured, setFeatured] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(searchParams.get('category'));
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,7 +48,7 @@ function ProductsContent() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Animate variant="fadeUp" duration={0.5}>
-        <h1 className="font-display text-3xl font-bold mb-6">Products</h1>
+        <h1 className="font-display text-3xl font-bold mb-6">Buy Research Peptides in Malaysia</h1>
       </Animate>
 
       {/* Featured Products Row */}
