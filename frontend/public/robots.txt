@@ -1,7 +1,12 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
-Disallow: /cart
-Disallow: /checkout
+
+# Cart and checkout are handled via on-page noindex (not blocked here) so crawlers
+# can read them but won't index them — avoids "indexed though blocked by robots.txt".
+
+# AI / answer engines are welcome to crawl and cite this site (covered by * above):
+# GPTBot, OAI-SearchBot, ChatGPT-User, PerplexityBot, Perplexity-User, ClaudeBot,
+# Google-Extended, Bingbot, Applebot.
 
 Sitemap: https://ascendpeptides.my/sitemap.xml

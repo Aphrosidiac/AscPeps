@@ -104,15 +104,23 @@ interface ProductJsonLdProps {
   imageUrl?: string | null;
   inStock: boolean;
   category: string;
+  size?: string | null;
 }
 
-export function ProductJsonLd({ name, description, price, code, slug, imageUrl, inStock, category }: ProductJsonLdProps) {
+export function ProductJsonLd({ name, description, price, code, slug, imageUrl, inStock, category, size }: ProductJsonLdProps) {
+  const additionalProperty = [
+    ...(size ? [{ '@type': 'PropertyValue', name: 'Size', value: size }] : []),
+    { '@type': 'PropertyValue', name: 'Intended Use', value: 'Laboratory and research use only' },
+    { '@type': 'PropertyValue', name: 'Third-party tested', value: 'Yes — Certificate of Analysis available' },
+  ];
+
   const data = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name,
     description,
     sku: code,
+    mpn: code,
     url: `https://ascendpeptides.my/products/${slug}`,
     image: imageUrl || 'https://ascendpeptides.my/images/pill-icon-512.png',
     category,
@@ -120,12 +128,15 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
       '@type': 'Brand',
       name: 'ASCEND',
     },
+    additionalProperty,
     offers: {
       '@type': 'Offer',
       price: (price / 100).toFixed(2),
       priceCurrency: 'MYR',
+      itemCondition: 'https://schema.org/NewCondition',
       availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       url: `https://ascendpeptides.my/products/${slug}`,
+      areaServed: { '@type': 'Country', name: 'Malaysia' },
       seller: {
         '@type': 'Organization',
         name: 'ASCEND',
@@ -133,10 +144,5 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
     },
   };
 
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
-  );
+  return <JsonLdScript data={data} />;
 }
