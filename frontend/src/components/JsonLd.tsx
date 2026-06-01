@@ -18,6 +18,9 @@ export function OrganizationJsonLd() {
     logo: 'https://ascendpeptides.my/images/pill-icon-512.png',
     image: 'https://ascendpeptides.my/images/pill-icon-512.png',
     description: 'Malaysia\'s #1 premium research peptides provider. Lab-grade Retatrutide, GHK-Cu, BPC-157, Tesamorelin and more with fast, free nationwide shipping.',
+    sameAs: [
+      'https://www.tiktok.com/@ascendpeptidesmy',
+    ],
     areaServed: {
       '@type': 'Country',
       name: 'Malaysia',

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
 import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
@@ -109,6 +110,17 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
         <OrganizationJsonLd />
         <WebSiteJsonLd />
+        {/* Google Analytics 4 */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-4PHY1Z9BHD"
+          strategy="afterInteractive"
+        />
+        <Script id="ga4" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-4PHY1Z9BHD');`}
+        </Script>
         <CartProvider>
           <AnnouncementBar />
           <Navbar />
