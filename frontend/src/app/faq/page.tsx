@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Animate } from '@/components/ui/Animate';
+import { FaqJsonLd } from '@/components/JsonLd';
 
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions About Peptides',
@@ -107,6 +108,7 @@ const faqs = [
 export default function FaqPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <FaqJsonLd items={faqs.flatMap((s) => s.items)} />
       <Animate variant="fadeUp">
         <h1 className="font-display text-3xl font-bold mb-2">Frequently Asked Questions</h1>
         <p className="text-text-secondary mb-10">Everything you need to know about ordering research peptides from ASCEND.</p>

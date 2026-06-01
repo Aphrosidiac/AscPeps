@@ -5,7 +5,7 @@ import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { WhatsAppButton } from '@/components/layout/WhatsAppButton';
-import { OrganizationJsonLd } from '@/components/JsonLd';
+import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import './globals.css';
 
 const inter = Inter({
@@ -108,6 +108,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${outfit.variable} h-full antialiased overflow-x-hidden`}>
       <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
         <OrganizationJsonLd />
+        <WebSiteJsonLd />
         <CartProvider>
           <AnnouncementBar />
           <Navbar />

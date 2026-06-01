@@ -48,7 +48,7 @@ export default function HomePage() {
               </Animate>
               <Animate variant="fadeUp" delay={0.15} duration={0.7}>
                 <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-                  Premium Research Peptides
+                  Premium Research Peptides in Malaysia
                 </h1>
               </Animate>
               <Animate variant="fadeUp" delay={0.3} duration={0.7}>
@@ -180,6 +180,38 @@ export default function HomePage() {
 
       {/* Video Divider */}
       <VideoStrip src="/videos/lab-glassware.mp4" height="100px" overlay={0.45} />
+
+      {/* SEO content */}
+      <section className="border-t border-border bg-surface/40">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <Animate variant="fadeUp">
+            <h2 className="font-display text-2xl md:text-3xl font-bold mb-6">Buy Research Peptides in Malaysia</h2>
+            <div className="space-y-4 text-text-secondary leading-relaxed">
+              <p>
+                ASCEND is Malaysia&apos;s trusted source for premium research peptides. We supply lab-grade
+                compounds including{' '}
+                <Link href="/products" className="text-primary-light hover:underline">Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and AOD9604</Link>,
+                all manufactured to 99%+ purity with third-party Certificates of Analysis available on request.
+              </p>
+              <p>
+                Every order ships free across Malaysia — from the Klang Valley to Sabah and Sarawak — in discreet,
+                temperature-conscious packaging. Prices are listed in Malaysian Ringgit (MYR) with no hidden fees,
+                and you can pay by bank transfer, FPX or card. No account is needed: simply order and{' '}
+                <Link href="/track" className="text-primary-light hover:underline">track your delivery</Link> using your phone number.
+              </p>
+              <p>
+                New to peptides? Read our{' '}
+                <Link href="/guide" className="text-primary-light hover:underline">peptide reconstitution and storage guide</Link>, or browse the{' '}
+                <Link href="/faq" className="text-primary-light hover:underline">frequently asked questions</Link>{' '}
+                covering purity, shipping and how to order research peptides in Malaysia.
+              </p>
+              <p className="text-xs text-text-muted pt-2">
+                All products are sold strictly for laboratory and research purposes only.
+              </p>
+            </div>
+          </Animate>
+        </div>
+      </section>
     </div>
   );
 }
