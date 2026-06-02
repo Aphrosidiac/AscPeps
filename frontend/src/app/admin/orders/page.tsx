@@ -44,8 +44,14 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const handlePaymentUpdate = async (orderId: string, paymentStatus: string) => {
+  const handlePaymentUpdate = async (orderId: string, paymentStatus: string, paymentGateway?: string | null) => {
     if (!token) return;
+    if (paymentStatus === 'REFUNDED' && paymentGateway === 'toyyibpay') {
+      const ok = window.confirm(
+        'ToyyibPay has no automatic refund. This only restores stock and marks the order Refunded — you must process the actual refund manually in the ToyyibPay dashboard. Continue?'
+      );
+      if (!ok) return;
+    }
     setUpdating(orderId);
     try {
       await adminUpdateOrder(token, orderId, { paymentStatus });
@@ -221,7 +227,7 @@ export default function AdminOrdersPage() {
                         <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Payment Status</label>
                         <select
                           value={order.paymentStatus}
-                          onChange={(e) => handlePaymentUpdate(order.id, e.target.value)}
+                          onChange={(e) => handlePaymentUpdate(order.id, e.target.value, order.paymentGateway)}
                           disabled={isUpdating}
                           className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
                         >

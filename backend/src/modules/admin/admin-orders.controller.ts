@@ -123,6 +123,12 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
           fastify.log.error({ err, orderId: order.id }, 'Billplz refund failed');
           throw { statusCode: 400, message: 'Refund API call failed — check logs for details' };
         }
+      } else if (order.paymentGateway === 'toyyibpay') {
+        // ToyyibPay has no refund API — the money must be returned manually via
+        // the ToyyibPay dashboard / bank. We only restore stock + discount here.
+        fastify.log.warn(
+          `Order ${order.orderNumber} marked REFUNDED for ToyyibPay — process the actual refund MANUALLY in the ToyyibPay dashboard`
+        );
       }
       for (const item of order.items) {
         await fastify.prisma.product.update({

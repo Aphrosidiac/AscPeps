@@ -20,7 +20,11 @@ export interface BillResult {
 
 export interface CallbackResult {
   billId: string;
-  paid: boolean;
+  // 'paid'    — payment confirmed
+  // 'failed'  — gateway reported an explicit failure (safe to release stock)
+  // 'pending' — not yet final; do nothing and wait for the next callback
+  status: 'paid' | 'failed' | 'pending';
+  amount?: number; // sen/cents, best-effort, for verification only
   orderRef?: string;
 }
 
@@ -30,6 +34,8 @@ export interface PaymentGateway {
   verifyCallback(body: Record<string, string>): boolean;
   parseCallback(body: Record<string, string>): CallbackResult;
   buildRedirectUrl(query: Record<string, string>): string;
+  /** Re-query the gateway for the authoritative paid state of a bill. */
+  verifyPaid(billId: string): Promise<{ paid: boolean; amount?: number }>;
 }
 
 function getBackendUrl(): string {
@@ -63,9 +69,14 @@ const billplzGateway: PaymentGateway = {
     return billplz.verifyCallbackSignature(body);
   },
   parseCallback(body) {
+    const paid = body.paid === 'true' && body.state === 'paid';
     return {
       billId: body.id,
-      paid: body.paid === 'true' && body.state === 'paid',
+      // Billplz only fires a meaningful callback when a bill is paid; an
+      // unpaid/"due" callback is treated as pending (never auto-failed) so the
+      // stale-order reconciler decides its fate instead.
+      status: paid ? 'paid' : 'pending',
+      amount: body.paid_amount ? parseInt(body.paid_amount, 10) : undefined,
       orderRef: body.id,
     };
   },
@@ -76,6 +87,10 @@ const billplzGateway: PaymentGateway = {
     return valid && paid
       ? `${frontendUrl}/checkout/success`
       : `${frontendUrl}/checkout/failed`;
+  },
+  async verifyPaid(billId) {
+    const bill = await billplz.getBill(billId);
+    return { paid: bill.paid, amount: bill.paid_amount };
   },
 };
 
@@ -102,11 +117,19 @@ const toyyibpayGateway: PaymentGateway = {
     return toyyibpay.verifyCallbackHash(body, env.TOYYIBPAY_SECRET_KEY!);
   },
   parseCallback(body) {
-    return {
-      billId: body.billcode,
-      paid: body.status === '1',
-      orderRef: body.order_id,
-    };
+    // ToyyibPay status: 1 = success, 2 = pending, 3 = fail.
+    // Only an explicit fail (3) releases stock; pending (2) must NOT mark the
+    // order failed, otherwise the later success callback is ignored.
+    const status =
+      body.status === '1' ? 'paid' : body.status === '3' ? 'failed' : 'pending';
+    // Callback amount may arrive as RM ("1.00") or sen ("100"); normalise to sen.
+    let amount: number | undefined;
+    if (body.amount != null && body.amount !== '') {
+      amount = body.amount.includes('.')
+        ? Math.round(parseFloat(body.amount) * 100)
+        : parseInt(body.amount, 10);
+    }
+    return { billId: body.billcode, status, amount, orderRef: body.order_id };
   },
   buildRedirectUrl(query) {
     const paid = query.status_id === '1' && !!query.billcode;
@@ -114,6 +137,9 @@ const toyyibpayGateway: PaymentGateway = {
     return paid
       ? `${frontendUrl}/checkout/success`
       : `${frontendUrl}/checkout/failed`;
+  },
+  async verifyPaid(billId) {
+    return toyyibpay.getBillTransactions(billId, env.TOYYIBPAY_SECRET_KEY!);
   },
 };
 

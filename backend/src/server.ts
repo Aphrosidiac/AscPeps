@@ -24,6 +24,7 @@ import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
+import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 
 const fastify = Fastify({
   logger: {
@@ -68,6 +69,16 @@ await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });
   fastify.log.info(`ASCEND API running on http://${env.HOST}:${env.PORT}`);
+
+  // Reconcile stale online-payment orders: confirm any whose callback was
+  // missed, and release stock held by abandoned/never-paid orders.
+  const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
+  const timer = setInterval(() => {
+    reconcileStaleOrders(fastify).catch((err) =>
+      fastify.log.error({ err }, 'payment reconcile sweep failed')
+    );
+  }, RECONCILE_INTERVAL_MS);
+  timer.unref();
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);
