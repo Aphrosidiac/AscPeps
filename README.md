@@ -9,7 +9,7 @@ Full-stack e-commerce platform for peptide products. Built with Next.js 16, Fast
 - **Frontend**: Next.js 16 (App Router) + Tailwind CSS v4
 - **Backend**: Fastify 5 + TypeScript
 - **Database**: PostgreSQL + Prisma 7
-- **Payments**: Billplz (FPX, eWallets, cards) + WhatsApp manual transfer
+- **Payments**: ToyyibPay (live — FPX + cards) with a Billplz adapter, plus WhatsApp manual transfer
 - **Deployment**: Nginx + PM2 + Let's Encrypt SSL on Tencent VPS
 
 ## Project Structure
@@ -26,21 +26,28 @@ Full-stack e-commerce platform for peptide products. Built with Next.js 16, Fast
 - Product catalog with 5 categories, 21 peptide products
 - Featured products (admin toggle) with horizontal scroll showcase
 - Shopping cart (localStorage, no login required)
-- Dual checkout: WhatsApp manual transfer + Billplz online payment
-- Order tracking by phone number
+- Dual checkout: WhatsApp manual transfer + online payment (ToyyibPay/Billplz)
+- Order tracking by order number + phone
 - Product image uploads with admin management
 - Certificate of Analysis (COA) per product with Janoshik verification links
 - Trust badges (3rd Party Verified, Free Shipping) on product pages
 - "Research use only" disclaimers throughout
 
-### Payment Gateway (Billplz)
-- Full Billplz API integration (V3 bills)
-- Supports FPX, DuitNow, eWallets (TNG, GrabPay, Boost), cards
-- Webhook callback with HMAC-SHA256 X Signature verification (timing-safe)
-- Redirect handler with signature verification
-- Auto-confirms orders on successful payment (PENDING → CONFIRMED)
-- Sandbox/production toggle via `BILLPLZ_SANDBOX` env var
-- Fallback: WhatsApp checkout still available for manual bank transfer
+### Payment Gateway
+- **Gateway-agnostic adapter** (`utils/payment-gateway.ts`) — the active gateway
+  is chosen by the `payment_gateway` setting in the DB (`toyyibpay` | `billplz`)
+- **ToyyibPay** (live): FPX + cards, MD5 callback hash verification, bills expire
+  after 1 day
+- **Billplz** (adapter ready): FPX/DuitNow/eWallets/cards, HMAC-SHA256 X-Signature
+- Callback signatures verified timing-safe; auto-confirms orders on payment
+  (UNPAID → PAID, PENDING → CONFIRMED)
+- **Idempotent** order creation — a network retry can't double-create or double-charge
+- **Reconciliation sweep** (every 10 min) re-queries the gateway for missed
+  callbacks and releases stock held by abandoned/never-paid orders
+- Amounts stored and charged in **sen** (integer) end-to-end; server is
+  authoritative for all pricing (client only sends product IDs + quantities)
+- Sandbox/production toggle via `TOYYIBPAY_SANDBOX` / `BILLPLZ_SANDBOX`
+- Fallback: WhatsApp checkout for manual bank transfer
 
 ### UX
 - Scroll-triggered animations (Animate/Stagger components)
@@ -86,12 +93,17 @@ Full-stack e-commerce platform for peptide products. Built with Next.js 16, Fast
 
 ```bash
 cd backend
-cp .env.example .env        # edit DATABASE_URL and Billplz keys
-npm install
-npx prisma migrate dev      # create tables
+cp .env.example .env        # set DATABASE_URL, JWT_SECRET (>=32 chars), gateway keys
+npm install                  # postinstall runs `prisma generate`
+npx prisma migrate deploy    # apply migrations (single 0_baseline)
 npx tsx prisma/seed.ts       # seed 21 products, 5 categories, admin user
 npm run dev                  # runs on http://localhost:3105
 ```
+
+> **Migrations**: history is a single `0_baseline` that matches the schema. To
+> change the schema, run `npx prisma migrate dev --name <change>` locally, commit
+> the generated migration, and deploy with `npx prisma migrate deploy`. Do **not**
+> use `prisma db push` against a tracked environment (it causes drift).
 
 ### Frontend
 
@@ -111,23 +123,38 @@ Navigate to `/admin` and log in:
 
 ## Payment Gateway Setup
 
-### Billplz Configuration
+The active gateway is selected by the `payment_gateway` row in the `settings`
+table (`toyyibpay` or `billplz`), and online payment is gated by the
+`online_payment_enabled` setting.
+
+### Environment
 
 ```env
-BILLPLZ_API_KEY="your-api-secret-key"
-BILLPLZ_COLLECTION_ID="your-collection-id"
-BILLPLZ_SIGNATURE_KEY="your-x-signature-key"
-BILLPLZ_SANDBOX=true          # false for production
+# Core
+JWT_SECRET="<openssl rand -hex 32>"   # min 32 chars (enforced)
+ADMIN_INITIAL_PASSWORD=""              # required when seeding in production (min 12)
+
+# ToyyibPay (live gateway)
+TOYYIBPAY_SECRET_KEY="your-user-secret-key"
+TOYYIBPAY_CATEGORY_CODE="your-category-code"
+TOYYIBPAY_SANDBOX=false                # "true"/"false" parsed correctly (not coerced)
+
+# Billplz (optional adapter)
+BILLPLZ_API_KEY=""
+BILLPLZ_COLLECTION_ID=""
+BILLPLZ_SIGNATURE_KEY=""
+BILLPLZ_SANDBOX=true
 ```
 
 ### Payment Flow
 
 ```
-Customer → Checkout (Online Payment) → Order created in DB
-→ Billplz bill created via API → Customer redirected to Billplz
-→ Customer pays (FPX/card/eWallet) → Billplz webhook callback
-→ Backend verifies X Signature → Order marked PAID + CONFIRMED
-→ Customer redirected to /checkout/success
+Customer → Checkout (Online Payment) → Order created in DB (stock reserved, idempotency key)
+→ Gateway bill created via API → Customer redirected to the gateway
+→ Customer pays (FPX/card) → gateway server-to-server callback
+→ Backend verifies signature → Order marked PAID + CONFIRMED
+→ Customer redirected back; redirect handler re-verifies payment server-side
+→ Reconcile sweep backstops missed callbacks and releases abandoned orders
 ```
 
 ### WhatsApp Flow
@@ -193,13 +220,14 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - `GET /api/v1/products?category=&search=&featured=true` — list products
 - `GET /api/v1/products/:slug` — product detail
 - `GET /api/v1/settings` — public store settings
-- `POST /api/v1/orders` — create order (returns whatsappUrl or billplzUrl)
-- `GET /api/v1/orders/lookup?phone=` — track orders by phone
+- `POST /api/v1/orders` — create order (returns `whatsappUrl` or `paymentUrl`; accepts `idempotencyKey`)
+- `GET /api/v1/orders/lookup?phone=&orderNumber=` — track an order (both fields required; returns no PII)
+- `POST /api/v1/orders/validate-discount` — preview a discount code
 
 ### Payments
 
-- `POST /api/v1/payments/billplz/callback` — Billplz webhook (X Signature verified)
-- `GET /api/v1/payments/billplz/redirect` — Billplz redirect handler
+- `POST /api/v1/payments/callback` — gateway webhook, ToyyibPay + Billplz (signature verified)
+- `GET /api/v1/payments/redirect` — return handler (re-verifies payment server-side)
 
 ### Admin (requires Bearer token)
 
@@ -209,15 +237,26 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (featured, COA URL)
 - `GET/PATCH /api/v1/admin/orders` — order management
 - `GET/PUT /api/v1/admin/settings` — store settings (announcement, WhatsApp, shipping)
-- `POST /api/v1/admin/upload/image` — product image upload (JPEG/PNG/WebP, max 5MB)
+- `POST /api/v1/admin/upload/image` — product image upload (JPEG/PNG/WebP/AVIF, max 5MB, magic-byte validated)
 
 ## Security
 
-- Billplz webhooks verified with HMAC-SHA256 X Signature (timing-safe comparison)
-- Order creation fully transactional (no race conditions on stock or order numbers)
-- File uploads: type validation, size limit enforced, truncated files deleted
-- Rate limiting per-IP (100 req/min)
-- CORS origins from environment variable
-- JWT auth with 24h expiry on all admin routes
-- Helmet security headers
-- Input validation via Zod on all endpoints
+- **Payment webhooks** verified with the gateway signature (ToyyibPay MD5,
+  Billplz HMAC-SHA256), timing-safe; payment is re-verified server-side on return
+- **Server-authoritative pricing** — the client only sends product IDs +
+  quantities; subtotal, shipping, discount, and total are computed from the DB
+- **Concurrency-safe** — atomic conditional stock decrement (no oversell) and
+  atomic discount-use reservation (can't exceed `maxUses`); idempotent order
+  creation prevents double-charge on retries; single, idempotent, floored
+  inventory restore (no double-restore / negative usage)
+- **Order lookup** requires order number + phone and returns no PII (no
+  enumeration); per-route rate limits (login 5/min, lookup 10/min, discount
+  15/min, order create 20/min, callback 300/min) on top of the global 100/min
+- **JWT** with HS256 pinned (sign + verify), 24h expiry, secret min 32 chars;
+  all admin routes authenticated
+- **File uploads** validated by real magic bytes (not the client MIME), random
+  UUID filenames, size-limited; `/uploads` served with a locked-down CSP + nosniff
+- Boolean/numeric env vars parsed safely (no `Boolean("false") === true` traps);
+  numeric settings validated server-side
+- CORS origins from environment; Helmet security headers; Zod validation on all
+  endpoints; `prisma generate` runs on install so a stale client can't ship
