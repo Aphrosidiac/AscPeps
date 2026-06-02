@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import 'dotenv/config';
 
+// z.coerce.boolean() is WRONG for string env vars: Boolean("false") === true,
+// so any non-empty value (incl. "false") becomes true. Parse the string instead.
+const envBool = (def: boolean) =>
+  z
+    .union([z.boolean(), z.string()])
+    .default(def)
+    .transform((v) => (typeof v === 'boolean' ? v : ['true', '1', 'yes'].includes(v.trim().toLowerCase())));
+
 const envSchema = z.object({
   DATABASE_URL: z.string(),
   JWT_SECRET: z.string(),
@@ -12,10 +20,10 @@ const envSchema = z.object({
   BILLPLZ_API_KEY: z.string().optional(),
   BILLPLZ_COLLECTION_ID: z.string().optional(),
   BILLPLZ_SIGNATURE_KEY: z.string().optional(),
-  BILLPLZ_SANDBOX: z.coerce.boolean().default(true),
+  BILLPLZ_SANDBOX: envBool(true),
   TOYYIBPAY_SECRET_KEY: z.string().optional(),
   TOYYIBPAY_CATEGORY_CODE: z.string().optional(),
-  TOYYIBPAY_SANDBOX: z.coerce.boolean().default(true),
+  TOYYIBPAY_SANDBOX: envBool(true),
 });
 
 export const env = envSchema.parse(process.env);
