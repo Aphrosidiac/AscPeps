@@ -122,13 +122,12 @@ const toyyibpayGateway: PaymentGateway = {
     // order failed, otherwise the later success callback is ignored.
     const status =
       body.status === '1' ? 'paid' : body.status === '3' ? 'failed' : 'pending';
-    // Callback amount may arrive as RM ("1.00") or sen ("100"); normalise to sen.
-    let amount: number | undefined;
-    if (body.amount != null && body.amount !== '') {
-      amount = body.amount.includes('.')
-        ? Math.round(parseFloat(body.amount) * 100)
-        : parseInt(body.amount, 10);
-    }
+    // ToyyibPay's server-to-server callback `amount` is ALWAYS in sen (e.g.
+    // "1150" = RM11.50), unlike getBillTransactions which returns RM. Parse as
+    // an integer; guard against non-numeric so a bad value becomes undefined,
+    // not NaN.
+    const parsedAmount = body.amount != null ? parseInt(body.amount, 10) : NaN;
+    const amount = Number.isFinite(parsedAmount) ? parsedAmount : undefined;
     return { billId: body.billcode, status, amount, orderRef: body.order_id };
   },
   buildRedirectUrl(query) {

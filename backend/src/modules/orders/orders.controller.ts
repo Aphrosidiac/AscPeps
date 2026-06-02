@@ -4,6 +4,7 @@ import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
+import { env } from '../../config/env.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -16,6 +17,7 @@ const createOrderSchema = z.object({
   paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ']),
   discountCode: z.string().optional(),
   notes: z.string().optional(),
+  idempotencyKey: z.string().min(8).max(100).optional(),
   items: z.array(
     z.object({
       productId: z.string(),
@@ -24,10 +26,34 @@ const createOrderSchema = z.object({
   ).min(1).max(50),
 });
 
+// Rebuild the online-payment URL for an already-created order (used on the
+// idempotent-retry path, where the original bill should be reused).
+function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
+  if (order.paymentGateway === 'toyyibpay' && order.paymentRef) {
+    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
+    return `${host}/${order.paymentRef}`;
+  }
+  return undefined; // Billplz bill URL isn't persisted; the customer must re-open from email
+}
+
 export async function createOrder(fastify: FastifyInstance, body: unknown) {
   const data = createOrderSchema.parse(body);
 
-  const order = await fastify.prisma.$transaction(async (tx) => {
+  // Idempotency: a network retry of a request the server already committed must
+  // NOT create a second order (double stock decrement + double bill = double
+  // charge). Return the original order instead.
+  if (data.idempotencyKey) {
+    const existing = await fastify.prisma.order.findUnique({
+      where: { idempotencyKey: data.idempotencyKey },
+    });
+    if (existing) {
+      return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+    }
+  }
+
+  let order;
+  try {
+    order = await fastify.prisma.$transaction(async (tx) => {
     const products = await tx.product.findMany({
       where: { id: { in: data.items.map((i) => i.productId) }, active: true },
     });
@@ -51,7 +77,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     }, 0);
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
-    const shippingFee = shippingSetting ? Math.round(parseFloat(shippingSetting.value) * 100) : 0;
+    // Guard against a non-numeric/empty setting value: parseFloat("") is NaN,
+    // and NaN would propagate into total and the gateway amount.
+    const shippingParsed = shippingSetting ? parseFloat(shippingSetting.value) : 0;
+    const shippingFee = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
 
     let discountAmount = 0;
     let discountCodeId: string | undefined;
@@ -97,6 +126,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         paymentMethod: data.paymentMethod,
         discountCodeId,
         notes: data.notes,
+        idempotencyKey: data.idempotencyKey,
         items: {
           create: data.items.map((item) => ({
             productId: item.productId,
@@ -122,8 +152,19 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       }
     }
 
-    return created;
-  });
+      return created;
+    }, { timeout: 15000, maxWait: 5000 });
+  } catch (err) {
+    // Lost the idempotency-key race: a concurrent request with the same key
+    // already created the order. Return that one instead of erroring.
+    if (data.idempotencyKey && (err as { code?: string })?.code === 'P2002') {
+      const existing = await fastify.prisma.order.findUnique({
+        where: { idempotencyKey: data.idempotencyKey },
+      });
+      if (existing) return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+    }
+    throw err;
+  }
 
   let whatsappUrl: string | undefined;
   let paymentUrl: string | undefined;

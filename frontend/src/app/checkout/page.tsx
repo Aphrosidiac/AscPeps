@@ -44,6 +44,9 @@ export default function CheckoutPage() {
   });
 
   const submitting = useRef(false);
+  // Stable per-attempt key so a network retry of a committed order doesn't
+  // create a duplicate (double charge). Reset after a successful submit.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -84,7 +87,8 @@ export default function CheckoutPage() {
   };
 
   const discountAmount = appliedDiscount?.discountAmount ?? 0;
-  const shippingInSen = shippingFee && shippingFee !== '0' ? Math.round(parseFloat(shippingFee) * 100) : 0;
+  const shippingParsed = parseFloat(shippingFee);
+  const shippingInSen = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
   const orderTotal = Math.max(0, total + shippingInSen - discountAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,12 +99,21 @@ export default function CheckoutPage() {
     setError('');
 
     try {
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current =
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
       const result = await createOrder({
         ...form,
         paymentMethod,
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        idempotencyKey: idempotencyKeyRef.current,
         ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
+
+      idempotencyKeyRef.current = null; // success — next order gets a fresh key
 
       if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
         clearCart();

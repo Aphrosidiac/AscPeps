@@ -72,13 +72,19 @@ try {
 
   // Reconcile stale online-payment orders: confirm any whose callback was
   // missed, and release stock held by abandoned/never-paid orders.
-  const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
-  const timer = setInterval(() => {
-    reconcileStaleOrders(fastify).catch((err) =>
-      fastify.log.error({ err }, 'payment reconcile sweep failed')
-    );
-  }, RECONCILE_INTERVAL_MS);
-  timer.unref();
+  // Run on a single instance only — if PM2 is ever switched to cluster mode,
+  // multiple sweepers would add load (state transitions are idempotent, but
+  // there's no point running N copies).
+  const pmId = process.env.NODE_APP_INSTANCE ?? process.env.pm_id;
+  if (pmId === undefined || pmId === '0') {
+    const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
+    const timer = setInterval(() => {
+      reconcileStaleOrders(fastify).catch((err) =>
+        fastify.log.error({ err }, 'payment reconcile sweep failed')
+      );
+    }, RECONCILE_INTERVAL_MS);
+    timer.unref();
+  }
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

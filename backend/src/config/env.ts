@@ -11,7 +11,7 @@ const envBool = (def: boolean) =>
 
 const envSchema = z.object({
   DATABASE_URL: z.string(),
-  JWT_SECRET: z.string(),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   PORT: z.coerce.number().default(3105),
   HOST: z.string().default('0.0.0.0'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),

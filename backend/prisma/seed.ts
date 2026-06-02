@@ -80,13 +80,27 @@ async function main() {
     });
   }
 
-  // Admin user
-  const passwordHash = await bcrypt.hash('admin123', 12);
+  // Admin user — never ship a hardcoded production password. Require an explicit
+  // ADMIN_INITIAL_PASSWORD (min 12 chars). Only fall back to a known dev password
+  // outside production, and warn loudly.
+  const adminEmail = process.env.ADMIN_INITIAL_EMAIL || 'admin@ascend.my';
+  let adminPassword = process.env.ADMIN_INITIAL_PASSWORD;
+  if (!adminPassword) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ADMIN_INITIAL_PASSWORD is required when seeding in production');
+    }
+    adminPassword = 'admin123';
+    console.warn('⚠️  Seeding admin with the default dev password "admin123" — set ADMIN_INITIAL_PASSWORD for any real deploy.');
+  }
+  if (adminPassword.length < 12 && process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_INITIAL_PASSWORD must be at least 12 characters');
+  }
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
   await prisma.adminUser.upsert({
-    where: { email: 'admin@ascend.my' },
+    where: { email: adminEmail },
     update: {},
     create: {
-      email: 'admin@ascend.my',
+      email: adminEmail,
       passwordHash,
       name: 'Admin',
     },

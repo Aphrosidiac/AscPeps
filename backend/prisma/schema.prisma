@@ -89,6 +89,8 @@ model Order {
   paymentRef      String?
   discountCodeId  String?
   notes           String?
+  idempotencyKey  String?       @unique
+  stockRestored   Boolean       @default(false)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
