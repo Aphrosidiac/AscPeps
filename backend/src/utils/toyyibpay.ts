@@ -57,12 +57,51 @@ export function verifyCallbackHash(body: Record<string, string>, secretKey: stri
     .update(`${secretKey}${status}${order_id}${refno}ok`)
     .digest('hex');
 
+  // ToyyibPay hashes are hex MD5; normalise case so an upper-case hash from
+  // the gateway can't reject an otherwise-valid callback.
+  const a = Buffer.from(computed.toLowerCase());
+  const b = Buffer.from(String(hash).toLowerCase());
+  if (a.length !== b.length) return false;
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(computed),
-      Buffer.from(hash)
-    );
+    return crypto.timingSafeEqual(a, b);
   } catch {
     return false;
   }
+}
+
+interface BillTransactionStatus {
+  paid: boolean;
+  amount?: number; // in sen/cents
+}
+
+/**
+ * Re-query ToyyibPay for the true status of a bill. Used to reconcile orders
+ * whose callback was missed/delayed, and to release stale unpaid orders.
+ * Returns paid=true only if at least one successful (status 1) transaction exists.
+ */
+export async function getBillTransactions(
+  billCode: string,
+  secretKey: string
+): Promise<BillTransactionStatus> {
+  const formData = new URLSearchParams();
+  formData.append('userSecretKey', secretKey);
+  formData.append('billCode', billCode);
+  formData.append('billpaymentStatus', '1'); // only successful payments
+
+  const { data } = await axios.post(
+    `${getBaseUrl()}/index.php/api/getBillTransactions`,
+    formData.toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000 }
+  );
+
+  if (Array.isArray(data) && data.length > 0) {
+    const txn = data.find((t) => String(t?.billpaymentStatus) === '1') ?? data[0];
+    const raw = txn?.billpaymentAmount;
+    // getBillTransactions returns amount in RM (e.g. "1.00") — convert to sen.
+    const amount =
+      raw != null && !Number.isNaN(parseFloat(raw)) ? Math.round(parseFloat(raw) * 100) : undefined;
+    return { paid: true, amount };
+  }
+
+  return { paid: false };
 }

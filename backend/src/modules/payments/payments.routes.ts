@@ -9,7 +9,7 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
 
   fastify.get('/redirect', async (request, reply) => {
     const query = request.query as Record<string, string>;
-    const redirectUrl = handlePaymentRedirect(query);
+    const redirectUrl = await handlePaymentRedirect(fastify, query);
     return reply.redirect(redirectUrl);
   });
 }
