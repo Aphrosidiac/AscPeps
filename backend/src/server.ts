@@ -45,6 +45,12 @@ await fastify.register(fastifyStatic, {
   root: path.join(process.cwd(), 'uploads'),
   prefix: '/uploads/',
   decorateReply: false,
+  // Defense-in-depth for user-uploaded files: even if a file's bytes were
+  // somehow HTML/SVG, this CSP + nosniff stops the browser executing it.
+  setHeaders: (res) => {
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  },
 });
 
 await fastify.register(prismaPlugin);
