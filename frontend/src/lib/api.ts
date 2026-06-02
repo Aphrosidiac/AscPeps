@@ -27,6 +27,7 @@ export const createOrder = (data: {
   notes?: string;
   items: { productId: string; quantity: number }[];
   discountCode?: string;
+  idempotencyKey?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
 export const lookupOrders = (phone: string, orderNumber: string) =>

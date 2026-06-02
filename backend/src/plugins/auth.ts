@@ -6,7 +6,10 @@ import { env } from '../config/env.js';
 export default fp(async (fastify: FastifyInstance) => {
   await fastify.register(jwt, {
     secret: env.JWT_SECRET,
-    sign: { expiresIn: '24h' },
+    // Pin the algorithm on both sign and verify so the accepted-alg set can't
+    // silently widen (alg-confusion hardening).
+    sign: { algorithm: 'HS256', expiresIn: '24h' },
+    verify: { algorithms: ['HS256'] },
   });
 
   fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {

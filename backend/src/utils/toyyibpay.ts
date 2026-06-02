@@ -34,6 +34,10 @@ export async function createBill(params: CreateBillParams): Promise<string> {
   formData.append('billEmail', params.email);
   formData.append('billPhone', params.phone.replace(/[^0-9]/g, ''));
   formData.append('billPaymentChannel', '2');
+  // Expire the bill after 1 day so an abandoned link can't be paid long after
+  // we've already released the reserved stock (which would take money with no
+  // confirmable order).
+  formData.append('billExpiryDays', '1');
 
   const { data } = await axios.post(
     `${getBaseUrl()}/index.php/api/createBill`,

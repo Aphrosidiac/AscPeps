@@ -50,7 +50,8 @@ export async function getDashboardStats(fastify: FastifyInstance) {
 }
 
 export async function getAnalytics(fastify: FastifyInstance, query: { days?: string }) {
-  const days = Math.min(parseInt(query.days || '30', 10), 365);
+  const parsedDays = parseInt(query.days ?? '30', 10);
+  const days = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 30;
   const since = new Date();
   since.setDate(since.getDate() - days);
   since.setHours(0, 0, 0, 0);

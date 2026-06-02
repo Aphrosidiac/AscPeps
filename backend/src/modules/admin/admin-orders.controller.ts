@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { refundBill } from '../../utils/billplz.js';
+import { restoreOrderInventory } from '../../utils/order-inventory.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -79,18 +80,16 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
       throw { statusCode: 400, message: `Cannot change status from ${order.status} to ${data.status}` };
     }
     if (data.status === 'CANCELLED') {
-      for (const item of order.items) {
-        await fastify.prisma.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
+      // A PAID order must go through a refund (which returns the money AND
+      // restocks); silently cancelling it would give back stock while we keep
+      // the cash and never trigger a refund.
+      if (order.paymentStatus === 'PAID') {
+        throw {
+          statusCode: 400,
+          message: 'Refund this paid order (set Payment to Refunded) before cancelling.',
+        };
       }
-      if (order.discountCodeId) {
-        await fastify.prisma.discountCode.update({
-          where: { id: order.discountCodeId },
-          data: { usedCount: { decrement: 1 } },
-        });
-      }
+      await restoreOrderInventory(fastify, order.id);
       fastify.log.info(`Order ${order.orderNumber} cancelled — stock restored`);
     }
   }
@@ -101,18 +100,7 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
       throw { statusCode: 400, message: `Cannot change payment from ${order.paymentStatus} to ${data.paymentStatus}` };
     }
     if (data.paymentStatus === 'FAILED' && order.paymentStatus === 'UNPAID') {
-      for (const item of order.items) {
-        await fastify.prisma.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
-      }
-      if (order.discountCodeId) {
-        await fastify.prisma.discountCode.update({
-          where: { id: order.discountCodeId },
-          data: { usedCount: { decrement: 1 } },
-        });
-      }
+      await restoreOrderInventory(fastify, order.id);
     }
     if (data.paymentStatus === 'REFUNDED') {
       if (order.paymentRef && order.paymentGateway === 'billplz') {
@@ -130,18 +118,7 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
           `Order ${order.orderNumber} marked REFUNDED for ToyyibPay — process the actual refund MANUALLY in the ToyyibPay dashboard`
         );
       }
-      for (const item of order.items) {
-        await fastify.prisma.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
-      }
-      if (order.discountCodeId) {
-        await fastify.prisma.discountCode.update({
-          where: { id: order.discountCodeId },
-          data: { usedCount: { decrement: 1 } },
-        });
-      }
+      await restoreOrderInventory(fastify, order.id);
     }
   }
 

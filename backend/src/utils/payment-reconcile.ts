@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getGatewayByBillId } from './payment-gateway.js';
+import { restoreOrderInventory } from './order-inventory.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
@@ -37,25 +38,10 @@ export async function applyFailed(
   });
   if (count === 0) return false;
 
-  const failedOrder = await fastify.prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: true },
-  });
-  if (!failedOrder) return true;
-
-  for (const item of failedOrder.items) {
-    await fastify.prisma.product.update({
-      where: { id: item.productId },
-      data: { stock: { increment: item.quantity } },
-    });
-  }
-  if (failedOrder.discountCodeId) {
-    await fastify.prisma.discountCode.update({
-      where: { id: failedOrder.discountCodeId },
-      data: { usedCount: { decrement: 1 } },
-    });
-  }
-  fastify.log.info(`Order ${failedOrder.orderNumber} marked FAILED — stock & discount restored`);
+  // Atomic, idempotent, floored — safe even if a callback and a sweep both flip
+  // this order FAILED at the same time.
+  await restoreOrderInventory(fastify, orderId);
+  fastify.log.info(`Order ${orderId} marked FAILED — stock & discount restored`);
   return true;
 }
 
@@ -74,7 +60,6 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
     where: {
       paymentStatus: 'UNPAID',
       paymentMethod: 'BILLPLZ', // online-payment orders (gateway-backed)
-      paymentRef: { not: null },
       createdAt: { lt: new Date(now - STALE_AFTER_MS) },
     },
     orderBy: { createdAt: 'asc' },
@@ -82,11 +67,21 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
   });
 
   for (const order of orders) {
-    const gateway = getGatewayByBillId(order.paymentRef!, order.paymentGateway ?? undefined);
+    // Stranded order: createBill threw AFTER the tx committed, so stock was
+    // reserved but no bill exists (paymentRef is null). Nothing to verify —
+    // release it once it's clearly dead.
+    if (!order.paymentRef) {
+      if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
+        await applyFailed(fastify, order.id);
+      }
+      continue;
+    }
+
+    const gateway = getGatewayByBillId(order.paymentRef, order.paymentGateway ?? undefined);
     if (!gateway) continue;
 
     try {
-      const { paid } = await gateway.verifyPaid(order.paymentRef!);
+      const { paid } = await gateway.verifyPaid(order.paymentRef);
       if (paid) {
         await applyPaid(fastify, order);
       } else if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
