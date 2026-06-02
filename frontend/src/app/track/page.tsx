@@ -12,16 +12,17 @@ import type { Order } from '@/types';
 
 export default function TrackPage() {
   const [phone, setPhone] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone.trim()) return;
+    if (!phone.trim() || !orderNumber.trim()) return;
     setLoading(true);
     try {
-      const result = await lookupOrders(phone.trim());
+      const result = await lookupOrders(phone.trim(), orderNumber.trim());
       setOrders(result);
     } catch {
       setOrders([]);
@@ -37,12 +38,22 @@ export default function TrackPage() {
         <div className="text-center mb-8">
           <Package className="w-12 h-12 text-text-muted mx-auto mb-4" />
           <h1 className="font-display text-3xl font-bold mb-2">Track Your Order</h1>
-          <p className="text-text-secondary">Enter the phone number you used when placing your order.</p>
+          <p className="text-text-secondary">Enter your order number and the phone number you used when placing your order.</p>
         </div>
       </Animate>
 
       <Animate variant="fadeUp" delay={0.15} duration={0.5}>
-      <form onSubmit={handleSearch} className="flex gap-3 mb-8">
+      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 mb-8">
+        <div className="relative flex-1">
+          <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+          <input
+            type="text"
+            value={orderNumber}
+            onChange={(e) => setOrderNumber(e.target.value)}
+            placeholder="Order number"
+            className="w-full pl-10 pr-4 py-3 rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
@@ -62,7 +73,7 @@ export default function TrackPage() {
       {searched && orders !== null && (
         orders.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-text-muted">No orders found for this phone number.</p>
+            <p className="text-text-muted">No order found. Check your order number and phone number and try again.</p>
           </div>
         ) : (
           <Stagger className="space-y-4" stagger={0.08}>

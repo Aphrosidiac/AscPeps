@@ -29,8 +29,8 @@ export const createOrder = (data: {
   discountCode?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
-export const lookupOrders = (phone: string) =>
-  api.get<Order[]>('/api/v1/orders/lookup', { params: { phone } }).then((r) => r.data);
+export const lookupOrders = (phone: string, orderNumber: string) =>
+  api.get<Order[]>('/api/v1/orders/lookup', { params: { phone, orderNumber } }).then((r) => r.data);
 
 export const getSettings = () =>
   api.get<Record<string, string>>('/api/v1/settings').then((r) => r.data);

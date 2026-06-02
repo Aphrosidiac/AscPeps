@@ -19,9 +19,9 @@ const createOrderSchema = z.object({
   items: z.array(
     z.object({
       productId: z.string(),
-      quantity: z.number().int().min(1),
+      quantity: z.number().int().min(1).max(100),
     })
-  ).min(1),
+  ).min(1).max(50),
 });
 
 export async function createOrder(fastify: FastifyInstance, body: unknown) {
@@ -59,6 +59,22 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       const result = await validateDiscountCode(fastify, data.discountCode, subtotal);
       discountAmount = result.discountAmount;
       discountCodeId = result.discount.id;
+      // Atomically reserve one use so concurrent orders can't push a capped code
+      // past maxUses (the read-based check above is racy on its own).
+      if (result.discount.maxUses != null) {
+        const reserved = await tx.discountCode.updateMany({
+          where: { id: discountCodeId, usedCount: { lt: result.discount.maxUses } },
+          data: { usedCount: { increment: 1 } },
+        });
+        if (reserved.count === 0) {
+          throw { statusCode: 400, message: 'This discount code has reached its usage limit' };
+        }
+      } else {
+        await tx.discountCode.update({
+          where: { id: discountCodeId },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
     }
 
     const total = Math.max(subtotal + shippingFee - discountAmount, 0);
@@ -92,18 +108,18 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       include: { items: { include: { product: true } } },
     });
 
-    if (discountCodeId) {
-      await tx.discountCode.update({
-        where: { id: discountCodeId },
-        data: { usedCount: { increment: 1 } },
-      });
-    }
-
+    // Conditional decrement guards against oversell under concurrency: the
+    // WHERE clause only matches if enough stock remains, so two simultaneous
+    // orders for the last unit can't both succeed. A miss rolls back the tx.
     for (const item of data.items) {
-      await tx.product.update({
-        where: { id: item.productId },
+      const dec = await tx.product.updateMany({
+        where: { id: item.productId, stock: { gte: item.quantity } },
         data: { stock: { decrement: item.quantity } },
       });
+      if (dec.count === 0) {
+        const product = productMap.get(item.productId)!;
+        throw { statusCode: 400, message: `Insufficient stock for ${product.name}` };
+      }
     }
 
     return created;
@@ -132,6 +148,11 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       postcode: order.postcode,
     });
   } else if (data.paymentMethod === 'BILLPLZ') {
+    // Payment gateways enforce a minimum charge (RM1). A total below that
+    // (e.g. a near-100% discount) can't be billed online.
+    if (order.total < 100) {
+      throw { statusCode: 400, message: 'Order total is too low for online payment. Please use WhatsApp checkout.' };
+    }
     const settings = await fastify.prisma.setting.findMany({
       where: { key: { in: ['payment_gateway'] } },
     });
@@ -161,16 +182,33 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
   return { order, whatsappUrl, paymentUrl };
 }
 
-export async function lookupOrders(fastify: FastifyInstance, phone: string) {
-  if (!phone || phone.length < 3) {
-    throw { statusCode: 400, message: 'Please enter a valid phone number' };
+export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {
+  // Require BOTH the order number and the matching phone. Phone-only lookup let
+  // anyone enumerate customers' orders (and their PII) by guessing numbers.
+  if (!phone || phone.trim().length < 3 || !orderNumber || orderNumber.trim().length < 3) {
+    throw { statusCode: 400, message: 'Please enter both your order number and phone number' };
   }
 
+  // Return only what the tracking UI needs — never the customer's address,
+  // email, name, or notes.
   const orders = await fastify.prisma.order.findMany({
-    where: { phone },
-    include: { items: { include: { product: { select: { name: true, code: true, imageUrl: true } } } } },
-    orderBy: { createdAt: 'desc' },
-    take: 10,
+    where: { phone: phone.trim(), orderNumber: orderNumber.trim().toUpperCase() },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      total: true,
+      createdAt: true,
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          product: { select: { name: true, code: true, imageUrl: true } },
+        },
+      },
+    },
+    take: 5,
   });
 
   return orders;
