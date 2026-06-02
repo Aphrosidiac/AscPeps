@@ -15,7 +15,9 @@ export async function handlePaymentCallback(fastify: FastifyInstance, body: Reco
   }
 
   if (!gateway.verifyCallback(body)) {
-    fastify.log.warn({ gateway: gateway.name, body }, 'Payment callback: invalid signature');
+    // Don't log the full body — a forged/invalid callback may carry attacker- or
+    // customer-supplied PII. The bill id is enough to investigate.
+    fastify.log.warn({ gateway: gateway.name, billId }, 'Payment callback: invalid signature');
     throw { statusCode: 400, message: 'Invalid signature' };
   }
 
