@@ -19,6 +19,10 @@ export default function CheckoutSuccessPage() {
           <Link href="/products"><Button variant="primary">Continue Shopping</Button></Link>
           <Link href="/track"><Button variant="outline">Track Order</Button></Link>
         </div>
+
+        <p className="text-xs text-text-muted mt-4">
+          You can view and download your receipt from the <Link href="/track" className="text-primary-light hover:underline">Track Order</Link> page.
+        </p>
       </Animate>
     </div>
   );

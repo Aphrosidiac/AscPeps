@@ -14,6 +14,7 @@ export default defineConfig({
     'bcryptjs',
     'pg',
     'pino-pretty',
+    'pdfkit',
   ],
   noExternal: [
     'fastify-plugin',

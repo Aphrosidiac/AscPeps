@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetOrders, adminUpdateOrder } from '@/lib/api';
+import { adminGetOrders, adminUpdateOrder, adminGetReceiptPdfUrl } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
@@ -323,6 +323,16 @@ export default function AdminOrdersPage() {
                           </a>
                         </div>
                       )}
+                      <div className="flex items-end">
+                        <a
+                          href={adminGetReceiptPdfUrl(order.id, token!)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> Receipt
+                        </a>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Package, Truck } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Package, Truck, FileText } from 'lucide-react';
 import { lookupOrders } from '@/lib/api';
 import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@/lib/constants';
@@ -111,9 +112,17 @@ export default function TrackPage() {
                     </div>
                   ))}
                 </div>
-                <div className="border-t border-border pt-3 flex justify-between font-semibold">
-                  <span>Total</span>
-                  <span>{formatPrice(order.total)}</span>
+                <div className="border-t border-border pt-3 flex items-center justify-between">
+                  <div className="font-semibold">
+                    <span>Total: </span>
+                    <span>{formatPrice(order.total)}</span>
+                  </div>
+                  <Link
+                    href={`/receipt/${order.orderNumber}${normalizedPhone.length >= 10 ? `?phone=${encodeURIComponent(normalizedPhone)}` : ''}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary bg-surface-elevated hover:bg-border rounded-lg transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Receipt
+                  </Link>
                 </div>
               </div>
             ))}
