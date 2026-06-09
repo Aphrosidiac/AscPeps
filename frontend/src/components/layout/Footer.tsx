@@ -7,7 +7,7 @@ export function Footer() {
       <div className="bg-neutral-900 border-t border-neutral-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <p className="text-xs text-neutral-500 text-center leading-relaxed">
-            All products sold by ASCEND are intended strictly for <strong className="text-neutral-400">laboratory and research purposes only</strong>. Products are not for human consumption of any kind. By purchasing from ASCEND, you agree to our{' '}
+            All products sold by ASCEND are intended strictly for <strong className="text-neutral-400">laboratory and research purposes only</strong>. By purchasing from ASCEND, you agree to our{' '}
             <Link href="/terms" className="underline hover:text-neutral-300">Terms</Link>,{' '}
             <Link href="/disclaimer" className="underline hover:text-neutral-300">Disclaimer</Link>, and{' '}
             <Link href="/privacy" className="underline hover:text-neutral-300">Privacy Policy</Link>.

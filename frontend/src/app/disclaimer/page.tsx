@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Disclaimer & Waiver',
-  description: 'ASCEND product disclaimer and liability waiver. All products are for research and laboratory use only, not for human consumption.',
+  description: 'ASCEND product disclaimer and liability waiver. All products are sold exclusively for research and laboratory use.',
   alternates: { canonical: 'https://ascendpeptides.my/disclaimer' },
 };
 
@@ -17,13 +17,13 @@ export default function DisclaimerPage() {
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-8">
           <h2 className="text-red-900 mt-0">Important Notice</h2>
           <p className="text-red-800 mb-0">
-            All products sold by ASCEND are intended <strong>strictly for laboratory and research purposes only</strong>. Products are <strong>not for human consumption</strong> of any kind. By purchasing from ASCEND, you acknowledge and agree to the terms outlined in this disclaimer.
+            All products sold by ASCEND are intended <strong>strictly for laboratory and research purposes only</strong>. By purchasing from ASCEND, you acknowledge and agree to the terms outlined in this disclaimer.
           </p>
         </div>
 
         <h2>1. Research Use Only</h2>
         <p>
-          All products available on ASCEND (ascendpeptides.my) are sold exclusively for legitimate research and laboratory use. They are not intended for use as drugs, food additives, household chemicals, or any form of human or animal consumption. Purchasers must be qualified researchers or individuals purchasing for legitimate research purposes.
+          All products available on ASCEND (ascendpeptides.my) are sold exclusively for legitimate research and laboratory use. Purchasers must be qualified researchers or individuals purchasing for legitimate research purposes.
         </p>
 
         <h2>2. No Medical Claims</h2>
@@ -36,8 +36,7 @@ export default function DisclaimerPage() {
           By purchasing products from ASCEND, you assume full responsibility for the proper handling, storage, and use of all products in accordance with applicable laws and regulations. You acknowledge that:
         </p>
         <ul>
-          <li>You are purchasing products solely for research purposes</li>
-          <li>You will not use products for human or animal consumption</li>
+          <li>You are purchasing products solely for research and laboratory purposes</li>
           <li>You understand the nature of research chemicals and peptides</li>
           <li>You will handle products in accordance with proper laboratory safety protocols</li>
           <li>You will comply with all applicable local, state, and federal laws</li>

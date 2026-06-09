@@ -20,7 +20,7 @@ export default function TermsPage() {
 
         <h2>1. Research Use Only</h2>
         <p>
-          All products sold by ASCEND are intended strictly for <strong>laboratory and research purposes only</strong>. Products are not intended for human consumption, veterinary use, food additives, household chemicals, or any other unauthorized use. By purchasing, you confirm that you understand and agree to this condition.
+          All products sold by ASCEND are intended strictly for <strong>laboratory and research purposes only</strong>. By purchasing, you confirm that you understand and agree to this condition.
         </p>
 
         <h2>2. Age Requirement</h2>
