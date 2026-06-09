@@ -7,6 +7,7 @@ import { ArrowRight, Shield, Truck, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Animate, Stagger } from '@/components/ui/Animate';
+import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { VideoStrip } from '@/components/ui/VideoStrip';
 import { getProducts, getCategories } from '@/lib/api';
 import type { Product, Category } from '@/types';
@@ -36,8 +37,9 @@ export default function HomePage() {
   return (
     <div>
       {/* Hero */}
-      <section className="bg-primary text-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+      <section className="bg-primary text-white overflow-hidden relative">
+        <MolecularNetwork className="absolute inset-0 w-full h-full" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 relative z-10">
           <div className="flex flex-col md:flex-row md:items-center gap-8 lg:gap-16">
             <div className="flex-1 min-w-0">
               <Animate variant="fade" duration={0.8}>
