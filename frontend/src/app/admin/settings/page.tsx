@@ -135,6 +135,54 @@ export default function AdminSettingsPage() {
           />
         </div>
 
+        {/* Receipt / Invoice */}
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Receipt / Invoice</h2>
+          <p className="text-xs text-text-muted">These details appear on customer receipts and PDF invoices.</p>
+          <Input
+            label="Company Name"
+            id="receipt_company_name"
+            value={settings.receipt_company_name || ''}
+            onChange={(e) => updateSetting('receipt_company_name', e.target.value)}
+            placeholder="ASCEND PEPTIDES"
+          />
+          <Input
+            label="Registration Number (optional)"
+            id="receipt_company_reg"
+            value={settings.receipt_company_reg || ''}
+            onChange={(e) => updateSetting('receipt_company_reg', e.target.value)}
+            placeholder="e.g. SA0012345-X"
+          />
+          <Input
+            label="Company Address"
+            id="receipt_address"
+            value={settings.receipt_address || ''}
+            onChange={(e) => updateSetting('receipt_address', e.target.value)}
+            placeholder="e.g. Johor Bahru, Malaysia"
+          />
+          <Input
+            label="Company Phone"
+            id="receipt_phone"
+            value={settings.receipt_phone || ''}
+            onChange={(e) => updateSetting('receipt_phone', e.target.value)}
+            placeholder="e.g. 011-6109 2723"
+          />
+          <Input
+            label="Company Email"
+            id="receipt_email"
+            value={settings.receipt_email || ''}
+            onChange={(e) => updateSetting('receipt_email', e.target.value)}
+            placeholder="e.g. hello@ascendpeptides.my"
+          />
+          <Input
+            label="Receipt Footer Note"
+            id="receipt_footer_note"
+            value={settings.receipt_footer_note || ''}
+            onChange={(e) => updateSetting('receipt_footer_note', e.target.value)}
+            placeholder="All products are for research and laboratory use only."
+          />
+        </div>
+
         {/* WhatsApp */}
         <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">WhatsApp Configuration</h2>
