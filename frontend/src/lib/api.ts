@@ -5,6 +5,27 @@ const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
 });
 
+// Auto-redirect to admin login on expired/invalid JWT
+// Only fires for requests that sent an Authorization header (admin calls).
+// Public customer-facing routes never send auth headers, so they're unaffected.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (
+      error.response?.status === 401 &&
+      error.config?.headers?.Authorization &&
+      typeof window !== 'undefined'
+    ) {
+      localStorage.removeItem('ascend-admin-token');
+      // Only redirect if we're on an admin page (extra safety for customer pages)
+      if (window.location.pathname.startsWith('/admin')) {
+        window.location.href = '/admin/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Public
 export const getCategories = () =>
   api.get<Category[]>('/api/v1/categories').then((r) => r.data);
