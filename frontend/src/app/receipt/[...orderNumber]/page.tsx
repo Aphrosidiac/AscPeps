@@ -14,7 +14,8 @@ import { Animate } from '@/components/ui/Animate';
 import type { Order } from '@/types';
 
 export default function ReceiptPage() {
-  const { orderNumber } = useParams<{ orderNumber: string }>();
+  const params = useParams<{ orderNumber: string[] }>();
+  const orderNumber = (params.orderNumber as string[]).join('/');
   const searchParams = useSearchParams();
   const phoneParam = searchParams.get('phone') || '';
 

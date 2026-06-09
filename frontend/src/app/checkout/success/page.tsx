@@ -12,7 +12,7 @@ export default function CheckoutSuccessPage() {
         <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
         <h1 className="font-display text-2xl font-bold mb-2">Payment Successful!</h1>
         <p className="text-text-secondary mb-6">
-          Your payment has been confirmed. Your order is now being processed and you will receive updates via WhatsApp.
+          Your payment has been confirmed. Your order is now being processed — check your order status anytime on the Track Order page.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">

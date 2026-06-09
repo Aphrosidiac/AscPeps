@@ -55,10 +55,10 @@ export const lookupOrders = (phone?: string, orderNumber?: string) =>
   api.get<Order[]>('/api/v1/orders/lookup', { params: { ...(phone && { phone }), ...(orderNumber && { orderNumber }) } }).then((r) => r.data);
 
 export const getReceiptData = (orderNumber: string, phone: string) =>
-  api.get<Order>(`/api/v1/orders/receipt/${orderNumber}`, { params: { phone } }).then((r) => r.data);
+  api.get<Order>(`/api/v1/orders/receipt/${encodeURIComponent(orderNumber)}`, { params: { phone } }).then((r) => r.data);
 
 export const getReceiptPdfUrl = (orderNumber: string, phone: string) =>
-  `/api/v1/orders/receipt/${orderNumber}/pdf?phone=${encodeURIComponent(phone)}`;
+  `/api/v1/orders/receipt/${encodeURIComponent(orderNumber)}/pdf?phone=${encodeURIComponent(phone)}`;
 
 export const adminGetReceiptPdfUrl = (id: string, token: string) =>
   `/api/v1/admin/orders/${id}/receipt?token=${encodeURIComponent(token)}`;

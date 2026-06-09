@@ -36,8 +36,10 @@ export default async function orderRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { phone } = request.query as { phone: string };
       const pdf = await getReceiptPdf(fastify, request.params.orderNumber, phone || '');
+      const safeFilename = request.params.orderNumber.replace(/[^a-zA-Z0-9\-_\/]/g, '').replace(/\//g, '-');
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="ASCEND-Receipt-${request.params.orderNumber}.pdf"`);
+      reply.header('Content-Disposition', `inline; filename="ASCEND-Receipt-${safeFilename}.pdf"`);
+      reply.header('Referrer-Policy', 'no-referrer');
       return reply.send(pdf);
     }
   );

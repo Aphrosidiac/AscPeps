@@ -28,6 +28,7 @@ export default async function adminOrderRoutes(fastify: FastifyInstance) {
     const pdf = await adminGetReceiptPdf(fastify, request.params.id);
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', 'inline; filename="ASCEND-Receipt.pdf"');
+    reply.header('Referrer-Policy', 'no-referrer');
     return reply.send(pdf);
   });
 }
