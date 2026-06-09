@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Package } from 'lucide-react';
+import { Search, Package, Truck } from 'lucide-react';
 import { lookupOrders } from '@/lib/api';
 import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@/lib/constants';
@@ -94,6 +94,15 @@ export default function TrackPage() {
                     {ORDER_STATUS_LABELS[order.status]}
                   </Badge>
                 </div>
+                {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
+                  <div className="flex items-center gap-2 bg-surface-elevated rounded-lg px-4 py-2.5 mb-4">
+                    <Truck className="w-4 h-4 text-primary shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-muted">Tracking Number</p>
+                      <p className="text-sm font-semibold font-mono">{order.trackingNumber}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2 mb-4">
                   {order.items.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm">

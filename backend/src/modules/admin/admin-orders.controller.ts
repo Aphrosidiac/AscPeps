@@ -7,6 +7,7 @@ import { restoreOrderInventory } from '../../utils/order-inventory.js';
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
   paymentStatus: z.enum(['UNPAID', 'PAID', 'FAILED', 'REFUNDED']).optional(),
+  trackingNumber: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -79,6 +80,12 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     if (!allowed.includes(data.status)) {
       throw { statusCode: 400, message: `Cannot change status from ${order.status} to ${data.status}` };
     }
+    if (data.status === 'SHIPPED') {
+      const trackingNum = data.trackingNumber?.trim() || order.trackingNumber;
+      if (!trackingNum) {
+        throw { statusCode: 400, message: 'Please enter a tracking number before marking as Shipped' };
+      }
+    }
     if (data.status === 'CANCELLED') {
       // A PAID order must go through a refund (which returns the money AND
       // restocks); silently cancelling it would give back stock while we keep
@@ -122,5 +129,11 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     }
   }
 
-  return fastify.prisma.order.update({ where: { id }, data });
+  // Clean trackingNumber — store trimmed or null
+  const updateData: Record<string, unknown> = { ...data };
+  if (data.trackingNumber !== undefined) {
+    updateData.trackingNumber = data.trackingNumber.trim() || null;
+  }
+
+  return fastify.prisma.order.update({ where: { id }, data: updateData });
 }
