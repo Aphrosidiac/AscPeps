@@ -248,6 +248,7 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
       orderNumber: true,
       status: true,
       total: true,
+      trackingNumber: true,
       createdAt: true,
       items: {
         select: {

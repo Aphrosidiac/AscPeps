@@ -71,6 +71,7 @@ export interface Order {
   discountCodeId: string | null;
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;
+  trackingNumber: string | null;
   createdAt: string;
   items: OrderItem[];
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
@@ -19,6 +19,16 @@ export default function AdminOrdersPage() {
   const [search, setSearch] = useState('');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+
+  const getTrackingValue = (order: Order) =>
+    trackingInputs[order.id] ?? order.trackingNumber ?? '';
+
+  const setTrackingValue = (orderId: string, value: string) => {
+    setTrackingInputs((prev) => ({ ...prev, [orderId]: value }));
+    setTrackingError(null);
+  };
 
   const load = () => {
     if (!token) return;
@@ -35,9 +45,34 @@ export default function AdminOrdersPage() {
 
   const handleStatusUpdate = async (orderId: string, status: string) => {
     if (!token) return;
+    setTrackingError(null);
     setUpdating(orderId);
     try {
-      await adminUpdateOrder(token, orderId, { status });
+      const payload: Record<string, string> = { status };
+      // Send tracking number along when marking as Shipped
+      if (status === 'SHIPPED') {
+        const tracking = trackingInputs[orderId]?.trim();
+        if (tracking) payload.trackingNumber = tracking;
+      }
+      await adminUpdateOrder(token, orderId, payload);
+      load();
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response: { data: { message?: string } } }).response?.data?.message
+        : undefined;
+      if (message) setTrackingError(message);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleSaveTracking = async (orderId: string) => {
+    if (!token) return;
+    setTrackingError(null);
+    const tracking = trackingInputs[orderId]?.trim() || '';
+    setUpdating(orderId);
+    try {
+      await adminUpdateOrder(token, orderId, { trackingNumber: tracking });
       load();
     } finally {
       setUpdating(null);
@@ -135,6 +170,9 @@ export default function AdminOrdersPage() {
                     <p className="font-display font-bold hidden sm:block">{formatPrice(order.total)}</p>
                     <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
                     <Badge className={`hidden sm:inline-flex ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
+                    {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
+                      <span className="hidden lg:inline-flex items-center gap-1 text-xs text-text-muted font-mono"><Truck className="w-3 h-3" />{order.trackingNumber}</span>
+                    )}
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-text-muted shrink-0" /> : <ChevronDown className="w-4 h-4 text-text-muted shrink-0" />}
                   </div>
                 </div>
@@ -205,6 +243,40 @@ export default function AdminOrdersPage() {
                       <div>
                         <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Notes</p>
                         <p className="text-sm text-text-secondary bg-surface-elevated rounded-lg px-4 py-3">{order.notes}</p>
+                      </div>
+                    )}
+
+                    {/* Tracking Number */}
+                    {order.status !== 'CANCELLED' && (
+                      <div className="pt-3 border-t border-border">
+                        <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Tracking Number</label>
+                        <div className="flex gap-2 items-center max-w-md">
+                          <div className="relative flex-1">
+                            <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                            <input
+                              type="text"
+                              value={getTrackingValue(order)}
+                              onChange={(e) => setTrackingValue(order.id, e.target.value)}
+                              placeholder="e.g. MY12345678901"
+                              className="w-full pl-10 pr-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            />
+                          </div>
+                          {(trackingInputs[order.id] !== undefined && trackingInputs[order.id] !== (order.trackingNumber ?? '')) && (
+                            <button
+                              onClick={() => handleSaveTracking(order.id)}
+                              disabled={isUpdating}
+                              className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                            >
+                              Save
+                            </button>
+                          )}
+                        </div>
+                        {trackingError && expandedOrder === order.id && (
+                          <p className="text-xs text-danger mt-1.5">{trackingError}</p>
+                        )}
+                        {!getTrackingValue(order) && (order.status === 'CONFIRMED' || order.status === 'SHIPPED') && (
+                          <p className="text-xs text-warning mt-1.5">Enter a tracking number before marking as Shipped</p>
+                        )}
                       </div>
                     )}
 
