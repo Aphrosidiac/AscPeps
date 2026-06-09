@@ -7,7 +7,7 @@ import { restoreOrderInventory } from '../../utils/order-inventory.js';
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
   paymentStatus: z.enum(['UNPAID', 'PAID', 'FAILED', 'REFUNDED']).optional(),
-  trackingNumber: z.string().optional(),
+  trackingNumber: z.string().max(50).optional(),
   notes: z.string().optional(),
 });
 
