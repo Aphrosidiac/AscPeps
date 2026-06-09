@@ -17,12 +17,14 @@ export default function TrackPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
+  const canSearch = phone.trim().length >= 3 || orderNumber.trim().length >= 3;
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone.trim() || !orderNumber.trim()) return;
+    if (!canSearch) return;
     setLoading(true);
     try {
-      const result = await lookupOrders(phone.trim(), orderNumber.trim());
+      const result = await lookupOrders(phone.trim() || undefined, orderNumber.trim() || undefined);
       setOrders(result);
     } catch {
       setOrders([]);
@@ -38,7 +40,7 @@ export default function TrackPage() {
         <div className="text-center mb-8">
           <Package className="w-12 h-12 text-text-muted mx-auto mb-4" />
           <h1 className="font-display text-3xl font-bold mb-2">Track Your Order</h1>
-          <p className="text-text-secondary">Enter your order number and the phone number you used when placing your order.</p>
+          <p className="text-text-secondary">Enter your order number or the phone number you used when placing your order.</p>
         </div>
       </Animate>
 
@@ -64,7 +66,7 @@ export default function TrackPage() {
             className="w-full pl-10 pr-4 py-3 rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
-        <Button type="submit" disabled={loading} size="lg">
+        <Button type="submit" disabled={loading || !canSearch} size="lg">
           {loading ? 'Searching...' : 'Search'}
         </Button>
       </form>
