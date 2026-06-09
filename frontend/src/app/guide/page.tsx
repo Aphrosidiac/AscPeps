@@ -23,7 +23,7 @@ export default function GuidePage() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
           <p className="text-sm text-yellow-800">
-            <strong>Research Use Only.</strong> This guide is provided for educational and laboratory reference purposes. All ASCEND products are intended strictly for research use and are not for human consumption.
+            <strong>Research Use Only.</strong> This guide is provided for educational and laboratory reference purposes. All ASCEND products are intended strictly for research and laboratory use.
           </p>
         </div>
       </div>

@@ -82,7 +82,7 @@ export default async function ProductDetailPage({ params }: Props) {
             {product.stock === 0 && <p className="text-danger font-medium">Out of stock</p>}
             {product.stock > 0 && product.stock <= 5 && <p className="text-warning text-sm">Only {product.stock} left in stock</p>}
 
-            <p className="text-xs text-text-muted italic">For research purposes only — not for human consumption.</p>
+            <p className="text-xs text-text-muted italic">For research and laboratory use only.</p>
 
             {/* Trust Badges */}
             <div className="grid grid-cols-2 gap-3 pt-2">

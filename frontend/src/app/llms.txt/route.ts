@@ -25,7 +25,7 @@ export async function GET() {
   const body = [
     '# ASCEND — Research Peptides Malaysia',
     '',
-    "> ASCEND is Malaysia's premium research-peptide supplier. All compounds are lab-grade, manufactured to 99%+ purity and independently third-party tested (Certificate of Analysis available). Prices are in Malaysian Ringgit (MYR) with free, fast nationwide shipping. No account required. All products are sold strictly for laboratory and research purposes only — not for human consumption.",
+    "> ASCEND is Malaysia's premium research-peptide supplier. All compounds are lab-grade, manufactured to 99%+ purity and independently third-party tested (Certificate of Analysis available). Prices are in Malaysian Ringgit (MYR) with free, fast nationwide shipping. No account required. All products are sold strictly for laboratory and research purposes only.",
     '',
     '## Key pages',
     `- [Shop all peptides](${BASE_URL}/products): Full catalog with live MYR pricing and stock`,
@@ -42,7 +42,7 @@ export async function GET() {
     '- Currency: MYR. Shipping: free on all orders. Payment: bank transfer, FPX, credit/debit card.',
     '- Quality: 99%+ purity, third-party tested, Certificate of Analysis on request.',
     '- Contact: WhatsApp +60 11-6109 2723.',
-    '- Disclaimer: research use only; not for human consumption.',
+    '- Disclaimer: all products are for research and laboratory use only.',
     '',
   ].join('\n');
 

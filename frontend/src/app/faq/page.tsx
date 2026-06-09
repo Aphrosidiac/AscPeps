@@ -30,10 +30,6 @@ const faqs = [
         q: 'Can I request a Certificate of Analysis (COA)?',
         a: 'Absolutely. Contact us via WhatsApp with your order number or the specific product code, and we will provide the corresponding COA.',
       },
-      {
-        q: 'Are these peptides for human consumption?',
-        a: 'No. All products sold by ASCEND are intended strictly for laboratory and research purposes only. They are not for human consumption, veterinary use, or any unauthorized application.',
-      },
     ],
   },
   {
