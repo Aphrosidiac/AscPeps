@@ -7,9 +7,8 @@ import Image from 'next/image';
 import { FileText, Download, ArrowLeft, Search } from 'lucide-react';
 import { getReceiptData, getReceiptPdfUrl } from '@/lib/api';
 import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
+import { ORDER_STATUS_LABELS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { Animate } from '@/components/ui/Animate';
 import type { Order } from '@/types';
 
@@ -130,9 +129,9 @@ export default function ReceiptPage() {
               <p className="font-semibold">{order.orderNumber}</p>
               <p className="text-text-secondary">{formatDate(order.createdAt)}</p>
             </div>
-            <div className="flex gap-2">
-              <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
-              <Badge className={PAYMENT_STATUS_COLORS[order.paymentStatus]}>{order.paymentStatus}</Badge>
+            <div className="text-right text-sm">
+              <p className="text-text-secondary">{ORDER_STATUS_LABELS[order.status]}</p>
+              <p className="text-text-muted text-xs">{order.paymentStatus}</p>
             </div>
           </div>
 
