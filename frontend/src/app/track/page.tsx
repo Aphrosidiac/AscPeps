@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Search, Package } from 'lucide-react';
 import { lookupOrders } from '@/lib/api';
-import { formatPrice, formatDate } from '@/lib/utils';
+import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -17,14 +17,18 @@ export default function TrackPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
-  const canSearch = phone.trim().length >= 3 || orderNumber.trim().length >= 3;
+  const normalizedPhone = normalizePhone(phone);
+  const canSearch = normalizedPhone.length >= 10 || orderNumber.trim().length >= 3;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSearch) return;
     setLoading(true);
     try {
-      const result = await lookupOrders(phone.trim() || undefined, orderNumber.trim() || undefined);
+      const result = await lookupOrders(
+        normalizedPhone.length >= 10 ? normalizedPhone : undefined,
+        orderNumber.trim() || undefined,
+      );
       setOrders(result);
     } catch {
       setOrders([]);
@@ -59,7 +63,7 @@ export default function TrackPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
-            type="text"
+            type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="012-3456789"

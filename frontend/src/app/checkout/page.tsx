@@ -193,7 +193,7 @@ export default function CheckoutPage() {
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <Input label="Full Name" id="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} required />
-              <Input label="Phone Number" id="phone" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" required />
+              <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" required />
             </div>
             <Input label="Email (optional)" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} />
           </div>

@@ -4,11 +4,12 @@ import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
+import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
-  phone: z.string().min(1),
+  phone: z.string().min(1).transform(normalizePhone),
   email: z.string().email().optional(),
   address: z.string().min(1),
   city: z.string().min(1),
@@ -224,7 +225,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {
-  const hasPhone = phone && phone.trim().length >= 3;
+  const normalizedPhone = phone ? normalizePhone(phone) : '';
+  const hasPhone = normalizedPhone.length >= 10;
   const hasOrderNumber = orderNumber && orderNumber.trim().length >= 3;
 
   // Require at least one identifier
@@ -234,7 +236,7 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
 
   // Build where clause based on what was provided
   const where: Record<string, string> = {};
-  if (hasPhone) where.phone = phone.trim();
+  if (hasPhone) where.phone = normalizedPhone;
   if (hasOrderNumber) where.orderNumber = orderNumber.trim().toUpperCase();
 
   // Return only what the tracking UI needs — never the customer's address,
