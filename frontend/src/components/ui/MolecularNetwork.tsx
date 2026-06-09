@@ -9,12 +9,12 @@ interface Node {
   vy: number;
 }
 
-const NODE_COUNT = 45;
-const CONNECTION_DIST = 150;
-const SPEED = 0.3;
-const DOT_RADIUS = 1.5;
-const LINE_OPACITY = 0.12;
-const DOT_OPACITY = 0.25;
+const NODE_COUNT = 80;
+const CONNECTION_DIST = 220;
+const SPEED = 0.35;
+const DOT_RADIUS = 2;
+const LINE_OPACITY = 0.22;
+const DOT_OPACITY = 0.4;
 
 export function MolecularNetwork({ className = '' }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
