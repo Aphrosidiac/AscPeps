@@ -224,16 +224,23 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {
-  // Require BOTH the order number and the matching phone. Phone-only lookup let
-  // anyone enumerate customers' orders (and their PII) by guessing numbers.
-  if (!phone || phone.trim().length < 3 || !orderNumber || orderNumber.trim().length < 3) {
-    throw { statusCode: 400, message: 'Please enter both your order number and phone number' };
+  const hasPhone = phone && phone.trim().length >= 3;
+  const hasOrderNumber = orderNumber && orderNumber.trim().length >= 3;
+
+  // Require at least one identifier
+  if (!hasPhone && !hasOrderNumber) {
+    throw { statusCode: 400, message: 'Please enter your order number or phone number' };
   }
+
+  // Build where clause based on what was provided
+  const where: Record<string, string> = {};
+  if (hasPhone) where.phone = phone.trim();
+  if (hasOrderNumber) where.orderNumber = orderNumber.trim().toUpperCase();
 
   // Return only what the tracking UI needs — never the customer's address,
   // email, name, or notes.
   const orders = await fastify.prisma.order.findMany({
-    where: { phone: phone.trim(), orderNumber: orderNumber.trim().toUpperCase() },
+    where,
     select: {
       id: true,
       orderNumber: true,
@@ -249,7 +256,8 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
         },
       },
     },
-    take: 5,
+    orderBy: { createdAt: 'desc' },
+    take: 10,
   });
 
   return orders;
