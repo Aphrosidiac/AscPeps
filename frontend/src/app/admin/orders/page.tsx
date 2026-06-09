@@ -73,6 +73,7 @@ export default function AdminOrdersPage() {
     setUpdating(orderId);
     try {
       await adminUpdateOrder(token, orderId, { trackingNumber: tracking });
+      setTrackingInputs((prev) => { const next = { ...prev }; delete next[orderId]; return next; });
       load();
     } finally {
       setUpdating(null);
@@ -154,7 +155,7 @@ export default function AdminOrdersPage() {
               <div key={order.id} className={`bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'}`}>
                 <div
                   className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
-                  onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                  onClick={() => { setExpandedOrder(isExpanded ? null : order.id); setTrackingError(null); }}
                 >
                   <div className="flex items-center gap-4 sm:gap-6 min-w-0">
                     <div className="min-w-0">
@@ -258,6 +259,7 @@ export default function AdminOrdersPage() {
                               value={getTrackingValue(order)}
                               onChange={(e) => setTrackingValue(order.id, e.target.value)}
                               placeholder="e.g. MY12345678901"
+                              maxLength={50}
                               className="w-full pl-10 pr-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             />
                           </div>
@@ -274,7 +276,7 @@ export default function AdminOrdersPage() {
                         {trackingError && expandedOrder === order.id && (
                           <p className="text-xs text-danger mt-1.5">{trackingError}</p>
                         )}
-                        {!getTrackingValue(order) && (order.status === 'CONFIRMED' || order.status === 'SHIPPED') && (
+                        {!getTrackingValue(order) && order.status === 'CONFIRMED' && (
                           <p className="text-xs text-warning mt-1.5">Enter a tracking number before marking as Shipped</p>
                         )}
                       </div>
