@@ -46,8 +46,8 @@ export default function AboutPage() {
               <p className="text-sm text-text-secondary mt-1">Research Compounds</p>
             </div>
             <div>
-              <p className="font-display text-3xl font-bold">Free</p>
-              <p className="text-sm text-text-secondary mt-1">Nationwide Shipping</p>
+              <p className="font-display text-3xl font-bold">Fast</p>
+              <p className="text-sm text-text-secondary mt-1">Nationwide Delivery</p>
             </div>
             <div>
               <p className="font-display text-3xl font-bold">3rd Party</p>
@@ -92,7 +92,7 @@ export default function AboutPage() {
             <Truck className="w-7 h-7 mb-4 text-text-primary" />
             <h3 className="font-display font-semibold text-lg mb-2">Fast Nationwide Delivery</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
-              Free shipping across all states in Malaysia including Sabah and Sarawak. Track your order in real-time using your phone number.
+              We ship across all states in Malaysia including Sabah and Sarawak. Track your order in real-time using your phone number.
             </p>
           </div>
         </Stagger>
@@ -113,7 +113,7 @@ export default function AboutPage() {
             <div className="text-center">
               <CheckCircle className="w-6 h-6 mx-auto mb-3 text-success" />
               <h3 className="font-semibold text-sm mb-1">No Hidden Fees</h3>
-              <p className="text-xs text-text-secondary">The price you see is the price you pay. Free shipping on every order, always.</p>
+              <p className="text-xs text-text-secondary">The price you see is the price you pay. No hidden fees, no surprises.</p>
             </div>
             <div className="text-center">
               <CheckCircle className="w-6 h-6 mx-auto mb-3 text-success" />
