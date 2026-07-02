@@ -195,7 +195,14 @@ export default function CheckoutPage() {
               <Input label="Full Name" id="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} required />
               <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" required />
             </div>
-            <Input label="Email (optional)" id="email" type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} />
+            <Input
+              label={paymentMethod === 'BILLPLZ' ? 'Email (required for online payment)' : 'Email (optional)'}
+              id="email"
+              type="email"
+              value={form.email}
+              onChange={(e) => updateField('email', e.target.value)}
+              required={paymentMethod === 'BILLPLZ'}
+            />
           </div>
           </Animate>
 
