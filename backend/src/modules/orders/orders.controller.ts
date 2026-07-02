@@ -25,6 +25,12 @@ const createOrderSchema = z.object({
       quantity: z.number().int().min(1).max(100),
     })
   ).min(1).max(50),
+}).superRefine((data, ctx) => {
+  // ToyyibPay rejects createBill outright with an empty billEmail — catch this
+  // before the order transaction runs, not after stock is already reserved.
+  if (data.paymentMethod === 'BILLPLZ' && !data.email) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'Email is required for online payment' });
+  }
 });
 
 // Rebuild the online-payment URL for an already-created order (used on the
