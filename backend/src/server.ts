@@ -27,6 +27,7 @@ import paymentRoutes from './modules/payments/payments.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 
 const fastify = Fastify({
+  trustProxy: true,
   logger: {
     transport: {
       target: 'pino-pretty',
