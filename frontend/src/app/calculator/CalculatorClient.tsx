@@ -210,7 +210,9 @@ export function CalculatorClient() {
                 </div>
                 <div>
                   <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Draw To</p>
-                  <p className="font-display font-bold text-lg">{effective.units.toFixed(2)} units</p>
+                  <p className="font-display font-bold text-lg inline-block bg-primary text-white px-3 py-1 rounded-lg">
+                    {effective.units.toFixed(2)} units
+                  </p>
                 </div>
               </div>
               <SyringeGauge units={effective.units} />
