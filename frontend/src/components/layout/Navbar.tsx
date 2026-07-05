@@ -17,6 +17,7 @@ export function Navbar() {
 
   const links = [
     { href: '/products', label: 'Products' },
+    { href: '/calculator', label: 'Calculator' },
     { href: '/track', label: 'Track Order' },
     { href: '/about', label: 'About' },
   ];
