@@ -1,9 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/Input';
 import { SyringeGauge } from '@/components/calculator/SyringeGauge';
+
+// Trim trailing zeros (e.g. 0.2500 -> 0.25) while still rounding to a sane precision.
+function formatMg(n: number): string {
+  return parseFloat(n.toFixed(4)).toString();
+}
 
 const STRENGTH_OPTIONS = [1, 5, 10, 15, 20, 50];
 const WATER_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3];
@@ -116,11 +122,15 @@ export function CalculatorClient() {
     const eWater = validWater ? waterMl! : DEFAULT_VALUE;
     const eDose = validDose ? doseMg! : DEFAULT_VALUE;
 
+    const concentration = eStrength / eWater;
     return {
-      concentration: eStrength / eWater,
+      concentration,
       vialDoses: eStrength / eDose,
       units: (eDose / eStrength) * eWater * 100,
       dose: eDose,
+      // mg per single syringe unit at this concentration — lets the user work
+      // out any other dose on this same vial without re-running the calculator.
+      mgPerUnit: concentration / 100,
     };
   }, [filledCount, validStrength, validWater, validDose, strengthMg, waterMl, doseMg]);
 
@@ -183,30 +193,47 @@ export function CalculatorClient() {
             Pick any two of <strong className="text-text-primary">vial strength</strong>, <strong className="text-text-primary">water added</strong>, and <strong className="text-text-primary">dose</strong> above to see your results — we&apos;ll assume 1 for whichever one you leave out.
           </p>
         ) : (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 text-center">
-              <div>
-                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Concentration</p>
-                <p className="font-display font-bold text-lg">{effective.concentration.toFixed(2)} mg/mL</p>
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
+            <div className="flex-1 w-full">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 text-center">
+                <div>
+                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Concentration</p>
+                  <p className="font-display font-bold text-lg">{effective.concentration.toFixed(2)} mg/mL</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Vial Yields</p>
+                  <p className="font-display font-bold text-lg">{effective.vialDoses.toFixed(1)} doses</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Dose</p>
+                  <p className="font-display font-bold text-lg">{effective.dose} mg</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Draw To</p>
+                  <p className="font-display font-bold text-lg">{effective.units.toFixed(2)} units</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Vial Yields</p>
-                <p className="font-display font-bold text-lg">{effective.vialDoses.toFixed(1)} doses</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Dose</p>
-                <p className="font-display font-bold text-lg">{effective.dose} mg</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Draw To</p>
-                <p className="font-display font-bold text-lg">{effective.units.toFixed(2)} units</p>
+              <SyringeGauge units={effective.units} />
+              <p className="text-xs text-text-muted text-center mt-4">
+                Assumes a standard U-100 insulin syringe (100 units = 1mL).
+              </p>
+            </div>
+
+            <div className="w-full lg:w-64 shrink-0 bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-start gap-2.5">
+                <Lightbulb className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-semibold mb-1">Quick reference</p>
+                  <p className="mb-2">
+                    <strong>{effective.dose}mg = {effective.units.toFixed(2)} units</strong> on this vial.
+                  </p>
+                  <p className="text-blue-800/80">
+                    Every unit on the syringe ≈ {formatMg(effective.mgPerUnit)}mg, so you can work out other doses on the same vial without recalculating.
+                  </p>
+                </div>
               </div>
             </div>
-            <SyringeGauge units={effective.units} />
-            <p className="text-xs text-text-muted text-center mt-4">
-              Assumes a standard U-100 insulin syringe (100 units = 1mL).
-            </p>
-          </>
+          </div>
         )}
       </div>
     </div>
