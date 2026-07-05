@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon } from 'lucide-react';
+import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, adminUploadImage, getCategories } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
@@ -37,8 +37,45 @@ const emptyForm: ProductFormData = {
   stock: '0', imageUrl: '', coaUrl: DEFAULT_COA, featured: false, active: true,
 };
 
+type SortKey = 'code' | 'name' | 'category' | 'size' | 'price' | 'stock' | 'status';
+type StatusFilter = 'all' | 'active' | 'inactive';
+type FeaturedFilter = 'all' | 'featured' | 'not-featured';
+type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
+
 function slugify(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  dir: 'asc' | 'desc';
+  onSort: (key: SortKey) => void;
+  align?: 'left' | 'right' | 'center';
+}) {
+  const isActive = sortKey === activeKey;
+  const Icon = isActive ? (dir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  const alignClass = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
+
+  return (
+    <th className={`px-4 py-3 font-medium text-text-secondary ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
+      <button
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 cursor-pointer hover:text-text-primary transition-colors w-full ${alignClass}`}
+      >
+        {label}
+        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-text-primary' : 'text-text-muted'}`} />
+      </button>
+    </th>
+  );
 }
 
 export default function AdminProductsPage() {
@@ -54,6 +91,13 @@ export default function AdminProductsPage() {
   const [formError, setFormError] = useState('');
   const stockTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [featuredFilter, setFeaturedFilter] = useState<FeaturedFilter>('all');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
   const load = () => {
     if (!token) return;
     const params: Record<string, string> = { limit: '100' };
@@ -66,6 +110,47 @@ export default function AdminProductsPage() {
 
   useEffect(() => { load(); }, [token, search]);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
+
+  const handleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const resetFilters = () => {
+    setCategoryFilter('');
+    setStatusFilter('all');
+    setFeaturedFilter('all');
+    setStockFilter('all');
+  };
+
+  const filtersActive = categoryFilter !== '' || statusFilter !== 'all' || featuredFilter !== 'all' || stockFilter !== 'all';
+
+  const displayedProducts = useMemo(() => {
+    let list = products;
+    if (categoryFilter) list = list.filter((p) => p.categoryId === categoryFilter);
+    if (statusFilter !== 'all') list = list.filter((p) => (statusFilter === 'active' ? p.active : !p.active));
+    if (featuredFilter !== 'all') list = list.filter((p) => (featuredFilter === 'featured' ? p.featured : !p.featured));
+    if (stockFilter !== 'all') list = list.filter((p) => (stockFilter === 'in-stock' ? p.stock > 0 : p.stock === 0));
+
+    const sorted = [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'code': cmp = a.code.localeCompare(b.code); break;
+        case 'name': cmp = a.name.localeCompare(b.name); break;
+        case 'category': cmp = a.category.name.localeCompare(b.category.name); break;
+        case 'size': cmp = (a.size || '').localeCompare(b.size || '', undefined, { numeric: true }); break;
+        case 'price': cmp = a.price - b.price; break;
+        case 'stock': cmp = a.stock - b.stock; break;
+        case 'status': cmp = Number(a.active) - Number(b.active); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [products, categoryFilter, statusFilter, featuredFilter, stockFilter, sortKey, sortDir]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -191,15 +276,67 @@ export default function AdminProductsPage() {
         <Button onClick={openCreate}><Plus className="w-4 h-4" /> Add Product</Button>
       </div>
 
-      <div className="relative max-w-sm mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-        <input
-          type="text"
-          placeholder="Search by name or code..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-        />
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Search by name or code..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        >
+          <option value="">All Categories</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        >
+          <option value="all">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+
+        <select
+          value={featuredFilter}
+          onChange={(e) => setFeaturedFilter(e.target.value as FeaturedFilter)}
+          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        >
+          <option value="all">Featured &amp; Not Featured</option>
+          <option value="featured">Featured Only</option>
+          <option value="not-featured">Not Featured</option>
+        </select>
+
+        <select
+          value={stockFilter}
+          onChange={(e) => setStockFilter(e.target.value as StockFilter)}
+          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        >
+          <option value="all">All Stock Levels</option>
+          <option value="in-stock">In Stock</option>
+          <option value="out-of-stock">Out of Stock</option>
+        </select>
+
+        {filtersActive && (
+          <button
+            onClick={resetFilters}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-text-secondary hover:text-text-primary cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Reset filters
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -208,23 +345,25 @@ export default function AdminProductsPage() {
         </div>
       ) : products.length === 0 ? (
         <p className="text-text-muted py-8 text-center">No products found.</p>
+      ) : displayedProducts.length === 0 ? (
+        <p className="text-text-muted py-8 text-center">No products match the current filters.</p>
       ) : (
         <div className="bg-surface rounded-xl border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-elevated">
-                <th className="text-left px-4 py-3 font-medium text-text-secondary">Code</th>
-                <th className="text-left px-4 py-3 font-medium text-text-secondary">Name</th>
-                <th className="text-left px-4 py-3 font-medium text-text-secondary">Category</th>
-                <th className="text-left px-4 py-3 font-medium text-text-secondary">Size</th>
-                <th className="text-right px-4 py-3 font-medium text-text-secondary">Price</th>
-                <th className="text-center px-4 py-3 font-medium text-text-secondary">Stock</th>
-                <th className="text-center px-4 py-3 font-medium text-text-secondary">Status</th>
+                <SortHeader label="Code" sortKey="code" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Category" sortKey="category" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Size" sortKey="size" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+                <SortHeader label="Price" sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                <SortHeader label="Stock" sortKey="stock" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="center" />
+                <SortHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="center" />
                 <th className="text-center px-4 py-3 font-medium text-text-secondary">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
+              {displayedProducts.map((product) => (
                 <tr key={product.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
                   <td className="px-4 py-3 font-mono text-xs">
                     <div className="flex items-center gap-2">
