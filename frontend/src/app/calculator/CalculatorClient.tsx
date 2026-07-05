@@ -219,15 +219,15 @@ export function CalculatorClient() {
               </p>
             </div>
 
-            <div className="w-full lg:w-64 shrink-0 bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="w-full lg:w-64 shrink-0 bg-surface-elevated border border-border rounded-xl p-4">
               <div className="flex items-start gap-2.5">
-                <Lightbulb className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                <div className="text-sm text-blue-900">
-                  <p className="font-semibold mb-1">Quick reference</p>
+                <Lightbulb className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
+                <div className="text-sm text-text-secondary">
+                  <p className="font-semibold text-text-primary mb-1">Quick reference</p>
                   <p className="mb-2">
-                    <strong>{effective.dose}mg = {effective.units.toFixed(2)} units</strong> on this vial.
+                    <strong className="text-text-primary">{effective.dose}mg = {effective.units.toFixed(2)} units</strong> on this vial.
                   </p>
-                  <p className="text-blue-800/80">
+                  <p>
                     Every unit on the syringe ≈ {formatMg(effective.mgPerUnit)}mg, so you can work out other doses on the same vial without recalculating.
                   </p>
                 </div>
