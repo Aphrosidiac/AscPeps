@@ -35,7 +35,7 @@ export function ProductCard({ product }: ProductCardProps) {
             <>
               <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-                <span className="text-4xl font-display font-bold text-white/80 mix-blend-difference">
+                <span className="text-4xl font-display font-bold text-white/35 mix-blend-difference">
                   {product.code}
                 </span>
               </div>
