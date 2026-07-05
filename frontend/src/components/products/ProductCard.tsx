@@ -30,9 +30,16 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <Link href={`/products/${product.slug}`} className="group">
       <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md hover:-translate-y-1 transition-all duration-300 p-4">
-        <div className="aspect-square bg-surface-elevated rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+        <div className="aspect-square bg-surface-elevated rounded-lg mb-4 relative flex items-center justify-center overflow-hidden">
           {product.imageUrl ? (
-            <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <>
+              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                <span className="text-4xl font-display font-bold text-white/80 mix-blend-difference">
+                  {product.code}
+                </span>
+              </div>
+            </>
           ) : (
             <div className="text-4xl font-display font-bold text-text-muted/30 select-none">
               {product.code}
