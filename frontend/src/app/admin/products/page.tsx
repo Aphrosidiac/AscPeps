@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, adminUploadImage, getCategories } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
@@ -75,6 +75,33 @@ function SortHeader({
         <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-text-primary' : 'text-text-muted'}`} />
       </button>
     </th>
+  );
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  children,
+  active,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  active: boolean;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`appearance-none pl-3 pr-8 py-2 rounded-lg border text-sm bg-surface cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+          active ? 'border-primary text-text-primary font-medium' : 'border-border text-text-secondary'
+        }`}
+      >
+        {children}
+      </select>
+      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+    </div>
   );
 }
 
@@ -288,46 +315,30 @@ export default function AdminProductsPage() {
           />
         </div>
 
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-        >
+        <FilterSelect value={categoryFilter} onChange={setCategoryFilter} active={categoryFilter !== ''}>
           <option value="">All Categories</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </select>
+        </FilterSelect>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-        >
+        <FilterSelect value={statusFilter} onChange={(v) => setStatusFilter(v as StatusFilter)} active={statusFilter !== 'all'}>
           <option value="all">All Statuses</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
-        </select>
+        </FilterSelect>
 
-        <select
-          value={featuredFilter}
-          onChange={(e) => setFeaturedFilter(e.target.value as FeaturedFilter)}
-          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-        >
+        <FilterSelect value={featuredFilter} onChange={(v) => setFeaturedFilter(v as FeaturedFilter)} active={featuredFilter !== 'all'}>
           <option value="all">Featured &amp; Not Featured</option>
           <option value="featured">Featured Only</option>
           <option value="not-featured">Not Featured</option>
-        </select>
+        </FilterSelect>
 
-        <select
-          value={stockFilter}
-          onChange={(e) => setStockFilter(e.target.value as StockFilter)}
-          className="px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-        >
+        <FilterSelect value={stockFilter} onChange={(v) => setStockFilter(v as StockFilter)} active={stockFilter !== 'all'}>
           <option value="all">All Stock Levels</option>
           <option value="in-stock">In Stock</option>
           <option value="out-of-stock">Out of Stock</option>
-        </select>
+        </FilterSelect>
 
         {filtersActive && (
           <button
