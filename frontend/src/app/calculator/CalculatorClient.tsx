@@ -208,11 +208,9 @@ export function CalculatorClient() {
                   <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Dose</p>
                   <p className="font-display font-bold text-lg">{effective.dose} mg</p>
                 </div>
-                <div>
+                <div className="bg-surface-elevated rounded-lg -mx-2 -mt-2 -mb-2 px-2 pt-2 pb-2">
                   <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Draw To</p>
-                  <p className="font-display font-bold text-lg inline-block bg-primary text-white px-3 py-1 rounded-lg">
-                    {effective.units.toFixed(2)} units
-                  </p>
+                  <p className="font-display font-bold text-lg">{effective.units.toFixed(2)} units</p>
                 </div>
               </div>
               <SyringeGauge units={effective.units} />
