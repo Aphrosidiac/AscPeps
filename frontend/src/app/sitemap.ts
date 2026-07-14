@@ -31,6 +31,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/faq`, lastModified: lastModifiedFromGit('src/app/faq/page.tsx'), changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE_URL}/guide`, lastModified: lastModifiedFromGit('src/app/guide/page.tsx'), changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE_URL}/calculator`, lastModified: lastModifiedFromGit('src/app/calculator/page.tsx'), changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE_URL}/coa`, lastModified: lastModifiedFromGit('src/app/coa/page.tsx'), changeFrequency: 'monthly', priority: 0.6 },
     { url: `${BASE_URL}/shipping`, lastModified: lastModifiedFromGit('src/app/shipping/page.tsx'), changeFrequency: 'monthly', priority: 0.4 },
     { url: `${BASE_URL}/terms`, lastModified: lastModifiedFromGit('src/app/terms/page.tsx'), changeFrequency: 'yearly', priority: 0.2 },
     { url: `${BASE_URL}/privacy`, lastModified: lastModifiedFromGit('src/app/privacy/page.tsx'), changeFrequency: 'yearly', priority: 0.2 },
