@@ -22,6 +22,7 @@ export interface Product {
   coaUrl: string | null;
   featured: boolean;
   active: boolean;
+  updatedAt: string;
   category: {
     name: string;
     slug: string;

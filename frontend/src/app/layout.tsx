@@ -7,7 +7,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { WhatsAppButton } from '@/components/layout/WhatsAppButton';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
-import { getSettingsServer } from '@/lib/server-api';
+import { getSettingsServer, getProductsServer } from '@/lib/server-api';
 import './globals.css';
 
 const inter = Inter({
@@ -106,13 +106,21 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const settings = await getSettingsServer();
+  const [settings, catalog] = await Promise.all([getSettingsServer(), getProductsServer({ limit: 100 })]);
   const announcementEnabled = settings.announcement_enabled === 'true' && !!settings.announcement_text;
+
+  // Real min-max price range for Organization.priceRange, computed from the
+  // live catalog rather than a hardcoded placeholder.
+  const prices = catalog.data.map((p) => p.price);
+  const priceRange =
+    prices.length > 0
+      ? `RM${Math.min(...prices) / 100} - RM${Math.max(...prices) / 100}`
+      : undefined;
 
   return (
     <html lang="en-MY" className={`${inter.variable} ${outfit.variable} h-full antialiased overflow-x-hidden`}>
       <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
-        <OrganizationJsonLd />
+        <OrganizationJsonLd priceRange={priceRange} />
         <WebSiteJsonLd />
         {/* Preconnect to GA4's origins — cuts DNS+TCP+TLS handshake time off
             the critical path for a request that fires on every page load. */}
