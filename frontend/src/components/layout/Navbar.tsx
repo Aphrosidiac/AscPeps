@@ -94,14 +94,14 @@ export function Navbar() {
             {!searchOpen && (
               <button
                 onClick={() => { setSearchOpen(true); setMenuOpen(false); }}
-                className="p-2 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
+                className="p-3 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
                 aria-label="Search"
               >
                 <Search className="w-5 h-5" />
               </button>
             )}
 
-            <Link href="/cart" className="relative p-2 hover:bg-surface-elevated rounded-lg transition-colors">
+            <Link href="/cart" className="relative p-3 hover:bg-surface-elevated rounded-lg transition-colors">
               <ShoppingCart className="w-5 h-5" />
               {itemCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-primary text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-medium">
@@ -113,7 +113,7 @@ export function Navbar() {
             {!searchOpen && (
               <button
                 onClick={() => { setMenuOpen(!menuOpen); }}
-                className="md:hidden p-2 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
+                className="md:hidden p-3 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
               >
                 {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>

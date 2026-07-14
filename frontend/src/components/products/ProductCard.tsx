@@ -65,7 +65,9 @@ export function ProductCard({ product }: ProductCardProps) {
               <Button
                 variant="primary"
                 size="sm"
+                className="min-w-11 min-h-11"
                 onClick={handleAddToCart}
+                aria-label="Add to cart"
               >
                 <ShoppingCart className="w-4 h-4" />
               </Button>
