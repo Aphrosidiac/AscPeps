@@ -114,6 +114,10 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
         <OrganizationJsonLd />
         <WebSiteJsonLd />
+        {/* Preconnect to GA4's origins — cuts DNS+TCP+TLS handshake time off
+            the critical path for a request that fires on every page load. */}
+        <link rel="preconnect" href="https://www.googletagmanager.com" />
+        <link rel="preconnect" href="https://www.google-analytics.com" />
         {/* Google Analytics 4 */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-4PHY1Z9BHD"
