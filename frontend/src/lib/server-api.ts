@@ -1,4 +1,4 @@
-import type { PaginatedResponse, Product } from '@/types';
+import type { Category, PaginatedResponse, Product } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
@@ -21,8 +21,22 @@ export const getProductServer = (slug: string) =>
 export const getSettingsServer = () =>
   getJson<Record<string, string>>(`/api/v1/settings`, {});
 
-export const getProductsServer = (params?: { limit?: number; category?: string }) =>
-  getJson<PaginatedResponse<Product>>(
-    `/api/v1/products?${new URLSearchParams(params as Record<string, string>).toString()}`,
+export const getCategoriesServer = () => getJson<Category[]>(`/api/v1/categories`, []);
+
+export const getProductsServer = (params?: {
+  limit?: number;
+  category?: string;
+  search?: string;
+  featured?: boolean;
+}) => {
+  const query: Record<string, string> = {};
+  if (params?.limit) query.limit = String(params.limit);
+  if (params?.category) query.category = params.category;
+  if (params?.search) query.search = params.search;
+  if (params?.featured) query.featured = 'true';
+
+  return getJson<PaginatedResponse<Product>>(
+    `/api/v1/products?${new URLSearchParams(query).toString()}`,
     { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } }
   );
+};

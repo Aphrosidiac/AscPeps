@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { BreadcrumbJsonLd } from '@/components/JsonLd';
+
+const BASE_URL = 'https://ascendpeptides.my';
 
 export const metadata: Metadata = {
   title: 'Buy Research Peptides Online in Malaysia',
@@ -13,5 +16,15 @@ export const metadata: Metadata = {
 };
 
 export default function ProductsLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', url: BASE_URL },
+          { name: 'Products', url: `${BASE_URL}/products` },
+        ]}
+      />
+      {children}
+    </>
+  );
 }
