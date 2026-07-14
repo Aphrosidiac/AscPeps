@@ -132,7 +132,7 @@ export default async function FaqPage() {
                 {section.items.map((faq) => (
                   <details key={faq.q} className="group bg-surface rounded-xl border border-border">
                     <summary className="flex items-center justify-between px-5 py-4 cursor-pointer font-medium text-sm hover:bg-surface-elevated/50 transition-colors rounded-xl list-none">
-                      {faq.q}
+                      <h3 className="font-medium text-sm">{faq.q}</h3>
                       <span className="text-text-muted ml-4 shrink-0 group-open:rotate-45 transition-transform text-lg">+</span>
                     </summary>
                     <div className="px-5 pb-4 text-sm text-text-secondary leading-relaxed">
