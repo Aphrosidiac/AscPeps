@@ -2,9 +2,18 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
-import { getProductServer, getSettingsServer } from '@/lib/server-api';
+import { getProductServer, getProductsServer, getSettingsServer } from '@/lib/server-api';
 import { formatPrice, getFullProductName } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
+import { ProductRail } from '@/components/products/ProductRail';
+import { ProductReconstitutionSummary } from '@/components/guide/ProductReconstitutionSummary';
+import {
+  getSizeVariants,
+  getRelatedProducts,
+  getPairedSupplies,
+  needsReconstitutionGuide,
+  getRecommendedSolvent,
+} from '@/lib/product-relations';
 import { AddToCartPanel } from './AddToCartPanel';
 
 interface Props {
@@ -16,8 +25,15 @@ export default async function ProductDetailPage({ params }: Props) {
   const product = await getProductServer(slug);
   if (!product) notFound();
 
-  const settings = await getSettingsServer();
+  const [settings, catalog] = await Promise.all([getSettingsServer(), getProductsServer({ limit: 100 })]);
   const shippingFee = settings.shipping_fee || '';
+  const allProducts = catalog.data;
+
+  const sizeVariants = getSizeVariants(product, allProducts);
+  const shownIds = new Set([product.id, ...sizeVariants.map((p) => p.id)]);
+  const relatedProducts = getRelatedProducts(product, allProducts, shownIds);
+  relatedProducts.forEach((p) => shownIds.add(p.id));
+  const pairedSupplies = getPairedSupplies(product, allProducts, shownIds);
 
   let benefits: string[] = [];
   try {
@@ -151,6 +167,32 @@ export default async function ProductDetailPage({ params }: Props) {
           </div>
         </Animate>
       )}
+
+      {needsReconstitutionGuide(product) && (
+        <Animate variant="fadeUp" delay={0.28}>
+          <ProductReconstitutionSummary solvent={getRecommendedSolvent(product)} />
+        </Animate>
+      )}
+
+      <ProductRail
+        title="Available Sizes"
+        subtitle={`Other quantities of ${product.name}`}
+        products={sizeVariants}
+        delay={0.3}
+      />
+
+      <ProductRail
+        title="Frequently Paired With"
+        products={pairedSupplies}
+        delay={0.32}
+      />
+
+      <ProductRail
+        title="Related Products"
+        subtitle={`More from ${product.category.name}`}
+        products={relatedProducts}
+        delay={0.35}
+      />
     </div>
   );
 }
