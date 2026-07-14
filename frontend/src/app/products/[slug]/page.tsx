@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { getProductServer, getSettingsServer } from '@/lib/server-api';
@@ -31,10 +32,16 @@ export default async function ProductDetailPage({ params }: Props) {
 
       <div className="grid md:grid-cols-2 gap-6 md:gap-8">
         <Animate variant="fade" duration={0.6}>
-          <div className="aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
+          <div className="relative aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
             {product.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={product.imageUrl} alt={`${product.name}${product.size ? ` ${product.size}` : ''} — research peptide available in Malaysia`} className="w-full h-full object-cover" />
+              <Image
+                src={product.imageUrl}
+                alt={`${product.name}${product.size ? ` ${product.size}` : ''} — research peptide available in Malaysia`}
+                fill
+                sizes="(min-width: 768px) 50vw, 100vw"
+                priority
+                className="object-cover"
+              />
             ) : (
               <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{product.code}</span>
             )}

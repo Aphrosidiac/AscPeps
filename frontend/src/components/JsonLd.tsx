@@ -1,3 +1,5 @@
+import { absoluteImageUrl } from '@/lib/utils';
+
 function JsonLdScript({ data }: { data: Record<string, unknown> }) {
   return (
     <script
@@ -125,7 +127,10 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
     sku: code,
     mpn: code,
     url: `https://ascendpeptides.my/products/${slug}`,
-    image: imageUrl || 'https://ascendpeptides.my/images/pill-icon-512.png',
+    // Relative uploaded-image paths must be absolute here — JSON-LD has no
+    // base-URL resolution the way <img>/<Image> tags do. Falls back to the
+    // brand icon until every SKU has real photography (tracked separately).
+    image: absoluteImageUrl(imageUrl) || 'https://ascendpeptides.my/images/pill-icon-512.png',
     category,
     brand: {
       '@type': 'Brand',

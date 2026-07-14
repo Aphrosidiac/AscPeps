@@ -8,6 +8,20 @@ export function formatPrice(priceInSen: number): string {
   return `RM${(priceInSen / 100).toFixed(2)}`;
 }
 
+const SITE_URL = 'https://ascendpeptides.my';
+
+/**
+ * Resolve a product/asset image path to an absolute URL. Uploaded product
+ * images are stored as site-relative paths (`/uploads/products/...`), which
+ * resolve fine in <img>/<Image> tags but are invalid in JSON-LD/OG metadata,
+ * which require a fully-qualified URL.
+ */
+export function absoluteImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `${SITE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
 export function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-MY', {
     year: 'numeric',

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types';
 import { formatPrice } from '@/lib/utils';
@@ -30,9 +31,15 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <Link href={`/products/${product.slug}`} className="group">
       <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md hover:-translate-y-1 transition-all duration-300 p-4">
-        <div className="aspect-square bg-surface-elevated rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+        <div className="relative aspect-square bg-surface-elevated rounded-lg mb-4 flex items-center justify-center overflow-hidden">
           {product.imageUrl ? (
-            <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <Image
+              src={product.imageUrl}
+              alt={product.name}
+              fill
+              sizes="(min-width: 1024px) 220px, (min-width: 768px) 25vw, 45vw"
+              className="object-cover group-hover:scale-105 transition-transform duration-300"
+            />
           ) : (
             <div className="text-4xl font-display font-bold text-text-muted/30 select-none">
               {product.code}

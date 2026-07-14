@@ -12,6 +12,13 @@ export const metadata: Metadata = {
     title: 'Buy Research Peptides Online in Malaysia | ASCEND',
     description: 'Browse premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Best prices in Malaysia.',
     url: 'https://ascendpeptides.my/products',
+    images: [{ url: `${BASE_URL}/images/hero-vials.png`, alt: 'ASCEND peptide vials' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Buy Research Peptides Online in Malaysia | ASCEND',
+    description: 'Browse premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Best prices in Malaysia.',
+    images: [`${BASE_URL}/images/hero-vials.png`],
   },
 };
 
