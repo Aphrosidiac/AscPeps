@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { ProductJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
 import { getProductServer } from '@/lib/server-api';
-import { absoluteImageUrl } from '@/lib/utils';
+import { absoluteImageUrl, getFullProductName } from '@/lib/utils';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -17,14 +17,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // Even on failure, never let a product page canonicalize to /products.
   if (!product) return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
 
-  const sizePart = product.size ? ` ${product.size}` : '';
+  const fullName = getFullProductName(product);
   const priceMyr = `RM${(product.price / 100).toFixed(2)}`;
-  const title = `${product.name}${sizePart} — Buy in Malaysia`;
+  const title = `${fullName} — Buy in Malaysia`;
 
   // Build a rich description (target ~120-160 chars). Use the product's own copy as the
   // lead when it's substantial; otherwise compose one with name + locale + price + shipping.
   const lead = product.description?.trim();
-  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${product.name}${sizePart} in Malaysia from ASCEND — lab-grade 99%+ purity, ${priceMyr}, free fast nationwide shipping.`;
+  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${fullName} in Malaysia from ASCEND — lab-grade 99%+ purity, ${priceMyr}, free fast nationwide shipping.`;
   const full = lead && lead.length >= 110 ? lead : composed;
   const description = full.length > 160 ? full.slice(0, 157).trimEnd() + '…' : full;
 
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ],
     alternates: { canonical: `${BASE_URL}/products/${slug}` },
     openGraph: {
-      title: `${product.name}${sizePart} | ASCEND Peptides Malaysia`,
+      title: `${fullName} | ASCEND Peptides Malaysia`,
       description,
       url: `${BASE_URL}/products/${slug}`,
       images: [{ url: socialImage, alt: product.name }],
@@ -55,7 +55,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     twitter: {
       card: 'summary',
-      title: `${product.name}${sizePart} | ASCEND`,
+      title: `${fullName} | ASCEND`,
       description,
       images: [socialImage],
     },
@@ -65,7 +65,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ProductLayout({ params, children }: Props) {
   const { slug } = await params;
   const product = await getProductServer(slug);
-  const fullName = product ? `${product.name}${product.size ? ` ${product.size}` : ''}` : '';
+  const fullName = product ? getFullProductName(product) : '';
 
   return (
     <>
