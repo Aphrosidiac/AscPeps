@@ -226,10 +226,10 @@ Customer → Checkout (WhatsApp) → Order created in DB
 
 ## Deployment (VPS)
 
-Server: `43.134.16.213` (ubuntu)
+Server IP/host is not published here — see your password manager / VPS provider dashboard. User: `ubuntu`.
 
 ```bash
-ssh ubuntu@43.134.16.213
+ssh ubuntu@<server-ip>
 cd /home/ubuntu/ascend && git pull origin main
 
 # Backend (runs unbundled via tsx — no build step)
