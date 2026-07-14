@@ -12,7 +12,10 @@ export async function ProductsGrid({ category, search }: ProductsGridProps) {
 
   const [featuredRes, productsRes] = await Promise.all([
     showFeatured ? getProductsServer({ featured: true, limit: 10 }) : Promise.resolve(null),
-    getProductsServer({ category, search, limit: 50 }),
+    // limit 100: catalog is at 54 products as of 2026-07; headroom above the
+    // previous hardcoded 50 so growth doesn't silently drop products from the
+    // default listing view again.
+    getProductsServer({ category, search, limit: 100 }),
   ]);
 
   const featured = featuredRes?.data ?? [];
