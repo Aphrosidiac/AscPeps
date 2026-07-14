@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ProductJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
 import { getProductServer } from '@/lib/server-api';
+import { absoluteImageUrl } from '@/lib/utils';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -27,6 +28,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const full = lead && lead.length >= 110 ? lead : composed;
   const description = full.length > 160 ? full.slice(0, 157).trimEnd() + '…' : full;
 
+  // Every product page needs a social preview image, even before real
+  // per-product photography exists — fall back to the brand hero image
+  // rather than leaving og:image/twitter:image unset (was previously
+  // undefined for any product without an uploaded photo).
+  const socialImage = absoluteImageUrl(product.imageUrl) || `${BASE_URL}/images/hero-vials.png`;
+
   return {
     title,
     description,
@@ -43,13 +50,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: `${product.name}${sizePart} | ASCEND Peptides Malaysia`,
       description,
       url: `${BASE_URL}/products/${slug}`,
-      images: product.imageUrl ? [{ url: product.imageUrl, alt: product.name }] : undefined,
+      images: [{ url: socialImage, alt: product.name }],
       type: 'website',
     },
     twitter: {
       card: 'summary',
       title: `${product.name}${sizePart} | ASCEND`,
       description,
+      images: [socialImage],
     },
   };
 }
