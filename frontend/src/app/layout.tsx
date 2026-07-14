@@ -7,6 +7,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { WhatsAppButton } from '@/components/layout/WhatsAppButton';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
+import { getSettingsServer } from '@/lib/server-api';
 import './globals.css';
 
 const inter = Inter({
@@ -100,11 +101,14 @@ export const metadata: Metadata = {
   verification: {},
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const settings = await getSettingsServer();
+  const announcementEnabled = settings.announcement_enabled === 'true' && !!settings.announcement_text;
+
   return (
     <html lang="en-MY" className={`${inter.variable} ${outfit.variable} h-full antialiased overflow-x-hidden`}>
       <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
@@ -122,7 +126,7 @@ gtag('js', new Date());
 gtag('config', 'G-4PHY1Z9BHD');`}
         </Script>
         <CartProvider>
-          <AnnouncementBar />
+          <AnnouncementBar enabled={announcementEnabled} text={settings.announcement_text || ''} />
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
