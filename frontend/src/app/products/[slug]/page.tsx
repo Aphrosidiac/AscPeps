@@ -32,13 +32,13 @@ export default async function ProductDetailPage({ params }: Props) {
 
       <div className="grid md:grid-cols-2 gap-6 md:gap-8">
         <Animate variant="fade" duration={0.6}>
-          <div className="relative aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
+          <div className="relative aspect-square max-w-[280px] mx-auto sm:max-w-none sm:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
                 alt={`${getFullProductName(product)} — research peptide available in Malaysia`}
                 fill
-                sizes="(min-width: 768px) 50vw, 100vw"
+                sizes="(min-width: 768px) 50vw, 280px"
                 priority
                 className="object-cover"
               />
