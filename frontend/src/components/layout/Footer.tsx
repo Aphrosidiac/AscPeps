@@ -41,6 +41,7 @@ export function Footer() {
                 <Link href="/faq" className="block text-sm text-neutral-300 hover:text-white transition-colors">FAQ</Link>
                 <Link href="/guide" className="block text-sm text-neutral-300 hover:text-white transition-colors">Peptide Guide</Link>
                 <Link href="/calculator" className="block text-sm text-neutral-300 hover:text-white transition-colors">Reconstitution Calculator</Link>
+                <Link href="/coa" className="block text-sm text-neutral-300 hover:text-white transition-colors">Certificates of Analysis</Link>
                 <Link href="/shipping" className="block text-sm text-neutral-300 hover:text-white transition-colors">Shipping Policy</Link>
               </div>
             </div>

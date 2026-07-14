@@ -40,6 +40,7 @@ export async function GET() {
     `- [Shop all peptides](${BASE_URL}/products): Full catalog with live MYR pricing and stock`,
     `- [Reconstitution dose calculator](${BASE_URL}/calculator): Interactive BAC water / concentration calculator`,
     `- [Peptide guide](${BASE_URL}/guide): Reconstitution, storage and handling`,
+    `- [Certificates of Analysis](${BASE_URL}/coa): Third-party testing methodology and how to request a batch COA`,
     `- [FAQ](${BASE_URL}/faq): Purity, COA, shipping, ordering and payment questions`,
     `- [Shipping policy](${BASE_URL}/shipping): Nationwide delivery times and coverage`,
     `- [About ASCEND](${BASE_URL}/about): Who we are`,
