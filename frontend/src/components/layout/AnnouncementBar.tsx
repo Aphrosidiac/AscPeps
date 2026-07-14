@@ -1,28 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
-import { getSettings } from '@/lib/api';
 
-export function AnnouncementBar() {
-  const [text, setText] = useState('');
-  const [show, setShow] = useState(false);
+interface AnnouncementBarProps {
+  enabled: boolean;
+  text: string;
+}
+
+export function AnnouncementBar({ enabled, text }: AnnouncementBarProps) {
   const [dismissed, setDismissed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    getSettings().then((s) => {
-      if (s.announcement_enabled === 'true' && s.announcement_text) {
-        setText(s.announcement_text);
-        setShow(true);
-      }
-    }).catch(() => {}).finally(() => setLoaded(true));
-  }, []);
-
-  if (!loaded || !show || dismissed) return null;
+  if (!enabled || dismissed) return null;
 
   return (
-    <div className="bg-primary text-white text-center text-xs sm:text-sm py-2 px-8 relative">
+    <div className="bg-primary text-white text-center text-sm sm:text-base py-2 px-8 relative">
       <p className="font-medium">{text}</p>
       <button
         onClick={() => setDismissed(true)}
