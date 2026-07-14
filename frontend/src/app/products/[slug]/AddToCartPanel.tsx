@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
+import { getFullProductName } from '@/lib/utils';
 
 interface Props {
   productId: string;
@@ -24,7 +25,7 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
     addItem({
       productId,
       code,
-      name: `${name}${size ? ` ${size}` : ''}`,
+      name: getFullProductName({ name, size }),
       size,
       price,
       quantity,

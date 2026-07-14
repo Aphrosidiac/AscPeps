@@ -8,6 +8,18 @@ export function formatPrice(priceInSen: number): string {
   return `RM${(priceInSen / 100).toFixed(2)}`;
 }
 
+/**
+ * Build a product's full display name (name + size), without duplicating the
+ * size when it's already embedded in the base `name` field — some catalog
+ * entries store e.g. name="Glutathione 1200mg" AND size="1200mg" separately,
+ * which naive concatenation renders as "Glutathione 1200mg 1200mg".
+ */
+export function getFullProductName(product: { name: string; size: string | null }): string {
+  if (!product.size) return product.name;
+  const alreadyIncluded = product.name.toLowerCase().includes(product.size.trim().toLowerCase());
+  return alreadyIncluded ? product.name : `${product.name} ${product.size}`;
+}
+
 const SITE_URL = 'https://ascendpeptides.my';
 
 /**

@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { getProductServer, getSettingsServer } from '@/lib/server-api';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, getFullProductName } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 import { AddToCartPanel } from './AddToCartPanel';
 
@@ -36,7 +36,7 @@ export default async function ProductDetailPage({ params }: Props) {
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
-                alt={`${product.name}${product.size ? ` ${product.size}` : ''} — research peptide available in Malaysia`}
+                alt={`${getFullProductName(product)} — research peptide available in Malaysia`}
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
                 priority
@@ -53,7 +53,9 @@ export default async function ProductDetailPage({ params }: Props) {
             <div>
               <p className="text-sm text-text-muted font-medium uppercase tracking-wider mb-1">{product.category.name}</p>
               <h1 className="font-display text-3xl font-bold">{product.name}</h1>
-              {product.size && <p className="text-text-secondary mt-1">{product.size}</p>}
+              {product.size && !product.name.toLowerCase().includes(product.size.trim().toLowerCase()) && (
+                <p className="text-text-secondary mt-1">{product.size}</p>
+              )}
             </div>
 
             <p className="font-display text-3xl font-bold">{formatPrice(product.price)}</p>
@@ -143,7 +145,7 @@ export default async function ProductDetailPage({ params }: Props) {
               className="inline-flex items-center gap-2 bg-surface-elevated hover:bg-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
             >
               <ShieldCheck className="w-4 h-4" />
-              Batch COA — {product.name} {product.size}
+              Batch COA — {getFullProductName(product)}
               <ExternalLink className="w-3.5 h-3.5 text-text-muted" />
             </a>
           </div>

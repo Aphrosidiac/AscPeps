@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, getFullProductName } from '@/lib/utils';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 
@@ -20,7 +20,7 @@ export function ProductCard({ product }: ProductCardProps) {
     addItem({
       productId: product.id,
       code: product.code,
-      name: `${product.name}${product.size ? ` ${product.size}` : ''}`,
+      name: getFullProductName(product),
       size: product.size,
       price: product.price,
       quantity: 1,
@@ -54,7 +54,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <h3 className="font-display font-semibold text-text-primary group-hover:text-primary-light">
             {product.name}
           </h3>
-          {product.size && (
+          {product.size && !product.name.toLowerCase().includes(product.size.trim().toLowerCase()) && (
             <p className="text-sm text-text-secondary">{product.size}</p>
           )}
           <div className="flex items-center justify-between pt-2">
