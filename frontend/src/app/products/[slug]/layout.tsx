@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { ProductJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
-import { getProductServer } from '@/lib/server-api';
+import { getProductServer, getSettingsServer } from '@/lib/server-api';
 import { absoluteImageUrl, getFullProductName } from '@/lib/utils';
 
 const BASE_URL = 'https://ascendpeptides.my';
@@ -12,7 +12,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getProductServer(slug);
+  const [product, settings] = await Promise.all([getProductServer(slug), getSettingsServer()]);
 
   // Even on failure, never let a product page canonicalize to /products.
   if (!product) return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
@@ -21,10 +21,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const priceMyr = `RM${(product.price / 100).toFixed(2)}`;
   const title = `${fullName} — Buy in Malaysia`;
 
+  const shippingFee = settings.shipping_fee || '';
+  const shippingClause = !shippingFee || shippingFee === '0' ? 'free fast nationwide shipping' : 'fast nationwide shipping';
+
   // Build a rich description (target ~120-160 chars). Use the product's own copy as the
   // lead when it's substantial; otherwise compose one with name + locale + price + shipping.
   const lead = product.description?.trim();
-  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${fullName} in Malaysia from ASCEND — lab-grade 99%+ purity, ${priceMyr}, free fast nationwide shipping.`;
+  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${fullName} in Malaysia from ASCEND — lab-grade 99%+ purity, ${priceMyr}, ${shippingClause}.`;
   const full = lead && lead.length >= 110 ? lead : composed;
   const description = full.length > 160 ? full.slice(0, 157).trimEnd() + '…' : full;
 
@@ -64,7 +67,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductLayout({ params, children }: Props) {
   const { slug } = await params;
-  const product = await getProductServer(slug);
+  const [product, settings] = await Promise.all([getProductServer(slug), getSettingsServer()]);
   const fullName = product ? getFullProductName(product) : '';
 
   return (
@@ -81,6 +84,8 @@ export default async function ProductLayout({ params, children }: Props) {
             inStock={(product.stock ?? 0) > 0}
             category={product.category?.name || 'Research Peptides'}
             size={product.size}
+            updatedAt={product.updatedAt}
+            shippingFee={settings.shipping_fee || ''}
           />
           <BreadcrumbJsonLd
             items={[

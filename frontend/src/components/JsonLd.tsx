@@ -9,7 +9,15 @@ function JsonLdScript({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-export function OrganizationJsonLd() {
+interface OrganizationJsonLdProps {
+  // Real "RM10 - RM420"-style range computed from live catalog min/max.
+  // Previously hardcoded to the bare string "RM", which conveys no actual
+  // range — omit the field entirely rather than ship a malformed value if
+  // the caller doesn't have current price data.
+  priceRange?: string;
+}
+
+export function OrganizationJsonLd({ priceRange }: OrganizationJsonLdProps = {}) {
   const data = {
     '@context': 'https://schema.org',
     '@type': ['Organization', 'OnlineStore'],
@@ -29,7 +37,7 @@ export function OrganizationJsonLd() {
     },
     currenciesAccepted: 'MYR',
     paymentAccepted: 'Bank Transfer, FPX, Credit Card, Debit Card',
-    priceRange: 'RM',
+    ...(priceRange ? { priceRange } : {}),
     address: {
       '@type': 'PostalAddress',
       addressCountry: 'MY',
@@ -110,14 +118,36 @@ interface ProductJsonLdProps {
   inStock: boolean;
   category: string;
   size?: string | null;
+  updatedAt: string;
+  // Flat shipping fee in whole MYR (e.g. "10.0"), or empty/"0" for free —
+  // mirrors the settings.shipping_fee value already used on-page.
+  shippingFee: string;
 }
 
-export function ProductJsonLd({ name, description, price, code, slug, imageUrl, inStock, category, size }: ProductJsonLdProps) {
+export function ProductJsonLd({
+  name,
+  description,
+  price,
+  code,
+  slug,
+  imageUrl,
+  inStock,
+  category,
+  size,
+  updatedAt,
+  shippingFee,
+}: ProductJsonLdProps) {
   const additionalProperty = [
     ...(size ? [{ '@type': 'PropertyValue', name: 'Size', value: size }] : []),
     { '@type': 'PropertyValue', name: 'Intended Use', value: 'Laboratory and research use only' },
     { '@type': 'PropertyValue', name: 'Third-party tested', value: 'Yes — Certificate of Analysis available' },
   ];
+
+  const freeShipping = !shippingFee || shippingFee === '0';
+
+  // Google-recommended (not required) price-freshness signal — a rolling
+  // 90-day window from render time, refreshed on every ISR revalidation.
+  const priceValidUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const data = {
     '@context': 'https://schema.org',
@@ -132,6 +162,7 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
     // brand icon until every SKU has real photography (tracked separately).
     image: absoluteImageUrl(imageUrl) || 'https://ascendpeptides.my/images/pill-icon-512.png',
     category,
+    dateModified: updatedAt,
     brand: {
       '@type': 'Brand',
       name: 'ASCEND',
@@ -141,6 +172,7 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
       '@type': 'Offer',
       price: (price / 100).toFixed(2),
       priceCurrency: 'MYR',
+      priceValidUntil,
       itemCondition: 'https://schema.org/NewCondition',
       availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       url: `https://ascendpeptides.my/products/${slug}`,
@@ -148,6 +180,46 @@ export function ProductJsonLd({ name, description, price, code, slug, imageUrl, 
       seller: {
         '@type': 'Organization',
         name: 'ASCEND',
+      },
+      // Matches Terms & Conditions §7: no returns/refunds once shipped,
+      // except transit damage or wrong item — that's a fulfillment-error
+      // guarantee, not a general buyer's-remorse return window, so
+      // NotPermitted is the accurate category rather than a fabricated
+      // return-days figure.
+      hasMerchantReturnPolicy: {
+        '@type': 'MerchantReturnPolicy',
+        applicableCountry: 'MY',
+        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+      },
+      shippingDetails: {
+        '@type': 'OfferShippingDetails',
+        shippingRate: {
+          '@type': 'MonetaryAmount',
+          value: freeShipping ? '0' : shippingFee,
+          currency: 'MYR',
+        },
+        shippingDestination: {
+          '@type': 'DefinedRegion',
+          addressCountry: 'MY',
+        },
+        deliveryTime: {
+          '@type': 'ShippingDeliveryTime',
+          handlingTime: {
+            '@type': 'QuantitativeValue',
+            minValue: 1,
+            maxValue: 2,
+            unitCode: 'DAY',
+          },
+          // Sitewide conservative range covering all three documented
+          // regional bands (Klang Valley 1-2d, other Peninsular 2-4d,
+          // Sabah/Sarawak 3-7d) — see /shipping.
+          transitTime: {
+            '@type': 'QuantitativeValue',
+            minValue: 1,
+            maxValue: 7,
+            unitCode: 'DAY',
+          },
+        },
       },
     },
   };
