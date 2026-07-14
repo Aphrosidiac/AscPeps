@@ -1,13 +1,28 @@
 import type { Metadata } from 'next';
+import { getSettingsServer } from '@/lib/server-api';
 
-export const metadata: Metadata = {
-  title: 'Shipping Policy',
-  description: 'ASCEND shipping policy for research peptides in Malaysia. Free shipping, delivery times, packaging details, and tracking information.',
-  keywords: ['peptide shipping malaysia', 'free shipping peptides', 'peptide delivery malaysia'],
-  alternates: { canonical: 'https://ascendpeptides.my/shipping' },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettingsServer();
+  const shippingFee = settings.shipping_fee || '';
+  const freeShipping = !shippingFee || shippingFee === '0';
 
-export default function ShippingPage() {
+  return {
+    title: 'Shipping Policy',
+    description: freeShipping
+      ? 'ASCEND shipping policy for research peptides in Malaysia. Free shipping, delivery times, packaging details, and tracking information.'
+      : 'ASCEND shipping policy for research peptides in Malaysia. Delivery times, shipping fees, packaging details, and tracking information.',
+    keywords: freeShipping
+      ? ['peptide shipping malaysia', 'free shipping peptides', 'peptide delivery malaysia']
+      : ['peptide shipping malaysia', 'peptide delivery malaysia'],
+    alternates: { canonical: 'https://ascendpeptides.my/shipping' },
+  };
+}
+
+export default async function ShippingPage() {
+  const settings = await getSettingsServer();
+  const shippingFee = settings.shipping_fee || '';
+  const freeShipping = !shippingFee || shippingFee === '0';
+
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       <h1 className="font-display text-3xl font-bold mb-2">Shipping Policy</h1>
@@ -21,7 +36,11 @@ export default function ShippingPage() {
 
         <h2>Shipping Fees</h2>
         <p>
-          We offer <strong>free shipping</strong> on all orders within Malaysia. No minimum order required.
+          {freeShipping ? (
+            <>We offer <strong>free shipping</strong> on all orders within Malaysia. No minimum order required.</>
+          ) : (
+            <>A flat shipping fee of <strong>RM{shippingFee}</strong> applies to all orders within Malaysia. No minimum order required.</>
+          )}
         </p>
 
         <h2>Processing Time</h2>
