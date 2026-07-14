@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { notifyIndexNow, productUrl } from '../../utils/indexnow.js';
 
 const productSchema = z.object({
   code: z.string().min(1),
@@ -47,14 +48,22 @@ export async function adminListProducts(fastify: FastifyInstance, query: Record<
 
 export async function adminCreateProduct(fastify: FastifyInstance, body: unknown) {
   const data = productSchema.parse(body);
-  return fastify.prisma.product.create({ data });
+  const product = await fastify.prisma.product.create({ data });
+  notifyIndexNow([productUrl(product.slug)]);
+  return product;
 }
 
 export async function adminUpdateProduct(fastify: FastifyInstance, id: string, body: unknown) {
   const data = productSchema.partial().parse(body);
-  return fastify.prisma.product.update({ where: { id }, data });
+  const product = await fastify.prisma.product.update({ where: { id }, data });
+  notifyIndexNow([productUrl(product.slug)]);
+  return product;
 }
 
 export async function adminDeleteProduct(fastify: FastifyInstance, id: string) {
-  return fastify.prisma.product.update({ where: { id }, data: { active: false } });
+  const product = await fastify.prisma.product.update({ where: { id }, data: { active: false } });
+  // Product no longer resolves (active:false 404s), which is itself a
+  // useful signal for IndexNow-consuming crawlers to re-check the URL.
+  notifyIndexNow([productUrl(product.slug)]);
+  return product;
 }
