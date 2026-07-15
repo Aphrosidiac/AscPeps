@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
-import { formatPrice, getFullProductName } from '@/lib/utils';
+import { formatPrice, getFullProductName, getEffectivePrice, isSaleActive } from '@/lib/utils';
+import type { Product } from '@/types';
 
 interface Props {
   productId: string;
@@ -15,15 +16,21 @@ interface Props {
   price: number;
   imageUrl: string | null;
   stock: number;
+  addOns?: Product[];
 }
 
-export function AddToCartPanel({ productId, code, name, size, price, imageUrl, stock }: Props) {
+export function AddToCartPanel({ productId, code, name, size, price, imageUrl, stock, addOns }: Props) {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [inlineButtonVisible, setInlineButtonVisible] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>([]);
   const inlineButtonRef = useRef<HTMLDivElement>(null);
   const { addItem } = useCart();
+
+  function toggleAddOn(id: string) {
+    setSelectedAddOnIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -46,12 +53,56 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
       quantity,
       imageUrl,
     });
+    for (const addOn of addOns ?? []) {
+      if (!selectedAddOnIds.includes(addOn.id)) continue;
+      addItem({
+        productId: addOn.id,
+        code: addOn.code,
+        name: getFullProductName(addOn),
+        size: addOn.size,
+        price: getEffectivePrice(addOn),
+        quantity: 1,
+        imageUrl: addOn.imageUrl,
+      });
+    }
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   return (
     <>
+      {addOns && addOns.length > 0 && (
+        <div className="pt-4 space-y-2">
+          <p className="text-sm font-medium text-text-secondary">Add-ons</p>
+          <div className="space-y-1.5">
+            {addOns.map((addOn) => (
+              <label
+                key={addOn.id}
+                htmlFor={`addon-${addOn.id}`}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-elevated/50 cursor-pointer"
+              >
+                <span className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    id={`addon-${addOn.id}`}
+                    checked={selectedAddOnIds.includes(addOn.id)}
+                    onChange={() => toggleAddOn(addOn.id)}
+                    className="rounded accent-primary"
+                  />
+                  {getFullProductName(addOn)}
+                </span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-sm font-medium">{formatPrice(getEffectivePrice(addOn))}</span>
+                  {isSaleActive(addOn) && (
+                    <span className="text-xs text-text-muted line-through">{formatPrice(addOn.price)}</span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div ref={inlineButtonRef} className="flex items-center gap-4 pt-4">
         <div className="flex items-center border border-border rounded-lg">
           <button

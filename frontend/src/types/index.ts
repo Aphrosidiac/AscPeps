@@ -30,6 +30,9 @@ export interface Product {
     name: string;
     slug: string;
   };
+  // Present on the public product-detail response; absent from list/admin
+  // responses that don't include it.
+  addOns?: Product[];
 }
 
 export interface CartItem {
