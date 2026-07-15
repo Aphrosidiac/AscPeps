@@ -14,6 +14,9 @@ export interface Product {
   categoryId: string;
   size: string | null;
   price: number;
+  salePrice: number | null;
+  saleStartsAt: string | null;
+  saleEndsAt: string | null;
   description: string | null;
   benefits: string | null;
   dosageInfo: string | null;

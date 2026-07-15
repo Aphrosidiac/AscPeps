@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Check, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { getProductServer, getProductsServer, getSettingsServer } from '@/lib/server-api';
-import { formatPrice, getFullProductName } from '@/lib/utils';
+import { formatPrice, getFullProductName, getEffectivePrice, isSaleActive } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 import { ProductRail } from '@/components/products/ProductRail';
 import { ProductReconstitutionSummary } from '@/components/guide/ProductReconstitutionSummary';
@@ -40,6 +40,9 @@ export default async function ProductDetailPage({ params }: Props) {
     if (product.benefits) benefits = JSON.parse(product.benefits);
   } catch {}
 
+  const onSale = isSaleActive(product);
+  const effectivePrice = getEffectivePrice(product);
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Link href="/products" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-8 transition-colors">
@@ -74,7 +77,12 @@ export default async function ProductDetailPage({ params }: Props) {
               )}
             </div>
 
-            <p className="font-display text-3xl font-bold">{formatPrice(product.price)}</p>
+            <div className="flex items-baseline gap-2.5">
+              <p className="font-display text-3xl font-bold">{formatPrice(effectivePrice)}</p>
+              {onSale && (
+                <p className="text-lg text-text-muted line-through">{formatPrice(product.price)}</p>
+              )}
+            </div>
 
             {product.description && (
               <p className="text-text-secondary leading-relaxed">{product.description}</p>
@@ -99,7 +107,7 @@ export default async function ProductDetailPage({ params }: Props) {
               code={product.code}
               name={product.name}
               size={product.size}
-              price={product.price}
+              price={effectivePrice}
               imageUrl={product.imageUrl}
               stock={product.stock}
             />

@@ -19,6 +19,9 @@ interface ProductFormData {
   categoryId: string;
   size: string;
   price: string;
+  salePrice: string;
+  saleStartsAt: string;
+  saleEndsAt: string;
   description: string;
   benefits: string;
   dosageInfo: string;
@@ -33,7 +36,8 @@ const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRF
 
 const emptyForm: ProductFormData = {
   code: '', name: '', slug: '', categoryId: '', size: '',
-  price: '', description: '', benefits: '', dosageInfo: '',
+  price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '',
+  description: '', benefits: '', dosageInfo: '',
   stock: '0', imageUrl: '', coaUrl: DEFAULT_COA, featured: false, active: true,
 };
 
@@ -197,6 +201,9 @@ export default function AdminProductsPage() {
       categoryId: product.categoryId,
       size: product.size || '',
       price: String(product.price / 100),
+      salePrice: product.salePrice != null ? String(product.salePrice / 100) : '',
+      saleStartsAt: product.saleStartsAt ? product.saleStartsAt.slice(0, 16) : '',
+      saleEndsAt: product.saleEndsAt ? product.saleEndsAt.slice(0, 16) : '',
       description: product.description || '',
       benefits: benefits.join('\n'),
       dosageInfo: product.dosageInfo || '',
@@ -223,6 +230,23 @@ export default function AdminProductsPage() {
       return;
     }
 
+    let salePriceInSen: number | null = null;
+    if (form.salePrice.trim()) {
+      salePriceInSen = Math.round(parseFloat(form.salePrice) * 100);
+      if (isNaN(salePriceInSen) || salePriceInSen < 0) {
+        setFormError('Invalid sale price');
+        setSaving(false);
+        return;
+      }
+    }
+    const saleStartsAtIso = form.saleStartsAt ? new Date(form.saleStartsAt).toISOString() : null;
+    const saleEndsAtIso = form.saleEndsAt ? new Date(form.saleEndsAt).toISOString() : null;
+    if (saleStartsAtIso && saleEndsAtIso && saleStartsAtIso > saleEndsAtIso) {
+      setFormError('Sale end date must be on or after the start date');
+      setSaving(false);
+      return;
+    }
+
     const benefitsArray = form.benefits.split('\n').map(b => b.trim()).filter(Boolean);
 
     const payload = {
@@ -232,6 +256,9 @@ export default function AdminProductsPage() {
       categoryId: form.categoryId,
       size: form.size || undefined,
       price: priceInSen,
+      salePrice: salePriceInSen,
+      saleStartsAt: saleStartsAtIso,
+      saleEndsAt: saleEndsAtIso,
       description: form.description || undefined,
       benefits: benefitsArray.length > 0 ? JSON.stringify(benefitsArray) : undefined,
       dosageInfo: form.dosageInfo || undefined,
@@ -463,6 +490,37 @@ export default function AdminProductsPage() {
                 />
                 <Input label="Price (RM)" id="price" type="number" step="0.01" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} placeholder="e.g. 100.00" required />
                 <Input label="Stock" id="stock" type="number" min="0" value={form.stock} onChange={(e) => updateField('stock', e.target.value)} />
+              </div>
+
+              {/* Sale pricing — all three optional; a sale is only active when
+                  salePrice + both dates are set and "now" falls within the
+                  window (see isSaleActive in lib/utils.ts). Leave blank for
+                  no sale. */}
+              <div className="grid sm:grid-cols-3 gap-4">
+                <Input
+                  label="Sale Price (RM, optional)"
+                  id="salePrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.salePrice}
+                  onChange={(e) => updateField('salePrice', e.target.value)}
+                  placeholder="Leave blank for no sale"
+                />
+                <Input
+                  label="Sale Starts"
+                  id="saleStartsAt"
+                  type="datetime-local"
+                  value={form.saleStartsAt}
+                  onChange={(e) => updateField('saleStartsAt', e.target.value)}
+                />
+                <Input
+                  label="Sale Ends"
+                  id="saleEndsAt"
+                  type="datetime-local"
+                  value={form.saleEndsAt}
+                  onChange={(e) => updateField('saleEndsAt', e.target.value)}
+                />
               </div>
 
               {/* Image Upload */}

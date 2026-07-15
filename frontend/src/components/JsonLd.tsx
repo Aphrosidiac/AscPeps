@@ -1,4 +1,4 @@
-import { absoluteImageUrl } from '@/lib/utils';
+import { absoluteImageUrl, isSaleActive, getEffectivePrice } from '@/lib/utils';
 
 function JsonLdScript({ data }: { data: Record<string, unknown> }) {
   return (
@@ -112,6 +112,9 @@ interface ProductJsonLdProps {
   name: string;
   description: string;
   price: number;
+  salePrice?: number | null;
+  saleStartsAt?: string | null;
+  saleEndsAt?: string | null;
   code: string;
   slug: string;
   imageUrl?: string | null;
@@ -128,6 +131,9 @@ export function ProductJsonLd({
   name,
   description,
   price,
+  salePrice,
+  saleStartsAt,
+  saleEndsAt,
   code,
   slug,
   imageUrl,
@@ -145,15 +151,17 @@ export function ProductJsonLd({
 
   const freeShipping = !shippingFee || shippingFee === '0';
 
-  // Google-recommended (not required) price-freshness signals — a rolling
-  // 90-day window from render time, refreshed on every ISR revalidation.
-  // validFrom uses render time rather than the product's dateModified: the
-  // latter reflects the whole row (any field), not specifically the price,
-  // so tying it to a price-freshness field would risk implying a price
-  // change that didn't happen whenever an unrelated field (e.g. benefits
-  // copy) is edited.
-  const validFrom = new Date().toISOString().slice(0, 10);
-  const priceValidUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // validFrom/priceValidUntil are Google's sale-duration markers (per their
+  // own structured-data docs: validFrom "marks when a sale price becomes
+  // active", priceValidUntil "marks when the sale price stops applying") —
+  // not a general price-freshness signal. Both are recommended, not
+  // required, so they're only emitted when a real sale is genuinely active,
+  // using the real stored dates. No sale → omitted entirely rather than
+  // fabricated, per Google's own guidance that omission has no eligibility
+  // cost.
+  const saleProduct = { price, salePrice: salePrice ?? null, saleStartsAt: saleStartsAt ?? null, saleEndsAt: saleEndsAt ?? null };
+  const onSale = isSaleActive(saleProduct);
+  const effectivePrice = getEffectivePrice(saleProduct);
 
   const data = {
     '@context': 'https://schema.org',
@@ -176,10 +184,10 @@ export function ProductJsonLd({
     additionalProperty,
     offers: {
       '@type': 'Offer',
-      price: (price / 100).toFixed(2),
+      price: (effectivePrice / 100).toFixed(2),
       priceCurrency: 'MYR',
-      validFrom,
-      priceValidUntil,
+      // Real sale window (see comment above) — omitted entirely when not on sale.
+      ...(onSale ? { validFrom: saleStartsAt, priceValidUntil: saleEndsAt } : {}),
       itemCondition: 'https://schema.org/NewCondition',
       availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       url: `https://ascendpeptides.my/products/${slug}`,
