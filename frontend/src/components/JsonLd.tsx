@@ -145,8 +145,14 @@ export function ProductJsonLd({
 
   const freeShipping = !shippingFee || shippingFee === '0';
 
-  // Google-recommended (not required) price-freshness signal — a rolling
+  // Google-recommended (not required) price-freshness signals — a rolling
   // 90-day window from render time, refreshed on every ISR revalidation.
+  // validFrom uses render time rather than the product's dateModified: the
+  // latter reflects the whole row (any field), not specifically the price,
+  // so tying it to a price-freshness field would risk implying a price
+  // change that didn't happen whenever an unrelated field (e.g. benefits
+  // copy) is edited.
+  const validFrom = new Date().toISOString().slice(0, 10);
   const priceValidUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const data = {
@@ -172,6 +178,7 @@ export function ProductJsonLd({
       '@type': 'Offer',
       price: (price / 100).toFixed(2),
       priceCurrency: 'MYR',
+      validFrom,
       priceValidUntil,
       itemCondition: 'https://schema.org/NewCondition',
       availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
