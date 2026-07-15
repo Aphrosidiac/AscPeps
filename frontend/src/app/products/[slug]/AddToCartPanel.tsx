@@ -54,7 +54,7 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
       imageUrl,
     });
     for (const addOn of addOns ?? []) {
-      if (!selectedAddOnIds.includes(addOn.id)) continue;
+      if (!selectedAddOnIds.includes(addOn.id) || addOn.stock === 0) continue;
       addItem({
         productId: addOn.id,
         code: addOn.code,
@@ -75,30 +75,42 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
         <div className="pt-4 space-y-2">
           <p className="text-sm font-medium text-text-secondary">Add-ons</p>
           <div className="space-y-1.5">
-            {addOns.map((addOn) => (
-              <label
-                key={addOn.id}
-                htmlFor={`addon-${addOn.id}`}
-                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-elevated/50 cursor-pointer"
-              >
-                <span className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    id={`addon-${addOn.id}`}
-                    checked={selectedAddOnIds.includes(addOn.id)}
-                    onChange={() => toggleAddOn(addOn.id)}
-                    className="rounded accent-primary"
-                  />
-                  {getFullProductName(addOn)}
-                </span>
-                <span className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-sm font-medium">{formatPrice(getEffectivePrice(addOn))}</span>
-                  {isSaleActive(addOn) && (
-                    <span className="text-xs text-text-muted line-through">{formatPrice(addOn.price)}</span>
-                  )}
-                </span>
-              </label>
-            ))}
+            {addOns.map((addOn) => {
+              const outOfStock = addOn.stock === 0;
+              return (
+                <label
+                  key={addOn.id}
+                  htmlFor={`addon-${addOn.id}`}
+                  className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border bg-surface ${
+                    outOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-elevated/50 cursor-pointer'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      id={`addon-${addOn.id}`}
+                      checked={selectedAddOnIds.includes(addOn.id)}
+                      onChange={() => toggleAddOn(addOn.id)}
+                      disabled={outOfStock}
+                      className="rounded accent-primary"
+                    />
+                    {getFullProductName(addOn)}
+                  </span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {outOfStock ? (
+                      <span className="text-xs text-text-muted">Out of stock</span>
+                    ) : (
+                      <>
+                        <span className="text-sm font-medium">{formatPrice(getEffectivePrice(addOn))}</span>
+                        {isSaleActive(addOn) && (
+                          <span className="text-xs text-text-muted line-through">{formatPrice(addOn.price)}</span>
+                        )}
+                      </>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </div>
       )}

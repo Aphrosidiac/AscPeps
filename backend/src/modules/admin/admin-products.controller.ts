@@ -21,11 +21,19 @@ const productObjectSchema = z.object({
   description: z.string().optional(),
   benefits: z.string().optional(),
   dosageInfo: z.string().optional(),
-  stock: z.number().int().min(0).default(0),
+  // `.optional()`, NOT `.default()` — this schema is shared between create
+  // and (via `.partial()`) update. A Zod `.default()` fires even when
+  // `.partial()` makes the key optional, so a partial update that simply
+  // omits `stock` (e.g. the admin table's inline-active-toggle, which only
+  // sends `{ active }`) would silently reset it to 0 — verified this
+  // actually happens, not theoretical. Omitted here, Prisma's own
+  // `@default(...)` on the column fills in the value on create; on update
+  // an omitted/undefined field is left untouched, which is what we want.
+  stock: z.number().int().min(0).optional(),
   imageUrl: z.string().nullable().optional(),
   coaUrl: z.string().nullable().optional(),
-  featured: z.boolean().default(false),
-  active: z.boolean().default(true),
+  featured: z.boolean().optional(),
+  active: z.boolean().optional(),
   // Full replacement set of add-on product ids for this product. Undefined
   // leaves existing add-ons untouched (partial update); [] clears them.
   addOnIds: z.array(z.string()).optional(),
@@ -92,6 +100,7 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
     if (addOnIds && addOnIds.length > 0) {
       await tx.productAddOn.createMany({
         data: addOnIds.map((addOnId) => ({ productId: created.id, addOnId })),
+        skipDuplicates: true,
       });
     }
     return created;
@@ -115,6 +124,7 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
       if (addOnIds.length > 0) {
         await tx.productAddOn.createMany({
           data: addOnIds.map((addOnId) => ({ productId: id, addOnId })),
+          skipDuplicates: true,
         });
       }
     }
