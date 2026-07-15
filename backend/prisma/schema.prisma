@@ -22,23 +22,31 @@ model Category {
 }
 
 model Product {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  name        String
-  slug        String    @unique
-  categoryId  String
-  size        String?
-  price       Int
-  description String?
-  benefits    String?
-  dosageInfo  String?
-  stock       Int       @default(0)
-  imageUrl    String?
-  coaUrl      String?
-  featured    Boolean   @default(false)
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  code         String    @unique
+  name         String
+  slug         String    @unique
+  categoryId   String
+  size         String?
+  price        Int
+  // Genuine time-limited sale — null salePrice means "not on sale". A sale is
+  // only considered active when salePrice is set AND the current time falls
+  // within [saleStartsAt, saleEndsAt]. See backend/src/utils/product-pricing.ts
+  // (and its frontend counterpart) for the single source of truth on this
+  // logic — order creation, storefront display, and JSON-LD must all agree.
+  salePrice    Int?
+  saleStartsAt DateTime?
+  saleEndsAt   DateTime?
+  description  String?
+  benefits     String?
+  dosageInfo   String?
+  stock        Int       @default(0)
+  imageUrl     String?
+  coaUrl       String?
+  featured     Boolean   @default(false)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   category   Category    @relation(fields: [categoryId], references: [id])
   orderItems OrderItem[]

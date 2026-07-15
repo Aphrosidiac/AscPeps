@@ -6,6 +6,7 @@ import { getActiveGateway } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
+import { getEffectivePrice } from '../../utils/product-pricing.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -70,6 +71,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
+    // Captured once so subtotal and each stored unitPrice agree on whether a
+    // sale is active, even in the unlikely event a sale boundary is crossed
+    // mid-transaction.
+    const now = new Date();
 
     for (const item of data.items) {
       const product = productMap.get(item.productId)!;
@@ -80,7 +85,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 
     const subtotal = data.items.reduce((sum, item) => {
       const product = productMap.get(item.productId)!;
-      return sum + product.price * item.quantity;
+      return sum + getEffectivePrice(product, now) * item.quantity;
     }, 0);
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
@@ -138,7 +143,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
           create: data.items.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
-            unitPrice: productMap.get(item.productId)!.price,
+            unitPrice: getEffectivePrice(productMap.get(item.productId)!, now),
           })),
         },
       },

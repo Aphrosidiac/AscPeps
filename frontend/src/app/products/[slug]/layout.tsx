@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { ProductJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
 import { getProductServer, getSettingsServer } from '@/lib/server-api';
-import { absoluteImageUrl, getFullProductName } from '@/lib/utils';
+import { absoluteImageUrl, getFullProductName, getEffectivePrice } from '@/lib/utils';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!product) return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
 
   const fullName = getFullProductName(product);
-  const priceMyr = `RM${(product.price / 100).toFixed(2)}`;
+  const priceMyr = `RM${(getEffectivePrice(product) / 100).toFixed(2)}`;
   const title = `${fullName} — Buy in Malaysia`;
 
   const shippingFee = settings.shipping_fee || '';
@@ -78,6 +78,9 @@ export default async function ProductLayout({ params, children }: Props) {
             name={fullName}
             description={product.description || `Premium ${product.name} research peptide from ASCEND Malaysia.`}
             price={product.price}
+            salePrice={product.salePrice}
+            saleStartsAt={product.saleStartsAt}
+            saleEndsAt={product.saleEndsAt}
             code={product.code}
             slug={product.slug}
             imageUrl={product.imageUrl}

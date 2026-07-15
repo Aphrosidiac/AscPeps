@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types';
-import { formatPrice, getFullProductName } from '@/lib/utils';
+import { formatPrice, getFullProductName, getEffectivePrice, isSaleActive } from '@/lib/utils';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 
@@ -14,6 +14,8 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCart();
+  const onSale = isSaleActive(product);
+  const effectivePrice = getEffectivePrice(product);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ export function ProductCard({ product }: ProductCardProps) {
       code: product.code,
       name: getFullProductName(product),
       size: product.size,
-      price: product.price,
+      price: effectivePrice,
       quantity: 1,
       imageUrl: product.imageUrl,
     });
@@ -58,7 +60,12 @@ export function ProductCard({ product }: ProductCardProps) {
             <p className="text-sm text-text-secondary">{product.size}</p>
           )}
           <div className="flex items-center justify-between pt-2">
-            <span className="font-display font-bold text-lg">{formatPrice(product.price)}</span>
+            <span className="flex items-baseline gap-1.5">
+              <span className="font-display font-bold text-lg">{formatPrice(effectivePrice)}</span>
+              {onSale && (
+                <span className="text-xs text-text-muted line-through">{formatPrice(product.price)}</span>
+              )}
+            </span>
             {product.stock === 0 ? (
               <span className="text-xs font-semibold text-danger">Out of stock</span>
             ) : (

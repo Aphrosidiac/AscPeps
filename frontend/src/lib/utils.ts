@@ -34,6 +34,30 @@ export function absoluteImageUrl(url: string | null | undefined): string | null 
   return `${SITE_URL}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
+// Single source of truth for "is this product on sale, and at what price" on
+// the frontend — storefront display and JSON-LD generation. A mirrored copy
+// of this logic lives in backend/src/utils/product-pricing.ts, which is what
+// actually determines the price charged at checkout. Keep both in sync — a
+// sale that looks active here but isn't recognized there (or vice versa)
+// would show a price the customer isn't actually charged.
+export interface SalePricing {
+  price: number;
+  salePrice: number | null;
+  saleStartsAt: string | null;
+  saleEndsAt: string | null;
+}
+
+export function isSaleActive(product: SalePricing, now: Date = new Date()): boolean {
+  if (product.salePrice == null || !product.saleStartsAt || !product.saleEndsAt) return false;
+  const start = new Date(product.saleStartsAt);
+  const end = new Date(product.saleEndsAt);
+  return now >= start && now <= end;
+}
+
+export function getEffectivePrice(product: SalePricing, now: Date = new Date()): number {
+  return isSaleActive(product, now) ? product.salePrice! : product.price;
+}
+
 export function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-MY', {
     year: 'numeric',
