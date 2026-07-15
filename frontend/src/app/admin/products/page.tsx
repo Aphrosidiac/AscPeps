@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
+import { CheckboxList } from '@/components/ui/CheckboxList';
 import type { Product, Category } from '@/types';
 
 interface ProductFormData {
@@ -30,6 +31,7 @@ interface ProductFormData {
   coaUrl: string;
   featured: boolean;
   active: boolean;
+  addOnIds: string[];
 }
 
 const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRFFNYY';
@@ -39,6 +41,7 @@ const emptyForm: ProductFormData = {
   price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '',
   description: '', benefits: '', dosageInfo: '',
   stock: '0', imageUrl: '', coaUrl: DEFAULT_COA, featured: false, active: true,
+  addOnIds: [],
 };
 
 type SortKey = 'code' | 'name' | 'category' | 'size' | 'price' | 'stock' | 'status';
@@ -113,6 +116,9 @@ export default function AdminProductsPage() {
   const { token } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  // Full, unfiltered catalog for the add-ons picker — kept separate from
+  // `products` because that list is narrowed by the table's search box.
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -141,6 +147,10 @@ export default function AdminProductsPage() {
 
   useEffect(() => { load(); }, [token, search]);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!token) return;
+    adminGetProducts(token, { limit: '100' }).then((r) => setAllProducts(r.data)).catch(() => {});
+  }, [token]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -212,6 +222,7 @@ export default function AdminProductsPage() {
       coaUrl: product.coaUrl || DEFAULT_COA,
       featured: product.featured,
       active: product.active,
+      addOnIds: product.addOns?.map((p) => p.id) || [],
     });
     setFormError('');
     setShowModal(true);
@@ -267,6 +278,7 @@ export default function AdminProductsPage() {
       coaUrl: form.coaUrl || null,
       featured: form.featured,
       active: form.active,
+      addOnIds: form.addOnIds,
     };
 
     try {
@@ -568,6 +580,17 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
               </div>
+
+              <CheckboxList
+                label="Add-Ons (shown on this product's page)"
+                items={allProducts
+                  .filter((p) => p.id !== editingId)
+                  .map((p) => ({ id: p.id, label: `${p.name}${p.size ? ` — ${p.size}` : ''}` }))}
+                selectedIds={form.addOnIds}
+                onChange={(addOnIds) => setForm((f) => ({ ...f, addOnIds }))}
+                searchPlaceholder="Search products..."
+                emptyMessage="No other products available."
+              />
 
               <Input
                 label="Certificate of Analysis URL"

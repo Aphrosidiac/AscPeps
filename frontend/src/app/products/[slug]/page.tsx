@@ -110,6 +110,7 @@ export default async function ProductDetailPage({ params }: Props) {
               price={effectivePrice}
               imageUrl={product.imageUrl}
               stock={product.stock}
+              addOns={product.addOns}
             />
 
             {product.stock === 0 && <p className="text-danger font-medium">Out of stock</p>}

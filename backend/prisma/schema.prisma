@@ -50,10 +50,29 @@ model Product {
 
   category   Category    @relation(fields: [categoryId], references: [id])
   orderItems OrderItem[]
+  // Add-ons this product offers on its own page (e.g. BAC Water for a
+  // lyophilized peptide) — directional, not reciprocal. See ProductAddOn.
+  addOns            ProductAddOn[] @relation("ProductAddOns")
+  offeredAsAddOnFor ProductAddOn[] @relation("AddOnOfProduct")
 
   @@index([categoryId])
   @@index([active])
   @@map("products")
+}
+
+// Explicit join model for a directional Product-to-Product add-on relation
+// (Prisma requires this for self-relations). productId = the product whose
+// page shows the add-on; addOnId = the product being offered.
+model ProductAddOn {
+  id        String @id @default(cuid())
+  productId String
+  addOnId   String
+
+  product Product @relation("ProductAddOns", fields: [productId], references: [id], onDelete: Cascade)
+  addOn   Product @relation("AddOnOfProduct", fields: [addOnId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, addOnId])
+  @@map("product_add_ons")
 }
 
 enum OrderStatus {

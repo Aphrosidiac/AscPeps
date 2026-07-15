@@ -39,12 +39,19 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
 export async function getProduct(fastify: FastifyInstance, slug: string) {
   const product = await fastify.prisma.product.findUnique({
     where: { slug, active: true },
-    include: { category: { select: { name: true, slug: true } } },
+    include: {
+      category: { select: { name: true, slug: true } },
+      addOns: {
+        where: { addOn: { active: true } },
+        include: { addOn: { include: { category: { select: { name: true, slug: true } } } } },
+      },
+    },
   });
 
   if (!product) {
     throw { statusCode: 404, message: 'Product not found' };
   }
 
-  return product;
+  // Flatten the join rows — the frontend just wants a plain Product[].
+  return { ...product, addOns: product.addOns.map((row) => row.addOn) };
 }

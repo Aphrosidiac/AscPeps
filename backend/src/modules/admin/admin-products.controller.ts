@@ -26,6 +26,9 @@ const productObjectSchema = z.object({
   coaUrl: z.string().nullable().optional(),
   featured: z.boolean().default(false),
   active: z.boolean().default(true),
+  // Full replacement set of add-on product ids for this product. Undefined
+  // leaves existing add-ons untouched (partial update); [] clears them.
+  addOnIds: z.array(z.string()).optional(),
 });
 
 function checkSaleDateOrder(data: { saleStartsAt?: string | null; saleEndsAt?: string | null }, ctx: z.RefinementCtx) {
@@ -63,7 +66,10 @@ export async function adminListProducts(fastify: FastifyInstance, query: Record<
   const [products, total] = await Promise.all([
     fastify.prisma.product.findMany({
       where,
-      include: { category: { select: { name: true, slug: true } } },
+      include: {
+        category: { select: { name: true, slug: true } },
+        addOns: { include: { addOn: true } },
+      },
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -71,19 +77,50 @@ export async function adminListProducts(fastify: FastifyInstance, query: Record<
     fastify.prisma.product.count({ where }),
   ]);
 
-  return paginatedResponse(products, total, page, limit);
+  // Flatten the join rows — the admin form just wants a plain Product[],
+  // same shape as the public getProduct response.
+  const flattened = products.map((p) => ({ ...p, addOns: p.addOns.map((row) => row.addOn) }));
+
+  return paginatedResponse(flattened, total, page, limit);
 }
 
 export async function adminCreateProduct(fastify: FastifyInstance, body: unknown) {
-  const data = createProductSchema.parse(body);
-  const product = await fastify.prisma.product.create({ data: toSaleDates(data) });
+  const { addOnIds, ...data } = createProductSchema.parse(body);
+
+  const product = await fastify.prisma.$transaction(async (tx) => {
+    const created = await tx.product.create({ data: toSaleDates(data) });
+    if (addOnIds && addOnIds.length > 0) {
+      await tx.productAddOn.createMany({
+        data: addOnIds.map((addOnId) => ({ productId: created.id, addOnId })),
+      });
+    }
+    return created;
+  });
+
   notifyIndexNow([productUrl(product.slug)]);
   return product;
 }
 
 export async function adminUpdateProduct(fastify: FastifyInstance, id: string, body: unknown) {
-  const data = updateProductSchema.parse(body);
-  const product = await fastify.prisma.product.update({ where: { id }, data: toSaleDates(data) });
+  const { addOnIds, ...data } = updateProductSchema.parse(body);
+
+  if (addOnIds?.includes(id)) {
+    throw { statusCode: 400, message: 'A product cannot be its own add-on' };
+  }
+
+  const product = await fastify.prisma.$transaction(async (tx) => {
+    const updated = await tx.product.update({ where: { id }, data: toSaleDates(data) });
+    if (addOnIds !== undefined) {
+      await tx.productAddOn.deleteMany({ where: { productId: id } });
+      if (addOnIds.length > 0) {
+        await tx.productAddOn.createMany({
+          data: addOnIds.map((addOnId) => ({ productId: id, addOnId })),
+        });
+      }
+    }
+    return updated;
+  });
+
   notifyIndexNow([productUrl(product.slug)]);
   return product;
 }
