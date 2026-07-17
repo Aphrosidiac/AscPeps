@@ -22,24 +22,31 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
   );
   const [saving, setSaving] = useState(false);
 
-  const persist = async (next: Product[]) => {
-    setOrder(next);
-    setSaving(true);
-    try {
-      await Promise.all(next.map((p, i) => adminUpdateProduct(token, p.id, { sortOrder: i })));
-    } finally {
-      setSaving(false);
-      onSaved();
-    }
-  };
-
+  // Arrows only reorder the local list — nothing is saved until "Save" is
+  // clicked. Persisting per-click meant every rapid click fired its own
+  // batch of PATCH requests against whatever `order` was at that instant,
+  // and out-of-order responses could leave the saved state not matching
+  // what was on screen. One explicit save of the final order avoids that
+  // entirely — there's only ever one write.
   const move = (index: number, direction: -1 | 1) => {
-    if (saving) return;
     const target = index + direction;
     if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[index], next[target]] = [next[target], next[index]];
-    persist(next);
+    setOrder((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await Promise.all(order.map((p, i) => adminUpdateProduct(token, p.id, { sortOrder: i })));
+      onSaved();
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -72,7 +79,7 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => move(i, -1)}
-                    disabled={i === 0 || saving}
+                    disabled={i === 0}
                     aria-label="Move up"
                     className="p-1.5 rounded hover:bg-surface-elevated disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
@@ -80,7 +87,7 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
                   </button>
                   <button
                     onClick={() => move(i, 1)}
-                    disabled={i === order.length - 1 || saving}
+                    disabled={i === order.length - 1}
                     aria-label="Move down"
                     className="p-1.5 rounded hover:bg-surface-elevated disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
@@ -93,7 +100,10 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
         </div>
 
         <div className="flex justify-end gap-3 p-6 border-t border-border">
-          <Button type="button" onClick={onClose}>Done</Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="button" onClick={handleSave} disabled={saving || order.length === 0}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
         </div>
       </div>
     </div>
