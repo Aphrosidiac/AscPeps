@@ -37,7 +37,19 @@ const fastify = Fastify({
 });
 
 const corsOrigins = [env.FRONTEND_URL, ...env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)];
-await fastify.register(cors, { origin: corsOrigins, credentials: true });
+// @fastify/cors defaults `methods` to 'GET,HEAD,POST' — it does NOT infer
+// allowed methods from registered routes. Left implicit, this silently
+// blocks every PATCH/DELETE admin action (edit/deactivate/delete a
+// product, order, discount, etc.) for any genuinely cross-origin caller.
+// Harmless in production today only because nginx reverse-proxies the API
+// on the same origin as the frontend, so real browser traffic there never
+// triggers a CORS preflight at all — but it breaks local dev (frontend and
+// backend on different ports) and any future different-origin deployment.
+await fastify.register(cors, {
+  origin: corsOrigins,
+  credentials: true,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+});
 await fastify.register(helmet, { contentSecurityPolicy: false });
 await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute', keyGenerator: (req) => req.ip });
 await fastify.register(formbody);
