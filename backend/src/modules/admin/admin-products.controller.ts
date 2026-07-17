@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { notifyIndexNow, productUrl } from '../../utils/indexnow.js';
+import { notifyRevalidate } from '../../utils/revalidate.js';
 
 // Kept as a plain ZodObject (not wrapped in .superRefine) so .partial() below
 // still works — ZodEffects (what .superRefine returns) doesn't have .partial().
@@ -112,6 +113,7 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
   });
 
   notifyIndexNow([productUrl(product.slug)]);
+  notifyRevalidate();
   return product;
 }
 
@@ -137,6 +139,7 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
   });
 
   notifyIndexNow([productUrl(product.slug)]);
+  notifyRevalidate();
   return product;
 }
 
@@ -145,5 +148,6 @@ export async function adminDeleteProduct(fastify: FastifyInstance, id: string) {
   // Product no longer resolves (active:false 404s), which is itself a
   // useful signal for IndexNow-consuming crawlers to re-check the URL.
   notifyIndexNow([productUrl(product.slug)]);
+  notifyRevalidate();
   return product;
 }
