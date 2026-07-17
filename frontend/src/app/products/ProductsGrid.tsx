@@ -1,5 +1,6 @@
 import { getProductsServer } from '@/lib/server-api';
 import { ProductCard } from '@/components/products/ProductCard';
+import { FeaturedRail } from '@/components/products/FeaturedRail';
 import { Animate, Stagger } from '@/components/ui/Animate';
 
 interface ProductsGridProps {
@@ -29,13 +30,7 @@ export async function ProductsGrid({ category, search }: ProductsGridProps) {
             <div className="flex items-center gap-2 mb-4">
               <h2 className="font-display font-semibold text-lg">Featured</h2>
             </div>
-            <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
-              {featured.map((product) => (
-                <div key={product.id} className="w-[200px] sm:w-[220px] shrink-0 snap-start">
-                  <ProductCard product={product} />
-                </div>
-              ))}
-            </div>
+            <FeaturedRail products={featured} />
           </div>
         </Animate>
       )}
