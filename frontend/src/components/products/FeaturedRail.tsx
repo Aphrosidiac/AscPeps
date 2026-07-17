@@ -40,16 +40,6 @@ export function FeaturedRail({ products }: Props) {
     };
   }, [updateArrows]);
 
-  // Touch and trackpad already scroll this rail natively (they send real
-  // deltaX). A plain mouse wheel only ever sends vertical deltaY with
-  // nothing to translate it into horizontal movement, so on Windows with a
-  // regular mouse the rail is simply unscrollable — translate it here.
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-    e.preventDefault();
-    scrollRef.current?.scrollBy({ left: e.deltaY });
-  };
-
   const scrollByPage = (direction: 1 | -1) => {
     const el = scrollRef.current;
     if (!el) return;
@@ -71,7 +61,6 @@ export function FeaturedRail({ products }: Props) {
 
       <div
         ref={scrollRef}
-        onWheel={handleWheel}
         className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide"
       >
         {products.map((product) => (
