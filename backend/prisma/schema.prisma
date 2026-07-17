@@ -44,6 +44,10 @@ model Product {
   imageUrl     String?
   coaUrl       String?
   featured     Boolean   @default(false)
+  // Manual curation order among featured products (lower = shown first).
+  // Ties (the common case — everything starts at 0) fall back to
+  // createdAt desc, so this is inert until an admin actually reorders.
+  sortOrder    Int       @default(0)
   active       Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

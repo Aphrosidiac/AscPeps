@@ -24,6 +24,7 @@ export interface Product {
   imageUrl: string | null;
   coaUrl: string | null;
   featured: boolean;
+  sortOrder: number;
   active: boolean;
   updatedAt: string;
   category: {

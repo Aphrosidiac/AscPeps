@@ -26,7 +26,7 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
     fastify.prisma.product.findMany({
       where,
       include: { category: { select: { name: true, slug: true } } },
-      orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
       skip,
       take: limit,
     }),
