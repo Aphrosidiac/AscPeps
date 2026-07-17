@@ -16,6 +16,10 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().default(''),
+  // Shared with the frontend's /api/revalidate route. Optional so a missing
+  // secret degrades to "storefront stays cached until the next full deploy
+  // or the 1hr window elapses" rather than crashing product saves.
+  REVALIDATE_SECRET: z.string().optional(),
   WHATSAPP_NUMBER: z.string().default('601161092723'),
   BILLPLZ_API_KEY: z.string().optional(),
   BILLPLZ_COLLECTION_ID: z.string().optional(),

@@ -7,7 +7,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
-    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 3600 } });
+    // Tagged so the backend can trigger immediate invalidation via
+    // /api/revalidate after an admin save — see backend/src/utils/revalidate.ts.
+    // revalidate: 3600 stays as the fallback ceiling if that ping never arrives.
+    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 3600, tags: ['products'] } });
     if (!res.ok) return fallback;
     return (await res.json()) as T;
   } catch {
