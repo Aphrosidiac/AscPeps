@@ -116,9 +116,6 @@ export default function AdminProductsPage() {
   const { token } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  // Full, unfiltered catalog for the add-ons picker — kept separate from
-  // `products` because that list is narrowed by the table's search box.
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -135,22 +132,21 @@ export default function AdminProductsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
+  // Fetched once, unfiltered — the catalog is small enough (~55 products)
+  // that search/category/status/featured/stock filters all run client-side
+  // in `displayedProducts` below rather than round-tripping to the server.
+  // (Previously this page also fetched the same list a second time just for
+  // the add-ons picker; that's gone too — the picker uses `products` directly.)
   const load = () => {
     if (!token) return;
-    const params: Record<string, string> = { limit: '100' };
-    if (search) params.search = search;
-    adminGetProducts(token, params)
+    adminGetProducts(token, { limit: '100' })
       .then((r) => setProducts(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [token, search]);
+  useEffect(() => { load(); }, [token]);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
-  useEffect(() => {
-    if (!token) return;
-    adminGetProducts(token, { limit: '100' }).then((r) => setAllProducts(r.data)).catch(() => {});
-  }, [token]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -172,6 +168,10 @@ export default function AdminProductsPage() {
 
   const displayedProducts = useMemo(() => {
     let list = products;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((p) => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q));
+    }
     if (categoryFilter) list = list.filter((p) => p.categoryId === categoryFilter);
     if (statusFilter !== 'all') list = list.filter((p) => (statusFilter === 'active' ? p.active : !p.active));
     if (featuredFilter !== 'all') list = list.filter((p) => (featuredFilter === 'featured' ? p.featured : !p.featured));
@@ -191,7 +191,7 @@ export default function AdminProductsPage() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [products, categoryFilter, statusFilter, featuredFilter, stockFilter, sortKey, sortDir]);
+  }, [products, search, categoryFilter, statusFilter, featuredFilter, stockFilter, sortKey, sortDir]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -583,7 +583,7 @@ export default function AdminProductsPage() {
 
               <CheckboxList
                 label="Add-Ons (shown on this product's page)"
-                items={allProducts
+                items={products
                   .filter((p) => p.id !== editingId)
                   .map((p) => ({ id: p.id, label: `${p.name}${p.size ? ` — ${p.size}` : ''}` }))}
                 selectedIds={form.addOnIds}
