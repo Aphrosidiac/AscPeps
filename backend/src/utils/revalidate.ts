@@ -12,7 +12,8 @@ import { env } from '../config/env.js';
 export function notifyRevalidate(): void {
   if (!env.REVALIDATE_SECRET) return;
 
-  fetch(`${env.FRONTEND_URL}/api/revalidate`, {
+  const base = env.FRONTEND_INTERNAL_URL || env.FRONTEND_URL;
+  fetch(`${base}/api/revalidate`, {
     method: 'POST',
     headers: { 'x-revalidate-secret': env.REVALIDATE_SECRET },
   }).catch(() => {

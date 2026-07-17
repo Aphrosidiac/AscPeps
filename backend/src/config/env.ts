@@ -16,6 +16,13 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().default(''),
+  // In production, nginx proxies the ENTIRE /api/ prefix on FRONTEND_URL's
+  // public domain to this backend — so a request to `${FRONTEND_URL}/api/revalidate`
+  // never reaches the Next.js server at all, it loops back here as a 404.
+  // This must point directly at the Next.js process's own internal port,
+  // bypassing nginx. Falls back to FRONTEND_URL for local dev, where the
+  // frontend dev server IS already reachable directly (no nginx in front).
+  FRONTEND_INTERNAL_URL: z.string().optional(),
   // Shared with the frontend's /api/revalidate route. Optional so a missing
   // secret degrades to "storefront stays cached until the next full deploy
   // or the 1hr window elapses" rather than crashing product saves.
