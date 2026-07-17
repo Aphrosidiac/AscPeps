@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { CheckboxList } from '@/components/ui/CheckboxList';
+import { FeaturedOrderModal } from './FeaturedOrderModal';
 import type { Product, Category } from '@/types';
 
 interface ProductFormData {
@@ -119,6 +120,7 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showFeaturedOrder, setShowFeaturedOrder] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -339,7 +341,10 @@ export default function AdminProductsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-display text-2xl font-bold">Products</h1>
-        <Button onClick={openCreate}><Plus className="w-4 h-4" /> Add Product</Button>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={() => setShowFeaturedOrder(true)}><ArrowUpDown className="w-4 h-4" /> Manage Featured Order</Button>
+          <Button onClick={openCreate}><Plus className="w-4 h-4" /> Add Product</Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -660,6 +665,15 @@ export default function AdminProductsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {showFeaturedOrder && token && (
+        <FeaturedOrderModal
+          products={products}
+          token={token}
+          onClose={() => setShowFeaturedOrder(false)}
+          onSaved={load}
+        />
       )}
     </div>
   );

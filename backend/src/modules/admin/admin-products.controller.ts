@@ -34,6 +34,11 @@ const productObjectSchema = z.object({
   coaUrl: z.string().nullable().optional(),
   featured: z.boolean().optional(),
   active: z.boolean().optional(),
+  // Same `.optional()`-not-`.default()` rule as `stock` above — this is
+  // written/read by the Featured Order panel's frequent, narrow updates
+  // (just `{ sortOrder }`), so it's exactly the field most exposed to the
+  // silent-reset footgun if this were ever changed to `.default(0)`.
+  sortOrder: z.number().int().optional(),
   // Full replacement set of add-on product ids for this product. Undefined
   // leaves existing add-ons untouched (partial update); [] clears them.
   addOnIds: z.array(z.string()).optional(),
