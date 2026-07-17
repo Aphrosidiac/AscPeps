@@ -1,0 +1,88 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { Product } from '@/types';
+import { ProductCard } from './ProductCard';
+
+interface Props {
+  products: Product[];
+}
+
+export function FeaturedRail({ products }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateArrows = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    updateArrows();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateArrows, { passive: true });
+    window.addEventListener('resize', updateArrows);
+    return () => {
+      el.removeEventListener('scroll', updateArrows);
+      window.removeEventListener('resize', updateArrows);
+    };
+  }, [updateArrows]);
+
+  // Touch and trackpad already scroll this rail natively (they send real
+  // deltaX). A plain mouse wheel only ever sends vertical deltaY with
+  // nothing to translate it into horizontal movement, so on Windows with a
+  // regular mouse the rail is simply unscrollable — translate it here.
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    scrollRef.current?.scrollBy({ left: e.deltaY });
+  };
+
+  const scrollByPage = (direction: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const cardWidth = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 220;
+    el.scrollBy({ left: direction * (cardWidth + 16) * 2, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="relative">
+      {canScrollLeft && (
+        <button
+          onClick={() => scrollByPage(-1)}
+          aria-label="Scroll left"
+          className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 items-center justify-center w-9 h-9 rounded-full bg-surface border border-border shadow-md hover:bg-surface-elevated cursor-pointer"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      )}
+
+      <div
+        ref={scrollRef}
+        onWheel={handleWheel}
+        className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide"
+      >
+        {products.map((product) => (
+          <div key={product.id} className="w-[200px] sm:w-[220px] shrink-0 snap-start">
+            <ProductCard product={product} />
+          </div>
+        ))}
+      </div>
+
+      {canScrollRight && (
+        <button
+          onClick={() => scrollByPage(1)}
+          aria-label="Scroll right"
+          className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 items-center justify-center w-9 h-9 rounded-full bg-surface border border-border shadow-md hover:bg-surface-elevated cursor-pointer"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
