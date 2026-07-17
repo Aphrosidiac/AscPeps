@@ -14,12 +14,12 @@ export function FeaturedRail({ products }: Props) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // A tolerance, not an exact 0/max comparison: with scroll-snap + smooth
-  // scrollBy, scrollLeft routinely settles a fraction of a pixel short of
-  // its true rest value (sub-pixel layout), and once at rest no further
-  // 'scroll' event fires to correct it — an exact >0 check left the left
-  // arrow stuck visible at the very start of the rail.
-  const EDGE_TOLERANCE = 4;
+  // A tolerance, not an exact 0/max comparison: the rail's -mx-4 px-4 bleed
+  // (16px) is itself the CSS scroll-snap alignment target for the first/last
+  // card, so "fully scrolled to the start" rests at scrollLeft: 16, not 0 —
+  // confirmed by inspecting the live computed style. An exact >0 check left
+  // the left arrow stuck visible even at the true start of the rail.
+  const EDGE_TOLERANCE = 20;
 
   const updateArrows = useCallback(() => {
     const el = scrollRef.current;
