@@ -14,11 +14,18 @@ export function FeaturedRail({ products }: Props) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
+  // A tolerance, not an exact 0/max comparison: with scroll-snap + smooth
+  // scrollBy, scrollLeft routinely settles a fraction of a pixel short of
+  // its true rest value (sub-pixel layout), and once at rest no further
+  // 'scroll' event fires to correct it — an exact >0 check left the left
+  // arrow stuck visible at the very start of the rail.
+  const EDGE_TOLERANCE = 4;
+
   const updateArrows = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 0);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    setCanScrollLeft(el.scrollLeft > EDGE_TOLERANCE);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - EDGE_TOLERANCE);
   }, []);
 
   useEffect(() => {
