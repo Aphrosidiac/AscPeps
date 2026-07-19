@@ -48,6 +48,12 @@ const productObjectSchema = z.object({
   coaUrl: z.string().nullable().optional(),
   featured: z.boolean().optional(),
   active: z.boolean().optional(),
+  // Hides this product from the public catalog/listing and its own product
+  // page — but unlike `active`, it stays fully eligible to be used as
+  // another product's add-on. For supply items meant only to be bundled,
+  // never browsed/purchased on their own (see schema.prisma for why this
+  // can't just reuse `active`).
+  addOnOnly: z.boolean().optional(),
   // Same `.optional()`-not-`.default()` rule as the variant schema above —
   // written/read by the Featured Order panel's frequent, narrow updates
   // (just `{ sortOrder }`), so it's exactly the field most exposed to the

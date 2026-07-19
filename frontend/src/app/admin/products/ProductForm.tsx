@@ -43,6 +43,7 @@ interface ProductFormData {
   coaUrl: string;
   featured: boolean;
   active: boolean;
+  addOnOnly: boolean;
   addOnIds: string[];
   // Per-selected-add-on config, keyed by addOnId (a variant id) — required/quantity
   // only meaningful for ids also present in addOnIds.
@@ -63,7 +64,7 @@ function newVariant(): VariantFormData {
 const emptyForm: ProductFormData = {
   name: '', slug: '', categoryId: '',
   description: '', benefits: '', dosageInfo: '', coaUrl: DEFAULT_COA,
-  featured: false, active: true,
+  featured: false, active: true, addOnOnly: false,
   addOnIds: [], addOnConfig: {}, addOnReminder: '',
   variants: [newVariant()],
 };
@@ -244,6 +245,7 @@ export function ProductForm({ productId }: { productId?: string }) {
           coaUrl: found.coaUrl || DEFAULT_COA,
           featured: found.featured,
           active: found.active,
+          addOnOnly: found.addOnOnly,
           addOnIds: found.addOns?.map((a) => a.id) || [],
           addOnConfig: Object.fromEntries(
             (found.addOns || []).map((a) => [a.id, { required: a.addOnRequired, quantity: String(a.addOnQuantity) }])
@@ -369,6 +371,7 @@ export function ProductForm({ productId }: { productId?: string }) {
       coaUrl: form.coaUrl || null,
       featured: form.featured,
       active: form.active,
+      addOnOnly: form.addOnOnly,
       addOns: form.addOnIds.map((addOnId) => {
         const config = form.addOnConfig[addOnId];
         const quantity = parseInt(config?.quantity ?? '1');
@@ -454,6 +457,10 @@ export function ProductForm({ productId }: { productId?: string }) {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.active} onChange={(e) => updateField('active', e.target.checked)} className="rounded" />
                   <span className="text-sm font-medium text-text-secondary">Active (visible on store)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer" title="Hides this from the catalog and its own product page, but keeps it usable as another product's required/optional add-on">
+                  <input type="checkbox" checked={form.addOnOnly} onChange={(e) => updateField('addOnOnly', e.target.checked)} className="rounded" />
+                  <span className="text-sm font-medium text-text-secondary">Add-on only (hide from storefront)</span>
                 </label>
               </div>
             </div>

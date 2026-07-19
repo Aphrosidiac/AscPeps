@@ -38,6 +38,14 @@ model Product {
   // createdAt desc, so this is inert until an admin actually reorders.
   sortOrder     Int      @default(0)
   active        Boolean  @default(true)
+  // True for supply items that should only ever be sold bundled as another
+  // product's add-on (e.g. a free syringe/alcohol swab included with a
+  // peptide) — never independently browsable/purchasable on their own
+  // storefront page. Deliberately separate from `active`: `active` still
+  // gates whether this is allowed to appear as an add-on at all (see
+  // products.controller.ts), so setting active:false to hide it from the
+  // catalog would also silently break it as an add-on everywhere it's used.
+  addOnOnly     Boolean  @default(false)
   // Plain-text nudge shown near Add to Cart on the storefront (e.g. "This
   // peptide needs Bacteriostatic Water to reconstitute") — informational
   // only, distinct from the required/forced ProductAddOn mechanism below.

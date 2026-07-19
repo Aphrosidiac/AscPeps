@@ -5,7 +5,10 @@ import { flattenAddOn, ADDON_INCLUDE } from '../../utils/product-addons.js';
 export async function listProducts(fastify: FastifyInstance, query: Record<string, string>) {
   const { page, limit, skip } = getPaginationParams(query);
 
-  const where: Record<string, unknown> = { active: true };
+  // addOnOnly products (e.g. a free syringe bundled with a peptide) never
+  // appear in the general catalog — only ever reachable as another
+  // product's add-on, never their own browsable listing.
+  const where: Record<string, unknown> = { active: true, addOnOnly: false };
 
   if (query.featured === 'true') {
     where.featured = true;
@@ -41,8 +44,10 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
 }
 
 export async function getProduct(fastify: FastifyInstance, slug: string) {
+  // addOnOnly products have no reachable page of their own, even by direct
+  // URL — same reasoning as listProducts above.
   const product = await fastify.prisma.product.findUnique({
-    where: { slug, active: true },
+    where: { slug, active: true, addOnOnly: false },
     include: {
       category: { select: { name: true, slug: true } },
       variants: { where: { active: true }, orderBy: { price: 'asc' } },
