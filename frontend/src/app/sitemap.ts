@@ -1,9 +1,9 @@
 import type { MetadataRoute } from 'next';
 import { execSync } from 'child_process';
 import path from 'path';
+import { getProductsServer } from '@/lib/server-api';
 
 const BASE_URL = 'https://ascendpeptides.my';
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 
 // Real per-file last-commit date instead of build/request time (was
 // `new Date()` on every static entry — all 10 shared one identical
@@ -40,11 +40,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const res = await fetch(`${API_URL}/api/v1/products?limit=100`, { next: { revalidate: 3600 } });
-    const json = await res.json();
-    const products = json.data || [];
+    const { data: products } = await getProductsServer({ limit: 100 });
 
-    const productPages: MetadataRoute.Sitemap = products.map((p: { slug: string; updatedAt: string }) => ({
+    const productPages: MetadataRoute.Sitemap = products.map((p) => ({
       url: `${BASE_URL}/products/${p.slug}`,
       lastModified: new Date(p.updatedAt),
       changeFrequency: 'weekly' as const,

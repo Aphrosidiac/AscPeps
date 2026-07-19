@@ -1,22 +1,15 @@
-import type { Product } from '@/types';
 import { formatPrice } from '@/lib/utils';
+import { getProductsServer, getSettingsServer } from '@/lib/server-api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 const BASE_URL = 'https://ascendpeptides.my';
 
 export const revalidate = 3600;
 
 export async function GET() {
-  let products: Product[] = [];
-  let settings: Record<string, string> = {};
-  try {
-    const [productsRes, settingsRes] = await Promise.all([
-      fetch(`${API_URL}/api/v1/products?limit=100`, { next: { revalidate: 3600 } }),
-      fetch(`${API_URL}/api/v1/settings`, { next: { revalidate: 3600 } }),
-    ]);
-    if (productsRes.ok) products = (await productsRes.json()).data || [];
-    if (settingsRes.ok) settings = await settingsRes.json();
-  } catch {}
+  const [{ data: products }, settings] = await Promise.all([
+    getProductsServer({ limit: 100 }),
+    getSettingsServer(),
+  ]);
 
   const shippingFee = settings.shipping_fee || '';
   const freeShipping = !shippingFee || shippingFee === '0';
