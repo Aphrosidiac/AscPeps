@@ -244,3 +244,40 @@ model Setting {
 
   @@map("settings")
 }
+
+// Admin-managed article ("Insights" section) — research commentary and
+// product-update writeups, credited to a named author for E-E-A-T. Kept as
+// its own flat model rather than reusing Product: no variants/pricing/stock,
+// and its lifecycle (draft -> published) doesn't map to Product.active.
+model Insight {
+  id             String    @id @default(cuid())
+  title          String
+  slug           String    @unique
+  category       String
+  excerpt        String
+  content        String
+  coverImageUrl  String?
+  authorName     String    @default("Asywa")
+  authorRole     String    @default("Founder & CEO, ASCEND")
+  citationTitle  String?
+  citationSource String?
+  citationUrl    String?
+  // Estimated server-side from `content` on every save (~200 words/minute) —
+  // never client-supplied, so it can't drift from the actual body length.
+  readTimeMinutes Int      @default(1)
+  // Product (parent) ids surfaced as "Mentioned in this article" chips.
+  // A plain id array rather than a join table: no per-relation attributes
+  // (unlike ProductAddOn's required/quantity), so a join model would be
+  // pure overhead here.
+  relatedProductIds String[] @default([])
+  published      Boolean   @default(false)
+  // Set once, the first time `published` flips true — a later edit-and-resave
+  // must not look like a brand new publish date.
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([published])
+  @@index([category])
+  @@map("insights")
+}

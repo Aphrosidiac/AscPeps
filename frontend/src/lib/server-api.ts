@@ -1,16 +1,16 @@
-import type { Category, PaginatedResponse, Product } from '@/types';
+import type { Category, PaginatedResponse, Product, Insight } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
 // code must use an absolute origin or fetch() throws (no base URL).
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 
-async function getJson<T>(path: string, fallback: T): Promise<T> {
+async function getJson<T>(path: string, fallback: T, tags: string[] = ['products']): Promise<T> {
   try {
     // Tagged so the backend can trigger immediate invalidation via
     // /api/revalidate after an admin save — see backend/src/utils/revalidate.ts.
     // revalidate: 3600 stays as the fallback ceiling if that ping never arrives.
-    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 3600, tags: ['products'] } });
+    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 3600, tags } });
     if (!res.ok) return fallback;
     return (await res.json()) as T;
   } catch {
@@ -43,3 +43,17 @@ export const getProductsServer = (params?: {
     { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } }
   );
 };
+
+export const getInsightsServer = (params?: { category?: string; limit?: number }) => {
+  const query: Record<string, string> = { limit: String(params?.limit ?? 100) };
+  if (params?.category) query.category = params.category;
+
+  return getJson<PaginatedResponse<Insight>>(
+    `/api/v1/insights?${new URLSearchParams(query).toString()}`,
+    { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } },
+    ['insights']
+  );
+};
+
+export const getInsightServer = (slug: string) =>
+  getJson<Insight | null>(`/api/v1/insights/${encodeURIComponent(slug)}`, null, ['insights']);

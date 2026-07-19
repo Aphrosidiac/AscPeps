@@ -154,3 +154,35 @@ export interface PaginatedResponse<T> {
     totalPages: number;
   };
 }
+
+export interface RelatedProductRef {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+// Admin-managed "Insights" article — research commentary and product
+// updates, credited to a named author.
+export interface Insight {
+  id: string;
+  title: string;
+  slug: string;
+  category: string;
+  excerpt: string;
+  content: string;
+  coverImageUrl: string | null;
+  authorName: string;
+  authorRole: string;
+  citationTitle: string | null;
+  citationSource: string | null;
+  citationUrl: string | null;
+  readTimeMinutes: number;
+  relatedProductIds: string[];
+  published: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Present only on the public single-insight response (resolved server-side
+  // from relatedProductIds, excluding hidden/discontinued products).
+  relatedProducts?: RelatedProductRef[];
+}

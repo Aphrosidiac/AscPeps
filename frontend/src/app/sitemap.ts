@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { execSync } from 'child_process';
 import path from 'path';
-import { getProductsServer } from '@/lib/server-api';
+import { getProductsServer, getInsightsServer } from '@/lib/server-api';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -27,6 +27,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: lastModifiedFromGit('src/app/page.tsx'), changeFrequency: 'weekly', priority: 1 },
     { url: `${BASE_URL}/products`, lastModified: lastModifiedFromGit('src/app/products/page.tsx'), changeFrequency: 'daily', priority: 0.9 },
+    { url: `${BASE_URL}/insights`, lastModified: lastModifiedFromGit('src/app/insights/page.tsx'), changeFrequency: 'weekly', priority: 0.7 },
     { url: `${BASE_URL}/about`, lastModified: lastModifiedFromGit('src/app/about/page.tsx'), changeFrequency: 'monthly', priority: 0.5 },
     { url: `${BASE_URL}/faq`, lastModified: lastModifiedFromGit('src/app/faq/page.tsx'), changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE_URL}/guide`, lastModified: lastModifiedFromGit('src/app/guide/page.tsx'), changeFrequency: 'monthly', priority: 0.7 },
@@ -40,7 +41,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const { data: products } = await getProductsServer({ limit: 100 });
+    const [{ data: products }, { data: insights }] = await Promise.all([
+      getProductsServer({ limit: 100 }),
+      getInsightsServer({ limit: 100 }),
+    ]);
 
     const productPages: MetadataRoute.Sitemap = products.map((p) => ({
       url: `${BASE_URL}/products/${p.slug}`,
@@ -49,7 +53,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     }));
 
-    return [...staticPages, ...productPages];
+    const insightPages: MetadataRoute.Sitemap = insights.map((i) => ({
+      url: `${BASE_URL}/insights/${i.slug}`,
+      lastModified: new Date(i.updatedAt),
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    }));
+
+    return [...staticPages, ...productPages, ...insightPages];
   } catch {
     return staticPages;
   }

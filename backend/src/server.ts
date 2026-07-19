@@ -24,6 +24,8 @@ import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
+import insightRoutes from './modules/insights/insights.routes.js';
+import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 
 const fastify = Fastify({
@@ -84,6 +86,8 @@ await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' }
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' });
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
+await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
+await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });
