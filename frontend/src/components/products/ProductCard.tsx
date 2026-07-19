@@ -61,23 +61,30 @@ export function ProductCard({ product }: ProductCardProps) {
             {product.name}
           </h3>
           {variant?.size && <p className="text-sm text-text-secondary">{variant.size}</p>}
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center justify-between gap-2 pt-2">
             {variant ? (
               <>
-                <span className="flex items-baseline gap-1.5">
-                  {priceRange && <span className="text-xs text-text-muted">From</span>}
-                  <span className="font-display font-bold text-lg">{formatPrice(getEffectivePrice(variant))}</span>
-                  {isSaleActive(variant) && (
-                    <span className="text-xs text-text-muted line-through">{formatPrice(variant.price)}</span>
-                  )}
+                {/* "From" stacks above the price instead of sitting inline
+                    beside it — inline, "From" + an active sale's
+                    strikethrough price could combine into a string wider
+                    than the narrow card leaves room for next to the button,
+                    pushing the button past the card's own right edge. */}
+                <span className="flex flex-col min-w-0">
+                  {priceRange && <span className="text-xs text-text-muted leading-tight">From</span>}
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="font-display font-bold text-lg">{formatPrice(getEffectivePrice(variant))}</span>
+                    {isSaleActive(variant) && (
+                      <span className="text-xs text-text-muted line-through">{formatPrice(variant.price)}</span>
+                    )}
+                  </span>
                 </span>
                 {variant.stock === 0 ? (
-                  <span className="text-xs font-semibold text-danger">Out of stock</span>
+                  <span className="text-xs font-semibold text-danger shrink-0">Out of stock</span>
                 ) : (
                   <Button
                     variant="primary"
                     size="sm"
-                    className="min-w-11 min-h-11"
+                    className="min-w-11 min-h-11 shrink-0"
                     onClick={handleAddToCart}
                     aria-label="Add to cart"
                   >
