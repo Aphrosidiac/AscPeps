@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Trash2, Upload, ImageIcon, ChevronDown,
@@ -215,7 +216,9 @@ export function ProductForm({ productId }: { productId?: string }) {
   const [form, setForm] = useState<ProductFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [mounted, setMounted] = useState(false);
 
+  useEffect(() => { setMounted(true); }, []);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
 
   useEffect(() => {
@@ -599,14 +602,21 @@ export function ProductForm({ productId }: { productId?: string }) {
         </form>
       )}
 
-      {!loading && (
-        <div className="fixed bottom-0 inset-x-0 lg:left-64 bg-surface/95 backdrop-blur-sm border-t border-border p-4 flex justify-end gap-3 z-30">
-          <Button type="button" variant="outline" onClick={() => router.push('/admin/products')}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={saving}>
-            {saving ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
-          </Button>
-        </div>
-      )}
+      {/* Rendered via portal to document.body: the admin layout's <main> has
+          overflow-auto, which becomes the actual scrolling element and traps
+          a `fixed` descendant inside its own box instead of the real
+          viewport — the bar would scroll away with the page and end up
+          below the footer instead of staying pinned on-screen. */}
+      {mounted && !loading &&
+        createPortal(
+          <div className="fixed bottom-0 inset-x-0 lg:left-64 bg-surface/95 backdrop-blur-sm border-t border-border p-4 flex justify-end gap-3 z-30">
+            <Button type="button" variant="outline" onClick={() => router.push('/admin/products')}>Cancel</Button>
+            <Button onClick={handleSubmit} disabled={saving}>
+              {saving ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
+            </Button>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
