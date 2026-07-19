@@ -73,6 +73,12 @@ export function formatDate(date: string): string {
   });
 }
 
+// Day-only variant of formatDate, for editorial timestamps (Insights) where
+// a publish time-of-day isn't meaningful the way an order timestamp is.
+export function formatShortDate(date: string): string {
+  return new Date(date).toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 /**
  * Normalize Malaysian phone numbers to digits-only format: 01XXXXXXXXX
  * Handles: +60132719008, 60132719008, 013-271 9008, 013 271 9008, etc.

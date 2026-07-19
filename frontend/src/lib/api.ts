@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, PaginatedResponse } from '@/types';
+import type { Category, Product, Order, PaginatedResponse, Insight } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -137,3 +137,19 @@ export const adminDeleteDiscount = (token: string, id: string) =>
 // Validate discount (public)
 export const validateDiscount = (code: string, subtotal: number) =>
   api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number }>('/api/v1/orders/validate-discount', { code, subtotal }).then((r) => r.data);
+
+// Insights
+export const adminGetInsights = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<Insight>>('/api/v1/admin/insights', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
+
+export const adminGetInsight = (token: string, id: string) =>
+  api.get<Insight>(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminCreateInsight = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/insights', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminUpdateInsight = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch(`/api/v1/admin/insights/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminDeleteInsight = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
