@@ -21,12 +21,51 @@ model Category {
   @@map("categories")
 }
 
+// Parent product line (e.g. "Retatrutide") — owns the one storefront URL and
+// everything shared across sizes. Sellable SKUs live on ProductVariant below.
 model Product {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  categoryId    String
+  description   String?
+  benefits      String?
+  dosageInfo    String?
+  coaUrl        String?
+  featured      Boolean  @default(false)
+  // Manual curation order among featured products (lower = shown first).
+  // Ties (the common case — everything starts at 0) fall back to
+  // createdAt desc, so this is inert until an admin actually reorders.
+  sortOrder     Int      @default(0)
+  active        Boolean  @default(true)
+  // Plain-text nudge shown near Add to Cart on the storefront (e.g. "This
+  // peptide needs Bacteriostatic Water to reconstitute") — informational
+  // only, distinct from the required/forced ProductAddOn mechanism below.
+  addOnReminder String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category Category         @relation(fields: [categoryId], references: [id])
+  variants ProductVariant[]
+  // Add-ons this product line offers on its page (e.g. BAC Water for a
+  // lyophilized peptide), regardless of which variant/size is purchased.
+  // Points down to the specific sellable ProductVariant being offered.
+  addOns   ProductAddOn[]
+
+  @@index([categoryId])
+  @@index([active])
+  @@map("products")
+}
+
+// A single sellable SKU (one size/strength) belonging to a parent Product.
+// This table held the flat one-row-per-size product data before the
+// parent/variant rework — ids were preserved as-is (see the migration
+// script), so every OrderItem/ProductAddOn.addOnId reference kept working
+// unchanged across the rework.
+model ProductVariant {
   id           String    @id @default(cuid())
+  productId    String
   code         String    @unique
-  name         String
-  slug         String    @unique
-  categoryId   String
   size         String?
   price        Int
   // Genuine time-limited sale — null salePrice means "not on sale". A sale is
@@ -37,41 +76,28 @@ model Product {
   salePrice    Int?
   saleStartsAt DateTime?
   saleEndsAt   DateTime?
-  description  String?
-  benefits     String?
-  dosageInfo   String?
   stock        Int       @default(0)
   imageUrl     String?
-  coaUrl       String?
-  featured     Boolean   @default(false)
-  // Manual curation order among featured products (lower = shown first).
-  // Ties (the common case — everything starts at 0) fall back to
-  // createdAt desc, so this is inert until an admin actually reorders.
-  sortOrder    Int       @default(0)
+  // Lets one size be discontinued without touching the parent or its other
+  // sizes — a variant can never be hard-deleted once an order references it
+  // (OrderItem's FK below has no cascade), so this is the only way to retire one.
   active       Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  // Plain-text nudge shown near Add to Cart on the storefront (e.g. "This
-  // peptide needs Bacteriostatic Water to reconstitute") — informational
-  // only, distinct from the required/forced ProductAddOn mechanism below.
-  addOnReminder String?
+  product           Product        @relation(fields: [productId], references: [id])
+  orderItems        OrderItem[]
+  offeredAsAddOnFor ProductAddOn[]
 
-  category   Category    @relation(fields: [categoryId], references: [id])
-  orderItems OrderItem[]
-  // Add-ons this product offers on its own page (e.g. BAC Water for a
-  // lyophilized peptide) — directional, not reciprocal. See ProductAddOn.
-  addOns            ProductAddOn[] @relation("ProductAddOns")
-  offeredAsAddOnFor ProductAddOn[] @relation("AddOnOfProduct")
-
-  @@index([categoryId])
+  @@index([productId])
   @@index([active])
-  @@map("products")
+  @@map("product_variants")
 }
 
-// Explicit join model for a directional Product-to-Product add-on relation
-// (Prisma requires this for self-relations). productId = the product whose
-// page shows the add-on; addOnId = the product being offered.
+// Explicit join model for a Product-to-ProductVariant add-on relation.
+// productId = the parent product line whose page shows the add-on (applies
+// regardless of which of its own variants is purchased); addOnId = the
+// specific sellable variant being offered (e.g. a particular Bac Water size).
 model ProductAddOn {
   id        String @id @default(cuid())
   productId String
@@ -85,8 +111,8 @@ model ProductAddOn {
   // NOT scale with the parent product's purchased quantity.
   quantity  Int     @default(1)
 
-  product Product @relation("ProductAddOns", fields: [productId], references: [id], onDelete: Cascade)
-  addOn   Product @relation("AddOnOfProduct", fields: [addOnId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  addOn   ProductVariant @relation(fields: [addOnId], references: [id], onDelete: Cascade)
 
   @@unique([productId, addOnId])
   @@map("product_add_ons")
@@ -152,13 +178,15 @@ model Order {
 model OrderItem {
   id        String   @id @default(cuid())
   orderId   String
-  productId String
+  // Prisma-level rename only (was `productId`) — the physical column is
+  // untouched via @map, so existing rows need no data migration at all.
+  variantId String   @map("productId")
   quantity  Int
   unitPrice Int
   createdAt DateTime @default(now())
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
 
   @@map("order_items")
 }

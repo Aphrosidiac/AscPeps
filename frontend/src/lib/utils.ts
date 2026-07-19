@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
+import type { Product, ProductVariant } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
@@ -8,16 +9,20 @@ export function formatPrice(priceInSen: number): string {
   return `RM${(priceInSen / 100).toFixed(2)}`;
 }
 
-/**
- * Build a product's full display name (name + size), without duplicating the
- * size when it's already embedded in the base `name` field — some catalog
- * entries store e.g. name="Glutathione 1200mg" AND size="1200mg" separately,
- * which naive concatenation renders as "Glutathione 1200mg 1200mg".
- */
-export function getFullProductName(product: { name: string; size: string | null }): string {
-  if (!product.size) return product.name;
-  const alreadyIncluded = product.name.toLowerCase().includes(product.size.trim().toLowerCase());
-  return alreadyIncluded ? product.name : `${product.name} ${product.size}`;
+// Composes a variant's display name from its parent's name + its own size
+// label (e.g. "Retatrutide" + "30mg" -> "Retatrutide 30mg"). Unlike the old
+// flat model, `name` never bakes in size here, so no dedup check is needed.
+export function getVariantDisplayName(product: { name: string }, variant: { size: string | null }): string {
+  return variant.size ? `${product.name} ${variant.size}` : product.name;
+}
+
+// The variant shown by default on a product card / on first paint of the
+// product page — the lowest-priced active variant. Used identically in both
+// places so they never disagree about which size is "the" default.
+export function getDefaultVariant(product: Product): ProductVariant | null {
+  const active = product.variants.filter((v) => v.active);
+  if (active.length === 0) return null;
+  return active.reduce((min, v) => (v.price < min.price ? v : min));
 }
 
 const SITE_URL = 'https://ascendpeptides.my';

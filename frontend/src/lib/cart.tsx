@@ -11,18 +11,18 @@ interface CartState {
 type CartAction =
   | { type: 'ADD_ITEM'; payload: CartItem }
   | { type: 'REMOVE_ITEM'; payload: string }
-  | { type: 'UPDATE_QUANTITY'; payload: { productId: string; quantity: number } }
+  | { type: 'UPDATE_QUANTITY'; payload: { variantId: string; quantity: number } }
   | { type: 'CLEAR' }
   | { type: 'LOAD'; payload: CartItem[] };
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD_ITEM': {
-      const existing = state.items.find((i) => i.productId === action.payload.productId);
+      const existing = state.items.find((i) => i.variantId === action.payload.variantId);
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.productId === action.payload.productId
+            i.variantId === action.payload.variantId
               ? { ...i, quantity: i.quantity + action.payload.quantity }
               : i
           ),
@@ -31,11 +31,11 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return { items: [...state.items, action.payload] };
     }
     case 'REMOVE_ITEM':
-      return { items: state.items.filter((i) => i.productId !== action.payload) };
+      return { items: state.items.filter((i) => i.variantId !== action.payload) };
     case 'UPDATE_QUANTITY':
       return {
         items: state.items.map((i) =>
-          i.productId === action.payload.productId
+          i.variantId === action.payload.variantId
             ? { ...i, quantity: action.payload.quantity }
             : i
         ),
@@ -50,8 +50,8 @@ function cartReducer(state: CartState, action: CartAction): CartState {
 interface CartContextType {
   items: CartItem[];
   addItem: (item: CartItem) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  removeItem: (variantId: string) => void;
+  updateQuantity: (variantId: string, quantity: number) => void;
   clearCart: () => void;
   total: number;
   itemCount: number;
@@ -68,7 +68,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('ascend-cart');
     if (saved) {
       try {
-        dispatch({ type: 'LOAD', payload: JSON.parse(saved) });
+        const parsed = JSON.parse(saved);
+        // Pre-rework carts were keyed by `productId` (a flat product row's
+        // own id) — the parent/variant migration preserved every row's id
+        // as-is when it became a ProductVariant, so an old saved id is still
+        // a perfectly valid variantId. Silently upgrade the shape on load
+        // rather than requiring a version bump or discarding the cart.
+        const normalized = parsed.map((item: CartItem & { productId?: string }) => ({
+          ...item,
+          variantId: item.variantId ?? item.productId,
+        }));
+        dispatch({ type: 'LOAD', payload: normalized });
       } catch {}
     }
   }, []);
@@ -93,7 +103,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       items: state.items,
       addItem,
       removeItem: (id) => dispatch({ type: 'REMOVE_ITEM', payload: id }),
-      updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { productId: id, quantity: qty } }),
+      updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { variantId: id, quantity: qty } }),
       clearCart: () => dispatch({ type: 'CLEAR' }),
       total,
       itemCount,

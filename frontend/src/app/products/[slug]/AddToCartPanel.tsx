@@ -5,22 +5,22 @@ import { createPortal } from 'react-dom';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
-import { formatPrice, getFullProductName, getEffectivePrice, isSaleActive } from '@/lib/utils';
-import type { AddOnProduct } from '@/types';
+import { formatPrice, getEffectivePrice, isSaleActive } from '@/lib/utils';
+import type { AddOnVariant } from '@/types';
 
 interface Props {
-  productId: string;
+  variantId: string;
   code: string;
   name: string;
   size: string | null;
   price: number;
   imageUrl: string | null;
   stock: number;
-  addOns?: AddOnProduct[];
+  addOns?: AddOnVariant[];
   addOnReminder?: string | null;
 }
 
-export function AddToCartPanel({ productId, code, name, size, price, imageUrl, stock, addOns, addOnReminder }: Props) {
+export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, stock, addOns, addOnReminder }: Props) {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [inlineButtonVisible, setInlineButtonVisible] = useState(true);
@@ -51,9 +51,9 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
 
   const handleAddToCart = () => {
     addItem({
-      productId,
+      variantId,
       code,
-      name: getFullProductName({ name, size }),
+      name,
       size,
       price,
       quantity,
@@ -62,9 +62,9 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
     for (const addOn of addOns ?? []) {
       if (!selectedAddOnIds.includes(addOn.id) || addOn.stock === 0) continue;
       addItem({
-        productId: addOn.id,
+        variantId: addOn.id,
         code: addOn.code,
-        name: getFullProductName(addOn),
+        name: addOn.size ? `${addOn.name} ${addOn.size}` : addOn.name,
         size: addOn.size,
         price: getEffectivePrice(addOn),
         quantity: addOn.addOnQuantity,
@@ -101,7 +101,7 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
                       disabled={outOfStock || locked}
                       className="rounded accent-primary"
                     />
-                    {getFullProductName(addOn)}
+                    {addOn.size ? `${addOn.name} ${addOn.size}` : addOn.name}
                     {addOn.addOnQuantity > 1 && <span className="text-text-muted">× {addOn.addOnQuantity}</span>}
                     {locked && (
                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">Required</span>

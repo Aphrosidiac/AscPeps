@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { flattenAddOn, ADDON_INCLUDE } from '../../utils/product-addons.js';
 
 export async function listProducts(fastify: FastifyInstance, query: Record<string, string>) {
   const { page, limit, skip } = getPaginationParams(query);
@@ -17,15 +18,18 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
   if (query.search) {
     where.OR = [
       { name: { contains: query.search, mode: 'insensitive' } },
-      { code: { contains: query.search, mode: 'insensitive' } },
       { description: { contains: query.search, mode: 'insensitive' } },
+      { variants: { some: { code: { contains: query.search, mode: 'insensitive' } } } },
     ];
   }
 
   const [products, total] = await Promise.all([
     fastify.prisma.product.findMany({
       where,
-      include: { category: { select: { name: true, slug: true } } },
+      include: {
+        category: { select: { name: true, slug: true } },
+        variants: { where: { active: true }, orderBy: { price: 'asc' } },
+      },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
       skip,
       take: limit,
@@ -41,10 +45,8 @@ export async function getProduct(fastify: FastifyInstance, slug: string) {
     where: { slug, active: true },
     include: {
       category: { select: { name: true, slug: true } },
-      addOns: {
-        where: { addOn: { active: true } },
-        include: { addOn: { include: { category: { select: { name: true, slug: true } } } } },
-      },
+      variants: { where: { active: true }, orderBy: { price: 'asc' } },
+      addOns: { where: { addOn: { active: true } }, include: ADDON_INCLUDE },
     },
   });
 
@@ -52,10 +54,5 @@ export async function getProduct(fastify: FastifyInstance, slug: string) {
     throw { statusCode: 404, message: 'Product not found' };
   }
 
-  // Flatten the join rows — the frontend wants a plain Product[] with the
-  // join's required/quantity attached to each add-on.
-  return {
-    ...product,
-    addOns: product.addOns.map((row) => ({ ...row.addOn, addOnRequired: row.required, addOnQuantity: row.quantity })),
-  };
+  return { ...product, addOns: product.addOns.map(flattenAddOn) };
 }

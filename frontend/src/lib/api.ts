@@ -46,7 +46,7 @@ export const createOrder = (data: {
   postcode: string;
   paymentMethod: 'WHATSAPP' | 'BILLPLZ';
   notes?: string;
-  items: { productId: string; quantity: number }[];
+  items: { variantId: string; quantity: number }[];
   discountCode?: string;
   idempotencyKey?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);

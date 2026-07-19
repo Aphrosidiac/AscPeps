@@ -43,7 +43,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     fastify.prisma.order.findMany({
       where,
       include: {
-        items: { include: { product: { select: { name: true, code: true } } } },
+        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -60,7 +60,7 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({
     where: { id },
     include: {
-      items: { include: { product: true } },
+      items: { include: { variant: { include: { product: true } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });

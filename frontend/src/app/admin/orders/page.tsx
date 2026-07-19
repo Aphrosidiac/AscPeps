@@ -209,8 +209,8 @@ export default function AdminOrdersPage() {
                         {order.items.map((item) => (
                           <div key={item.id} className="flex items-center justify-between px-4 py-3">
                             <div>
-                              <p className="text-sm font-medium">{item.product.name}</p>
-                              <p className="text-xs text-text-muted">{item.product.code} &times; {item.quantity}</p>
+                              <p className="text-sm font-medium">{item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}</p>
+                              <p className="text-xs text-text-muted">{item.variant.code} &times; {item.quantity}</p>
                             </div>
                             <p className="text-sm font-semibold">{formatPrice(item.unitPrice * item.quantity)}</p>
                           </div>

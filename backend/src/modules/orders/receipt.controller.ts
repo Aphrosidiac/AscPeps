@@ -11,7 +11,7 @@ export async function getReceiptData(fastify: FastifyInstance, orderNumber: stri
   const order = await fastify.prisma.order.findUnique({
     where: { orderNumber },
     include: {
-      items: { include: { product: { select: { name: true, code: true, imageUrl: true } } } },
+      items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });
@@ -36,7 +36,7 @@ export async function adminGetReceiptPdf(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({
     where: { id },
     include: {
-      items: { include: { product: { select: { name: true, code: true, imageUrl: true } } } },
+      items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });

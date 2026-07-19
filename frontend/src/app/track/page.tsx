@@ -107,7 +107,7 @@ export default function TrackPage() {
                 <div className="space-y-2 mb-4">
                   {order.items.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm">
-                      <span className="text-text-secondary">{item.product.name} x{item.quantity}</span>
+                      <span className="text-text-secondary">{item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''} x{item.quantity}</span>
                       <span>{formatPrice(item.unitPrice * item.quantity)}</span>
                     </div>
                   ))}

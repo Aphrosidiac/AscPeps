@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { X, ArrowUp, ArrowDown, ImageIcon } from 'lucide-react';
 import { adminUpdateProduct } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { getDefaultVariant } from '@/lib/utils';
 import type { Product } from '@/types';
 
 interface Props {
@@ -63,18 +64,20 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
           {order.length === 0 ? (
             <p className="text-text-muted text-sm text-center py-8">No featured products yet — mark a product as Featured to curate its position here.</p>
           ) : (
-            order.map((p, i) => (
+            order.map((p, i) => {
+              const variant = getDefaultVariant(p);
+              return (
               <div key={p.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface">
                 <div className="w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
-                  {p.imageUrl ? (
-                    <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
+                  {variant?.imageUrl ? (
+                    <img src={variant.imageUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <ImageIcon className="w-4 h-4 text-text-muted" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{p.name}</p>
-                  {p.size && <p className="text-xs text-text-muted">{p.size}</p>}
+                  {variant?.size && <p className="text-xs text-text-muted">{variant.size}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -95,7 +98,8 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
                   </button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 

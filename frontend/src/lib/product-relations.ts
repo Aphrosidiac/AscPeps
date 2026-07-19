@@ -1,19 +1,11 @@
 import type { Product } from '@/types';
 
-// Groups by product code with trailing digits stripped (e.g. "BP10"/"BP40" -> "BP"),
-// cross-checked by category. This recovers same-compound size families even when
-// name/slug spelling drifts (e.g. epitalon-10mg vs epithalon-50mg both use code
-// prefix "ET") — a plain name/slug string match misses that pairing entirely.
+// Strips trailing digits off a variant code (e.g. "BP10"/"BP40" -> "BP").
+// Was also used to recover same-compound size families before the
+// parent/variant rework gave that relationship a real, persisted home — its
+// only remaining caller is getRecommendedSolvent below.
 function baseCode(code: string): string {
   return code.replace(/\d+$/, '');
-}
-
-export function getSizeVariants(product: Product, all: Product[]): Product[] {
-  const base = baseCode(product.code);
-  if (!base) return [];
-  return all
-    .filter((p) => p.id !== product.id && p.categoryId === product.categoryId && baseCode(p.code) === base)
-    .sort((a, b) => (parseFloat(a.size ?? '') || 0) - (parseFloat(b.size ?? '') || 0));
 }
 
 export function getRelatedProducts(product: Product, all: Product[], excludeIds: Set<string>, limit = 4): Product[] {
@@ -23,11 +15,13 @@ export function getRelatedProducts(product: Product, all: Product[], excludeIds:
 }
 
 // No "commonly paired" data field exists on Product — this is an explicit,
-// hand-maintained business rule rather than an inferred heuristic.
+// hand-maintained business rule rather than an inferred heuristic. Slugs
+// here are parent-product slugs (post-rework, a size no longer has its own
+// slug) — "Bac Water"'s two sizes collapsed into one "bac-water" entry.
 const PAIRED_SUPPLY_SLUGS: Record<string, string[]> = {
-  'skin-anti-aging': ['acetic-acid-10ml', 'bac-water-3ml', 'bac-water-10ml'],
+  'skin-anti-aging': ['acetic-acid', 'bac-water'],
 };
-const DEFAULT_PAIRED_SUPPLY_SLUGS = ['bac-water-3ml', 'bac-water-10ml'];
+const DEFAULT_PAIRED_SUPPLY_SLUGS = ['bac-water'];
 
 // Categories that are entirely liquid/ready-to-use products (confirmed against
 // the live catalog — "Health Boosters" is PDRN/Ginkgo/ALA/Vitamin C/Glutathione/
@@ -59,5 +53,9 @@ export function needsReconstitutionGuide(product: Product): boolean {
 }
 
 export function getRecommendedSolvent(product: Product): 'acetic-acid' | 'bac-water' {
-  return baseCode(product.code) === 'CU' ? 'acetic-acid' : 'bac-water';
+  // Every variant of a given product line shares the same code prefix (that's
+  // literally how the parent/variant migration grouped them) — any variant's
+  // code works here, so just use the first one.
+  const code = product.variants[0]?.code ?? '';
+  return baseCode(code) === 'CU' ? 'acetic-acid' : 'bac-water';
 }

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types';
-import { formatPrice, getFullProductName, getEffectivePrice, isSaleActive } from '@/lib/utils';
+import { formatPrice, getDefaultVariant, getEffectivePrice, isSaleActive } from '@/lib/utils';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 
@@ -14,19 +14,23 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCart();
-  const onSale = isSaleActive(product);
-  const effectivePrice = getEffectivePrice(product);
+  const variant = getDefaultVariant(product);
+  const activeVariants = product.variants.filter((v) => v.active);
+  // "From RMxx" only when active sizes genuinely differ in price — a plain
+  // price on a single-price product isn't misleading, so don't hedge it.
+  const priceRange = activeVariants.length > 1 && new Set(activeVariants.map((v) => v.price)).size > 1;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (!variant) return;
     addItem({
-      productId: product.id,
-      code: product.code,
-      name: getFullProductName(product),
-      size: product.size,
-      price: effectivePrice,
+      variantId: variant.id,
+      code: variant.code,
+      name: variant.size ? `${product.name} ${variant.size}` : product.name,
+      size: variant.size,
+      price: getEffectivePrice(variant),
       quantity: 1,
-      imageUrl: product.imageUrl,
+      imageUrl: variant.imageUrl,
     });
   };
 
@@ -34,9 +38,9 @@ export function ProductCard({ product }: ProductCardProps) {
     <Link href={`/products/${product.slug}`} className="group">
       <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md hover:-translate-y-1 transition-all duration-300 p-4">
         <div className="relative aspect-square bg-surface-elevated rounded-lg mb-4 flex items-center justify-center overflow-hidden">
-          {product.imageUrl ? (
+          {variant?.imageUrl ? (
             <Image
-              src={product.imageUrl}
+              src={variant.imageUrl}
               alt={product.name}
               fill
               sizes="(min-width: 1024px) 220px, (min-width: 768px) 25vw, 45vw"
@@ -44,7 +48,7 @@ export function ProductCard({ product }: ProductCardProps) {
             />
           ) : (
             <div className="text-4xl font-display font-bold text-text-muted/30 select-none">
-              {product.code}
+              {variant?.code ?? product.name.slice(0, 2).toUpperCase()}
             </div>
           )}
         </div>
@@ -56,28 +60,33 @@ export function ProductCard({ product }: ProductCardProps) {
           <h3 className="font-display font-semibold text-text-primary group-hover:text-primary-light">
             {product.name}
           </h3>
-          {product.size && !product.name.toLowerCase().includes(product.size.trim().toLowerCase()) && (
-            <p className="text-sm text-text-secondary">{product.size}</p>
-          )}
+          {variant?.size && <p className="text-sm text-text-secondary">{variant.size}</p>}
           <div className="flex items-center justify-between pt-2">
-            <span className="flex items-baseline gap-1.5">
-              <span className="font-display font-bold text-lg">{formatPrice(effectivePrice)}</span>
-              {onSale && (
-                <span className="text-xs text-text-muted line-through">{formatPrice(product.price)}</span>
-              )}
-            </span>
-            {product.stock === 0 ? (
-              <span className="text-xs font-semibold text-danger">Out of stock</span>
+            {variant ? (
+              <>
+                <span className="flex items-baseline gap-1.5">
+                  {priceRange && <span className="text-xs text-text-muted">From</span>}
+                  <span className="font-display font-bold text-lg">{formatPrice(getEffectivePrice(variant))}</span>
+                  {isSaleActive(variant) && (
+                    <span className="text-xs text-text-muted line-through">{formatPrice(variant.price)}</span>
+                  )}
+                </span>
+                {variant.stock === 0 ? (
+                  <span className="text-xs font-semibold text-danger">Out of stock</span>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="min-w-11 min-h-11"
+                    onClick={handleAddToCart}
+                    aria-label="Add to cart"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                  </Button>
+                )}
+              </>
             ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                className="min-w-11 min-h-11"
-                onClick={handleAddToCart}
-                aria-label="Add to cart"
-              >
-                <ShoppingCart className="w-4 h-4" />
-              </Button>
+              <span className="text-xs font-semibold text-danger">Unavailable</span>
             )}
           </div>
         </div>

@@ -6,22 +6,32 @@ export interface Category {
   productCount: number;
 }
 
-export interface Product {
+// A single sellable SKU (one size/strength) belonging to a parent Product.
+export interface ProductVariant {
   id: string;
+  productId: string;
   code: string;
-  name: string;
-  slug: string;
-  categoryId: string;
   size: string | null;
   price: number;
   salePrice: number | null;
   saleStartsAt: string | null;
   saleEndsAt: string | null;
+  stock: number;
+  imageUrl: string | null;
+  active: boolean;
+  updatedAt: string;
+}
+
+// Parent product line (e.g. "Retatrutide") — owns the one storefront URL and
+// everything shared across sizes. Sellable SKUs are in `variants`.
+export interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  categoryId: string;
   description: string | null;
   benefits: string | null;
   dosageInfo: string | null;
-  stock: number;
-  imageUrl: string | null;
   coaUrl: string | null;
   featured: boolean;
   sortOrder: number;
@@ -35,23 +45,39 @@ export interface Product {
   // Bacteriostatic Water to reconstitute") — informational only, distinct
   // from the required/forced add-on mechanism below.
   addOnReminder?: string | null;
+  variants: ProductVariant[];
   // Present on the public product-detail response; absent from list/admin
   // responses that don't include it.
-  addOns?: AddOnProduct[];
+  addOns?: AddOnVariant[];
 }
 
-// An add-on as attached to its parent product: the underlying Product plus
-// the join row's required/quantity for that specific parent-add-on pairing.
-export interface AddOnProduct extends Product {
+// An add-on as attached to a parent product's page: the specific sellable
+// variant being offered, plus its own parent's name/slug/category (for
+// display and linking) and the join row's required/quantity for this
+// specific parent-add-on pairing.
+export interface AddOnVariant {
+  id: string;
+  code: string;
+  size: string | null;
+  price: number;
+  salePrice: number | null;
+  saleStartsAt: string | null;
+  saleEndsAt: string | null;
+  stock: number;
+  imageUrl: string | null;
+  active: boolean;
+  name: string;
+  slug: string;
+  category: { name: string; slug: string };
   // Force-selected and locked on the storefront — the customer cannot
   // uncheck it (enforced again server-side at order creation).
   addOnRequired: boolean;
-  // Fixed quantity added — does not scale with the parent product's quantity.
+  // Fixed quantity added — does not scale with the purchased variant's quantity.
   addOnQuantity: number;
 }
 
 export interface CartItem {
-  productId: string;
+  variantId: string;
   code: string;
   name: string;
   size: string | null;
@@ -62,13 +88,14 @@ export interface CartItem {
 
 export interface OrderItem {
   id: string;
-  productId: string;
+  variantId: string;
   quantity: number;
   unitPrice: number;
-  product: {
-    name: string;
+  variant: {
     code: string;
+    size: string | null;
     imageUrl?: string | null;
+    product: { name: string };
   };
 }
 

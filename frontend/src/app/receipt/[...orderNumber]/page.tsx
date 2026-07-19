@@ -159,8 +159,8 @@ export default function ReceiptPage() {
             {order.items.map((item) => (
               <div key={item.id} className="grid grid-cols-[1fr_auto_auto] gap-x-4 py-3 border-b border-border/50 text-sm">
                 <div>
-                  <p className="font-medium">{item.product.name}</p>
-                  <p className="text-xs text-text-muted">{item.product.code} &middot; {formatPrice(item.unitPrice)} each</p>
+                  <p className="font-medium">{item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}</p>
+                  <p className="text-xs text-text-muted">{item.variant.code} &middot; {formatPrice(item.unitPrice)} each</p>
                 </div>
                 <span className="text-right text-text-secondary w-12">{item.quantity}</span>
                 <span className="text-right font-medium w-20">{formatPrice(item.unitPrice * item.quantity)}</span>

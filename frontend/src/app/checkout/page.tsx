@@ -108,7 +108,7 @@ export default function CheckoutPage() {
       const result = await createOrder({
         ...form,
         paymentMethod,
-        items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
         idempotencyKey: idempotencyKeyRef.current,
         ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
@@ -309,7 +309,7 @@ export default function CheckoutPage() {
             <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
             <div className="space-y-3 mb-4">
               {items.map((item) => (
-                <div key={item.productId} className="flex items-center gap-3">
+                <div key={item.variantId} className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
