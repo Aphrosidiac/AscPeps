@@ -138,26 +138,32 @@ export default function CheckoutPage() {
   };
 
   if (success) {
+    const needsWhatsApp = paymentMethod === 'WHATSAPP' && success.whatsappUrl;
+
     return (
       <div className="max-w-lg mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
         <Animate variant="scale" duration={0.5}>
-          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
-          <h1 className="font-display text-2xl font-bold mb-2">Order Placed!</h1>
-          <p className="text-text-secondary mb-2">Your order number is:</p>
+          <CheckCircle className="w-14 h-14 text-success mx-auto mb-3" />
+          {/* "Order Received" rather than "Order Placed" — for WhatsApp orders
+              nothing has been paid yet, so the heading shouldn't read as done. */}
+          <h1 className="font-display text-2xl font-bold mb-2">Order Received!</h1>
+          <p className="text-text-secondary mb-1">Your order number is:</p>
           <p className="font-display text-xl font-bold mb-6">{success.orderNumber}</p>
 
-          {paymentMethod === 'WHATSAPP' && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-6 text-left">
-              <p className="text-sm text-green-800 leading-relaxed">
-                A WhatsApp message has been prepared with your order details. Complete the payment via bank transfer and send proof of payment through WhatsApp.
+          {needsWhatsApp && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 mb-6 text-left">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-2">
+                One more step — this order isn&apos;t confirmed yet
               </p>
-              {success.whatsappUrl && (
-                <a href={success.whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-3">
-                  <Button variant="primary" size="sm">
-                    <MessageCircle className="w-4 h-4" /> Open WhatsApp
-                  </Button>
-                </a>
-              )}
+              <p className="text-sm text-amber-900 leading-relaxed mb-4">
+                Tap below to send your order to us on WhatsApp. We&apos;ll reply with payment details there — your order won&apos;t be processed until we hear from you.
+              </p>
+              <a href={success.whatsappUrl} target="_blank" rel="noopener noreferrer" className="block">
+                <Button variant="primary" size="lg" className="w-full">
+                  <MessageCircle className="w-5 h-5" /> Send Order via WhatsApp
+                </Button>
+              </a>
+              <p className="text-xs text-amber-700 mt-2.5 text-center">Your order details are already filled in — just hit send.</p>
             </div>
           )}
 
