@@ -77,8 +77,12 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
 
   return (
     <>
+      {addOnReminder && (
+        <p className="pt-4 text-sm text-text-secondary italic">{addOnReminder}</p>
+      )}
+
       {addOns && addOns.length > 0 && (
-        <div className="pt-4 space-y-2">
+        <div className={`${addOnReminder ? 'pt-3' : 'pt-4'} space-y-2`}>
           <p className="text-sm font-medium text-text-secondary">Add-ons</p>
           <div className="space-y-1.5">
             {addOns.map((addOn) => {
@@ -124,10 +128,6 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
             })}
           </div>
         </div>
-      )}
-
-      {addOnReminder && (
-        <p className="pt-3 text-sm text-text-secondary italic">{addOnReminder}</p>
       )}
 
       <div ref={inlineButtonRef} className="flex items-center gap-4 pt-4">
