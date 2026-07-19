@@ -36,6 +36,11 @@ export interface Product {
   featured: boolean;
   sortOrder: number;
   active: boolean;
+  // Hides this product from the public catalog/listing and its own product
+  // page while keeping it fully eligible to be used as another product's
+  // add-on (unlike `active`, which gates both). For supply items meant only
+  // to be bundled, never browsed/purchased on their own.
+  addOnOnly: boolean;
   updatedAt: string;
   category: {
     name: string;

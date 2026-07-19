@@ -262,6 +262,7 @@ export default function AdminProductsPage() {
                         <div className="flex items-center gap-1.5">
                           {product.name}
                           {product.featured && <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-medium shrink-0">Featured</span>}
+                          {product.addOnOnly && <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-medium shrink-0">Add-on only</span>}
                         </div>
                       </div>
                     </td>
