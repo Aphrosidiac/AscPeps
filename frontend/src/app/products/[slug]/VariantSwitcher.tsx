@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Check, ShieldCheck, Truck } from 'lucide-react';
 import { Animate } from '@/components/ui/Animate';
-import { formatPrice, getEffectivePrice, isSaleActive } from '@/lib/utils';
+import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
 import type { Product } from '@/types';
 
@@ -21,9 +21,7 @@ interface Props {
 // and stays server-rendered in page.tsx.
 export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
   const activeVariants = product.variants.filter((v) => v.active);
-  const defaultVariant = activeVariants.length
-    ? activeVariants.reduce((min, v) => (v.price < min.price ? v : min))
-    : null;
+  const defaultVariant = getDefaultVariant(product);
   const [selectedId, setSelectedId] = useState(defaultVariant?.id ?? '');
   const variant = activeVariants.find((v) => v.id === selectedId) ?? defaultVariant;
 
@@ -43,7 +41,7 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
               <Image
                 key={variant.id}
                 src={variant.imageUrl}
-                alt={`${product.name}${variant.size ? ` ${variant.size}` : ''} — research peptide available in Malaysia`}
+                alt={`${getVariantDisplayName(product, variant)} — research peptide available in Malaysia`}
                 fill
                 sizes="(min-width: 768px) 50vw, 280px"
                 priority
@@ -113,9 +111,10 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
             )}
 
             <AddToCartPanel
+              key={variant.id}
               variantId={variant.id}
               code={variant.code}
-              name={variant.size ? `${product.name} ${variant.size}` : product.name}
+              name={getVariantDisplayName(product, variant)}
               size={variant.size}
               price={effectivePrice}
               imageUrl={variant.imageUrl}

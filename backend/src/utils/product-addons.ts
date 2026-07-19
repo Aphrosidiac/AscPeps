@@ -31,3 +31,11 @@ export const ADDON_INCLUDE = {
     },
   },
 } as const;
+
+// Composes a variant's display name from its parent's name + its own size
+// label (e.g. "Retatrutide" + "30mg" -> "Retatrutide 30mg") — mirrors
+// frontend/src/lib/utils.ts's getVariantDisplayName so order confirmations,
+// receipts, and analytics never disagree on how a line item is labeled.
+export function getVariantDisplayName(product: { name: string }, variant: { size: string | null }): string {
+  return variant.size ? `${product.name} ${variant.size}` : product.name;
+}

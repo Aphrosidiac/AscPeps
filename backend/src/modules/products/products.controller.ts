@@ -46,7 +46,10 @@ export async function getProduct(fastify: FastifyInstance, slug: string) {
     include: {
       category: { select: { name: true, slug: true } },
       variants: { where: { active: true }, orderBy: { price: 'asc' } },
-      addOns: { where: { addOn: { active: true } }, include: ADDON_INCLUDE },
+      // An add-on's own parent product must also be active — otherwise a
+      // soft-deleted product could still be shown (and added to cart) as
+      // someone else's add-on, only to fail the whole order at checkout.
+      addOns: { where: { addOn: { active: true, product: { active: true } } }, include: ADDON_INCLUDE },
     },
   });
 

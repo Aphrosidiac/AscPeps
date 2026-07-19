@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   adminListProducts,
+  adminGetProduct,
   adminCreateProduct,
   adminUpdateProduct,
   adminDeleteProduct,
@@ -11,6 +12,10 @@ export default async function adminProductRoutes(fastify: FastifyInstance) {
 
   fastify.get('/', async (request) => {
     return adminListProducts(fastify, request.query as Record<string, string>);
+  });
+
+  fastify.get<{ Params: { id: string } }>('/:id', async (request) => {
+    return adminGetProduct(fastify, request.params.id);
   });
 
   fastify.post('/', async (request) => {

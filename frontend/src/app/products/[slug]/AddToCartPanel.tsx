@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
-import { formatPrice, getEffectivePrice, isSaleActive } from '@/lib/utils';
+import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import type { AddOnVariant } from '@/types';
 
 interface Props {
@@ -64,7 +64,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       addItem({
         variantId: addOn.id,
         code: addOn.code,
-        name: addOn.size ? `${addOn.name} ${addOn.size}` : addOn.name,
+        name: getVariantDisplayName(addOn, addOn),
         size: addOn.size,
         price: getEffectivePrice(addOn),
         quantity: addOn.addOnQuantity,
@@ -101,7 +101,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                       disabled={outOfStock || locked}
                       className="rounded accent-primary"
                     />
-                    {addOn.size ? `${addOn.name} ${addOn.size}` : addOn.name}
+                    {getVariantDisplayName(addOn, addOn)}
                     {addOn.addOnQuantity > 1 && <span className="text-text-muted">× {addOn.addOnQuantity}</span>}
                     {locked && (
                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">Required</span>
@@ -141,14 +141,15 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
           </button>
           <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
           <button
-            onClick={() => setQuantity(quantity + 1)}
-            className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer"
+            onClick={() => setQuantity((q) => Math.min(stock, q + 1))}
+            disabled={quantity >= stock}
+            className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Increase quantity"
           >
             +
           </button>
         </div>
-        <Button onClick={handleAddToCart} disabled={stock === 0} size="lg" className="flex-1">
+        <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock} size="lg" className="flex-1">
           {added ? (
             <><Check className="w-4 h-4" /> Added</>
           ) : (
