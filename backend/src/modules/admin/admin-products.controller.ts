@@ -40,9 +40,20 @@ const productObjectSchema = z.object({
   // (just `{ sortOrder }`), so it's exactly the field most exposed to the
   // silent-reset footgun if this were ever changed to `.default(0)`.
   sortOrder: z.number().int().optional(),
-  // Full replacement set of add-on product ids for this product. Undefined
-  // leaves existing add-ons untouched (partial update); [] clears them.
-  addOnIds: z.array(z.string()).optional(),
+  // Full replacement set of add-ons for this product. Undefined leaves
+  // existing add-ons untouched (partial update); [] clears them. `required`
+  // force-selects and locks the add-on on the storefront (and is enforced
+  // again server-side at order-creation time); `quantity` is the fixed
+  // amount added — it does not scale with the parent product's quantity.
+  addOns: z.array(z.object({
+    addOnId: z.string(),
+    required: z.boolean().default(false),
+    quantity: z.number().int().min(1).default(1),
+  })).optional(),
+  // Plain-text nudge shown on the storefront near Add to Cart (e.g. "Needs
+  // Bacteriostatic Water to reconstitute") — informational only, independent
+  // of the required-add-on mechanism above. null clears it.
+  addOnReminder: z.string().trim().max(300).nullable().optional(),
 });
 
 function checkSaleDateOrder(data: { saleStartsAt?: string | null; saleEndsAt?: string | null }, ctx: z.RefinementCtx) {
@@ -91,21 +102,25 @@ export async function adminListProducts(fastify: FastifyInstance, query: Record<
     fastify.prisma.product.count({ where }),
   ]);
 
-  // Flatten the join rows — the admin form just wants a plain Product[],
-  // same shape as the public getProduct response.
-  const flattened = products.map((p) => ({ ...p, addOns: p.addOns.map((row) => row.addOn) }));
+  // Flatten the join rows — the admin form just wants a plain Product[]
+  // with the join's required/quantity attached, same shape as the public
+  // getProduct response.
+  const flattened = products.map((p) => ({
+    ...p,
+    addOns: p.addOns.map((row) => ({ ...row.addOn, addOnRequired: row.required, addOnQuantity: row.quantity })),
+  }));
 
   return paginatedResponse(flattened, total, page, limit);
 }
 
 export async function adminCreateProduct(fastify: FastifyInstance, body: unknown) {
-  const { addOnIds, ...data } = createProductSchema.parse(body);
+  const { addOns, ...data } = createProductSchema.parse(body);
 
   const product = await fastify.prisma.$transaction(async (tx) => {
     const created = await tx.product.create({ data: toSaleDates(data) });
-    if (addOnIds && addOnIds.length > 0) {
+    if (addOns && addOns.length > 0) {
       await tx.productAddOn.createMany({
-        data: addOnIds.map((addOnId) => ({ productId: created.id, addOnId })),
+        data: addOns.map((a) => ({ productId: created.id, addOnId: a.addOnId, required: a.required, quantity: a.quantity })),
         skipDuplicates: true,
       });
     }
@@ -118,19 +133,19 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
 }
 
 export async function adminUpdateProduct(fastify: FastifyInstance, id: string, body: unknown) {
-  const { addOnIds, ...data } = updateProductSchema.parse(body);
+  const { addOns, ...data } = updateProductSchema.parse(body);
 
-  if (addOnIds?.includes(id)) {
+  if (addOns?.some((a) => a.addOnId === id)) {
     throw { statusCode: 400, message: 'A product cannot be its own add-on' };
   }
 
   const product = await fastify.prisma.$transaction(async (tx) => {
     const updated = await tx.product.update({ where: { id }, data: toSaleDates(data) });
-    if (addOnIds !== undefined) {
+    if (addOns !== undefined) {
       await tx.productAddOn.deleteMany({ where: { productId: id } });
-      if (addOnIds.length > 0) {
+      if (addOns.length > 0) {
         await tx.productAddOn.createMany({
-          data: addOnIds.map((addOnId) => ({ productId: id, addOnId })),
+          data: addOns.map((a) => ({ productId: id, addOnId: a.addOnId, required: a.required, quantity: a.quantity })),
           skipDuplicates: true,
         });
       }

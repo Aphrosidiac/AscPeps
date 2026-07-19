@@ -52,6 +52,10 @@ export async function getProduct(fastify: FastifyInstance, slug: string) {
     throw { statusCode: 404, message: 'Product not found' };
   }
 
-  // Flatten the join rows — the frontend just wants a plain Product[].
-  return { ...product, addOns: product.addOns.map((row) => row.addOn) };
+  // Flatten the join rows — the frontend wants a plain Product[] with the
+  // join's required/quantity attached to each add-on.
+  return {
+    ...product,
+    addOns: product.addOns.map((row) => ({ ...row.addOn, addOnRequired: row.required, addOnQuantity: row.quantity })),
+  };
 }

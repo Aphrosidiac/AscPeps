@@ -33,6 +33,10 @@ interface ProductFormData {
   featured: boolean;
   active: boolean;
   addOnIds: string[];
+  // Per-selected-add-on config, keyed by addOnId — required/quantity only
+  // meaningful for ids also present in addOnIds.
+  addOnConfig: Record<string, { required: boolean; quantity: string }>;
+  addOnReminder: string;
 }
 
 const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRFFNYY';
@@ -42,7 +46,7 @@ const emptyForm: ProductFormData = {
   price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '',
   description: '', benefits: '', dosageInfo: '',
   stock: '0', imageUrl: '', coaUrl: DEFAULT_COA, featured: false, active: true,
-  addOnIds: [],
+  addOnIds: [], addOnConfig: {}, addOnReminder: '',
 };
 
 type SortKey = 'code' | 'name' | 'category' | 'size' | 'price' | 'stock' | 'status';
@@ -225,6 +229,10 @@ export default function AdminProductsPage() {
       featured: product.featured,
       active: product.active,
       addOnIds: product.addOns?.map((p) => p.id) || [],
+      addOnConfig: Object.fromEntries(
+        (product.addOns || []).map((p) => [p.id, { required: p.addOnRequired, quantity: String(p.addOnQuantity) }])
+      ),
+      addOnReminder: product.addOnReminder || '',
     });
     setFormError('');
     setShowModal(true);
@@ -280,7 +288,16 @@ export default function AdminProductsPage() {
       coaUrl: form.coaUrl || null,
       featured: form.featured,
       active: form.active,
-      addOnIds: form.addOnIds,
+      addOns: form.addOnIds.map((addOnId) => {
+        const config = form.addOnConfig[addOnId];
+        const quantity = parseInt(config?.quantity ?? '1');
+        return {
+          addOnId,
+          required: config?.required ?? false,
+          quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+        };
+      }),
+      addOnReminder: form.addOnReminder.trim() || null,
     };
 
     try {
@@ -592,10 +609,60 @@ export default function AdminProductsPage() {
                   .filter((p) => p.id !== editingId)
                   .map((p) => ({ id: p.id, label: `${p.name}${p.size ? ` — ${p.size}` : ''}` }))}
                 selectedIds={form.addOnIds}
-                onChange={(addOnIds) => setForm((f) => ({ ...f, addOnIds }))}
+                onChange={(addOnIds) =>
+                  setForm((f) => ({
+                    ...f,
+                    addOnIds,
+                    addOnConfig: Object.fromEntries(
+                      addOnIds.map((id) => [id, f.addOnConfig[id] ?? { required: false, quantity: '1' }])
+                    ),
+                  }))
+                }
                 searchPlaceholder="Search products..."
                 emptyMessage="No other products available."
               />
+
+              {form.addOnIds.length > 0 && (
+                <div className="space-y-1.5 rounded-lg border border-border p-3">
+                  <p className="text-xs font-medium text-text-secondary">Add-on settings</p>
+                  {form.addOnIds.map((id) => {
+                    const product = products.find((p) => p.id === id);
+                    const config = form.addOnConfig[id] ?? { required: false, quantity: '1' };
+                    return (
+                      <div key={id} className="flex items-center gap-3 text-sm">
+                        <span className="flex-1 truncate">{product ? `${product.name}${product.size ? ` — ${product.size}` : ''}` : id}</span>
+                        <label className="flex items-center gap-1.5 shrink-0 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={config.required}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                addOnConfig: { ...f.addOnConfig, [id]: { ...config, required: e.target.checked } },
+                              }))
+                            }
+                            className="rounded accent-primary"
+                          />
+                          Required
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={config.quantity}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              addOnConfig: { ...f.addOnConfig, [id]: { ...config, quantity: e.target.value } },
+                            }))
+                          }
+                          className="w-16 shrink-0 text-center py-1 border border-border rounded text-sm bg-surface"
+                          title="Quantity added when this add-on is included"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <Input
                 label="Certificate of Analysis URL"
@@ -638,6 +705,18 @@ export default function AdminProductsPage() {
                   rows={2}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   placeholder="Dosage instructions..."
+                />
+              </div>
+
+              <div>
+                <label htmlFor="addOnReminder" className="block text-sm font-medium text-text-secondary mb-1">
+                  Add-on reminder (optional, plain text nudge shown near Add to Cart)
+                </label>
+                <Input
+                  id="addOnReminder"
+                  value={form.addOnReminder}
+                  onChange={(e) => updateField('addOnReminder', e.target.value)}
+                  placeholder="e.g. Remember: this peptide needs Bacteriostatic Water to reconstitute"
                 />
               </div>
 
