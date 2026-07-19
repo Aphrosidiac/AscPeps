@@ -22,7 +22,7 @@ const createOrderSchema = z.object({
   idempotencyKey: z.string().min(8).max(100).optional(),
   items: z.array(
     z.object({
-      productId: z.string(),
+      variantId: z.string(),
       quantity: z.number().int().min(1).max(100),
     })
   ).min(1).max(50),
@@ -65,53 +65,61 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     // Server-side enforcement of "required" add-ons (e.g. Bac Water + syringes
     // for a reconstitution-needing peptide): the storefront pre-checks and
     // locks these, but a bypassed/buggy client must still not be able to ship
-    // a peptide without its required supplies. For each ordered product that
-    // configures required add-ons, make sure the order includes at least the
-    // configured fixed quantity of each — this does NOT scale with how many
-    // units of the parent product were ordered, and if two ordered products
-    // both require the same add-on at different quantities, the larger of
-    // the two wins rather than summing.
-    const requiredRelations = await tx.productAddOn.findMany({
-      where: { productId: { in: data.items.map((i) => i.productId) }, required: true },
+    // a peptide without its required supplies. Required add-ons are
+    // configured on the parent Product (apply regardless of which of its own
+    // variants is purchased), so first resolve which parents were bought.
+    const purchasedVariants = await tx.productVariant.findMany({
+      where: { id: { in: data.items.map((i) => i.variantId) } },
+      select: { id: true, productId: true },
     });
+    const parentIds = [...new Set(purchasedVariants.map((v) => v.productId))];
+    const requiredRelations = await tx.productAddOn.findMany({
+      where: { productId: { in: parentIds }, required: true },
+    });
+    // For each required add-on, make sure the order includes at least the
+    // configured fixed quantity — this does NOT scale with how many units of
+    // the parent product were ordered, and if two purchased products both
+    // require the same add-on at different quantities, the larger of the
+    // two wins rather than summing.
     const requiredMinByAddOnId = new Map<string, number>();
     for (const rel of requiredRelations) {
       requiredMinByAddOnId.set(rel.addOnId, Math.max(requiredMinByAddOnId.get(rel.addOnId) ?? 0, rel.quantity));
     }
     const items = data.items.map((i) => ({ ...i }));
     for (const [addOnId, minQuantity] of requiredMinByAddOnId) {
-      const existing = items.find((i) => i.productId === addOnId);
+      const existing = items.find((i) => i.variantId === addOnId);
       if (existing) {
         existing.quantity = Math.max(existing.quantity, minQuantity);
       } else {
-        items.push({ productId: addOnId, quantity: minQuantity });
+        items.push({ variantId: addOnId, quantity: minQuantity });
       }
     }
 
-    const products = await tx.product.findMany({
-      where: { id: { in: items.map((i) => i.productId) }, active: true },
+    const variants = await tx.productVariant.findMany({
+      where: { id: { in: items.map((i) => i.variantId) }, active: true, product: { active: true } },
+      include: { product: { select: { name: true } } },
     });
 
-    if (products.length !== items.length) {
+    if (variants.length !== items.length) {
       throw { statusCode: 400, message: 'One or more products not found or inactive' };
     }
 
-    const productMap = new Map(products.map((p) => [p.id, p]));
+    const variantMap = new Map(variants.map((v) => [v.id, v]));
     // Captured once so subtotal and each stored unitPrice agree on whether a
     // sale is active, even in the unlikely event a sale boundary is crossed
     // mid-transaction.
     const now = new Date();
 
     for (const item of items) {
-      const product = productMap.get(item.productId)!;
-      if (product.stock < item.quantity) {
-        throw { statusCode: 400, message: `Insufficient stock for ${product.name}` };
+      const variant = variantMap.get(item.variantId)!;
+      if (variant.stock < item.quantity) {
+        throw { statusCode: 400, message: `Insufficient stock for ${variant.product.name}${variant.size ? ' ' + variant.size : ''}` };
       }
     }
 
     const subtotal = items.reduce((sum, item) => {
-      const product = productMap.get(item.productId)!;
-      return sum + getEffectivePrice(product, now) * item.quantity;
+      const variant = variantMap.get(item.variantId)!;
+      return sum + getEffectivePrice(variant, now) * item.quantity;
     }, 0);
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
@@ -167,26 +175,26 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         idempotencyKey: data.idempotencyKey,
         items: {
           create: items.map((item) => ({
-            productId: item.productId,
+            variantId: item.variantId,
             quantity: item.quantity,
-            unitPrice: getEffectivePrice(productMap.get(item.productId)!, now),
+            unitPrice: getEffectivePrice(variantMap.get(item.variantId)!, now),
           })),
         },
       },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { variant: { include: { product: true } } } } },
     });
 
     // Conditional decrement guards against oversell under concurrency: the
     // WHERE clause only matches if enough stock remains, so two simultaneous
     // orders for the last unit can't both succeed. A miss rolls back the tx.
     for (const item of items) {
-      const dec = await tx.product.updateMany({
-        where: { id: item.productId, stock: { gte: item.quantity } },
+      const dec = await tx.productVariant.updateMany({
+        where: { id: item.variantId, stock: { gte: item.quantity } },
         data: { stock: { decrement: item.quantity } },
       });
       if (dec.count === 0) {
-        const product = productMap.get(item.productId)!;
-        throw { statusCode: 400, message: `Insufficient stock for ${product.name}` };
+        const variant = variantMap.get(item.variantId)!;
+        throw { statusCode: 400, message: `Insufficient stock for ${variant.product.name}${variant.size ? ' ' + variant.size : ''}` };
       }
     }
 
@@ -211,7 +219,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     whatsappUrl = buildWhatsAppUrl({
       orderNumber: order.orderNumber,
       items: order.items.map((item) => ({
-        name: item.product.name,
+        name: `${item.variant.product.name}${item.variant.size ? ' ' + item.variant.size : ''}`,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
       })),
@@ -292,7 +300,9 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
           id: true,
           quantity: true,
           unitPrice: true,
-          product: { select: { name: true, code: true, imageUrl: true } },
+          variant: {
+            select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } },
+          },
         },
       },
     },

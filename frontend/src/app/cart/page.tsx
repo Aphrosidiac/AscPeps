@@ -32,7 +32,7 @@ export default function CartPage() {
       <div className="grid lg:grid-cols-3 gap-8">
         <Stagger className="lg:col-span-2 space-y-4" stagger={0.08}>
           {items.map((item) => (
-            <div key={item.productId} className="bg-surface rounded-xl border border-border p-4">
+            <div key={item.variantId} className="bg-surface rounded-xl border border-border p-4">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                   {item.imageUrl ? (
@@ -47,7 +47,7 @@ export default function CartPage() {
                   <p className="text-sm text-text-secondary">{formatPrice(item.price)}</p>
                 </div>
 
-                <button onClick={() => removeItem(item.productId)} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
+                <button onClick={() => removeItem(item.variantId)} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -55,14 +55,14 @@ export default function CartPage() {
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
                 <div className="flex items-center border border-border rounded-lg">
                   <button
-                    onClick={() => updateQuantity(item.productId, Math.max(1, item.quantity - 1))}
+                    onClick={() => updateQuantity(item.variantId, Math.max(1, item.quantity - 1))}
                     className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
                   >
                     -
                   </button>
                   <span className="px-4 py-1.5 text-sm font-medium">{item.quantity}</span>
                   <button
-                    onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                    onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
                     className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
                   >
                     +

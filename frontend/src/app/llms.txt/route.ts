@@ -1,5 +1,5 @@
 import type { Product } from '@/types';
-import { getFullProductName } from '@/lib/utils';
+import { formatPrice } from '@/lib/utils';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3105';
 const BASE_URL = 'https://ascendpeptides.my';
@@ -26,9 +26,14 @@ export async function GET() {
     : `- Currency: MYR. Shipping: flat RM${shippingFee} on all orders. Payment: bank transfer, FPX, credit/debit card.`;
 
   const productLines = products.map((p) => {
-    const price = `RM${(p.price / 100).toFixed(2)}`;
+    const activePrices = p.variants.filter((v) => v.active).map((v) => v.price);
+    const price = activePrices.length === 0
+      ? ''
+      : new Set(activePrices).size > 1
+        ? `${formatPrice(Math.min(...activePrices))}–${formatPrice(Math.max(...activePrices))}`
+        : formatPrice(activePrices[0]);
     const cat = p.category?.name ? ` — ${p.category.name}` : '';
-    return `- [${getFullProductName(p)}](${BASE_URL}/products/${p.slug}): ${price}${cat}`;
+    return `- [${p.name}](${BASE_URL}/products/${p.slug}): ${price}${cat}`;
   });
 
   const body = [

@@ -21,9 +21,9 @@ export async function getDashboardStats(fastify: FastifyInstance) {
 
     fastify.prisma.product.count({ where: { active: true } }),
 
-    fastify.prisma.product.findMany({
-      where: { active: true, stock: { lt: 5 } },
-      select: { id: true, code: true, name: true, stock: true },
+    fastify.prisma.productVariant.findMany({
+      where: { active: true, stock: { lt: 5 }, product: { active: true } },
+      select: { id: true, code: true, size: true, stock: true, product: { select: { name: true } } },
       orderBy: { stock: 'asc' },
     }),
 
@@ -35,7 +35,7 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     fastify.prisma.order.findMany({
       take: 5,
       orderBy: { createdAt: 'desc' },
-      include: { items: { include: { product: { select: { name: true, code: true } } } } },
+      include: { items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } } },
     }),
   ]);
 
@@ -43,7 +43,9 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     todayOrders,
     todayRevenue: todayRevenue._sum.total || 0,
     totalProducts,
-    lowStockProducts,
+    lowStockProducts: lowStockProducts.map((v) => ({
+      id: v.id, code: v.code, name: `${v.product.name}${v.size ? ' ' + v.size : ''}`, stock: v.stock,
+    })),
     ordersByStatus: Object.fromEntries(ordersByStatus.map((o) => [o.status, o._count])),
     recentOrders,
   };
@@ -68,7 +70,12 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       paymentMethod: true,
       paymentGateway: true,
       createdAt: true,
-      items: { select: { productId: true, quantity: true, unitPrice: true, product: { select: { name: true, code: true, categoryId: true } } } },
+      items: {
+        select: {
+          variantId: true, quantity: true, unitPrice: true,
+          variant: { select: { code: true, size: true, product: { select: { name: true, categoryId: true } } } },
+        },
+      },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -109,9 +116,10 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
 
     if (order.paymentStatus === 'PAID') {
       for (const item of order.items) {
-        const key = item.productId;
+        const key = item.variantId;
         if (!productSales[key]) {
-          productSales[key] = { name: item.product.name, code: item.product.code, quantity: 0, revenue: 0 };
+          const name = `${item.variant.product.name}${item.variant.size ? ' ' + item.variant.size : ''}`;
+          productSales[key] = { name, code: item.variant.code, quantity: 0, revenue: 0 };
         }
         productSales[key].quantity += item.quantity;
         productSales[key].revenue += item.unitPrice * item.quantity;

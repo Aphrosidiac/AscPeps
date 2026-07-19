@@ -108,135 +108,140 @@ export function BreadcrumbJsonLd({ items }: { items: { name: string; url: string
   return <JsonLdScript data={data} />;
 }
 
-interface ProductJsonLdProps {
-  name: string;
-  description: string;
+interface ProductGroupVariantJsonLd {
+  code: string;
+  size?: string | null;
   price: number;
   salePrice?: number | null;
   saleStartsAt?: string | null;
   saleEndsAt?: string | null;
-  code: string;
-  slug: string;
   imageUrl?: string | null;
   inStock: boolean;
+}
+
+interface ProductGroupJsonLdProps {
+  name: string;
+  description: string;
+  slug: string;
   category: string;
-  size?: string | null;
   updatedAt: string;
   // Flat shipping fee in whole MYR (e.g. "10.0"), or empty/"0" for free —
   // mirrors the settings.shipping_fee value already used on-page.
   shippingFee: string;
+  // One entry per active variant (size) — each becomes its own nested
+  // Product/Offer under `hasVariant`, per Google's documented pattern for a
+  // single product line sold in multiple sizes (variesBy: size).
+  variants: ProductGroupVariantJsonLd[];
 }
 
-export function ProductJsonLd({
+export function ProductGroupJsonLd({
   name,
   description,
-  price,
-  salePrice,
-  saleStartsAt,
-  saleEndsAt,
-  code,
   slug,
-  imageUrl,
-  inStock,
   category,
-  size,
   updatedAt,
   shippingFee,
-}: ProductJsonLdProps) {
-  const additionalProperty = [
-    ...(size ? [{ '@type': 'PropertyValue', name: 'Size', value: size }] : []),
-    { '@type': 'PropertyValue', name: 'Intended Use', value: 'Laboratory and research use only' },
-    { '@type': 'PropertyValue', name: 'Third-party tested', value: 'Yes — Certificate of Analysis available' },
-  ];
-
+  variants,
+}: ProductGroupJsonLdProps) {
+  const url = `https://ascendpeptides.my/products/${slug}`;
   const freeShipping = !shippingFee || shippingFee === '0';
 
-  // validFrom/priceValidUntil are Google's sale-duration markers (per their
-  // own structured-data docs: validFrom "marks when a sale price becomes
-  // active", priceValidUntil "marks when the sale price stops applying") —
-  // not a general price-freshness signal. Both are recommended, not
-  // required, so they're only emitted when a real sale is genuinely active,
-  // using the real stored dates. No sale → omitted entirely rather than
-  // fabricated, per Google's own guidance that omission has no eligibility
-  // cost.
-  const saleProduct = { price, salePrice: salePrice ?? null, saleStartsAt: saleStartsAt ?? null, saleEndsAt: saleEndsAt ?? null };
-  const onSale = isSaleActive(saleProduct);
-  const effectivePrice = getEffectivePrice(saleProduct);
+  const hasVariant = variants.map((v) => {
+    // validFrom/priceValidUntil are Google's sale-duration markers (per their
+    // own structured-data docs: validFrom "marks when a sale price becomes
+    // active", priceValidUntil "marks when the sale price stops applying") —
+    // not a general price-freshness signal. Both are recommended, not
+    // required, so they're only emitted when a real sale is genuinely active,
+    // using the real stored dates. No sale → omitted entirely rather than
+    // fabricated, per Google's own guidance that omission has no eligibility
+    // cost.
+    const saleProduct = { price: v.price, salePrice: v.salePrice ?? null, saleStartsAt: v.saleStartsAt ?? null, saleEndsAt: v.saleEndsAt ?? null };
+    const onSale = isSaleActive(saleProduct);
+    const effectivePrice = getEffectivePrice(saleProduct);
+
+    return {
+      '@type': 'Product',
+      sku: v.code,
+      mpn: v.code,
+      name: v.size ? `${name} ${v.size}` : name,
+      // Relative uploaded-image paths must be absolute here — JSON-LD has no
+      // base-URL resolution the way <img>/<Image> tags do. Falls back to the
+      // brand icon until every SKU has real photography (tracked separately).
+      image: absoluteImageUrl(v.imageUrl) || 'https://ascendpeptides.my/images/pill-icon-512.png',
+      additionalProperty: v.size ? [{ '@type': 'PropertyValue', name: 'Size', value: v.size }] : [],
+      offers: {
+        '@type': 'Offer',
+        price: (effectivePrice / 100).toFixed(2),
+        priceCurrency: 'MYR',
+        ...(onSale ? { validFrom: v.saleStartsAt, priceValidUntil: v.saleEndsAt } : {}),
+        itemCondition: 'https://schema.org/NewCondition',
+        availability: v.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url,
+        areaServed: { '@type': 'Country', name: 'Malaysia' },
+        seller: { '@type': 'Organization', name: 'ASCEND' },
+        // Matches Terms & Conditions §7: no returns/refunds once shipped,
+        // except transit damage or wrong item — that's a fulfillment-error
+        // guarantee, not a general buyer's-remorse return window, so
+        // NotPermitted is the accurate category rather than a fabricated
+        // return-days figure.
+        hasMerchantReturnPolicy: {
+          '@type': 'MerchantReturnPolicy',
+          applicableCountry: 'MY',
+          returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+        },
+        shippingDetails: {
+          '@type': 'OfferShippingDetails',
+          shippingRate: {
+            '@type': 'MonetaryAmount',
+            value: freeShipping ? '0' : shippingFee,
+            currency: 'MYR',
+          },
+          shippingDestination: {
+            '@type': 'DefinedRegion',
+            addressCountry: 'MY',
+          },
+          deliveryTime: {
+            '@type': 'ShippingDeliveryTime',
+            handlingTime: {
+              '@type': 'QuantitativeValue',
+              minValue: 1,
+              maxValue: 2,
+              unitCode: 'DAY',
+            },
+            // Sitewide conservative range covering all three documented
+            // regional bands (Klang Valley 1-2d, other Peninsular 2-4d,
+            // Sabah/Sarawak 3-7d) — see /shipping.
+            transitTime: {
+              '@type': 'QuantitativeValue',
+              minValue: 1,
+              maxValue: 7,
+              unitCode: 'DAY',
+            },
+          },
+        },
+      },
+    };
+  });
 
   const data = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
+    '@type': 'ProductGroup',
     name,
     description,
-    sku: code,
-    mpn: code,
-    url: `https://ascendpeptides.my/products/${slug}`,
-    // Relative uploaded-image paths must be absolute here — JSON-LD has no
-    // base-URL resolution the way <img>/<Image> tags do. Falls back to the
-    // brand icon until every SKU has real photography (tracked separately).
-    image: absoluteImageUrl(imageUrl) || 'https://ascendpeptides.my/images/pill-icon-512.png',
+    url,
+    productGroupID: slug,
+    variesBy: ['https://schema.org/size'],
     category,
     dateModified: updatedAt,
     brand: {
       '@type': 'Brand',
       name: 'ASCEND',
     },
-    additionalProperty,
-    offers: {
-      '@type': 'Offer',
-      price: (effectivePrice / 100).toFixed(2),
-      priceCurrency: 'MYR',
-      // Real sale window (see comment above) — omitted entirely when not on sale.
-      ...(onSale ? { validFrom: saleStartsAt, priceValidUntil: saleEndsAt } : {}),
-      itemCondition: 'https://schema.org/NewCondition',
-      availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-      url: `https://ascendpeptides.my/products/${slug}`,
-      areaServed: { '@type': 'Country', name: 'Malaysia' },
-      seller: {
-        '@type': 'Organization',
-        name: 'ASCEND',
-      },
-      // Matches Terms & Conditions §7: no returns/refunds once shipped,
-      // except transit damage or wrong item — that's a fulfillment-error
-      // guarantee, not a general buyer's-remorse return window, so
-      // NotPermitted is the accurate category rather than a fabricated
-      // return-days figure.
-      hasMerchantReturnPolicy: {
-        '@type': 'MerchantReturnPolicy',
-        applicableCountry: 'MY',
-        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
-      },
-      shippingDetails: {
-        '@type': 'OfferShippingDetails',
-        shippingRate: {
-          '@type': 'MonetaryAmount',
-          value: freeShipping ? '0' : shippingFee,
-          currency: 'MYR',
-        },
-        shippingDestination: {
-          '@type': 'DefinedRegion',
-          addressCountry: 'MY',
-        },
-        deliveryTime: {
-          '@type': 'ShippingDeliveryTime',
-          handlingTime: {
-            '@type': 'QuantitativeValue',
-            minValue: 1,
-            maxValue: 2,
-            unitCode: 'DAY',
-          },
-          // Sitewide conservative range covering all three documented
-          // regional bands (Klang Valley 1-2d, other Peninsular 2-4d,
-          // Sabah/Sarawak 3-7d) — see /shipping.
-          transitTime: {
-            '@type': 'QuantitativeValue',
-            minValue: 1,
-            maxValue: 7,
-            unitCode: 'DAY',
-          },
-        },
-      },
-    },
+    additionalProperty: [
+      { '@type': 'PropertyValue', name: 'Intended Use', value: 'Laboratory and research use only' },
+      { '@type': 'PropertyValue', name: 'Third-party tested', value: 'Yes — Certificate of Analysis available' },
+    ],
+    hasVariant,
   };
 
   return <JsonLdScript data={data} />;

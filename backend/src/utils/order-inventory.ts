@@ -31,8 +31,8 @@ export async function restoreOrderInventory(
     if (!order) return false;
 
     for (const item of order.items) {
-      await tx.product.update({
-        where: { id: item.productId },
+      await tx.productVariant.update({
+        where: { id: item.variantId },
         data: { stock: { increment: item.quantity } },
       });
     }

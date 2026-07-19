@@ -111,7 +111,7 @@ export default async function RootLayout({
 
   // Real min-max price range for Organization.priceRange, computed from the
   // live catalog rather than a hardcoded placeholder.
-  const prices = catalog.data.map((p) => p.price);
+  const prices = catalog.data.flatMap((p) => p.variants.filter((v) => v.active).map((v) => v.price));
   const priceRange =
     prices.length > 0
       ? `RM${Math.min(...prices) / 100} - RM${Math.max(...prices) / 100}`

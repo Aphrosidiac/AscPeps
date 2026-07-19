@@ -4,7 +4,7 @@ import path from 'path';
 interface ReceiptItem {
   quantity: number;
   unitPrice: number;
-  product: { name: string; code: string };
+  variant: { code: string; size: string | null; product: { name: string } };
 }
 
 interface ReceiptOrder {
@@ -189,12 +189,13 @@ export async function generateReceiptPdf(
         doc.addPage();
         y = 50;
       }
+      const itemName = `${item.variant.product.name}${item.variant.size ? ' ' + item.variant.size : ''}`;
       doc.font('Helvetica').fontSize(9).fillColor('#000000');
-      doc.text(item.product.name, colItem, y, { width: 260 });
-      const nameHeight = doc.heightOfString(item.product.name, { width: 260 });
+      doc.text(itemName, colItem, y, { width: 260 });
+      const nameHeight = doc.heightOfString(itemName, { width: 260 });
 
       doc.fontSize(7).fillColor('#888888');
-      doc.text(item.product.code, colItem, y + nameHeight, { width: 260 });
+      doc.text(item.variant.code, colItem, y + nameHeight, { width: 260 });
 
       doc.fontSize(9).fillColor('#000000');
       doc.text(String(item.quantity), colQty, y, { width: 40, align: 'center' });
