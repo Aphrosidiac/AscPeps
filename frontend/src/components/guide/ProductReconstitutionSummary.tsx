@@ -9,12 +9,12 @@ interface ProductReconstitutionSummaryProps {
 const SOLVENT_COPY = {
   'bac-water': {
     label: 'Bacteriostatic (BAC) water',
-    href: '/products/bac-water-3ml',
+    href: '/products/bac-water',
     note: 'the standard solvent for most peptides on this site',
   },
   'acetic-acid': {
     label: '0.6% Acetic Acid',
-    href: '/products/acetic-acid-10ml',
+    href: '/products/acetic-acid',
     note: 'recommended for peptides with solubility issues, such as GHK-Cu',
   },
 } as const;

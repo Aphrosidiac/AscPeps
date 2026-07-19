@@ -118,10 +118,43 @@ export async function adminListProducts(fastify: FastifyInstance, query: Record<
   return paginatedResponse(flattened, total, page, limit);
 }
 
+export async function adminGetProduct(fastify: FastifyInstance, id: string) {
+  const product = await fastify.prisma.product.findUnique({
+    where: { id },
+    include: {
+      category: { select: { name: true, slug: true } },
+      variants: { orderBy: { price: 'asc' } },
+      addOns: { include: ADDON_INCLUDE },
+    },
+  });
+
+  if (!product) {
+    throw { statusCode: 404, message: 'Product not found' };
+  }
+
+  return { ...product, addOns: product.addOns.map(flattenAddOn) };
+}
+
 function toVariantSaleDates(v: z.infer<typeof variantObjectSchema>) {
   return {
     saleStartsAt: v.saleStartsAt ? new Date(v.saleStartsAt) : v.saleStartsAt,
     saleEndsAt: v.saleEndsAt ? new Date(v.saleEndsAt) : v.saleEndsAt,
+  };
+}
+
+// Shared field mapper for creating/updating a ProductVariant — used by both
+// adminCreateProduct and adminUpdateProduct so the field list can't drift
+// between create-with-parent, update-existing, and create-new-on-update.
+function toVariantData(v: z.infer<typeof variantObjectSchema>) {
+  return {
+    code: v.code!,
+    size: v.size,
+    price: v.price!,
+    salePrice: v.salePrice,
+    ...toVariantSaleDates(v),
+    stock: v.stock,
+    imageUrl: v.imageUrl,
+    active: v.active,
   };
 }
 
@@ -133,17 +166,7 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
 
     if (variants && variants.length > 0) {
       await tx.productVariant.createMany({
-        data: variants.map((v) => ({
-          productId: created.id,
-          code: v.code!,
-          size: v.size,
-          price: v.price!,
-          salePrice: v.salePrice,
-          ...toVariantSaleDates(v),
-          stock: v.stock,
-          imageUrl: v.imageUrl,
-          active: v.active,
-        })),
+        data: variants.map((v) => ({ productId: created.id, ...toVariantData(v) })),
       });
     }
 
@@ -164,22 +187,28 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
 export async function adminUpdateProduct(fastify: FastifyInstance, id: string, body: unknown) {
   const { addOns, variants, ...data } = updateProductSchema.parse(body);
 
-  if (addOns && addOns.length > 0) {
-    // A product's own variants can't be listed as its own add-ons — check
-    // against variants it will end up with post-update (existing ones not
-    // being removed, plus any newly submitted ones), not just its current set.
-    const currentVariantIds = new Set(
-      (await fastify.prisma.productVariant.findMany({ where: { productId: id }, select: { id: true } })).map((v) => v.id)
-    );
-    const ownVariantIds = variants === undefined
-      ? currentVariantIds
-      : new Set(variants.filter((v) => v.id).map((v) => v.id!));
-    if (addOns.some((a) => ownVariantIds.has(a.addOnId))) {
-      throw { statusCode: 400, message: "A product cannot list its own variant as its own add-on" };
-    }
-  }
-
   const product = await fastify.prisma.$transaction(async (tx) => {
+    // Row-lock this product for the transaction so a concurrent update to
+    // the same product can't interleave with the guard read below (closes
+    // a check-then-act race where two simultaneous requests could each pass
+    // the guard before either commits).
+    await tx.$queryRaw`SELECT id FROM products WHERE id = ${id} FOR UPDATE`;
+
+    if (addOns && addOns.length > 0) {
+      // A product's own variant can never be listed as its own add-on —
+      // including a soft-removed one, since soft-remove only flips `active`
+      // and never changes `productId`. So this checks ALL existing variant
+      // ids for this product, not just the ones present in the submitted
+      // `variants` array (a variant omitted from that array is about to be
+      // soft-removed, not detached from this product).
+      const ownVariantIds = new Set(
+        (await tx.productVariant.findMany({ where: { productId: id }, select: { id: true } })).map((v) => v.id)
+      );
+      if (addOns.some((a) => ownVariantIds.has(a.addOnId))) {
+        throw { statusCode: 400, message: "A product cannot list its own variant as its own add-on" };
+      }
+    }
+
     const updated = await tx.product.update({ where: { id }, data });
 
     if (variants !== undefined) {
@@ -192,27 +221,9 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
           if (!existingIds.has(v.id)) {
             throw { statusCode: 400, message: `Variant ${v.id} does not belong to this product` };
           }
-          await tx.productVariant.update({
-            where: { id: v.id },
-            data: {
-              code: v.code, size: v.size, price: v.price, salePrice: v.salePrice,
-              ...toVariantSaleDates(v), stock: v.stock, imageUrl: v.imageUrl, active: v.active,
-            },
-          });
+          await tx.productVariant.update({ where: { id: v.id }, data: toVariantData(v) });
         } else {
-          await tx.productVariant.create({
-            data: {
-              productId: id,
-              code: v.code!,
-              size: v.size,
-              price: v.price!,
-              salePrice: v.salePrice,
-              ...toVariantSaleDates(v),
-              stock: v.stock,
-              imageUrl: v.imageUrl,
-              active: v.active,
-            },
-          });
+          await tx.productVariant.create({ data: { productId: id, ...toVariantData(v) } });
         }
       }
 

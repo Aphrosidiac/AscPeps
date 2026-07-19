@@ -40,9 +40,10 @@ function slugify(text) {
 // out of the name (if present) to recover a size-free parent name.
 function deriveParentName(name, size) {
   if (!size) return name.trim();
-  const idx = name.toLowerCase().lastIndexOf(size.trim().toLowerCase());
+  const trimmedSize = size.trim();
+  const idx = name.toLowerCase().lastIndexOf(trimmedSize.toLowerCase());
   if (idx === -1) return name.trim();
-  return (name.slice(0, idx) + name.slice(idx + size.length)).replace(/\s+/g, ' ').trim();
+  return (name.slice(0, idx) + name.slice(idx + trimmedSize.length)).replace(/\s+/g, ' ').trim();
 }
 
 async function loadFlatVariants() {

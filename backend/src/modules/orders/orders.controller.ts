@@ -7,6 +7,7 @@ import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
+import { getVariantDisplayName } from '../../utils/product-addons.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -73,8 +74,12 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       select: { id: true, productId: true },
     });
     const parentIds = [...new Set(purchasedVariants.map((v) => v.productId))];
+    // Only add-ons that are themselves still purchasable (variant active AND
+    // its own parent active) get force-injected — otherwise a supply that
+    // gets discontinued/deactivated would permanently block checkout of
+    // every product that requires it, instead of just dropping out quietly.
     const requiredRelations = await tx.productAddOn.findMany({
-      where: { productId: { in: parentIds }, required: true },
+      where: { productId: { in: parentIds }, required: true, addOn: { active: true, product: { active: true } } },
     });
     // For each required add-on, make sure the order includes at least the
     // configured fixed quantity — this does NOT scale with how many units of
@@ -113,7 +118,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     for (const item of items) {
       const variant = variantMap.get(item.variantId)!;
       if (variant.stock < item.quantity) {
-        throw { statusCode: 400, message: `Insufficient stock for ${variant.product.name}${variant.size ? ' ' + variant.size : ''}` };
+        throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)}` };
       }
     }
 
@@ -194,7 +199,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       });
       if (dec.count === 0) {
         const variant = variantMap.get(item.variantId)!;
-        throw { statusCode: 400, message: `Insufficient stock for ${variant.product.name}${variant.size ? ' ' + variant.size : ''}` };
+        throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)}` };
       }
     }
 
@@ -219,7 +224,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     whatsappUrl = buildWhatsAppUrl({
       orderNumber: order.orderNumber,
       items: order.items.map((item) => ({
-        name: `${item.variant.product.name}${item.variant.size ? ' ' + item.variant.size : ''}`,
+        name: getVariantDisplayName(item.variant.product, item.variant),
         quantity: item.quantity,
         unitPrice: item.unitPrice,
       })),

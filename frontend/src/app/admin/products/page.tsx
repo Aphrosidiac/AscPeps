@@ -1,71 +1,20 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, X, Search, Trash2, Upload, ImageIcon, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Pencil, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetProducts, adminCreateProduct, adminUpdateProduct, adminDeleteProduct, adminUploadImage, getCategories } from '@/lib/api';
+import { adminGetProducts, adminUpdateProduct, adminDeleteProduct, getCategories } from '@/lib/api';
 import { formatPrice, getDefaultVariant } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { CheckboxList } from '@/components/ui/CheckboxList';
 import { FeaturedOrderModal } from './FeaturedOrderModal';
 import type { Product, Category } from '@/types';
-
-interface VariantFormData {
-  id?: string;
-  code: string;
-  size: string;
-  price: string;
-  salePrice: string;
-  saleStartsAt: string;
-  saleEndsAt: string;
-  stock: string;
-  imageUrl: string;
-  active: boolean;
-}
-
-interface ProductFormData {
-  name: string;
-  slug: string;
-  categoryId: string;
-  description: string;
-  benefits: string;
-  dosageInfo: string;
-  coaUrl: string;
-  featured: boolean;
-  active: boolean;
-  addOnIds: string[];
-  // Per-selected-add-on config, keyed by addOnId (a variant id) — required/quantity
-  // only meaningful for ids also present in addOnIds.
-  addOnConfig: Record<string, { required: boolean; quantity: string }>;
-  addOnReminder: string;
-  variants: VariantFormData[];
-}
-
-const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRFFNYY';
-
-const emptyVariant: VariantFormData = {
-  code: '', size: '', price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '', stock: '0', imageUrl: '', active: true,
-};
-
-const emptyForm: ProductFormData = {
-  name: '', slug: '', categoryId: '',
-  description: '', benefits: '', dosageInfo: '', coaUrl: DEFAULT_COA,
-  featured: false, active: true,
-  addOnIds: [], addOnConfig: {}, addOnReminder: '',
-  variants: [{ ...emptyVariant }],
-};
 
 type SortKey = 'name' | 'category' | 'price' | 'stock' | 'status';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type FeaturedFilter = 'all' | 'featured' | 'not-featured';
 type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
-
-function slugify(text: string) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-}
 
 function totalStock(product: Product): number {
   return product.variants.filter((v) => v.active).reduce((sum, v) => sum + v.stock, 0);
@@ -136,12 +85,7 @@ export default function AdminProductsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
   const [showFeaturedOrder, setShowFeaturedOrder] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ProductFormData>(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
 
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -183,18 +127,6 @@ export default function AdminProductsPage() {
 
   const filtersActive = categoryFilter !== '' || statusFilter !== 'all' || featuredFilter !== 'all' || stockFilter !== 'all';
 
-  // Flattens every OTHER product's active variants into add-on picker
-  // options — an add-on now points at a specific sellable variant (e.g.
-  // "Bac Water — 3mL"), not a whole product line.
-  const addOnOptions = useMemo(() => {
-    return products
-      .filter((p) => p.id !== editingId)
-      .flatMap((p) => p.variants.filter((v) => v.active).map((v) => ({
-        id: v.id,
-        label: `${p.name}${v.size ? ` — ${v.size}` : ''}`,
-      })));
-  }, [products, editingId]);
-
   const displayedProducts = useMemo(() => {
     let list = products;
     if (search.trim()) {
@@ -220,152 +152,6 @@ export default function AdminProductsPage() {
     return sorted;
   }, [products, search, categoryFilter, statusFilter, featuredFilter, stockFilter, sortKey, sortDir]);
 
-  const openCreate = () => {
-    setEditingId(null);
-    setForm(emptyForm);
-    setFormError('');
-    setShowModal(true);
-  };
-
-  const openEdit = (product: Product) => {
-    setEditingId(product.id);
-    let benefits: string[] = [];
-    try { if (product.benefits) benefits = JSON.parse(product.benefits); } catch {}
-    setForm({
-      name: product.name,
-      slug: product.slug,
-      categoryId: product.categoryId,
-      description: product.description || '',
-      benefits: benefits.join('\n'),
-      dosageInfo: product.dosageInfo || '',
-      coaUrl: product.coaUrl || DEFAULT_COA,
-      featured: product.featured,
-      active: product.active,
-      addOnIds: product.addOns?.map((a) => a.id) || [],
-      addOnConfig: Object.fromEntries(
-        (product.addOns || []).map((a) => [a.id, { required: a.addOnRequired, quantity: String(a.addOnQuantity) }])
-      ),
-      addOnReminder: product.addOnReminder || '',
-      variants: product.variants.map((v) => ({
-        id: v.id,
-        code: v.code,
-        size: v.size || '',
-        price: String(v.price / 100),
-        salePrice: v.salePrice != null ? String(v.salePrice / 100) : '',
-        saleStartsAt: v.saleStartsAt ? v.saleStartsAt.slice(0, 16) : '',
-        saleEndsAt: v.saleEndsAt ? v.saleEndsAt.slice(0, 16) : '',
-        stock: String(v.stock),
-        imageUrl: v.imageUrl || '',
-        active: v.active,
-      })),
-    });
-    setFormError('');
-    setShowModal(true);
-  };
-
-  const updateVariant = (index: number, field: keyof VariantFormData, value: string | boolean) => {
-    setForm((f) => ({
-      ...f,
-      variants: f.variants.map((v, i) => (i === index ? { ...v, [field]: value } : v)),
-    }));
-  };
-
-  const addVariantRow = () => setForm((f) => ({ ...f, variants: [...f.variants, { ...emptyVariant }] }));
-  const removeVariantRow = (index: number) => setForm((f) => ({ ...f, variants: f.variants.filter((_, i) => i !== index) }));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token) return;
-    setSaving(true);
-    setFormError('');
-
-    if (form.variants.length === 0) {
-      setFormError('At least one variant (size) is required');
-      setSaving(false);
-      return;
-    }
-
-    const variantsPayload = [];
-    for (const v of form.variants) {
-      const priceInSen = Math.round(parseFloat(v.price) * 100);
-      if (!v.code.trim() || isNaN(priceInSen) || priceInSen < 0) {
-        setFormError(`Each variant needs a code and a valid price (check "${v.code || v.size || 'a new variant'}")`);
-        setSaving(false);
-        return;
-      }
-      let salePriceInSen: number | null = null;
-      if (v.salePrice.trim()) {
-        salePriceInSen = Math.round(parseFloat(v.salePrice) * 100);
-        if (isNaN(salePriceInSen) || salePriceInSen < 0) {
-          setFormError(`Invalid sale price for "${v.code}"`);
-          setSaving(false);
-          return;
-        }
-      }
-      const saleStartsAtIso = v.saleStartsAt ? new Date(v.saleStartsAt).toISOString() : null;
-      const saleEndsAtIso = v.saleEndsAt ? new Date(v.saleEndsAt).toISOString() : null;
-      if (saleStartsAtIso && saleEndsAtIso && saleStartsAtIso > saleEndsAtIso) {
-        setFormError(`Sale end date must be on or after the start date for "${v.code}"`);
-        setSaving(false);
-        return;
-      }
-      variantsPayload.push({
-        ...(v.id ? { id: v.id } : {}),
-        code: v.code.trim(),
-        size: v.size || undefined,
-        price: priceInSen,
-        salePrice: salePriceInSen,
-        saleStartsAt: saleStartsAtIso,
-        saleEndsAt: saleEndsAtIso,
-        stock: parseInt(v.stock) || 0,
-        imageUrl: v.imageUrl || null,
-        active: v.active,
-      });
-    }
-
-    const benefitsArray = form.benefits.split('\n').map((b) => b.trim()).filter(Boolean);
-
-    const payload = {
-      name: form.name,
-      slug: form.slug || slugify(form.name),
-      categoryId: form.categoryId,
-      description: form.description || undefined,
-      benefits: benefitsArray.length > 0 ? JSON.stringify(benefitsArray) : undefined,
-      dosageInfo: form.dosageInfo || undefined,
-      coaUrl: form.coaUrl || null,
-      featured: form.featured,
-      active: form.active,
-      addOns: form.addOnIds.map((addOnId) => {
-        const config = form.addOnConfig[addOnId];
-        const quantity = parseInt(config?.quantity ?? '1');
-        return {
-          addOnId,
-          required: config?.required ?? false,
-          quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
-        };
-      }),
-      addOnReminder: form.addOnReminder.trim() || null,
-      variants: variantsPayload,
-    };
-
-    try {
-      if (editingId) {
-        await adminUpdateProduct(token, editingId, payload);
-      } else {
-        await adminCreateProduct(token, payload);
-      }
-      setShowModal(false);
-      load();
-    } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
-        : undefined;
-      setFormError(message || 'Failed to save product');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleToggleActive = async (product: Product) => {
     if (!token) return;
     await adminUpdateProduct(token, product.id, { active: !product.active });
@@ -378,33 +164,13 @@ export default function AdminProductsPage() {
     load();
   };
 
-  const updateField = (field: keyof ProductFormData, value: string | boolean) => {
-    setForm((f) => {
-      const updated = { ...f, [field]: value };
-      if (field === 'name' && !editingId) {
-        updated.slug = slugify(String(value));
-      }
-      return updated;
-    });
-  };
-
-  const uploadVariantImage = async (index: number, file: File) => {
-    if (!token) return;
-    try {
-      const { url } = await adminUploadImage(token, file);
-      updateVariant(index, 'imageUrl', url);
-    } catch {
-      setFormError('Failed to upload image');
-    }
-  };
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-display text-2xl font-bold">Products</h1>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => setShowFeaturedOrder(true)}><ArrowUpDown className="w-4 h-4" /> Manage Featured Order</Button>
-          <Button onClick={openCreate}><Plus className="w-4 h-4" /> Add Product</Button>
+          <Link href="/admin/products/new"><Button><Plus className="w-4 h-4" /> Add Product</Button></Link>
         </div>
       </div>
 
@@ -518,9 +284,9 @@ export default function AdminProductsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => openEdit(product)} className="p-1.5 hover:bg-surface-elevated rounded cursor-pointer" title="Edit">
+                        <Link href={`/admin/products/${product.id}`} className="p-1.5 hover:bg-surface-elevated rounded cursor-pointer inline-flex" title="Edit">
                           <Pencil className="w-4 h-4 text-text-muted" />
-                        </button>
+                        </Link>
                         <button onClick={() => handleDelete(product)} className="p-1.5 hover:bg-red-50 rounded cursor-pointer" title="Deactivate">
                           <Trash2 className="w-4 h-4 text-text-muted hover:text-danger" />
                         </button>
@@ -531,259 +297,6 @@ export default function AdminProductsPage() {
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* Product Form Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface rounded-xl border border-border w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <h2 className="font-display font-semibold text-lg">{editingId ? 'Edit Product' : 'Add New Product'}</h2>
-              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-surface-elevated rounded cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Input label="Product Name" id="name" value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="e.g. GHK-Cu" required />
-                <Input label="URL Slug" id="slug" value={form.slug} onChange={(e) => updateField('slug', e.target.value)} placeholder="Auto-generated" required />
-              </div>
-
-              <Select
-                label="Category"
-                id="categoryId"
-                value={form.categoryId}
-                onChange={(e) => updateField('categoryId', e.target.value)}
-                options={categories.map((c) => ({ value: c.id, label: c.name }))}
-                required
-              />
-
-              {/* Variants (sizes/SKUs) */}
-              <div className="space-y-3 rounded-lg border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-text-secondary">Variants (sizes)</label>
-                  <Button type="button" variant="outline" size="sm" onClick={addVariantRow}><Plus className="w-3.5 h-3.5" /> Add Variant</Button>
-                </div>
-
-                {form.variants.map((v, i) => (
-                  <div key={v.id ?? `new-${i}`} className="space-y-2 rounded-lg border border-border p-3 bg-surface-elevated/30">
-                    <div className="flex items-start gap-3">
-                      <div className="w-14 h-14 rounded-lg border border-border bg-surface-elevated flex items-center justify-center overflow-hidden shrink-0">
-                        {v.imageUrl ? (
-                          <img src={v.imageUrl} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <ImageIcon className="w-5 h-5 text-text-muted" />
-                        )}
-                      </div>
-                      <div className="flex-1 grid grid-cols-2 gap-2">
-                        <Input label="Code" value={v.code} onChange={(e) => updateVariant(i, 'code', e.target.value)} placeholder="e.g. CU50" required />
-                        <Input label="Size" value={v.size} onChange={(e) => updateVariant(i, 'size', e.target.value)} placeholder="e.g. 50mg" />
-                        <Input label="Price (RM)" type="number" step="0.01" min="0" value={v.price} onChange={(e) => updateVariant(i, 'price', e.target.value)} required />
-                        <Input label="Stock" type="number" min="0" value={v.stock} onChange={(e) => updateVariant(i, 'stock', e.target.value)} />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeVariantRow(i)}
-                        className="p-1.5 hover:bg-red-50 rounded cursor-pointer shrink-0"
-                        title="Remove variant"
-                      >
-                        <Trash2 className="w-4 h-4 text-text-muted hover:text-danger" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input
-                        label="Sale Price (RM)"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={v.salePrice}
-                        onChange={(e) => updateVariant(i, 'salePrice', e.target.value)}
-                        placeholder="No sale"
-                      />
-                      <Input
-                        label="Sale Starts"
-                        type="datetime-local"
-                        value={v.saleStartsAt}
-                        onChange={(e) => updateVariant(i, 'saleStartsAt', e.target.value)}
-                      />
-                      <Input
-                        label="Sale Ends"
-                        type="datetime-local"
-                        value={v.saleEndsAt}
-                        onChange={(e) => updateVariant(i, 'saleEndsAt', e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface-elevated hover:bg-border rounded-lg text-xs font-medium cursor-pointer transition-colors">
-                        <Upload className="w-3.5 h-3.5" />
-                        {v.imageUrl ? 'Replace Image' : 'Upload Image'}
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          className="hidden"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) await uploadVariantImage(i, file);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={v.active}
-                          onChange={(e) => updateVariant(i, 'active', e.target.checked)}
-                          className="rounded"
-                        />
-                        Active
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <CheckboxList
-                label="Add-Ons (shown on this product's page)"
-                items={addOnOptions}
-                selectedIds={form.addOnIds}
-                onChange={(addOnIds) =>
-                  setForm((f) => ({
-                    ...f,
-                    addOnIds,
-                    addOnConfig: Object.fromEntries(
-                      addOnIds.map((id) => [id, f.addOnConfig[id] ?? { required: false, quantity: '1' }])
-                    ),
-                  }))
-                }
-                searchPlaceholder="Search products..."
-                emptyMessage="No other products available."
-              />
-
-              {form.addOnIds.length > 0 && (
-                <div className="space-y-1.5 rounded-lg border border-border p-3">
-                  <p className="text-xs font-medium text-text-secondary">Add-on settings</p>
-                  {form.addOnIds.map((id) => {
-                    const option = addOnOptions.find((o) => o.id === id);
-                    const config = form.addOnConfig[id] ?? { required: false, quantity: '1' };
-                    return (
-                      <div key={id} className="flex items-center gap-3 text-sm">
-                        <span className="flex-1 truncate">{option?.label ?? id}</span>
-                        <label className="flex items-center gap-1.5 shrink-0 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={config.required}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                addOnConfig: { ...f.addOnConfig, [id]: { ...config, required: e.target.checked } },
-                              }))
-                            }
-                            className="rounded accent-primary"
-                          />
-                          Required
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={config.quantity}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              addOnConfig: { ...f.addOnConfig, [id]: { ...config, quantity: e.target.value } },
-                            }))
-                          }
-                          className="w-16 shrink-0 text-center py-1 border border-border rounded text-sm bg-surface"
-                          title="Quantity added when this add-on is included"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <Input
-                label="Certificate of Analysis URL"
-                id="coaUrl"
-                value={form.coaUrl}
-                onChange={(e) => updateField('coaUrl', e.target.value)}
-                placeholder="https://verify.janoshik.com/tests/..."
-              />
-
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-text-secondary mb-1">Description</label>
-                <textarea
-                  id="description"
-                  value={form.description}
-                  onChange={(e) => updateField('description', e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  placeholder="Product description..."
-                />
-              </div>
-
-              <div>
-                <label htmlFor="benefits" className="block text-sm font-medium text-text-secondary mb-1">Benefits (one per line)</label>
-                <textarea
-                  id="benefits"
-                  value={form.benefits}
-                  onChange={(e) => updateField('benefits', e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  placeholder={"Stimulates collagen production\nReduces fine lines\nPromotes wound healing"}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="dosageInfo" className="block text-sm font-medium text-text-secondary mb-1">Dosage Info</label>
-                <textarea
-                  id="dosageInfo"
-                  value={form.dosageInfo}
-                  onChange={(e) => updateField('dosageInfo', e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  placeholder="Dosage instructions..."
-                />
-              </div>
-
-              <div>
-                <label htmlFor="addOnReminder" className="block text-sm font-medium text-text-secondary mb-1">
-                  Add-on reminder (optional, plain text nudge shown near Add to Cart)
-                </label>
-                <Input
-                  id="addOnReminder"
-                  value={form.addOnReminder}
-                  onChange={(e) => updateField('addOnReminder', e.target.value)}
-                  placeholder="e.g. Remember: this peptide needs Bacteriostatic Water to reconstitute"
-                />
-              </div>
-
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="featured" checked={form.featured} onChange={(e) => updateField('featured', e.target.checked)} className="rounded accent-yellow-500" />
-                  <label htmlFor="featured" className="text-sm font-medium text-text-secondary flex items-center gap-1">
-                    Featured
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="active" checked={form.active} onChange={(e) => updateField('active', e.target.checked)} className="rounded" />
-                  <label htmlFor="active" className="text-sm font-medium text-text-secondary">Active (visible on store)</label>
-                </div>
-              </div>
-
-              {formError && <p className="text-sm text-danger">{formError}</p>}
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? 'Saving...' : editingId ? 'Update Product' : 'Create Product'}
-                </Button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 

@@ -79,6 +79,9 @@ export const adminGetDashboard = (token: string) =>
 export const adminGetProducts = (token: string, params?: Record<string, string>) =>
   api.get<PaginatedResponse<Product>>('/api/v1/admin/products', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
 
+export const adminGetProduct = (token: string, id: string) =>
+  api.get<Product>(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminCreateProduct = (token: string, data: Record<string, unknown>) =>
   api.post('/api/v1/admin/products', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 

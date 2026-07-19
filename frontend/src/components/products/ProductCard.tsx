@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingCart } from 'lucide-react';
 import type { Product } from '@/types';
-import { formatPrice, getDefaultVariant, getEffectivePrice, isSaleActive } from '@/lib/utils';
+import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 
@@ -26,7 +26,7 @@ export function ProductCard({ product }: ProductCardProps) {
     addItem({
       variantId: variant.id,
       code: variant.code,
-      name: variant.size ? `${product.name} ${variant.size}` : product.name,
+      name: getVariantDisplayName(product, variant),
       size: variant.size,
       price: getEffectivePrice(variant),
       quantity: 1,

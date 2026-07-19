@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { getVariantDisplayName } from '../../utils/product-addons.js';
 
 export async function getDashboardStats(fastify: FastifyInstance) {
   const today = new Date();
@@ -44,7 +45,7 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     todayRevenue: todayRevenue._sum.total || 0,
     totalProducts,
     lowStockProducts: lowStockProducts.map((v) => ({
-      id: v.id, code: v.code, name: `${v.product.name}${v.size ? ' ' + v.size : ''}`, stock: v.stock,
+      id: v.id, code: v.code, name: getVariantDisplayName(v.product, v), stock: v.stock,
     })),
     ordersByStatus: Object.fromEntries(ordersByStatus.map((o) => [o.status, o._count])),
     recentOrders,
@@ -118,7 +119,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       for (const item of order.items) {
         const key = item.variantId;
         if (!productSales[key]) {
-          const name = `${item.variant.product.name}${item.variant.size ? ' ' + item.variant.size : ''}`;
+          const name = getVariantDisplayName(item.variant.product, item.variant);
           productSales[key] = { name, code: item.variant.code, quantity: 0, revenue: 0 };
         }
         productSales[key].quantity += item.quantity;

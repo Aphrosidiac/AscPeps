@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import path from 'path';
+import { getVariantDisplayName } from './product-addons.js';
 
 interface ReceiptItem {
   quantity: number;
@@ -189,7 +190,7 @@ export async function generateReceiptPdf(
         doc.addPage();
         y = 50;
       }
-      const itemName = `${item.variant.product.name}${item.variant.size ? ' ' + item.variant.size : ''}`;
+      const itemName = getVariantDisplayName(item.variant.product, item.variant);
       doc.font('Helvetica').fontSize(9).fillColor('#000000');
       doc.text(itemName, colItem, y, { width: 260 });
       const nameHeight = doc.heightOfString(itemName, { width: 260 });
