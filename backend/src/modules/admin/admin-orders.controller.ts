@@ -11,20 +11,15 @@ const updateOrderSchema = z.object({
   notes: z.string().optional(),
 });
 
-const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED'],
-  CONFIRMED: ['SHIPPED', 'CANCELLED'],
-  SHIPPED: ['DELIVERED'],
-  DELIVERED: [],
-  CANCELLED: [],
-};
-
-const VALID_PAYMENT_TRANSITIONS: Record<string, string[]> = {
-  UNPAID: ['PAID', 'FAILED'],
-  PAID: ['REFUNDED'],
-  FAILED: ['UNPAID'],
-  REFUNDED: [],
-};
+// Order status and payment status are otherwise freely editable in any
+// direction — the only restriction is this one: once an online-gateway
+// payment (Billplz/ToyyibPay) has been confirmed Paid, it's locked and can
+// never be changed again through this endpoint. A WhatsApp/manual-transfer
+// order's Paid status stays editable, since that was an admin's manual call
+// in the first place (and can just as easily be an admin's manual fix).
+function isLockedOnlinePayment(order: { paymentMethod: string; paymentStatus: string }): boolean {
+  return order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
+}
 
 export async function adminListOrders(fastify: FastifyInstance, query: Record<string, string>) {
   const { page, limit, skip } = getPaginationParams(query);
@@ -75,38 +70,20 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
   const order = await fastify.prisma.order.findUnique({ where: { id }, include: { items: true } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
 
-  if (data.status) {
-    const allowed = VALID_STATUS_TRANSITIONS[order.status] || [];
-    if (!allowed.includes(data.status)) {
-      throw { statusCode: 400, message: `Cannot change status from ${order.status} to ${data.status}` };
-    }
-    if (data.status === 'SHIPPED') {
-      const trackingNum = data.trackingNumber?.trim() || order.trackingNumber;
-      if (!trackingNum) {
-        throw { statusCode: 400, message: 'Please enter a tracking number before marking as Shipped' };
-      }
-    }
-    if (data.status === 'CANCELLED') {
-      // A PAID order must go through a refund (which returns the money AND
-      // restocks); silently cancelling it would give back stock while we keep
-      // the cash and never trigger a refund.
-      if (order.paymentStatus === 'PAID') {
-        throw {
-          statusCode: 400,
-          message: 'Refund this paid order (set Payment to Refunded) before cancelling.',
-        };
-      }
-      await restoreOrderInventory(fastify, order.id);
-      fastify.log.info(`Order ${order.orderNumber} cancelled — stock restored`);
-    }
+  if (data.paymentStatus && isLockedOnlinePayment(order)) {
+    throw {
+      statusCode: 400,
+      message: 'This order was paid via online transfer and is locked — payment status can no longer be changed.',
+    };
+  }
+
+  if (data.status === 'CANCELLED') {
+    await restoreOrderInventory(fastify, order.id);
+    fastify.log.info(`Order ${order.orderNumber} cancelled — stock restored`);
   }
 
   if (data.paymentStatus) {
-    const allowed = VALID_PAYMENT_TRANSITIONS[order.paymentStatus] || [];
-    if (!allowed.includes(data.paymentStatus)) {
-      throw { statusCode: 400, message: `Cannot change payment from ${order.paymentStatus} to ${data.paymentStatus}` };
-    }
-    if (data.paymentStatus === 'FAILED' && order.paymentStatus === 'UNPAID') {
+    if (data.paymentStatus === 'FAILED') {
       await restoreOrderInventory(fastify, order.id);
     }
     if (data.paymentStatus === 'REFUNDED') {
