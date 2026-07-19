@@ -2,10 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
-import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
-import { Navbar } from '@/components/layout/Navbar';
-import { Footer } from '@/components/layout/Footer';
-import { WhatsAppButton } from '@/components/layout/WhatsAppButton';
+import { SiteChrome } from '@/components/layout/SiteChrome';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { getSettingsServer, getProductsServer } from '@/lib/server-api';
 import './globals.css';
@@ -138,11 +135,9 @@ gtag('js', new Date());
 gtag('config', 'G-4PHY1Z9BHD');`}
         </Script>
         <CartProvider>
-          <AnnouncementBar enabled={announcementEnabled} text={settings.announcement_text || ''} />
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
-          <WhatsAppButton />
+          <SiteChrome announcementEnabled={announcementEnabled} announcementText={settings.announcement_text || ''}>
+            {children}
+          </SiteChrome>
         </CartProvider>
       </body>
     </html>
