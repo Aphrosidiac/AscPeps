@@ -172,11 +172,34 @@ async function applyGroups(groups) {
 
       // Rewrite any ProductAddOn row whose old productId equals one of this
       // group's member ids (today's flat model meant "this variant's own
-      // page shows the add-on") to point at the new parent instead.
-      await tx.productAddOn.updateMany({
+      // page shows the add-on") to point at the new parent instead. The old
+      // model required configuring the same add-on separately on every
+      // size, so two+ members can share the same addOnId — collapsing
+      // those onto one parent would violate the (productId, addOnId)
+      // unique constraint. Dedupe first: keep one row per addOnId
+      // (preferring one already marked required, else the highest
+      // quantity), delete the rest.
+      const memberAddOns = await tx.productAddOn.findMany({
         where: { productId: { in: group.members.map((m) => m.id) } },
-        data: { productId: parent.id },
       });
+      const survivorByAddOnId = new Map();
+      for (const row of memberAddOns) {
+        const current = survivorByAddOnId.get(row.addOnId);
+        if (!current || (row.required && !current.required) || row.quantity > current.quantity) {
+          survivorByAddOnId.set(row.addOnId, row);
+        }
+      }
+      const survivorIds = new Set([...survivorByAddOnId.values()].map((row) => row.id));
+      const duplicateIds = memberAddOns.filter((row) => !survivorIds.has(row.id)).map((row) => row.id);
+      if (duplicateIds.length > 0) {
+        await tx.productAddOn.deleteMany({ where: { id: { in: duplicateIds } } });
+      }
+      if (survivorIds.size > 0) {
+        await tx.productAddOn.updateMany({
+          where: { id: { in: [...survivorIds] } },
+          data: { productId: parent.id },
+        });
+      }
 
       summary.push({ parent: group.parentSlug, variantCount: group.members.length });
     }
