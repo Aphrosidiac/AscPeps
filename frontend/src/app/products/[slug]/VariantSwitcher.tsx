@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Check, ShieldCheck, Truck } from 'lucide-react';
 import { Animate } from '@/components/ui/Animate';
@@ -25,6 +25,17 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
   const [selectedId, setSelectedId] = useState(defaultVariant?.id ?? '');
   const variant = activeVariants.find((v) => v.id === selectedId) ?? defaultVariant;
 
+  // Crossfades the hero photo on every size switch instead of the new
+  // <Image key={variant.id}> just popping in — the src swap alone gives a
+  // hard flash since the remounted <img> starts blank. Fading the (stable,
+  // never-remounted) wrapper's opacity out then back in smooths that over.
+  const [imgVisible, setImgVisible] = useState(true);
+  useEffect(() => {
+    setImgVisible(false);
+    const t = setTimeout(() => setImgVisible(true), 180);
+    return () => clearTimeout(t);
+  }, [variant?.id]);
+
   if (!variant) {
     return <p className="text-danger font-medium py-8">This product is currently unavailable.</p>;
   }
@@ -37,7 +48,10 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
       <div className="grid md:grid-cols-2 gap-6 md:gap-8">
         <div>
           <Animate variant="fade" duration={0.6}>
-            <div className="relative aspect-square max-w-[280px] mx-auto sm:max-w-none sm:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
+            <div
+              className="relative aspect-square max-w-[280px] mx-auto sm:max-w-none sm:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden transition-opacity duration-300 ease-out"
+              style={{ opacity: imgVisible ? 1 : 0 }}
+            >
               {variant.imageUrl ? (
                 <Image
                   key={variant.id}
