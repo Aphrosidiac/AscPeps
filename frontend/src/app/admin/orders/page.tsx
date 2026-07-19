@@ -1,15 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetOrders, adminUpdateOrder, adminGetReceiptPdfUrl } from '@/lib/api';
+import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminGetReceiptPdfUrl } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import type { Order } from '@/types';
 
-const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+// "DELETED" is a pseudo-status (not a real OrderStatus value) — it's a
+// dedicated filter tab showing only soft-deleted orders, which every other
+// tab excludes.
+const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELETED'];
 
 export default function AdminOrdersPage() {
   const { token } = useAuth();
@@ -97,6 +100,28 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleDelete = async (order: Order) => {
+    if (!token || !confirm(`Delete order ${order.orderNumber}? It won't be permanently removed — you can restore it from the Deleted tab.`)) return;
+    setUpdating(order.id);
+    try {
+      await adminDeleteOrder(token, order.id);
+      load();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleRestore = async (order: Order) => {
+    if (!token) return;
+    setUpdating(order.id);
+    try {
+      await adminRestoreOrder(token, order.id);
+      load();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const statusCounts = orders.reduce((acc, o) => {
     acc[o.status] = (acc[o.status] || 0) + 1;
     return acc;
@@ -126,10 +151,12 @@ export default function AdminOrdersPage() {
               key={s}
               onClick={() => setStatusFilter(s)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                statusFilter === s ? 'bg-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+                statusFilter === s
+                  ? s === 'DELETED' ? 'bg-danger text-white' : 'bg-primary text-white'
+                  : s === 'DELETED' ? 'bg-danger/10 text-danger hover:bg-danger/20' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
               }`}
             >
-              {s === 'ALL' ? 'All' : ORDER_STATUS_LABELS[s]}
+              {s === 'ALL' ? 'All' : s === 'DELETED' ? 'Deleted' : ORDER_STATUS_LABELS[s]}
             </button>
           ))}
         </div>
@@ -287,51 +314,16 @@ export default function AdminOrdersPage() {
                     )}
 
                     {/* Status Controls */}
-                    <div className="flex flex-wrap gap-4 pt-3 border-t border-border">
-                      <div>
-                        <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Order Status</label>
-                        <select
-                          value={order.status}
-                          onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+                    {order.deletedAt ? (
+                      <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-border">
+                        <p className="text-sm text-danger">Deleted on {formatDate(order.deletedAt)}</p>
+                        <button
+                          onClick={() => handleRestore(order)}
                           disabled={isUpdating}
-                          className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors disabled:opacity-50 cursor-pointer"
                         >
-                          {Object.entries(ORDER_STATUS_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Payment Status</label>
-                        <select
-                          value={order.paymentStatus}
-                          onChange={(e) => handlePaymentUpdate(order.id, e.target.value, order.paymentGateway)}
-                          disabled={isUpdating || paymentLocked}
-                          title={paymentLocked ? 'Paid via online transfer — locked, can no longer be changed' : undefined}
-                          className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
-                        >
-                          <option value="UNPAID">Unpaid</option>
-                          <option value="PAID">Paid</option>
-                          <option value="FAILED">Failed</option>
-                          <option value="REFUNDED">Refunded</option>
-                        </select>
-                        {paymentLocked && (
-                          <p className="text-xs text-text-muted mt-1">🔒 Paid online — locked</p>
-                        )}
-                      </div>
-                      {order.paymentMethod === 'WHATSAPP' && (
-                        <div className="flex items-end">
-                          <a
-                            href={`https://wa.me/${order.phone.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" /> WhatsApp Customer
-                          </a>
-                        </div>
-                      )}
-                      <div className="flex items-end">
+                          <RotateCcw className="w-3.5 h-3.5" /> Restore
+                        </button>
                         <a
                           href={adminGetReceiptPdfUrl(order.id, token!)}
                           target="_blank"
@@ -341,7 +333,72 @@ export default function AdminOrdersPage() {
                           <FileText className="w-3.5 h-3.5" /> Receipt
                         </a>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-4 pt-3 border-t border-border">
+                        <div>
+                          <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Order Status</label>
+                          <select
+                            value={order.status}
+                            onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+                            disabled={isUpdating}
+                            className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
+                          >
+                            {Object.entries(ORDER_STATUS_LABELS).map(([k, v]) => (
+                              <option key={k} value={k}>{v}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Payment Status</label>
+                          <select
+                            value={order.paymentStatus}
+                            onChange={(e) => handlePaymentUpdate(order.id, e.target.value, order.paymentGateway)}
+                            disabled={isUpdating || paymentLocked}
+                            title={paymentLocked ? 'Paid via online transfer — locked, can no longer be changed' : undefined}
+                            className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
+                          >
+                            <option value="UNPAID">Unpaid</option>
+                            <option value="PAID">Paid</option>
+                            <option value="FAILED">Failed</option>
+                            <option value="REFUNDED">Refunded</option>
+                          </select>
+                          {paymentLocked && (
+                            <p className="text-xs text-text-muted mt-1">🔒 Paid online — locked</p>
+                          )}
+                        </div>
+                        {order.paymentMethod === 'WHATSAPP' && (
+                          <div className="flex items-end">
+                            <a
+                              href={`https://wa.me/${order.phone.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" /> WhatsApp Customer
+                            </a>
+                          </div>
+                        )}
+                        <div className="flex items-end">
+                          <a
+                            href={adminGetReceiptPdfUrl(order.id, token!)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Receipt
+                          </a>
+                        </div>
+                        <div className="flex items-end ml-auto">
+                          <button
+                            onClick={() => handleDelete(order)}
+                            disabled={isUpdating}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-danger/10 text-danger rounded-lg text-sm font-medium hover:bg-danger/20 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
