@@ -151,6 +151,10 @@ export default function AdminOrdersPage() {
           {orders.map((order) => {
             const isExpanded = expandedOrder === order.id;
             const isUpdating = updating === order.id;
+            // Only lock: an online-transfer payment that's already confirmed
+            // Paid can't be changed further. Everything else (order status,
+            // WhatsApp/manual-transfer payment status) is freely editable.
+            const paymentLocked = order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
             return (
               <div key={order.id} className={`bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'}`}>
                 <div
@@ -302,7 +306,8 @@ export default function AdminOrdersPage() {
                         <select
                           value={order.paymentStatus}
                           onChange={(e) => handlePaymentUpdate(order.id, e.target.value, order.paymentGateway)}
-                          disabled={isUpdating}
+                          disabled={isUpdating || paymentLocked}
+                          title={paymentLocked ? 'Paid via online transfer — locked, can no longer be changed' : undefined}
                           className="px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
                         >
                           <option value="UNPAID">Unpaid</option>
@@ -310,6 +315,9 @@ export default function AdminOrdersPage() {
                           <option value="FAILED">Failed</option>
                           <option value="REFUNDED">Refunded</option>
                         </select>
+                        {paymentLocked && (
+                          <p className="text-xs text-text-muted mt-1">🔒 Paid online — locked</p>
+                        )}
                       </div>
                       {order.paymentMethod === 'WHATSAPP' && (
                         <div className="flex items-end">
