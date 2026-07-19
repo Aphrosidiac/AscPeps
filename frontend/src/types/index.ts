@@ -121,6 +121,7 @@ export interface Order {
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;
   trackingNumber: string | null;
+  deletedAt: string | null;
   createdAt: string;
   items: OrderItem[];
 }

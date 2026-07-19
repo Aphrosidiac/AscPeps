@@ -24,8 +24,12 @@ function isLockedOnlinePayment(order: { paymentMethod: string; paymentStatus: st
 export async function adminListOrders(fastify: FastifyInstance, query: Record<string, string>) {
   const { page, limit, skip } = getPaginationParams(query);
 
-  const where: Record<string, unknown> = {};
-  if (query.status) where.status = query.status;
+  // "DELETED" is a pseudo-status, not a real OrderStatus value — it shows
+  // only soft-deleted orders. Every other view (including "ALL") excludes
+  // them by default so a deleted order never resurfaces in the main list.
+  const where: Record<string, unknown> = query.status === 'DELETED'
+    ? { deletedAt: { not: null } }
+    : { deletedAt: null, ...(query.status ? { status: query.status } : {}) };
   if (query.search) {
     where.OR = [
       { orderNumber: { contains: query.search, mode: 'insensitive' } },
@@ -113,4 +117,19 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
   }
 
   return fastify.prisma.order.update({ where: { id }, data: updateData });
+}
+
+// Soft-delete: never removes the row. It just sets deletedAt so the order
+// disappears from every normal view and only shows up under the "DELETED"
+// filter — order/payment status and stock are untouched either way.
+export async function adminDeleteOrder(fastify: FastifyInstance, id: string) {
+  const order = await fastify.prisma.order.findUnique({ where: { id } });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+  return fastify.prisma.order.update({ where: { id }, data: { deletedAt: new Date() } });
+}
+
+export async function adminRestoreOrder(fastify: FastifyInstance, id: string) {
+  const order = await fastify.prisma.order.findUnique({ where: { id } });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+  return fastify.prisma.order.update({ where: { id }, data: { deletedAt: null } });
 }

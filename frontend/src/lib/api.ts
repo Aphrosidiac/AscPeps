@@ -94,6 +94,12 @@ export const adminGetOrders = (token: string, params?: Record<string, string>) =
 export const adminUpdateOrder = (token: string, id: string, data: Record<string, unknown>) =>
   api.patch(`/api/v1/admin/orders/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
+export const adminDeleteOrder = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminRestoreOrder = (token: string, id: string) =>
+  api.post(`/api/v1/admin/orders/${id}/restore`, {}, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminDeleteProduct = (token: string, id: string) =>
   api.delete(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 

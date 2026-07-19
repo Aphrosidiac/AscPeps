@@ -162,6 +162,9 @@ model Order {
   trackingNumber  String?
   idempotencyKey  String?       @unique
   stockRestored   Boolean       @default(false)
+  // Soft-delete only — admin "Delete" never removes the row, it just moves
+  // the order into a separate Deleted view (set) / back out of it (null).
+  deletedAt       DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -172,6 +175,7 @@ model Order {
   @@index([status])
   @@index([orderNumber])
   @@index([paymentRef])
+  @@index([deletedAt])
   @@map("orders")
 }
 
