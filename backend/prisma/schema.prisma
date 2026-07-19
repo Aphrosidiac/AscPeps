@@ -52,6 +52,11 @@ model Product {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  // Plain-text nudge shown near Add to Cart on the storefront (e.g. "This
+  // peptide needs Bacteriostatic Water to reconstitute") — informational
+  // only, distinct from the required/forced ProductAddOn mechanism below.
+  addOnReminder String?
+
   category   Category    @relation(fields: [categoryId], references: [id])
   orderItems OrderItem[]
   // Add-ons this product offers on its own page (e.g. BAC Water for a
@@ -71,6 +76,14 @@ model ProductAddOn {
   id        String @id @default(cuid())
   productId String
   addOnId   String
+  // Force-selected and locked on the storefront product page — the customer
+  // cannot uncheck it. Enforced again server-side at order-creation time
+  // (see createOrder) so a bypassed/omitted client request still can't ship
+  // a reconstitution-requiring peptide without its required supplies.
+  required  Boolean @default(false)
+  // Fixed quantity added when this add-on is included — intentionally does
+  // NOT scale with the parent product's purchased quantity.
+  quantity  Int     @default(1)
 
   product Product @relation("ProductAddOns", fields: [productId], references: [id], onDelete: Cascade)
   addOn   Product @relation("AddOnOfProduct", fields: [addOnId], references: [id], onDelete: Cascade)

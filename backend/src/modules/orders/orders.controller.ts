@@ -62,11 +62,37 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
   let order;
   try {
     order = await fastify.prisma.$transaction(async (tx) => {
+    // Server-side enforcement of "required" add-ons (e.g. Bac Water + syringes
+    // for a reconstitution-needing peptide): the storefront pre-checks and
+    // locks these, but a bypassed/buggy client must still not be able to ship
+    // a peptide without its required supplies. For each ordered product that
+    // configures required add-ons, make sure the order includes at least the
+    // configured fixed quantity of each — this does NOT scale with how many
+    // units of the parent product were ordered, and if two ordered products
+    // both require the same add-on at different quantities, the larger of
+    // the two wins rather than summing.
+    const requiredRelations = await tx.productAddOn.findMany({
+      where: { productId: { in: data.items.map((i) => i.productId) }, required: true },
+    });
+    const requiredMinByAddOnId = new Map<string, number>();
+    for (const rel of requiredRelations) {
+      requiredMinByAddOnId.set(rel.addOnId, Math.max(requiredMinByAddOnId.get(rel.addOnId) ?? 0, rel.quantity));
+    }
+    const items = data.items.map((i) => ({ ...i }));
+    for (const [addOnId, minQuantity] of requiredMinByAddOnId) {
+      const existing = items.find((i) => i.productId === addOnId);
+      if (existing) {
+        existing.quantity = Math.max(existing.quantity, minQuantity);
+      } else {
+        items.push({ productId: addOnId, quantity: minQuantity });
+      }
+    }
+
     const products = await tx.product.findMany({
-      where: { id: { in: data.items.map((i) => i.productId) }, active: true },
+      where: { id: { in: items.map((i) => i.productId) }, active: true },
     });
 
-    if (products.length !== data.items.length) {
+    if (products.length !== items.length) {
       throw { statusCode: 400, message: 'One or more products not found or inactive' };
     }
 
@@ -76,14 +102,14 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     // mid-transaction.
     const now = new Date();
 
-    for (const item of data.items) {
+    for (const item of items) {
       const product = productMap.get(item.productId)!;
       if (product.stock < item.quantity) {
         throw { statusCode: 400, message: `Insufficient stock for ${product.name}` };
       }
     }
 
-    const subtotal = data.items.reduce((sum, item) => {
+    const subtotal = items.reduce((sum, item) => {
       const product = productMap.get(item.productId)!;
       return sum + getEffectivePrice(product, now) * item.quantity;
     }, 0);
@@ -140,7 +166,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         notes: data.notes,
         idempotencyKey: data.idempotencyKey,
         items: {
-          create: data.items.map((item) => ({
+          create: items.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: getEffectivePrice(productMap.get(item.productId)!, now),
@@ -153,7 +179,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     // Conditional decrement guards against oversell under concurrency: the
     // WHERE clause only matches if enough stock remains, so two simultaneous
     // orders for the last unit can't both succeed. A miss rolls back the tx.
-    for (const item of data.items) {
+    for (const item of items) {
       const dec = await tx.product.updateMany({
         where: { id: item.productId, stock: { gte: item.quantity } },
         data: { stock: { decrement: item.quantity } },

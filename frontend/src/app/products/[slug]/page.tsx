@@ -111,6 +111,7 @@ export default async function ProductDetailPage({ params }: Props) {
               imageUrl={product.imageUrl}
               stock={product.stock}
               addOns={product.addOns}
+              addOnReminder={product.addOnReminder}
             />
 
             {product.stock === 0 && <p className="text-danger font-medium">Out of stock</p>}

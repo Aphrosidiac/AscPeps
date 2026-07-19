@@ -6,7 +6,7 @@ import { ShoppingCart, Check } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { formatPrice, getFullProductName, getEffectivePrice, isSaleActive } from '@/lib/utils';
-import type { Product } from '@/types';
+import type { AddOnProduct } from '@/types';
 
 interface Props {
   productId: string;
@@ -16,19 +16,25 @@ interface Props {
   price: number;
   imageUrl: string | null;
   stock: number;
-  addOns?: Product[];
+  addOns?: AddOnProduct[];
+  addOnReminder?: string | null;
 }
 
-export function AddToCartPanel({ productId, code, name, size, price, imageUrl, stock, addOns }: Props) {
+export function AddToCartPanel({ productId, code, name, size, price, imageUrl, stock, addOns, addOnReminder }: Props) {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [inlineButtonVisible, setInlineButtonVisible] = useState(true);
   const [mounted, setMounted] = useState(false);
-  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>([]);
+  // Required add-ons start selected and locked — the customer cannot
+  // uncheck them (enforced again server-side at order creation).
+  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(() =>
+    (addOns ?? []).filter((a) => a.addOnRequired).map((a) => a.id)
+  );
   const inlineButtonRef = useRef<HTMLDivElement>(null);
   const { addItem } = useCart();
 
-  function toggleAddOn(id: string) {
+  function toggleAddOn(id: string, required: boolean) {
+    if (required) return;
     setSelectedAddOnIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
@@ -61,7 +67,7 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
         name: getFullProductName(addOn),
         size: addOn.size,
         price: getEffectivePrice(addOn),
-        quantity: 1,
+        quantity: addOn.addOnQuantity,
         imageUrl: addOn.imageUrl,
       });
     }
@@ -77,12 +83,13 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
           <div className="space-y-1.5">
             {addOns.map((addOn) => {
               const outOfStock = addOn.stock === 0;
+              const locked = addOn.addOnRequired;
               return (
                 <label
                   key={addOn.id}
                   htmlFor={`addon-${addOn.id}`}
                   className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border bg-surface ${
-                    outOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-elevated/50 cursor-pointer'
+                    outOfStock ? 'opacity-50 cursor-not-allowed' : locked ? 'cursor-default' : 'hover:bg-surface-elevated/50 cursor-pointer'
                   }`}
                 >
                   <span className="flex items-center gap-2 text-sm">
@@ -90,11 +97,15 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
                       type="checkbox"
                       id={`addon-${addOn.id}`}
                       checked={selectedAddOnIds.includes(addOn.id)}
-                      onChange={() => toggleAddOn(addOn.id)}
-                      disabled={outOfStock}
+                      onChange={() => toggleAddOn(addOn.id, locked)}
+                      disabled={outOfStock || locked}
                       className="rounded accent-primary"
                     />
                     {getFullProductName(addOn)}
+                    {addOn.addOnQuantity > 1 && <span className="text-text-muted">× {addOn.addOnQuantity}</span>}
+                    {locked && (
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">Required</span>
+                    )}
                   </span>
                   <span className="flex items-center gap-1.5 shrink-0">
                     {outOfStock ? (
@@ -113,6 +124,10 @@ export function AddToCartPanel({ productId, code, name, size, price, imageUrl, s
             })}
           </div>
         </div>
+      )}
+
+      {addOnReminder && (
+        <p className="pt-3 text-sm text-text-secondary italic">{addOnReminder}</p>
       )}
 
       <div ref={inlineButtonRef} className="flex items-center gap-4 pt-4">

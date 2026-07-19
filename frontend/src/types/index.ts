@@ -31,9 +31,23 @@ export interface Product {
     name: string;
     slug: string;
   };
+  // Plain-text nudge shown near Add to Cart on the storefront (e.g. "Needs
+  // Bacteriostatic Water to reconstitute") — informational only, distinct
+  // from the required/forced add-on mechanism below.
+  addOnReminder?: string | null;
   // Present on the public product-detail response; absent from list/admin
   // responses that don't include it.
-  addOns?: Product[];
+  addOns?: AddOnProduct[];
+}
+
+// An add-on as attached to its parent product: the underlying Product plus
+// the join row's required/quantity for that specific parent-add-on pairing.
+export interface AddOnProduct extends Product {
+  // Force-selected and locked on the storefront — the customer cannot
+  // uncheck it (enforced again server-side at order creation).
+  addOnRequired: boolean;
+  // Fixed quantity added — does not scale with the parent product's quantity.
+  addOnQuantity: number;
 }
 
 export interface CartItem {
