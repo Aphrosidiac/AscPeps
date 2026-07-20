@@ -88,6 +88,10 @@ export interface CartItem {
   size: string | null;
   price: number;
   quantity: number;
+  // Available stock at add-to-cart time — used to clamp merged quantities in
+  // the cart reducer. Optional because carts saved before this field existed
+  // won't have it (the backend re-validates stock at order creation anyway).
+  stock?: number;
   imageUrl: string | null;
 }
 

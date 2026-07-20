@@ -1,0 +1,817 @@
+[
+  {
+    "groupKey": "cmpk1rlbl0000hzydvut57qwc|50AM",
+    "parentName": "5-Amino-1MQ",
+    "parentSlug": "5-amino-1mq",
+    "categoryId": "cmpk1rlbl0000hzydvut57qwc",
+    "warnings": [],
+    "representativeId": "cmpk1rlcn000bhzydmudhkryi",
+    "members": [
+      {
+        "id": "cmpk1rlcn000bhzydmudhkryi",
+        "code": "50AM",
+        "size": "50mg",
+        "slug": "5-amino-1mq-50mg",
+        "name": "5-Amino-1MQ"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0003hzydcypkeyfq|AA",
+    "parentName": "Acetic Acid",
+    "parentSlug": "acetic-acid",
+    "categoryId": "cmpk1rlbn0003hzydcypkeyfq",
+    "warnings": [],
+    "representativeId": "cmpk1rldw000phzyd148fpzja",
+    "members": [
+      {
+        "id": "cmpk1rldw000phzyd148fpzja",
+        "code": "AA10",
+        "size": "10ml",
+        "slug": "acetic-acid-10ml",
+        "name": "Acetic Acid"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|ALA",
+    "parentName": "Alpha Lipoic Acid",
+    "parentSlug": "alpha-lipoic-acid",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jnd3c0016yuydu78j1bmb",
+    "members": [
+      {
+        "id": "cmq6jnd3c0016yuydu78j1bmb",
+        "code": "ALA",
+        "size": "25mg / 5ml",
+        "slug": "alpha-lipoic-acid-600mg",
+        "name": "Alpha Lipoic Acid 25mg / 5ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbl0000hzydvut57qwc|AOD",
+    "parentName": "AOD9604",
+    "parentSlug": "aod9604",
+    "categoryId": "cmpk1rlbl0000hzydvut57qwc",
+    "warnings": [],
+    "representativeId": "cmpk1rlck000ahzydfhwhl8e7",
+    "members": [
+      {
+        "id": "cmpk1rlck000ahzydfhwhl8e7",
+        "code": "AOD10",
+        "size": "10mg",
+        "slug": "aod9604-10mg",
+        "name": "AOD9604"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0003hzydcypkeyfq|BAC",
+    "parentName": "Bac Water",
+    "parentSlug": "bac-water",
+    "categoryId": "cmpk1rlbn0003hzydcypkeyfq",
+    "warnings": [],
+    "representativeId": "cmqt7212n0004oryd6sflefv6",
+    "members": [
+      {
+        "id": "cmqt72tym0005orydaxhnz1ku",
+        "code": "BAC10",
+        "size": "10mL",
+        "slug": "bac-water-10ml",
+        "name": "Bac Water 10mL"
+      },
+      {
+        "id": "cmqt7212n0004oryd6sflefv6",
+        "code": "BAC3",
+        "size": "3mL",
+        "slug": "bac-water-3ml",
+        "name": "Bac Water 3mL"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|BP",
+    "parentName": "BPC-157",
+    "parentSlug": "bpc-157",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmq6jdhvz0000yuydhnvpwzky",
+    "members": [
+      {
+        "id": "cmq6jdhvz0000yuydhnvpwzky",
+        "code": "BP10",
+        "size": "10mg",
+        "slug": "bpc-157-10mg",
+        "name": "BPC-157"
+      },
+      {
+        "id": "cmq6jg9rp0005yuyddnh8yhcz",
+        "code": "BP40",
+        "size": "40mg",
+        "slug": "bpc-157-40mg",
+        "name": "BPC-157"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0002hzydgugfm15j|CP",
+    "parentName": "CJC-1295 + Ipamorelin",
+    "parentSlug": "cjc-1295-ipamorelin",
+    "categoryId": "cmpk1rlbn0002hzydgugfm15j",
+    "warnings": [],
+    "representativeId": "cmq6jg9qt0004yuydx8r1rpj2",
+    "members": [
+      {
+        "id": "cmq6jg9qt0004yuydx8r1rpj2",
+        "code": "CP10",
+        "size": "5mg + 5mg",
+        "slug": "cjc1295-ipamorelin-5mg5mg",
+        "name": "CJC-1295 + Ipamorelin"
+      }
+    ]
+  },
+  {
+    "groupKey": "73cfb305-a60a-4b1d-9b90-68468b8043f7|CRBL",
+    "parentName": "Cerebrolysin",
+    "parentSlug": "cerebrolysin",
+    "categoryId": "73cfb305-a60a-4b1d-9b90-68468b8043f7",
+    "warnings": [],
+    "representativeId": "cmq6jnc9y000uyuydo97fl99y",
+    "members": [
+      {
+        "id": "cmq6jnc9y000uyuydo97fl99y",
+        "code": "CRBL",
+        "size": "30mg",
+        "slug": "cerebrolysin-10ml",
+        "name": "Cerebrolysin 30mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "3c1d711d-f672-45b0-9c4c-15858800a29e|CTLX",
+    "parentName": "Cartalax",
+    "parentSlug": "cartalax",
+    "categoryId": "3c1d711d-f672-45b0-9c4c-15858800a29e",
+    "warnings": [],
+    "representativeId": "cmq6jncrp0011yuydotx7bobd",
+    "members": [
+      {
+        "id": "cmq6jncrp0011yuydotx7bobd",
+        "code": "CTLX",
+        "size": "20mg",
+        "slug": "cartalax-20mg",
+        "name": "Cartalax 20mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbm0001hzydpwble9ga|CU",
+    "parentName": "GHK-Cu",
+    "parentSlug": "ghk-cu",
+    "categoryId": "cmpk1rlbm0001hzydpwble9ga",
+    "warnings": [],
+    "representativeId": "cmpk1rlc10005hzydlt6g99bl",
+    "members": [
+      {
+        "id": "cmpk1rlc50006hzydrydehdu1",
+        "code": "CU100",
+        "size": "100mg",
+        "slug": "ghk-cu-100mg",
+        "name": "GHK-Cu"
+      },
+      {
+        "id": "cmpk1rlc10005hzydlt6g99bl",
+        "code": "CU50",
+        "size": "50mg",
+        "slug": "ghk-cu-50mg",
+        "name": "GHK-Cu"
+      }
+    ]
+  },
+  {
+    "groupKey": "73cfb305-a60a-4b1d-9b90-68468b8043f7|DSIP",
+    "parentName": "DSIP",
+    "parentSlug": "dsip",
+    "categoryId": "73cfb305-a60a-4b1d-9b90-68468b8043f7",
+    "warnings": [],
+    "representativeId": "cmq6jncfr000wyuyd1a8uyfv8",
+    "members": [
+      {
+        "id": "cmq6jncfr000wyuyd1a8uyfv8",
+        "code": "DSIP",
+        "size": "10mg",
+        "slug": "dsip-5mg",
+        "name": "DSIP 10mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbm0001hzydpwble9ga|ET",
+    "parentName": "Epitalon",
+    "parentSlug": "epitalon",
+    "categoryId": "cmpk1rlbm0001hzydpwble9ga",
+    "warnings": [],
+    "representativeId": "cmq6jg9nv0001yuyd3wg4g3i7",
+    "members": [
+      {
+        "id": "cmq6jg9nv0001yuyd3wg4g3i7",
+        "code": "ET10",
+        "size": "10mg",
+        "slug": "epitalon-10mg",
+        "name": "Epitalon"
+      },
+      {
+        "id": "cmpk1rlc80007hzyd3xp6zl7l",
+        "code": "ET50",
+        "size": "50mg",
+        "slug": "epithalon-50mg",
+        "name": "Epithalon"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216|FX",
+    "parentName": "FOXO4-DRI",
+    "parentSlug": "foxo4-dri",
+    "categoryId": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216",
+    "warnings": [],
+    "representativeId": "cmq6jncp90010yuydgpg7bbdj",
+    "members": [
+      {
+        "id": "cmq6jncp90010yuydgpg7bbdj",
+        "code": "FX4",
+        "size": "10mg",
+        "slug": "foxo4-dri-10mg",
+        "name": "FOXO4-DRI 10mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|GKBX",
+    "parentName": "Ginkgo Biloba Extract",
+    "parentSlug": "ginkgo-biloba-extract",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jnd5m0017yuydi8jw82os",
+    "members": [
+      {
+        "id": "cmq6jnd5m0017yuydi8jw82os",
+        "code": "GKBX",
+        "size": "17.5mg / 5ml",
+        "slug": "ginkgo-biloba-extract-5ml",
+        "name": "Ginkgo Biloba Extract 17.5mg / 5ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|GLUT",
+    "parentName": "Glutathione",
+    "parentSlug": "glutathione",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jncu00012yuyd71dj9l18",
+    "members": [
+      {
+        "id": "cmq6jncu00012yuyd71dj9l18",
+        "code": "GLUT",
+        "size": "1200mg",
+        "slug": "glutathione-600mg",
+        "name": "Glutathione 1200mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0002hzydgugfm15j|H",
+    "parentName": "HGH (Somatropin)",
+    "parentSlug": "hgh-somatropin",
+    "categoryId": "cmpk1rlbn0002hzydgugfm15j",
+    "warnings": [],
+    "representativeId": "cmpk1rld8000hhzyd4ni8p6df",
+    "members": [
+      {
+        "id": "cmpk1rld8000hhzyd4ni8p6df",
+        "code": "H36",
+        "size": "36IU",
+        "slug": "hgh-36iu",
+        "name": "HGH (Somatropin)"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|HPEX",
+    "parentName": "Human Placenta Extract",
+    "parentSlug": "human-placenta-extract",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jncwb0013yuyd9fehmb2l",
+    "members": [
+      {
+        "id": "cmq6jncwb0013yuyd9fehmb2l",
+        "code": "HPEX",
+        "size": "2ml",
+        "slug": "human-placenta-extract-2ml",
+        "name": "Human Placenta Extract 2ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216|HU",
+    "parentName": "Humanin",
+    "parentSlug": "humanin",
+    "categoryId": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216",
+    "warnings": [],
+    "representativeId": "cmq6jncmw000zyuydhf3ofhev",
+    "members": [
+      {
+        "id": "cmq6jncmw000zyuydhf3ofhev",
+        "code": "HU10",
+        "size": "10mg",
+        "slug": "humanin-10mg",
+        "name": "Humanin 10mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0002hzydgugfm15j|IGF-",
+    "parentName": "IGF-1LR3",
+    "parentSlug": "igf-1lr3",
+    "categoryId": "cmpk1rlbn0002hzydgugfm15j",
+    "warnings": [],
+    "representativeId": "cmpk1rldb000ihzydw5uocyej",
+    "members": [
+      {
+        "id": "cmpk1rldb000ihzydw5uocyej",
+        "code": "IGF-1",
+        "size": "1mg",
+        "slug": "igf-1lr3-1mg",
+        "name": "IGF-1LR3"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0002hzydgugfm15j|IP",
+    "parentName": "Ipamorelin",
+    "parentSlug": "ipamorelin",
+    "categoryId": "cmpk1rlbn0002hzydgugfm15j",
+    "warnings": [],
+    "representativeId": "cmq6jg9pr0003yuydph80ggtt",
+    "members": [
+      {
+        "id": "cmq6jg9pr0003yuydph80ggtt",
+        "code": "IP10",
+        "size": "10mg",
+        "slug": "ipamorelin-10mg",
+        "name": "Ipamorelin"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|Klow",
+    "parentName": "GHKCu + BPC157 +   TB500 + KPV",
+    "parentSlug": "ghkcu-bpc157-tb500-kpv",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmq7wuc1d001dyuydmiap6h4g",
+    "members": [
+      {
+        "id": "cmq7wuc1d001dyuydmiap6h4g",
+        "code": "Klow80",
+        "size": "80mg",
+        "slug": "ghkcu-50mg-bpc157-10mg-tb500-10mg-kpv-10mg-80mg",
+        "name": "GHKCu + BPC157 +   TB500 + KPV"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|KPV",
+    "parentName": "KPV",
+    "parentSlug": "kpv",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmpk1rldq000nhzyd1xjed2nx",
+    "members": [
+      {
+        "id": "cmpk1rldq000nhzyd1xjed2nx",
+        "code": "KPV10",
+        "size": "10mg",
+        "slug": "kpv-10mg",
+        "name": "KPV"
+      },
+      {
+        "id": "cmq6jg9uh0008yuyds7hz8ow5",
+        "code": "KPV30",
+        "size": "30mg",
+        "slug": "kpv-30mg",
+        "name": "KPV"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|MNRL",
+    "parentName": "Multi Minerals",
+    "parentSlug": "multi-minerals",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jnd140015yuydz11s3l1z",
+    "members": [
+      {
+        "id": "cmq6jnd140015yuydz11s3l1z",
+        "code": "MNRL",
+        "size": "10ml",
+        "slug": "multi-minerals-5ml",
+        "name": "Multi Minerals 10ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbl0000hzydvut57qwc|MS",
+    "parentName": "MOTS-C",
+    "parentSlug": "mots-c",
+    "categoryId": "cmpk1rlbl0000hzydvut57qwc",
+    "warnings": [],
+    "representativeId": "cmpk1rlcs000chzydmzo4reza",
+    "members": [
+      {
+        "id": "cmpk1rlcs000chzydmzo4reza",
+        "code": "MS10",
+        "size": "10mg",
+        "slug": "mots-c-10mg",
+        "name": "MOTS-C"
+      },
+      {
+        "id": "cmpk1rlcv000dhzydho3fh8lp",
+        "code": "MS40",
+        "size": "40mg",
+        "slug": "mots-c-40mg",
+        "name": "MOTS-C"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216|NJ",
+    "parentName": "NAD+",
+    "parentSlug": "nad",
+    "categoryId": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216",
+    "warnings": [],
+    "representativeId": "cmqv40rvt0009orydwnwcs8ad",
+    "members": [
+      {
+        "id": "cmqv40rvt0009orydwnwcs8ad",
+        "code": "NJ100",
+        "size": "100mg",
+        "slug": "nad-100mg",
+        "name": "NAD+"
+      },
+      {
+        "id": "cmqv42cjb000borydyucy1q31",
+        "code": "NJ1000",
+        "size": "1000mg",
+        "slug": "nad-1000mg",
+        "name": "NAD+"
+      },
+      {
+        "id": "cmqv41lu7000aoryddbhe8t4y",
+        "code": "NJ500",
+        "size": "500mg",
+        "slug": "nad-500mg",
+        "name": "NAD+"
+      }
+    ]
+  },
+  {
+    "groupKey": "73cfb305-a60a-4b1d-9b90-68468b8043f7|P",
+    "parentName": "P021",
+    "parentSlug": "p021",
+    "categoryId": "73cfb305-a60a-4b1d-9b90-68468b8043f7",
+    "warnings": [],
+    "representativeId": "cmq6jncdj000vyuydhs4ls9tv",
+    "members": [
+      {
+        "id": "cmq6jncdj000vyuydhs4ls9tv",
+        "code": "P21",
+        "size": "10mg",
+        "slug": "p021-10mg",
+        "name": "P021 10mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|PDRN",
+    "parentName": "PDRN (KFDA Grade)",
+    "parentSlug": "pdrn-kfda-grade",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jnd7t0018yuyd077dmqt3",
+    "members": [
+      {
+        "id": "cmq6jnd7t0018yuyd077dmqt3",
+        "code": "PDRN",
+        "size": "5.625mg / 3ml",
+        "slug": "pdrn-3ml",
+        "name": "PDRN (KFDA Grade) 5.625mg / 3ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|PE",
+    "parentName": "PE-22-28",
+    "parentSlug": "pe-22-28",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmpk1rldt000ohzydh6y4rxya",
+    "members": [
+      {
+        "id": "cmpk1rldt000ohzydh6y4rxya",
+        "code": "PE10",
+        "size": "10mg",
+        "slug": "pe-22-28-10mg",
+        "name": "PE-22-28"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbm0001hzydpwble9ga|PI",
+    "parentName": "Pinealon",
+    "parentSlug": "pinealon",
+    "categoryId": "cmpk1rlbm0001hzydpwble9ga",
+    "warnings": [],
+    "representativeId": "cmpk1rlcc0008hzyd0ydu9s7t",
+    "members": [
+      {
+        "id": "cmpk1rlcc0008hzyd0ydu9s7t",
+        "code": "PI10",
+        "size": "10mg",
+        "slug": "pinealon-10mg",
+        "name": "Pinealon"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbl0000hzydvut57qwc|RT",
+    "parentName": "Retatrutide",
+    "parentSlug": "retatrutide",
+    "categoryId": "cmpk1rlbl0000hzydvut57qwc",
+    "warnings": [],
+    "representativeId": "cmpk1rlcy000ehzydty7u952y",
+    "members": [
+      {
+        "id": "cmpk1rlcy000ehzydty7u952y",
+        "code": "RT10",
+        "size": "10mg",
+        "slug": "retatrutide-10mg",
+        "name": "Retatrutide"
+      },
+      {
+        "id": "cmpk1rld2000fhzydahtwlhjc",
+        "code": "RT20",
+        "size": "20mg",
+        "slug": "retatrutide-20mg",
+        "name": "Retatrutide"
+      },
+      {
+        "id": "cmpk1rld5000ghzydblxdsu3f",
+        "code": "RT30",
+        "size": "30mg",
+        "slug": "retatrutide-30mg",
+        "name": "Retatrutide"
+      }
+    ]
+  },
+  {
+    "groupKey": "73cfb305-a60a-4b1d-9b90-68468b8043f7|SK",
+    "parentName": "Selank",
+    "parentSlug": "selank",
+    "categoryId": "73cfb305-a60a-4b1d-9b90-68468b8043f7",
+    "warnings": [],
+    "representativeId": "cmq6jnc7j000tyuydsr16fsr6",
+    "members": [
+      {
+        "id": "cmq6jnc7j000tyuydsr16fsr6",
+        "code": "SK10",
+        "size": "10mg",
+        "slug": "selank-10mg",
+        "name": "Selank 10mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216|SS",
+    "parentName": "SS31 (Elamipretide)",
+    "parentSlug": "ss31-elamipretide",
+    "categoryId": "5a5975a5-b75c-43d8-9ebb-0c9d411fa216",
+    "warnings": [],
+    "representativeId": "cmq6jncif000xyuydz12x0tlr",
+    "members": [
+      {
+        "id": "cmq6jncif000xyuydz12x0tlr",
+        "code": "SS10",
+        "size": "10mg",
+        "slug": "ss31-10mg",
+        "name": "SS31 (Elamipretide) 10mg"
+      },
+      {
+        "id": "cmq6jnckm000yyuydqi7ap6o8",
+        "code": "SS50",
+        "size": "50mg",
+        "slug": "ss31-50mg",
+        "name": "SS31 (Elamipretide) 50mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "73cfb305-a60a-4b1d-9b90-68468b8043f7|SX",
+    "parentName": "Semax",
+    "parentSlug": "semax",
+    "categoryId": "73cfb305-a60a-4b1d-9b90-68468b8043f7",
+    "warnings": [],
+    "representativeId": "cmq6jnc4r000syuydmho43xco",
+    "members": [
+      {
+        "id": "cmq6jnc4r000syuydmho43xco",
+        "code": "SX10",
+        "size": "10mg",
+        "slug": "semax-10mg",
+        "name": "Semax 10mg"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|TA",
+    "parentName": "Thymosin Alpha-1",
+    "parentSlug": "thymosin-alpha-1",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmpk1rldo000mhzyd3tadplnd",
+    "members": [
+      {
+        "id": "cmpk1rldo000mhzyd3tadplnd",
+        "code": "TA10",
+        "size": "10mg",
+        "slug": "thymosin-alpha-1-10mg",
+        "name": "Thymosin Alpha-1"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|TB",
+    "parentName": "TB500 Full Chain",
+    "parentSlug": "tb500-full-chain",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmq6jg9tj0007yuyd6sdc1rtl",
+    "members": [
+      {
+        "id": "cmq6jg9tj0007yuyd6sdc1rtl",
+        "code": "TB4",
+        "size": "10mg",
+        "slug": "tb500-full-chain-10mg",
+        "name": "TB500 Full Chain"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbt0004hzydwx3zdwbj|TBF",
+    "parentName": "TB500 Fragment",
+    "parentSlug": "tb500-fragment",
+    "categoryId": "cmpk1rlbt0004hzydwx3zdwbj",
+    "warnings": [],
+    "representativeId": "cmq6jg9sn0006yuydd6ay7cgl",
+    "members": [
+      {
+        "id": "cmq6jg9sn0006yuydd6ay7cgl",
+        "code": "TBF10",
+        "size": "10mg",
+        "slug": "tb500-fragment-10mg",
+        "name": "TB500 Fragment"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0002hzydgugfm15j|TESA-IPAMORELIN",
+    "parentName": "Tesamorelin + Ipamorelin",
+    "parentSlug": "tesamorelin-ipamorelin",
+    "categoryId": "cmpk1rlbn0002hzydgugfm15j",
+    "warnings": [],
+    "representativeId": "cmpk1rldk000lhzydrqw7deen",
+    "members": [
+      {
+        "id": "cmpk1rldk000lhzydrqw7deen",
+        "code": "TESA-IPAMORELIN",
+        "size": "5mg + 5mg",
+        "slug": "tesamorelin-ipamorelin-combo",
+        "name": "Tesamorelin + Ipamorelin"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbn0002hzydgugfm15j|TESA",
+    "parentName": "Tesamorelin",
+    "parentSlug": "tesamorelin",
+    "categoryId": "cmpk1rlbn0002hzydgugfm15j",
+    "warnings": [],
+    "representativeId": "cmpk1rlde000jhzydnl745d23",
+    "members": [
+      {
+        "id": "cmpk1rlde000jhzydnl745d23",
+        "code": "TESA10",
+        "size": "10mg",
+        "slug": "tesamorelin-10mg",
+        "name": "Tesamorelin"
+      },
+      {
+        "id": "cmpk1rldh000khzydub7wqryx",
+        "code": "TESA20",
+        "size": "20mg",
+        "slug": "tesamorelin-20mg",
+        "name": "Tesamorelin"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbl0000hzydvut57qwc|TR",
+    "parentName": "Tirzepatide",
+    "parentSlug": "tirzepatide",
+    "categoryId": "cmpk1rlbl0000hzydvut57qwc",
+    "warnings": [],
+    "representativeId": "cmq6jg9ou0002yuydcuozmfv7",
+    "members": [
+      {
+        "id": "cmq6jg9ou0002yuydcuozmfv7",
+        "code": "TR30",
+        "size": "30mg",
+        "slug": "tirzepatide-30mg",
+        "name": "Tirzepatide"
+      }
+    ]
+  },
+  {
+    "groupKey": "4c960398-b004-4303-8300-7b71a035dd42|TTDP",
+    "parentName": "Testosterone Enanthate",
+    "parentSlug": "testosterone-enanthate",
+    "categoryId": "4c960398-b004-4303-8300-7b71a035dd42",
+    "warnings": [],
+    "representativeId": "cmq6jnd9z0019yuydnx1jf6sk",
+    "members": [
+      {
+        "id": "cmq6jnd9z0019yuydnx1jf6sk",
+        "code": "TTDP250",
+        "size": "250mg / 10ml",
+        "slug": "testosterone-enanthate-250mg",
+        "name": "Testosterone Enanthate 250mg / 10ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "4c960398-b004-4303-8300-7b71a035dd42|TTSV",
+    "parentName": "Testosterone Blend (Sustaviron)",
+    "parentSlug": "testosterone-blend-sustaviron",
+    "categoryId": "4c960398-b004-4303-8300-7b71a035dd42",
+    "warnings": [],
+    "representativeId": "cmq6jndch001ayuydsic4ta6o",
+    "members": [
+      {
+        "id": "cmq6jndch001ayuydsic4ta6o",
+        "code": "TTSV250",
+        "size": "250mg / 10ml",
+        "slug": "testosterone-blend-sustanon-250mg",
+        "name": "Testosterone Blend (Sustaviron) 250mg / 10ml"
+      }
+    ]
+  },
+  {
+    "groupKey": "cmpk1rlbm0001hzydpwble9ga|TY",
+    "parentName": "Thymalin",
+    "parentSlug": "thymalin",
+    "categoryId": "cmpk1rlbm0001hzydpwble9ga",
+    "warnings": [],
+    "representativeId": "cmpk1rlcg0009hzydjc0v9m6y",
+    "members": [
+      {
+        "id": "cmpk1rlcg0009hzydjc0v9m6y",
+        "code": "TY10",
+        "size": "10mg",
+        "slug": "thymalin-10mg",
+        "name": "Thymalin"
+      }
+    ]
+  },
+  {
+    "groupKey": "5a3c37ec-78cc-4525-80fb-95365f4b5140|VITC",
+    "parentName": "Vitamin C",
+    "parentSlug": "vitamin-c",
+    "categoryId": "5a3c37ec-78cc-4525-80fb-95365f4b5140",
+    "warnings": [],
+    "representativeId": "cmq6jncyo0014yuydv5z5bv6m",
+    "members": [
+      {
+        "id": "cmq6jncyo0014yuydv5z5bv6m",
+        "code": "VITC",
+        "size": "10g / 20ml",
+        "slug": "vitamin-c-10g-20ml",
+        "name": "Vitamin C 10g / 20ml"
+      }
+    ]
+  }
+]

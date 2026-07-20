@@ -488,7 +488,7 @@ export function ProductForm({ productId }: { productId?: string }) {
           {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-40 bg-surface-elevated rounded-xl" />)}
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form id="product-form" onSubmit={handleSubmit} className="space-y-5">
           <FormSection title="Basic Info" icon={Info} delay={0}>
             <div className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
@@ -678,7 +678,10 @@ export function ProductForm({ productId }: { productId?: string }) {
               </Animate>
             )}
             <Button type="button" variant="outline" onClick={() => router.push('/admin/products')}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={saving}>
+            {/* Portal'd outside the <form> DOM tree, so it submits via the
+                form attribute — this keeps the browser's `required` field
+                validation, which a direct handleSubmit() call would bypass. */}
+            <Button form="product-form" type="submit" disabled={saving}>
               {saving ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
             </Button>
           </div>,

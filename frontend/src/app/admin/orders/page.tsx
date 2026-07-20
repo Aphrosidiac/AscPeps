@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminGetReceiptPdfUrl } from '@/lib/api';
+import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
@@ -324,14 +324,12 @@ export default function AdminOrdersPage() {
                         >
                           <RotateCcw className="w-3.5 h-3.5" /> Restore
                         </button>
-                        <a
-                          href={adminGetReceiptPdfUrl(order.id, token!)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors"
+                        <button
+                          onClick={() => adminOpenReceiptPdf(token!, order.id).catch(() => {})}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                         >
                           <FileText className="w-3.5 h-3.5" /> Receipt
-                        </a>
+                        </button>
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-4 pt-3 border-t border-border">
@@ -379,14 +377,12 @@ export default function AdminOrdersPage() {
                           </div>
                         )}
                         <div className="flex items-end">
-                          <a
-                            href={adminGetReceiptPdfUrl(order.id, token!)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors"
+                          <button
+                            onClick={() => adminOpenReceiptPdf(token!, order.id).catch(() => {})}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5" /> Receipt
-                          </a>
+                          </button>
                         </div>
                         <div className="flex items-end ml-auto">
                           <button

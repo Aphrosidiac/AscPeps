@@ -1,7 +1,20 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { createOrder, lookupOrders } from './orders.controller.js';
 import { getReceiptData, getReceiptPdf } from './receipt.controller.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
+
+// Both identifiers are mandatory — the phone is the ownership proof for the
+// (guessable, sequential) order number.
+const lookupQuerySchema = z.object({
+  phone: z.string().min(1),
+  orderNumber: z.string().min(1),
+});
+
+const validateDiscountSchema = z.object({
+  code: z.string().min(1),
+  subtotal: z.number().int().min(0),
+});
 
 export default async function orderRoutes(fastify: FastifyInstance) {
   fastify.post(
@@ -16,7 +29,7 @@ export default async function orderRoutes(fastify: FastifyInstance) {
     '/lookup',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request) => {
-      const { phone, orderNumber } = request.query as { phone: string; orderNumber: string };
+      const { phone, orderNumber } = lookupQuerySchema.parse(request.query);
       return lookupOrders(fastify, phone, orderNumber);
     }
   );
@@ -48,7 +61,7 @@ export default async function orderRoutes(fastify: FastifyInstance) {
     '/validate-discount',
     { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } },
     async (request) => {
-      const { code, subtotal } = request.body as { code: string; subtotal: number };
+      const { code, subtotal } = validateDiscountSchema.parse(request.body);
       const { discount, discountAmount } = await validateDiscountCode(fastify, code, subtotal);
       return {
         code: discount.code,

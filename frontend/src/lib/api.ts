@@ -60,8 +60,20 @@ export const getReceiptData = (orderNumber: string, phone: string) =>
 export const getReceiptPdfUrl = (orderNumber: string, phone: string) =>
   `/api/v1/orders/receipt/${encodeURIComponent(orderNumber)}/pdf?phone=${encodeURIComponent(phone)}`;
 
-export const adminGetReceiptPdfUrl = (id: string, token: string) =>
-  `/api/v1/admin/orders/${id}/receipt?token=${encodeURIComponent(token)}`;
+// Fetches the receipt PDF with a normal Authorization header and opens it in
+// a new tab via a short-lived object URL. Replaces the old ?token= URL, which
+// leaked the admin JWT into browser history / server access logs.
+export const adminOpenReceiptPdf = (token: string, id: string) =>
+  api.get<Blob>(`/api/v1/admin/orders/${id}/receipt`, {
+    headers: { Authorization: `Bearer ${token}` },
+    responseType: 'blob',
+  }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    // Revoke once the new tab has had time to load the blob — revoking
+    // synchronously can abort the load in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
 
 export const getSettings = () =>
   api.get<Record<string, string>>('/api/v1/settings').then((r) => r.data);

@@ -6,6 +6,10 @@ import { restoreOrderInventory } from './order-inventory.js';
 // against the gateway, then released if still unpaid.
 const STALE_AFTER_MS = 15 * 60 * 1000; // 15 min — re-query gateway
 const RELEASE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 h — give up and restock
+// WhatsApp checkouts have no gateway to verify against — an order the admin
+// never confirmed just holds its reserved stock forever. Generous window
+// because confirmation is a manual chat exchange, not an instant callback.
+const WHATSAPP_RELEASE_AFTER_MS = 48 * 60 * 60 * 1000; // 48 h — cancel and restock
 
 /**
  * Mark an order PAID + CONFIRMED. Idempotent: the guarded updateMany only
@@ -91,5 +95,32 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
       // Gateway hiccup — leave the order untouched and retry next sweep.
       fastify.log.warn({ err, orderId: order.id }, 'reconcile: gateway verify failed');
     }
+  }
+
+  // WhatsApp orders the admin never confirmed: cancel and release the stock.
+  // Same stockRestored-guarded restore as the online-payment path, so a
+  // concurrent admin action can't double-restore.
+  const staleWhatsapp = await fastify.prisma.order.findMany({
+    where: {
+      paymentMethod: 'WHATSAPP',
+      status: 'PENDING',
+      paymentStatus: 'UNPAID',
+      createdAt: { lt: new Date(now - WHATSAPP_RELEASE_AFTER_MS) },
+    },
+    select: { id: true, orderNumber: true },
+    orderBy: { createdAt: 'asc' },
+    take: 50,
+  });
+
+  for (const order of staleWhatsapp) {
+    // Guarded transition (only from PENDING) — a just-confirmed order is safe.
+    const { count } = await fastify.prisma.order.updateMany({
+      where: { id: order.id, status: 'PENDING' },
+      data: { status: 'CANCELLED' },
+    });
+    if (count === 0) continue;
+
+    await restoreOrderInventory(fastify, order.id);
+    fastify.log.info(`Order ${order.orderNumber} auto-cancelled (WhatsApp, unconfirmed 48h) — stock restored`);
   }
 }

@@ -33,6 +33,13 @@ const createOrderSchema = z.object({
   if (data.paymentMethod === 'BILLPLZ' && !data.email) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'Email is required for online payment' });
   }
+  // Cap total units per order — an unauthenticated checkout (especially
+  // WhatsApp, which needs no payment) must not be able to reserve the whole
+  // inventory in one request.
+  const totalQuantity = data.items.reduce((sum, i) => sum + i.quantity, 0);
+  if (totalQuantity > 50) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Order exceeds the maximum of 50 items. Please contact us for bulk orders.' });
+  }
 });
 
 // Rebuild the online-payment URL for an already-created order (used on the
@@ -43,6 +50,16 @@ function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRe
     return `${host}/${order.paymentRef}`;
   }
   return undefined; // Billplz bill URL isn't persisted; the customer must re-open from email
+}
+
+// P2002 field extraction mirrors error-handler.ts: the driver-adapter build
+// reports the violated constraint under meta.driverAdapterError, not meta.target.
+function isOrderNumberConflict(err: unknown): boolean {
+  const meta = (err as { meta?: { target?: string | string[]; driverAdapterError?: { cause?: { constraint?: { fields?: string[] } } } } })?.meta;
+  const fields = meta?.target ?? meta?.driverAdapterError?.cause?.constraint?.fields;
+  return Array.isArray(fields)
+    ? fields.includes('orderNumber')
+    : typeof fields === 'string' && fields.includes('orderNumber');
 }
 
 export async function createOrder(fastify: FastifyInstance, body: unknown) {
@@ -60,9 +77,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     }
   }
 
-  let order;
-  try {
-    order = await fastify.prisma.$transaction(async (tx) => {
+  const runCreateTransaction = () =>
+    fastify.prisma.$transaction(async (tx) => {
     // Server-side enforcement of "required" add-ons (e.g. Bac Water + syringes
     // for a reconstitution-needing peptide): the storefront pre-checks and
     // locks these, but a bypassed/buggy client must still not be able to ship
@@ -205,16 +221,29 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 
       return created;
     }, { timeout: 15000, maxWait: 5000 });
-  } catch (err) {
-    // Lost the idempotency-key race: a concurrent request with the same key
-    // already created the order. Return that one instead of erroring.
-    if (data.idempotencyKey && (err as { code?: string })?.code === 'P2002') {
-      const existing = await fastify.prisma.order.findUnique({
-        where: { idempotencyKey: data.idempotencyKey },
-      });
-      if (existing) return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+
+  let order;
+  // Order-number generation is read-max-then-increment with no lock, so two
+  // concurrent orders can compute the same number — the loser hits the unique
+  // constraint and regenerates on a fresh attempt.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      order = await runCreateTransaction();
+      break;
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      // Lost the idempotency-key race: a concurrent request with the same key
+      // already created the order. Return that one instead of erroring.
+      if (data.idempotencyKey && code === 'P2002') {
+        const existing = await fastify.prisma.order.findUnique({
+          where: { idempotencyKey: data.idempotencyKey },
+        });
+        if (existing) return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+      }
+      if (code === 'P2002' && attempt < MAX_ATTEMPTS && isOrderNumberConflict(err)) continue;
+      throw err;
     }
-    throw err;
   }
 
   let whatsappUrl: string | undefined;
@@ -275,27 +304,30 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {
+  // BOTH identifiers are required: an order number alone is guessable
+  // (sequential ASCyymm/NNNN format), and a phone alone would enumerate every
+  // order for a guessed number. The phone acts as the shared secret, matched
+  // the same way the receipt endpoint does.
   const normalizedPhone = phone ? normalizePhone(phone) : '';
   const hasPhone = normalizedPhone.length >= 10;
-  const hasOrderNumber = orderNumber && orderNumber.trim().length >= 3;
+  const hasOrderNumber = !!orderNumber && orderNumber.trim().length >= 3;
 
-  // Require at least one identifier
-  if (!hasPhone && !hasOrderNumber) {
-    throw { statusCode: 400, message: 'Please enter your order number or phone number' };
+  if (!hasPhone || !hasOrderNumber) {
+    throw { statusCode: 400, message: 'Please enter your order number and phone number' };
   }
-
-  // Build where clause based on what was provided
-  const where: Record<string, string> = {};
-  if (hasPhone) where.phone = normalizedPhone;
-  if (hasOrderNumber) where.orderNumber = orderNumber.trim().toUpperCase();
 
   // Return only what the tracking UI needs — never the customer's address,
   // email, name, or notes.
   const orders = await fastify.prisma.order.findMany({
-    where,
+    where: {
+      orderNumber: orderNumber.trim().toUpperCase(),
+      deletedAt: null,
+    },
     select: {
       id: true,
       orderNumber: true,
+      // Fetched only for the ownership check below — stripped before returning.
+      phone: true,
       status: true,
       total: true,
       trackingNumber: true,
@@ -315,5 +347,9 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
     take: 10,
   });
 
-  return orders;
+  // A wrong phone gets the identical empty result as a nonexistent order —
+  // no oracle for probing which order numbers exist.
+  return orders
+    .filter((o) => normalizePhone(o.phone) === normalizedPhone)
+    .map(({ phone: _phone, ...rest }) => rest);
 }
