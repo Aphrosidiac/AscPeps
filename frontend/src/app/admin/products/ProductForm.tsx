@@ -655,11 +655,6 @@ export function ProductForm({ productId }: { productId?: string }) {
             </div>
           </FormSection>
 
-          {formError && (
-            <Animate variant="fade" duration={0.2}>
-              <p className="text-sm text-danger">{formError}</p>
-            </Animate>
-          )}
         </form>
       )}
 
@@ -667,10 +662,21 @@ export function ProductForm({ productId }: { productId?: string }) {
           overflow-auto, which becomes the actual scrolling element and traps
           a `fixed` descendant inside its own box instead of the real
           viewport — the bar would scroll away with the page and end up
-          below the footer instead of staying pinned on-screen. */}
+          below the footer instead of staying pinned on-screen.
+
+          formError renders here (not inline in the form) because this bar
+          is reachable — and submission is triggered — from anywhere in a
+          long scroll. An error appearing only at the bottom of the form
+          (past Variants/Add-Ons/Content) was easy to miss entirely and
+          looked like clicking Update Product silently did nothing. */}
       {mounted && !loading &&
         createPortal(
-          <div className="fixed bottom-0 inset-x-0 lg:left-64 bg-surface/95 backdrop-blur-sm border-t border-border p-4 flex justify-end gap-3 z-30">
+          <div className="fixed bottom-0 inset-x-0 lg:left-64 bg-surface/95 backdrop-blur-sm border-t border-border p-4 flex items-center justify-end gap-3 z-30">
+            {formError && (
+              <Animate variant="fade" duration={0.2} className="mr-auto">
+                <p className="text-sm text-danger">{formError}</p>
+              </Animate>
+            )}
             <Button type="button" variant="outline" onClick={() => router.push('/admin/products')}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={saving}>
               {saving ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
