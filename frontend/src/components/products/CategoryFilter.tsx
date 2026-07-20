@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { getCategoryIcon } from '@/lib/category-icons';
 import type { Category } from '@/types';
 
 interface CategoryFilterProps {
@@ -23,20 +24,24 @@ export function CategoryFilter({ categories, selected, onSelect }: CategoryFilte
       >
         All
       </button>
-      {categories.map((cat) => (
-        <button
-          key={cat.slug}
-          onClick={() => onSelect(cat.slug)}
-          className={cn(
-            'px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer',
-            selected === cat.slug
-              ? 'bg-primary text-white'
-              : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
-          )}
-        >
-          {cat.name}
-        </button>
-      ))}
+      {categories.map((cat) => {
+        const CategoryIcon = getCategoryIcon(cat.slug);
+        return (
+          <button
+            key={cat.slug}
+            onClick={() => onSelect(cat.slug)}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer',
+              selected === cat.slug
+                ? 'bg-primary text-white'
+                : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+            )}
+          >
+            <CategoryIcon className="w-4 h-4 shrink-0" />
+            {cat.name}
+          </button>
+        );
+      })}
     </div>
   );
 }

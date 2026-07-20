@@ -86,6 +86,47 @@ export default function AdminSettingsPage() {
           <p className="text-xs text-text-muted">This text appears in a bar above the navigation on every page.</p>
         </div>
 
+        {/* Homepage Hardsell Section */}
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Homepage Hardsell Section</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="hardsell_enabled"
+              checked={settings.hardsell_enabled === 'true'}
+              onChange={(e) => updateSetting('hardsell_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded"
+            />
+            <label htmlFor="hardsell_enabled" className="text-sm font-medium text-text-secondary">
+              Show a promotional section on the homepage, above &quot;Shop by Category&quot;
+            </label>
+          </div>
+          <Input
+            label="Product Slug"
+            id="hardsell_product_slug"
+            value={settings.hardsell_product_slug || ''}
+            onChange={(e) => updateSetting('hardsell_product_slug', e.target.value)}
+            placeholder="retatrutide"
+          />
+          <Input
+            label="Headline"
+            id="hardsell_headline"
+            value={settings.hardsell_headline || ''}
+            onChange={(e) => updateSetting('hardsell_headline', e.target.value)}
+            placeholder="Leave blank to just show the product name"
+          />
+          <Input
+            label="Subheadline"
+            id="hardsell_subheadline"
+            value={settings.hardsell_subheadline || ''}
+            onChange={(e) => updateSetting('hardsell_subheadline', e.target.value)}
+            placeholder="Leave blank to omit"
+          />
+          <p className="text-xs text-text-muted">
+            The product slug must match a real, active product (e.g. the URL at /products/retatrutide). Section renders nothing if the slug doesn&apos;t match a product.
+          </p>
+        </div>
+
         {/* Online Payment */}
         <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Online Payment</h2>

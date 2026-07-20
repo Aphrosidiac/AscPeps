@@ -9,15 +9,29 @@ import { ProductCard } from '@/components/products/ProductCard';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { VideoStrip } from '@/components/ui/VideoStrip';
-import type { Product, Category } from '@/types';
+import { RetaHardsellSection } from '@/components/home/RetaHardsellSection';
+import { getCategoryIcon } from '@/lib/category-icons';
+import type { Product, Category, Insight } from '@/types';
 
 interface HomeClientProps {
   products: Product[];
   categories: Category[];
   freeShipping: boolean;
+  hardsellProduct: Product | null;
+  hardsellResearchArticle: Insight | null;
+  hardsellHeadline: string;
+  hardsellSubheadline: string;
 }
 
-export function HomeClient({ products, categories, freeShipping }: HomeClientProps) {
+export function HomeClient({
+  products,
+  categories,
+  freeShipping,
+  hardsellProduct,
+  hardsellResearchArticle,
+  hardsellHeadline,
+  hardsellSubheadline,
+}: HomeClientProps) {
   const triggerJiggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const el = e.currentTarget as HTMLElement;
     if (el.classList.contains('jiggling')) return;
@@ -127,6 +141,15 @@ export function HomeClient({ products, categories, freeShipping }: HomeClientPro
         </div>
       </section>
 
+      {hardsellProduct && (
+        <RetaHardsellSection
+          product={hardsellProduct}
+          researchArticle={hardsellResearchArticle}
+          headline={hardsellHeadline}
+          subheadline={hardsellSubheadline}
+        />
+      )}
+
       {/* Categories */}
       {categories.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -134,17 +157,23 @@ export function HomeClient({ products, categories, freeShipping }: HomeClientPro
             <h2 className="font-display text-2xl md:text-3xl font-bold mb-8">Shop by Category</h2>
           </Animate>
           <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" stagger={0.08}>
-            {categories.filter(c => c.slug !== 'supplies').map((cat) => (
-              <Link
-                key={cat.slug}
-                href={`/products?category=${cat.slug}`}
-                className="group bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md transition-all duration-300 p-6"
-              >
-                <h3 className="font-display font-semibold text-lg mb-1 group-hover:text-primary-light transition-colors">{cat.name}</h3>
-                <p className="text-sm text-text-secondary mb-3">{cat.description}</p>
-                <span className="text-sm font-medium text-text-muted">{cat.productCount} products</span>
-              </Link>
-            ))}
+            {categories.filter(c => c.slug !== 'supplies').map((cat) => {
+              const CategoryIcon = getCategoryIcon(cat.slug);
+              return (
+                <Link
+                  key={cat.slug}
+                  href={`/products?category=${cat.slug}`}
+                  className="group bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md transition-all duration-300 p-6"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <CategoryIcon className="w-5 h-5 text-text-primary shrink-0" />
+                    <h3 className="font-display font-semibold text-lg group-hover:text-primary-light transition-colors">{cat.name}</h3>
+                  </div>
+                  <p className="text-sm text-text-secondary mb-3">{cat.description}</p>
+                  <span className="text-sm font-medium text-text-muted">{cat.productCount} products</span>
+                </Link>
+              );
+            })}
           </Stagger>
         </section>
       )}
