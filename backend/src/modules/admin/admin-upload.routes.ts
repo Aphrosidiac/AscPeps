@@ -1,17 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import { createWriteStream } from 'fs';
-import { mkdir, unlink, open, rename } from 'fs/promises';
+import { mkdir, unlink, open } from 'fs/promises';
 import path from 'path';
 import { pipeline } from 'stream/promises';
+import sharp from 'sharp';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
-const EXT_FOR: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/avif': 'avif',
-};
+const WEBP_QUALITY = 82;
 
 // Detect the real image type from the file's magic bytes — the client-declared
 // Content-Type is spoofable and must not be trusted.
@@ -50,8 +46,6 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     const uploadsDir = path.join(process.cwd(), 'uploads', 'products');
     await mkdir(uploadsDir, { recursive: true });
 
-    // Write to a temp name first; the final extension comes from the SNIFFED
-    // type, not the client header.
     const tmppath = path.join(uploadsDir, `${id}.tmp`);
 
     try {
@@ -73,8 +67,16 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'File content is not a valid image (JPEG, PNG, WebP, or AVIF).' });
     }
 
-    const filename = `${id}.${EXT_FOR[detected]}`;
-    await rename(tmppath, path.join(uploadsDir, filename));
+    // Re-encode to WebP regardless of source format — smaller files on disk
+    // and one consistent format for every stored product image.
+    const filename = `${id}.webp`;
+    try {
+      await sharp(tmppath).webp({ quality: WEBP_QUALITY }).toFile(path.join(uploadsDir, filename));
+    } catch {
+      return reply.status(400).send({ error: 'Failed to process image.' });
+    } finally {
+      await unlink(tmppath).catch(() => {});
+    }
 
     const url = `/uploads/products/${filename}`;
     return { url, filename };

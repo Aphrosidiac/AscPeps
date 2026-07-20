@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Trash2, Upload, ImageIcon, ChevronDown,
-  Info, Layers, PackagePlus, FileText,
+  Info, Layers, PackagePlus, FileText, Check, AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminGetProduct, adminCreateProduct, adminUpdateProduct, adminUploadImage, getCategories } from '@/lib/api';
@@ -31,6 +31,11 @@ interface VariantFormData {
   stock: string;
   imageUrl: string;
   active: boolean;
+}
+
+interface UploadState {
+  status: 'uploading' | 'success' | 'error';
+  progress: number;
 }
 
 interface ProductFormData {
@@ -114,20 +119,28 @@ function VariantCard({
   onChange,
   onRemove,
   onUploadImage,
+  uploadState,
 }: {
   variant: VariantFormData;
   onChange: (field: keyof VariantFormData, value: string | boolean) => void;
   onRemove: () => void;
   onUploadImage: (file: File) => void;
+  uploadState?: UploadState;
 }) {
   const [saleOpen, setSaleOpen] = useState(!!variant.salePrice);
   const isExisting = !!variant.id;
+  const uploading = uploadState?.status === 'uploading';
 
   return (
     <Animate variant="fadeUp" duration={0.3}>
       <div className="rounded-xl border border-border bg-surface-elevated/40 p-4 transition-shadow hover:shadow-sm">
         <div className="flex items-start gap-4">
-          <label className="relative w-16 h-16 rounded-lg border border-border bg-surface overflow-hidden shrink-0 group cursor-pointer">
+          <label
+            title={uploadState?.status === 'error' ? 'Upload failed — click to retry' : undefined}
+            className={`relative w-16 h-16 rounded-lg border overflow-hidden shrink-0 group bg-surface ${
+              uploadState?.status === 'error' ? 'border-danger' : 'border-border'
+            } ${uploading ? 'cursor-wait' : 'cursor-pointer'}`}
+          >
             {variant.imageUrl ? (
               <img src={variant.imageUrl} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -135,13 +148,40 @@ function VariantCard({
                 <ImageIcon className="w-5 h-5 text-text-muted" />
               </div>
             )}
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors">
-              <Upload className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div
+              className={`absolute inset-0 flex items-center justify-center transition-colors ${
+                uploading
+                  ? 'bg-black/60'
+                  : uploadState?.status === 'success'
+                    ? 'bg-black/50'
+                    : uploadState?.status === 'error'
+                      ? 'bg-danger/70'
+                      : 'bg-black/0 group-hover:bg-black/40'
+              }`}
+            >
+              {uploading ? (
+                <span className="text-white text-[11px] font-semibold">{uploadState.progress}%</span>
+              ) : uploadState?.status === 'success' ? (
+                <Check className="w-5 h-5 text-white" />
+              ) : uploadState?.status === 'error' ? (
+                <AlertCircle className="w-5 h-5 text-white" />
+              ) : (
+                <Upload className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
             </div>
+            {uploading && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30">
+                <div
+                  className="h-full bg-white transition-[width] duration-150"
+                  style={{ width: `${uploadState.progress}%` }}
+                />
+              </div>
+            )}
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
               className="hidden"
+              disabled={uploading}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) onUploadImage(file);
@@ -218,6 +258,9 @@ export function ProductForm({ productId }: { productId?: string }) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [mounted, setMounted] = useState(false);
+  // Keyed by variant.key — tracks each variant image upload independently
+  // so uploading one photo doesn't affect another row's indicator.
+  const [uploadStatus, setUploadStatus] = useState<Record<string, UploadState>>({});
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
@@ -301,11 +344,21 @@ export function ProductForm({ productId }: { productId?: string }) {
 
   const uploadVariantImage = async (key: string, file: File) => {
     if (!token) return;
+    setUploadStatus((s) => ({ ...s, [key]: { status: 'uploading', progress: 0 } }));
     try {
-      const { url } = await adminUploadImage(token, file);
+      const { url } = await adminUploadImage(token, file, (progress) => {
+        setUploadStatus((s) => ({ ...s, [key]: { status: 'uploading', progress } }));
+      });
       updateVariant(key, 'imageUrl', url);
+      setUploadStatus((s) => ({ ...s, [key]: { status: 'success', progress: 100 } }));
+      setTimeout(() => {
+        setUploadStatus((s) => {
+          const { [key]: _removed, ...rest } = s;
+          return rest;
+        });
+      }, 1500);
     } catch {
-      setFormError('Failed to upload image');
+      setUploadStatus((s) => ({ ...s, [key]: { status: 'error', progress: 0 } }));
     }
   };
 
@@ -481,6 +534,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                   onChange={(field, value) => updateVariant(v.key, field, value)}
                   onRemove={() => removeVariantRow(v.key)}
                   onUploadImage={(file) => uploadVariantImage(v.key, file)}
+                  uploadState={uploadStatus[v.key]}
                 />
               ))}
             </div>
