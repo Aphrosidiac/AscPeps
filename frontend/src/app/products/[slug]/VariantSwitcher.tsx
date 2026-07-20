@@ -6,6 +6,7 @@ import { Check, ShieldCheck, Truck } from 'lucide-react';
 import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
+import { SkuBadge } from '@/components/products/SkuBadge';
 import type { Product } from '@/types';
 
 interface Props {
@@ -106,7 +107,11 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
           <div className="space-y-6">
             <div>
               <p className="text-sm text-text-muted font-medium uppercase tracking-wider mb-1">{product.category.name}</p>
-              <h1 className="font-display text-3xl font-bold">{product.name}</h1>
+              <SkuBadge code={variant.code} size="lg" className="block mb-1" />
+              {/* Text and tag are unchanged for SEO (matches generateMetadata's
+                  <title>) — only the visual weight shrinks now that the code
+                  above carries the "first thing you see" role. */}
+              <h1 className="font-display text-base sm:text-lg font-medium text-text-secondary">{product.name}</h1>
             </div>
 
             <div className="flex items-baseline gap-2.5">
@@ -168,8 +173,6 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
                 </div>
               </div>
             </div>
-
-            <p className="text-xs text-text-muted">Product Code: {variant.code}</p>
           </div>
         </Animate>
       </div>

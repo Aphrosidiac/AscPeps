@@ -7,6 +7,7 @@ import type { Product } from '@/types';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
+import { SkuBadge } from '@/components/products/SkuBadge';
 
 interface ProductCardProps {
   product: Product;
@@ -57,10 +58,12 @@ export function ProductCard({ product }: ProductCardProps) {
           <p className="text-xs text-text-muted font-medium uppercase tracking-wider">
             {product.category.name}
           </p>
-          <h3 className="font-display font-semibold text-text-primary group-hover:text-primary-light">
-            {product.name}
+          <h3>
+            <SkuBadge code={variant?.code ?? product.name.slice(0, 2).toUpperCase()} className="group-hover:text-primary-light" />
           </h3>
-          {variant?.size && <p className="text-sm text-text-secondary">{variant.size}</p>}
+          <p className="text-sm text-text-secondary">
+            {product.name}{variant?.size ? ` ${variant.size}` : ''}
+          </p>
           <div className="flex items-center justify-between gap-2 pt-2">
             {variant ? (
               <>

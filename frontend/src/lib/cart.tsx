@@ -61,7 +61,7 @@ const CartContext = createContext<CartContextType | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
-  const [toastItem, setToastItem] = useState<{ name: string; key: number } | null>(null);
+  const [toastItem, setToastItem] = useState<{ code: string; name: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback((item: CartItem) => {
     dispatch({ type: 'ADD_ITEM', payload: item });
     toastKeyRef.current += 1;
-    setToastItem({ name: item.name, key: toastKeyRef.current });
+    setToastItem({ code: item.code, name: item.name, key: toastKeyRef.current });
   }, []);
 
   const clearToast = useCallback(() => setToastItem(null), []);
