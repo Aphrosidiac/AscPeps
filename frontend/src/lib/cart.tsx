@@ -6,6 +6,10 @@ import { CartToast } from '@/components/ui/CartToast';
 
 interface CartState {
   items: CartItem[];
+  // True once LOAD has run — until then `items` is just the initial empty
+  // array, not the customer's real cart. Consumers that redirect on an
+  // empty cart (checkout) must wait for this.
+  hydrated: boolean;
 }
 
 type CartAction =
@@ -15,40 +19,52 @@ type CartAction =
   | { type: 'CLEAR' }
   | { type: 'LOAD'; payload: CartItem[] };
 
+function clampToStock(quantity: number, stock: number | undefined): number {
+  return stock != null ? Math.min(quantity, stock) : quantity;
+}
+
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD_ITEM': {
       const existing = state.items.find((i) => i.variantId === action.payload.variantId);
       if (existing) {
         return {
+          ...state,
           items: state.items.map((i) =>
             i.variantId === action.payload.variantId
-              ? { ...i, quantity: i.quantity + action.payload.quantity }
+              // Clamp the merged quantity to the variant's stock so repeated
+              // adds can't push the line past what's actually available.
+              // (stock is missing on carts saved before it was tracked —
+              // no clamp then; the backend re-validates at order time.)
+              ? { ...i, quantity: clampToStock(i.quantity + action.payload.quantity, action.payload.stock ?? i.stock) }
               : i
           ),
         };
       }
-      return { items: [...state.items, action.payload] };
+      return { ...state, items: [...state.items, { ...action.payload, quantity: clampToStock(action.payload.quantity, action.payload.stock) }] };
     }
     case 'REMOVE_ITEM':
-      return { items: state.items.filter((i) => i.variantId !== action.payload) };
+      return { ...state, items: state.items.filter((i) => i.variantId !== action.payload) };
     case 'UPDATE_QUANTITY':
       return {
+        ...state,
         items: state.items.map((i) =>
           i.variantId === action.payload.variantId
-            ? { ...i, quantity: action.payload.quantity }
+            ? { ...i, quantity: clampToStock(action.payload.quantity, i.stock) }
             : i
         ),
       };
     case 'CLEAR':
-      return { items: [] };
+      return { ...state, items: [] };
     case 'LOAD':
-      return { items: action.payload };
+      return { items: action.payload, hydrated: true };
   }
 }
 
 interface CartContextType {
   items: CartItem[];
+  // See CartState.hydrated.
+  hydrated: boolean;
   addItem: (item: CartItem) => void;
   removeItem: (variantId: string) => void;
   updateQuantity: (variantId: string, quantity: number) => void;
@@ -60,11 +76,14 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(cartReducer, { items: [] });
+  const [state, dispatch] = useReducer(cartReducer, { items: [], hydrated: false });
   const [toastItem, setToastItem] = useState<{ code: string; name: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
   useEffect(() => {
+    // Always dispatch LOAD — even with nothing saved — so `hydrated` flips
+    // and consumers know the (possibly empty) cart is now the real one.
+    let items: CartItem[] = [];
     const saved = localStorage.getItem('ascend-cart');
     if (saved) {
       try {
@@ -74,13 +93,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // as-is when it became a ProductVariant, so an old saved id is still
         // a perfectly valid variantId. Silently upgrade the shape on load
         // rather than requiring a version bump or discarding the cart.
-        const normalized = parsed.map((item: CartItem & { productId?: string }) => ({
+        items = parsed.map((item: CartItem & { productId?: string }) => ({
           ...item,
           variantId: item.variantId ?? item.productId,
         }));
-        dispatch({ type: 'LOAD', payload: normalized });
       } catch {}
     }
+    dispatch({ type: 'LOAD', payload: items });
   }, []);
 
   useEffect(() => {
@@ -101,6 +120,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   return (
     <CartContext value={{
       items: state.items,
+      hydrated: state.hydrated,
       addItem,
       removeItem: (id) => dispatch({ type: 'REMOVE_ITEM', payload: id }),
       updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { variantId: id, quantity: qty } }),

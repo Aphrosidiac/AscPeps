@@ -29,13 +29,20 @@ import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 
 const fastify = Fastify({
-  trustProxy: true,
-  logger: {
-    transport: {
-      target: 'pino-pretty',
-      options: { colorize: true },
-    },
-  },
+  // Trust exactly one hop (the nginx in front) — `true` would trust the
+  // client-supplied X-Forwarded-For chain, letting anyone spoof req.ip and
+  // reset their rate-limit bucket per request.
+  trustProxy: 1,
+  // pino-pretty is a devDependency — hardcoding the transport crashes a
+  // production `npm ci --omit=dev` deploy at boot. Plain JSON logs in prod.
+  logger: process.env.NODE_ENV !== 'production'
+    ? {
+        transport: {
+          target: 'pino-pretty',
+          options: { colorize: true },
+        },
+      }
+    : true,
 });
 
 const corsOrigins = [env.FRONTEND_URL, ...env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)];

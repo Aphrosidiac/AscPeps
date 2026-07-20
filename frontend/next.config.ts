@@ -28,9 +28,20 @@ const nextConfig: NextConfig = {
     // parent/variant migration — 301s preserve SEO equity from the old,
     // separately-indexed per-size pages onto the new single parent page
     // (e.g. /products/retatrutide) where all sizes now live together.
+    // These migration targets were never published and 404 live — until (if)
+    // those products go live, send their old URLs to the products listing
+    // instead: a 301 to a live listing beats a 301 into a 404. Repoint back
+    // to `/products/<slug>` if any of these are ever published.
+    const unpublishedTargets = new Set([
+      "humanin",
+      "human-placenta-extract",
+      "ghkcu-bpc157-tb500-kpv",
+      "reconstitution-syringe",
+      "syringe",
+    ]);
     return Object.entries(productRedirects as Record<string, string>).map(([from, to]) => ({
       source: `/products/${from}`,
-      destination: `/products/${to}`,
+      destination: unpublishedTargets.has(to) ? "/products" : `/products/${to}`,
       permanent: true,
     }));
   },

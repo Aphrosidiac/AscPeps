@@ -18,8 +18,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!product) return { alternates: { canonical: `${BASE_URL}/products/${slug}` } };
 
   const variant = getDefaultVariant(product);
-  const fullName = variant ? getVariantDisplayName(product, variant) : product.name;
-  const priceMyr = variant ? `RM${(getEffectivePrice(variant) / 100).toFixed(2)}` : '';
+  // Multi-size pages get a "Name (10mg–30mg)" range title instead of being
+  // named after just the lowest size — the page sells the whole line, and a
+  // single-size title under-represents it in search results. Variants come
+  // ordered cheapest-first from getDefaultVariant's price rule.
+  const activeVariants = product.variants.filter((v) => v.active && v.size);
+  const distinctSizes = [...new Set(activeVariants.slice().sort((a, b) => a.price - b.price).map((v) => v.size as string))];
+  const fullName = distinctSizes.length > 1
+    ? `${product.name} (${distinctSizes[0]}–${distinctSizes[distinctSizes.length - 1]})`
+    : variant ? getVariantDisplayName(product, variant) : product.name;
+  // With a size-range name the single price shown is the cheapest size's —
+  // say "from RMx" so it doesn't read as the price of the whole range.
+  const priceMyr = variant ? `${distinctSizes.length > 1 ? 'from ' : ''}RM${(getEffectivePrice(variant) / 100).toFixed(2)}` : '';
   const title = `${fullName} — Buy in Malaysia`;
 
   const shippingFee = settings.shipping_fee || '';
@@ -82,6 +92,7 @@ export default async function ProductLayout({ params, children }: Props) {
             slug={product.slug}
             category={product.category?.name || 'Research Peptides'}
             updatedAt={product.updatedAt}
+            image={absoluteImageUrl(variant.imageUrl)}
             shippingFee={settings.shipping_fee || ''}
             variants={product.variants.filter((v) => v.active).map((v) => ({
               code: v.code,

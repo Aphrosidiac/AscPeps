@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'crypto';
 import { revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -8,7 +9,13 @@ import { NextRequest, NextResponse } from 'next/server';
 // cached render for up to the fetch's own revalidate window.
 export async function POST(request: NextRequest) {
   const secret = request.headers.get('x-revalidate-secret');
-  if (!process.env.REVALIDATE_SECRET || secret !== process.env.REVALIDATE_SECRET) {
+  const expected = process.env.REVALIDATE_SECRET;
+  // Constant-time comparison — a plain !== leaks how many leading characters
+  // match through response timing. timingSafeEqual requires equal lengths,
+  // so guard that first (the length check itself reveals nothing useful).
+  const a = Buffer.from(secret ?? '');
+  const b = Buffer.from(expected ?? '');
+  if (!expected || !secret || a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

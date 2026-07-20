@@ -1,10 +1,14 @@
 import { absoluteImageUrl, isSaleActive, getEffectivePrice } from '@/lib/utils';
 
-function JsonLdScript({ data }: { data: Record<string, unknown> }) {
+// Shared single escaping point for every JSON-LD emission on the site.
+// JSON.stringify alone is NOT safe inside a <script> tag: a stored value
+// containing "</script>" would terminate the block and inject markup
+// (stored XSS). Escaping "<" as < is valid JSON and defuses it.
+export function JsonLd({ data }: { data: Record<string, unknown> }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, '\\u003c') }}
     />
   );
 }
@@ -51,7 +55,7 @@ export function OrganizationJsonLd({ priceRange }: OrganizationJsonLdProps = {})
     },
   };
 
-  return <JsonLdScript data={data} />;
+  return <JsonLd data={data} />;
 }
 
 export function WebSiteJsonLd() {
@@ -73,7 +77,7 @@ export function WebSiteJsonLd() {
     },
   };
 
-  return <JsonLdScript data={data} />;
+  return <JsonLd data={data} />;
 }
 
 export function FaqJsonLd({ items }: { items: { q: string; a: string }[] }) {
@@ -90,7 +94,7 @@ export function FaqJsonLd({ items }: { items: { q: string; a: string }[] }) {
     })),
   };
 
-  return <JsonLdScript data={data} />;
+  return <JsonLd data={data} />;
 }
 
 export function BreadcrumbJsonLd({ items }: { items: { name: string; url: string }[] }) {
@@ -105,7 +109,7 @@ export function BreadcrumbJsonLd({ items }: { items: { name: string; url: string
     })),
   };
 
-  return <JsonLdScript data={data} />;
+  return <JsonLd data={data} />;
 }
 
 interface ProductGroupVariantJsonLd {
@@ -125,6 +129,9 @@ interface ProductGroupJsonLdProps {
   slug: string;
   category: string;
   updatedAt: string;
+  // Absolute URL of the default variant's image — gives the ProductGroup
+  // itself an image instead of leaving that only on the nested variants.
+  image?: string | null;
   // Flat shipping fee in whole MYR (e.g. "10.0"), or empty/"0" for free —
   // mirrors the settings.shipping_fee value already used on-page.
   shippingFee: string;
@@ -140,6 +147,7 @@ export function ProductGroupJsonLd({
   slug,
   category,
   updatedAt,
+  image,
   shippingFee,
   variants,
 }: ProductGroupJsonLdProps) {
@@ -235,6 +243,8 @@ export function ProductGroupJsonLd({
     '@type': 'ProductGroup',
     name,
     description,
+    // Same fallback chain as the nested variants: real photo, else brand icon.
+    image: image || 'https://ascendpeptides.my/images/pill-icon-512.png',
     url,
     productGroupID: slug,
     variesBy: ['https://schema.org/size'],
@@ -251,5 +261,5 @@ export function ProductGroupJsonLd({
     hasVariant,
   };
 
-  return <JsonLdScript data={data} />;
+  return <JsonLd data={data} />;
 }

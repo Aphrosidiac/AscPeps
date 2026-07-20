@@ -8,8 +8,10 @@ export async function getReceiptData(fastify: FastifyInstance, orderNumber: stri
     throw { statusCode: 400, message: 'Invalid phone number' };
   }
 
-  const order = await fastify.prisma.order.findUnique({
-    where: { orderNumber },
+  // findFirst (not findUnique) so soft-deleted orders can be excluded — a
+  // deleted order must look identical to one that never existed.
+  const order = await fastify.prisma.order.findFirst({
+    where: { orderNumber, deletedAt: null },
     include: {
       items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },

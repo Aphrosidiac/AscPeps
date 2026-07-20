@@ -13,10 +13,10 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     ordersByStatus,
     recentOrders,
   ] = await Promise.all([
-    fastify.prisma.order.count({ where: { createdAt: { gte: today } } }),
+    fastify.prisma.order.count({ where: { createdAt: { gte: today }, deletedAt: null } }),
 
     fastify.prisma.order.aggregate({
-      where: { createdAt: { gte: today }, paymentStatus: 'PAID' },
+      where: { createdAt: { gte: today }, paymentStatus: 'PAID', deletedAt: null },
       _sum: { total: true },
     }),
 
@@ -30,10 +30,12 @@ export async function getDashboardStats(fastify: FastifyInstance) {
 
     fastify.prisma.order.groupBy({
       by: ['status'],
+      where: { deletedAt: null },
       _count: true,
     }),
 
     fastify.prisma.order.findMany({
+      where: { deletedAt: null },
       take: 5,
       orderBy: { createdAt: 'desc' },
       include: { items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } } },
@@ -60,7 +62,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   since.setHours(0, 0, 0, 0);
 
   const orders = await fastify.prisma.order.findMany({
-    where: { createdAt: { gte: since } },
+    where: { createdAt: { gte: since }, deletedAt: null },
     select: {
       id: true,
       total: true,

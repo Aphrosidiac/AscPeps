@@ -15,7 +15,7 @@ import { Animate } from '@/components/ui/Animate';
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, total, clearCart } = useCart();
+  const { items, total, clearCart, hydrated } = useCart();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
@@ -58,10 +58,16 @@ export default function CheckoutPage() {
     }).catch(() => {});
   }, []);
 
-  if (items.length === 0 && !success && !loading) {
-    router.push('/cart');
-    return null;
-  }
+  // The cart loads from localStorage in an effect, so on a hard refresh the
+  // first render always sees an empty cart — redirecting during render would
+  // bounce every direct /checkout visit back to /cart. Wait for hydration,
+  // and redirect from an effect (not mid-render) per React's rules.
+  const shouldRedirect = hydrated && items.length === 0 && !success && !loading;
+  useEffect(() => {
+    if (shouldRedirect) router.push('/cart');
+  }, [shouldRedirect, router]);
+
+  if (!hydrated || shouldRedirect) return null;
 
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) return;

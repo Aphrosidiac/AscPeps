@@ -3,14 +3,7 @@ import { adminListOrders, adminGetOrder, adminUpdateOrder, adminDeleteOrder, adm
 import { adminGetReceiptPdf } from '../orders/receipt.controller.js';
 
 export default async function adminOrderRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', async (request, reply) => {
-    // Accept JWT from Authorization header or ?token= query param (for PDF download links)
-    const { token } = request.query as { token?: string };
-    if (token && !request.headers.authorization) {
-      request.headers.authorization = `Bearer ${token}`;
-    }
-    return fastify.authenticate(request, reply);
-  });
+  fastify.addHook('preHandler', fastify.authenticate);
 
   fastify.get('/', async (request) => {
     return adminListOrders(fastify, request.query as Record<string, string>);

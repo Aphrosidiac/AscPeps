@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ExternalLink, FileText } from 'lucide-react';
 import { InsightCard } from '@/components/insights/InsightCard';
+import { JsonLd } from '@/components/JsonLd';
 import { getInsightServer, getInsightsServer } from '@/lib/server-api';
 import { absoluteImageUrl, formatShortDate } from '@/lib/utils';
 
@@ -51,7 +52,7 @@ function ArticleJsonLd({ insight }: { insight: NonNullable<Awaited<ReturnType<ty
     ...(insight.coverImageUrl && { image: absoluteImageUrl(insight.coverImageUrl) }),
   };
 
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <JsonLd data={data} />;
 }
 
 export default async function InsightPage({ params }: InsightPageProps) {
@@ -62,7 +63,9 @@ export default async function InsightPage({ params }: InsightPageProps) {
   const { data: allInsights } = await getInsightsServer({ limit: 100 });
   const more = allInsights
     .filter((i) => i.id !== insight.id)
-    .sort((a, b) => (a.category === insight.category ? -1 : 1))
+    // Same-category articles first; ties keep their original order (sort is
+    // stable). The old form ignored `b` entirely — an invalid comparator.
+    .sort((a, b) => Number(b.category === insight.category) - Number(a.category === insight.category))
     .slice(0, 3);
 
   const date = insight.publishedAt ?? insight.createdAt;

@@ -57,6 +57,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       size,
       price,
       quantity,
+      stock,
       imageUrl,
     });
     for (const addOn of addOns ?? []) {
@@ -68,6 +69,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         size: addOn.size,
         price: getEffectivePrice(addOn),
         quantity: addOn.addOnQuantity,
+        stock: addOn.stock,
         imageUrl: addOn.imageUrl,
       });
     }

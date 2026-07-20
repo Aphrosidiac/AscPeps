@@ -31,6 +31,7 @@ export function ProductCard({ product }: ProductCardProps) {
       size: variant.size,
       price: getEffectivePrice(variant),
       quantity: 1,
+      stock: variant.stock,
       imageUrl: variant.imageUrl,
     });
   };

@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { ProductsGrid } from './ProductsGrid';
 import { ProductsFilters } from './ProductsFilters';
 import { getCategoriesServer, getProductsServer } from '@/lib/server-api';
+import { JsonLd } from '@/components/JsonLd';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -22,7 +23,7 @@ function CollectionJsonLd({ products }: { products: { name: string; slug: string
     },
   };
 
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <JsonLd data={data} />;
 }
 
 interface ProductsPageProps {
