@@ -41,7 +41,6 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
   const variant = getDefaultVariant(product);
   const priceRange = activeVariants.length > 1 && new Set(activeVariants.map((v) => v.price)).size > 1;
   const lowStockVariant = activeVariants.find((v) => v.stock > 0 && v.stock <= LOW_STOCK_THRESHOLD);
-  const requiredAddOns = (product.addOns ?? []).filter((a) => a.addOnRequired);
 
   let benefits: string[] = [];
   try {
@@ -136,17 +135,6 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-6xl font-display font-bold text-white/20">
                   {variant.code}
-                </div>
-              )}
-              {/* Positioned relative to the image box itself (this div),
-                  not the wider column — otherwise it floats near the
-                  bottom of the whole column instead of stamped on the image. */}
-              {requiredAddOns.length > 0 && (
-                <div
-                  className="absolute -bottom-4 left-1/2 -translate-x-1/2 md:left-auto md:right-4 md:translate-x-0 text-white font-display font-bold text-xs sm:text-sm uppercase tracking-wide rounded-full px-4 py-2 shadow-lg whitespace-nowrap"
-                  style={{ backgroundColor: accent.solid }}
-                >
-                  + Free Kit Included
                 </div>
               )}
             </div>
