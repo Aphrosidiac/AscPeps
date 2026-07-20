@@ -61,7 +61,7 @@ export default async function CalculatorPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
               <p className="text-sm text-yellow-800">
-                <strong>Research Use Only.</strong> This calculator is provided for educational and laboratory reference purposes. All ASCEND products are intended strictly for research and laboratory use.
+                <strong>Research Use Only.</strong>
               </p>
             </div>
           </div>
