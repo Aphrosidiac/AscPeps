@@ -15,7 +15,7 @@ const SIZES = {
 // text wherever this appears. Purely presentational: no links, no logic.
 export function SkuBadge({ code, size = 'md', className = '' }: SkuBadgeProps) {
   return (
-    <span className={`font-display font-bold tracking-tight text-text-primary ${SIZES[size]} ${className}`}>
+    <span className={`font-display font-bold tracking-wide text-text-primary ${SIZES[size]} ${className}`}>
       {code}
     </span>
   );
