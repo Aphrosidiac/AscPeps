@@ -102,7 +102,7 @@ export function HomeClient({
                 alt="ASCEND peptide vials"
                 width={300}
                 height={300}
-                className="w-[286px] h-auto drop-shadow-2xl hero-vials"
+                className="w-[220px] h-auto drop-shadow-2xl hero-vials"
                 priority
                 onMouseEnter={triggerJiggle}
                 onTouchStart={triggerJiggle}
@@ -119,7 +119,7 @@ export function HomeClient({
                 alt="ASCEND peptide vials"
                 width={480}
                 height={480}
-                className="w-[442px] lg:w-[572px] h-auto drop-shadow-2xl hero-vials"
+                className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
                 priority
                 onMouseEnter={triggerJiggle}
                 onTouchStart={triggerJiggle}
