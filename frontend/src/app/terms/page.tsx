@@ -45,7 +45,7 @@ export default function TermsPage() {
 
         <h2>6. Shipping and Delivery</h2>
         <p>
-          We ship across all states in Malaysia. Delivery times may vary depending on your location. Please refer to our <Link href="/shipping" className="underline">Shipping Policy</Link> for full details. ASCEND is not responsible for delays caused by courier services or circumstances beyond our control.
+          We ship across Peninsular Malaysia. We do not currently ship to Sabah or Sarawak. Delivery times may vary depending on your location. Please refer to our <Link href="/shipping" className="underline">Shipping Policy</Link> for full details. ASCEND is not responsible for delays caused by courier services or circumstances beyond our control.
         </p>
 
         <h2>7. Returns and Refunds</h2>

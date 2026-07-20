@@ -413,7 +413,7 @@ export default function CheckoutPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5" />
-              <span className="text-xs">{!shippingFee || shippingFee === '0' ? 'Free Shipping' : 'Nationwide Shipping'}</span>
+              <span className="text-xs">{!shippingFee || shippingFee === '0' ? 'Free Shipping' : 'Peninsular Malaysia Shipping'}</span>
             </div>
           </div>
         </div>

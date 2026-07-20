@@ -81,7 +81,7 @@ export default function AdminSettingsPage() {
             id="announcement_text"
             value={settings.announcement_text || ''}
             onChange={(e) => updateSetting('announcement_text', e.target.value)}
-            placeholder="e.g. Free shipping on all orders across Malaysia 🇲🇾"
+            placeholder="e.g. Free shipping on all orders across Peninsular Malaysia 🇲🇾"
           />
           <p className="text-xs text-text-muted">This text appears in a bar above the navigation on every page.</p>
         </div>

@@ -27,7 +27,7 @@ export function OrganizationJsonLd({ priceRange }: OrganizationJsonLdProps = {})
     url: 'https://ascendpeptides.my',
     logo: 'https://ascendpeptides.my/images/pill-icon-512.png',
     image: 'https://ascendpeptides.my/images/pill-icon-512.png',
-    description: 'Malaysia\'s #1 premium research peptides provider. Lab-grade Retatrutide, GHK-Cu, BPC-157, Tesamorelin and more with fast, free nationwide shipping.',
+    description: 'Malaysia\'s #1 premium research peptides provider. Lab-grade Retatrutide, GHK-Cu, BPC-157, Tesamorelin and more with fast, free shipping across Peninsular Malaysia.',
     sameAs: [
       'https://www.tiktok.com/@ascendpeptidesmy',
     ],
@@ -199,6 +199,13 @@ export function ProductGroupJsonLd({
           shippingDestination: {
             '@type': 'DefinedRegion',
             addressCountry: 'MY',
+            // We don't ship to Sabah or Sarawak — see /shipping. Everything
+            // else in MALAYSIAN_STATES (lib/constants.ts) is listed here.
+            addressRegion: [
+              'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Labuan', 'Melaka',
+              'Negeri Sembilan', 'Pahang', 'Penang', 'Perak', 'Perlis',
+              'Putrajaya', 'Selangor', 'Terengganu',
+            ],
           },
           deliveryTime: {
             '@type': 'ShippingDeliveryTime',
@@ -208,13 +215,13 @@ export function ProductGroupJsonLd({
               maxValue: 2,
               unitCode: 'DAY',
             },
-            // Sitewide conservative range covering all three documented
-            // regional bands (Klang Valley 1-2d, other Peninsular 2-4d,
-            // Sabah/Sarawak 3-7d) — see /shipping.
+            // Sitewide conservative range covering both documented regional
+            // bands (Klang Valley 1-2d, other Peninsular 2-4d) — see /shipping.
+            // We don't ship to Sabah/Sarawak, so their 3-7d band isn't included.
             transitTime: {
               '@type': 'QuantitativeValue',
               minValue: 1,
-              maxValue: 7,
+              maxValue: 4,
               unitCode: 'DAY',
             },
           },

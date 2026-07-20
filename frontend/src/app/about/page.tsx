@@ -5,12 +5,12 @@ import { Animate, Stagger } from '@/components/ui/Animate';
 
 export const metadata: Metadata = {
   title: 'About ASCEND — Malaysia\'s Trusted Peptides Provider',
-  description: 'ASCEND is Malaysia\'s trusted source for premium lab-grade research peptides. Quality assurance, discreet packaging, fast nationwide delivery, and responsive WhatsApp support.',
+  description: 'ASCEND is Malaysia\'s trusted source for premium lab-grade research peptides. Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia, and responsive WhatsApp support.',
   keywords: ['about ASCEND', 'peptides provider malaysia', 'trusted peptides malaysia', 'lab grade peptides'],
   alternates: { canonical: 'https://ascendpeptides.my/about' },
   openGraph: {
     title: 'About ASCEND — Malaysia\'s Trusted Peptides Provider',
-    description: 'Quality assurance, discreet packaging, fast nationwide delivery. Malaysia\'s trusted peptides source.',
+    description: 'Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia. Malaysia\'s trusted peptides source.',
     url: 'https://ascendpeptides.my/about',
   },
 };
@@ -47,7 +47,7 @@ export default function AboutPage() {
             </div>
             <div>
               <p className="font-display text-3xl font-bold">Fast</p>
-              <p className="text-sm text-text-secondary mt-1">Nationwide Delivery</p>
+              <p className="text-sm text-text-secondary mt-1">Peninsular Delivery</p>
             </div>
             <div>
               <p className="font-display text-3xl font-bold">3rd Party</p>
@@ -90,9 +90,9 @@ export default function AboutPage() {
           </div>
           <div className="icon-animate-bounce bg-surface rounded-xl border border-border p-7 hover:border-border-hover hover:shadow-sm transition-all duration-300">
             <Truck className="w-7 h-7 mb-4 text-text-primary" />
-            <h3 className="font-display font-semibold text-lg mb-2">Fast Nationwide Delivery</h3>
+            <h3 className="font-display font-semibold text-lg mb-2">Fast Peninsular Delivery</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
-              We ship across all states in Malaysia including Sabah and Sarawak. Track your order in real-time using your phone number.
+              We ship across Peninsular Malaysia (we do not currently ship to Sabah or Sarawak). Track your order in real-time using your phone number.
             </p>
           </div>
         </Stagger>

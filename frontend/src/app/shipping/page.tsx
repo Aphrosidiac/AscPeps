@@ -31,7 +31,7 @@ export default async function ShippingPage() {
       <div className="prose-custom">
         <h2>Shipping Coverage</h2>
         <p>
-          ASCEND ships to all states across Malaysia, including Sabah and Sarawak. We currently ship domestically within Malaysia only.
+          ASCEND ships across Peninsular Malaysia. We currently ship domestically within Malaysia only, and do not yet deliver to Sabah or Sarawak.
         </p>
 
         <h2>Shipping Fees</h2>
@@ -57,7 +57,6 @@ export default async function ShippingPage() {
           <tbody>
             <tr><td>Peninsular Malaysia (Klang Valley)</td><td>1-2 business days</td></tr>
             <tr><td>Peninsular Malaysia (Other states)</td><td>2-4 business days</td></tr>
-            <tr><td>East Malaysia (Sabah & Sarawak)</td><td>3-7 business days</td></tr>
           </tbody>
         </table>
         </div>
