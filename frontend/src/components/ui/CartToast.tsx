@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { Check, ShoppingCart } from 'lucide-react';
 
 interface CartToastProps {
-  item: { name: string; key: number } | null;
+  item: { code: string; name: string; key: number } | null;
   onDone: () => void;
 }
 
 export function CartToast({ item, onDone }: CartToastProps) {
   const [visible, setVisible] = useState(false);
-  const [display, setDisplay] = useState<{ name: string } | null>(null);
+  const [display, setDisplay] = useState<{ code: string; name: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -21,7 +21,7 @@ export function CartToast({ item, onDone }: CartToastProps) {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (fadeRef.current) clearTimeout(fadeRef.current);
 
-    setDisplay({ name: item.name });
+    setDisplay({ code: item.code, name: item.name });
     setVisible(true);
 
     timerRef.current = setTimeout(() => {
@@ -44,8 +44,8 @@ export function CartToast({ item, onDone }: CartToastProps) {
           <Check className="w-5 h-5 text-success" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{display.name}</p>
-          <p className="text-xs text-text-muted">Added to cart</p>
+          <p className="text-sm font-display font-bold truncate">{display.code}</p>
+          <p className="text-xs text-text-muted truncate">{display.name}</p>
         </div>
         <Link
           href="/cart"

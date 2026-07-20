@@ -43,7 +43,8 @@ export default function CartPage() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-sm sm:text-base truncate">{item.name}</h3>
+                  <h3 className="font-display font-bold text-sm sm:text-base truncate">{item.code}</h3>
+                  <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
                   <p className="text-sm text-text-secondary">{formatPrice(item.price)}</p>
                 </div>
 

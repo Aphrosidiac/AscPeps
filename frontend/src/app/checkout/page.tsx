@@ -324,8 +324,8 @@ export default function CheckoutPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-xs text-text-muted">Qty: {item.quantity}</p>
+                    <p className="text-sm font-display font-bold truncate">{item.code}</p>
+                    <p className="text-xs text-text-muted truncate">{item.name} &middot; Qty: {item.quantity}</p>
                   </div>
                   <p className="text-sm font-semibold shrink-0">{formatPrice(item.price * item.quantity)}</p>
                 </div>

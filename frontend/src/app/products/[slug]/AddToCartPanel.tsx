@@ -105,7 +105,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                       disabled={outOfStock || locked}
                       className="rounded accent-primary"
                     />
-                    {getVariantDisplayName(addOn, addOn)}
+                    <span className="font-display font-semibold text-text-primary">{addOn.code}</span> {getVariantDisplayName(addOn, addOn)}
                     {addOn.addOnQuantity > 1 && <span className="text-text-muted">× {addOn.addOnQuantity}</span>}
                     {locked && (
                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">Required</span>
