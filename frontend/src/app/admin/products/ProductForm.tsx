@@ -200,7 +200,7 @@ function VariantCard({
           <button
             type="button"
             onClick={onRemove}
-            title={isExisting ? 'Deactivate this size (its order history is kept)' : 'Remove this size'}
+            title={isExisting ? 'Delete this size (kept as inactive instead if it has order history)' : 'Remove this size'}
             className="p-1.5 hover:bg-red-50 rounded-lg cursor-pointer shrink-0 transition-colors"
           >
             <Trash2 className="w-4 h-4 text-text-muted hover:text-danger" />

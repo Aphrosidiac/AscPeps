@@ -193,7 +193,7 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
 export async function adminUpdateProduct(fastify: FastifyInstance, id: string, body: unknown) {
   const { addOns, variants, ...data } = updateProductSchema.parse(body);
 
-  const product = await fastify.prisma.$transaction(async (tx) => {
+  const { updated, removedIds } = await fastify.prisma.$transaction(async (tx) => {
     // Row-lock this product for the transaction so a concurrent update to
     // the same product can't interleave with the guard read below (closes
     // a check-then-act race where two simultaneous requests could each pass
@@ -217,6 +217,7 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
 
     const updated = await tx.product.update({ where: { id }, data });
 
+    let removedIds: string[] = [];
     if (variants !== undefined) {
       const existing = await tx.productVariant.findMany({ where: { productId: id }, select: { id: true } });
       const existingIds = new Set(existing.map((v) => v.id));
@@ -233,12 +234,7 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
         }
       }
 
-      // Any existing variant not present in this submission is soft-removed
-      // (never a real delete — see ProductVariant's Restrict FK on OrderItem).
-      const removedIds = [...existingIds].filter((eid) => !submittedIds.has(eid));
-      if (removedIds.length > 0) {
-        await tx.productVariant.updateMany({ where: { id: { in: removedIds } }, data: { active: false } });
-      }
+      removedIds = [...existingIds].filter((eid) => !submittedIds.has(eid));
     }
 
     if (addOns !== undefined) {
@@ -250,12 +246,33 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
         });
       }
     }
-    return updated;
+    return { updated, removedIds };
   });
 
-  notifyIndexNow([productUrl(product.slug)]);
+  // Removed variants are resolved one at a time, OUTSIDE the transaction
+  // above — Postgres aborts the ENTIRE transaction after one failed
+  // statement, so a soft-deactivate fallback attempted on the same
+  // transaction as a failed hard-delete would itself fail (a generic
+  // "transaction aborted" error, not the P2003 this code is trying to
+  // catch). Tries a real delete first; only variants with real order
+  // history hit the Restrict FK on OrderItem (P2003) and fall back to a
+  // soft deactivate, since a hard delete there would corrupt past
+  // orders/receipts that still reference this variant.
+  for (const rid of removedIds) {
+    try {
+      await fastify.prisma.productVariant.delete({ where: { id: rid } });
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'P2003') {
+        await fastify.prisma.productVariant.update({ where: { id: rid }, data: { active: false } });
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  notifyIndexNow([productUrl(updated.slug)]);
   notifyRevalidate();
-  return product;
+  return updated;
 }
 
 export async function adminDeleteProduct(fastify: FastifyInstance, id: string) {
