@@ -50,6 +50,24 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
 
   if (!variant) return null;
 
+  // Shared between the desktop (under-image) and mobile (bottom-of-section)
+  // CTA placements below — only the wrapping <Link>'s position/visibility
+  // classes differ between the two.
+  const ctaButton = (
+    <button
+      className="group inline-flex items-center justify-center gap-2 text-white font-display font-bold text-sm px-6 py-3 rounded-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:translate-y-0"
+      style={{
+        backgroundColor: accent.solid,
+        boxShadow: `0 6px 20px ${accent.shadow}`,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 8px 28px ${accent.shadowHover}`; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = `0 6px 20px ${accent.shadow}`; }}
+    >
+      <span className="leading-snug text-center">Shop {product.name}<br />Risk Free Now</span>
+      <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform duration-200" />
+    </button>
+  );
+
   return (
     <section className="bg-primary text-white overflow-hidden relative">
       {/* Glow behind the product photo — visual "spotlight" energy. */}
@@ -133,20 +151,11 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
             {/* Custom-styled rather than the shared Button component — this
                 is the one CTA in the section that needs to be the boldest
                 element on the page (solid accent fill, glow, hover lift),
-                which the shared component's variant classes don't cover. */}
-            <Link href={`/products/${product.slug}`} className="inline-block mx-auto mt-6">
-              <button
-                className="group inline-flex items-center justify-center gap-2 text-white font-display font-bold text-sm px-6 py-3 rounded-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:translate-y-0"
-                style={{
-                  backgroundColor: accent.solid,
-                  boxShadow: `0 6px 20px ${accent.shadow}`,
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 8px 28px ${accent.shadowHover}`; }}
-                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = `0 6px 20px ${accent.shadow}`; }}
-              >
-                <span className="leading-snug text-center">Shop {product.name}<br />Risk Free Now</span>
-                <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform duration-200" />
-              </button>
+                which the shared component's variant classes don't cover.
+                Desktop-only here — mobile repeats it at the bottom of the
+                section instead, after the details/trust copy. */}
+            <Link href={`/products/${product.slug}`} className="hidden md:inline-block mx-auto mt-6">
+              {ctaButton}
             </Link>
           </Animate>
 
@@ -220,6 +229,12 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
             </Animate>
           </div>
         </div>
+
+        {/* Mobile-only: same CTA, moved to the very bottom of the section
+            (after benefits/trust copy) instead of directly under the image. */}
+        <Link href={`/products/${product.slug}`} className="md:hidden block w-fit mx-auto mt-8">
+          {ctaButton}
+        </Link>
       </div>
     </section>
   );
