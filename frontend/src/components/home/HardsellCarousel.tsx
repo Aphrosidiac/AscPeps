@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { HardsellSlide, type HardsellSlideProps } from './HardsellSlide';
 
-const AUTO_ADVANCE_MS = 3000;
+const AUTO_ADVANCE_MS = 5000;
 
 interface HardsellCarouselProps {
   slides: HardsellSlideProps[];
