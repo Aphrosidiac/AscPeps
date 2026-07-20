@@ -36,8 +36,8 @@ export function ProductCard({ product }: ProductCardProps) {
   };
 
   return (
-    <Link href={`/products/${product.slug}`} className="group">
-      <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md hover:-translate-y-1 transition-all duration-300 p-4">
+    <Link href={`/products/${product.slug}`} className="group h-full block">
+      <div className="bg-surface rounded-xl border border-border hover:border-border-hover hover:shadow-md hover:-translate-y-1 transition-all duration-300 p-4 h-full flex flex-col">
         <div className="relative aspect-square bg-surface-elevated rounded-lg mb-4 flex items-center justify-center overflow-hidden">
           {variant?.imageUrl ? (
             <Image
@@ -54,7 +54,7 @@ export function ProductCard({ product }: ProductCardProps) {
           )}
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2 flex-1 flex flex-col">
           <p className="text-xs text-text-muted font-medium uppercase tracking-wider">
             {product.category.name}
           </p>
@@ -64,7 +64,11 @@ export function ProductCard({ product }: ProductCardProps) {
           <p className="text-sm text-text-secondary">
             {product.name}{variant?.size ? ` ${variant.size}` : ''}
           </p>
-          <div className="flex items-center justify-between gap-2 pt-2">
+          {/* Pinned to the bottom of the flex column (mt-auto) so the price/
+              add-to-cart row lines up across cards in the same grid row even
+              when neighboring cards' names wrap to a different number of
+              lines (e.g. "GLUT" vs "GHKCu + BPC157 + TB500 + KPV"). */}
+          <div className="flex items-center justify-between gap-2 pt-2 mt-auto">
             {variant ? (
               <>
                 {/* "From" stacks above the price instead of sitting inline
