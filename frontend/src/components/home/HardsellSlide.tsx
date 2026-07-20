@@ -138,15 +138,18 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline,
                   {variant.code}
                 </div>
               )}
+              {/* Positioned relative to the image box itself (this div),
+                  not the wider column — otherwise it floats near the
+                  bottom of the whole column instead of stamped on the image. */}
+              {requiredAddOns.length > 0 && (
+                <div
+                  className="absolute -bottom-4 left-1/2 -translate-x-1/2 md:left-auto md:right-4 md:translate-x-0 text-white font-display font-bold text-xs sm:text-sm uppercase tracking-wide rounded-full px-4 py-2 shadow-lg whitespace-nowrap"
+                  style={{ backgroundColor: accent.solid }}
+                >
+                  + Free Kit Included
+                </div>
+              )}
             </div>
-            {requiredAddOns.length > 0 && (
-              <div
-                className="absolute -bottom-4 left-1/2 -translate-x-1/2 md:left-auto md:right-4 md:translate-x-0 text-white font-display font-bold text-xs sm:text-sm uppercase tracking-wide rounded-full px-4 py-2 shadow-lg whitespace-nowrap"
-                style={{ backgroundColor: accent.solid }}
-              >
-                + Free Kit Included
-              </div>
-            )}
 
             {/* Custom-styled rather than the shared Button component — this
                 is the one CTA in the section that needs to be the boldest
