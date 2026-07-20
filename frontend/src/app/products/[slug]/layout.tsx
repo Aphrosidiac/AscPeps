@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // per-product photography exists — fall back to the brand hero image
   // rather than leaving og:image/twitter:image unset (was previously
   // undefined for any product without an uploaded photo).
-  const socialImage = absoluteImageUrl(variant?.imageUrl) || `${BASE_URL}/images/hero-vials.png`;
+  const socialImage = absoluteImageUrl(variant?.imageUrl) || `${BASE_URL}/images/hero-vials.webp`;
 
   return {
     title,

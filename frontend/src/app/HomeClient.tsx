@@ -98,7 +98,7 @@ export function HomeClient({
             </div>
             <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex flex-col items-center gap-6">
               <Image
-                src="/images/hero-vials.png"
+                src="/images/hero-vials.webp"
                 alt="ASCEND peptide vials"
                 width={300}
                 height={300}
@@ -115,7 +115,7 @@ export function HomeClient({
             </Animate>
             <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
               <Image
-                src="/images/hero-vials.png"
+                src="/images/hero-vials.webp"
                 alt="ASCEND peptide vials"
                 width={480}
                 height={480}
