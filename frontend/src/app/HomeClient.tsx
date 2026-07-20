@@ -9,9 +9,26 @@ import { ProductCard } from '@/components/products/ProductCard';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { VideoStrip } from '@/components/ui/VideoStrip';
-import { RetaHardsellSection } from '@/components/home/RetaHardsellSection';
+import { HardsellCarousel } from '@/components/home/HardsellCarousel';
+import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
 import type { Product, Category, Insight } from '@/types';
+
+const GREEN_ACCENT: HardsellAccent = {
+  solid: '#15803d',
+  bright: '#22c55e',
+  glow: 'rgba(21,128,61,0.2)',
+  shadow: 'rgba(21,128,61,0.45)',
+  shadowHover: 'rgba(21,128,61,0.6)',
+};
+
+const BLUE_ACCENT: HardsellAccent = {
+  solid: '#1e40af',
+  bright: '#3b82f6',
+  glow: 'rgba(30,64,175,0.2)',
+  shadow: 'rgba(30,64,175,0.45)',
+  shadowHover: 'rgba(30,64,175,0.6)',
+};
 
 interface HomeClientProps {
   products: Product[];
@@ -21,6 +38,9 @@ interface HomeClientProps {
   hardsellResearchArticle: Insight | null;
   hardsellHeadline: string;
   hardsellSubheadline: string;
+  hardsellSlide2Product: Product | null;
+  hardsellSlide2Headline: string;
+  hardsellSlide2Subheadline: string;
 }
 
 export function HomeClient({
@@ -31,6 +51,9 @@ export function HomeClient({
   hardsellResearchArticle,
   hardsellHeadline,
   hardsellSubheadline,
+  hardsellSlide2Product,
+  hardsellSlide2Headline,
+  hardsellSlide2Subheadline,
 }: HomeClientProps) {
   const triggerJiggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const el = e.currentTarget as HTMLElement;
@@ -141,14 +164,28 @@ export function HomeClient({
         </div>
       </section>
 
-      {hardsellProduct && (
-        <RetaHardsellSection
-          product={hardsellProduct}
-          researchArticle={hardsellResearchArticle}
-          headline={hardsellHeadline}
-          subheadline={hardsellSubheadline}
-        />
-      )}
+      {(() => {
+        const slides = [
+          hardsellProduct && {
+            product: hardsellProduct,
+            researchArticle: hardsellResearchArticle,
+            headline: hardsellHeadline,
+            subheadline: hardsellSubheadline,
+            accent: GREEN_ACCENT,
+          },
+          hardsellSlide2Product && {
+            product: hardsellSlide2Product,
+            // No real Insights article for this product yet — pass null
+            // rather than reuse slide 1's (unrelated) research link.
+            researchArticle: null,
+            headline: hardsellSlide2Headline,
+            subheadline: hardsellSlide2Subheadline,
+            accent: BLUE_ACCENT,
+          },
+        ].filter((s): s is NonNullable<typeof s> => Boolean(s));
+
+        return slides.length > 0 && <HardsellCarousel slides={slides} />;
+      })()}
 
       {/* Categories */}
       {categories.length > 0 && (

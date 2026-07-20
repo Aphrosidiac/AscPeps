@@ -127,6 +127,44 @@ export default function AdminSettingsPage() {
           </p>
         </div>
 
+        {/* Homepage Hardsell Section — Slide 2 */}
+        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Homepage Hardsell Section — Slide 2</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="hardsell_slide2_enabled"
+              checked={settings.hardsell_slide2_enabled === 'true'}
+              onChange={(e) => updateSetting('hardsell_slide2_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded"
+            />
+            <label htmlFor="hardsell_slide2_enabled" className="text-sm font-medium text-text-secondary">
+              Add a second slide to the carousel
+            </label>
+          </div>
+          <Input
+            label="Product Slug"
+            id="hardsell_slide2_product_slug"
+            value={settings.hardsell_slide2_product_slug || ''}
+            onChange={(e) => updateSetting('hardsell_slide2_product_slug', e.target.value)}
+            placeholder="ghk-cu"
+          />
+          <Input
+            label="Headline"
+            id="hardsell_slide2_headline"
+            value={settings.hardsell_slide2_headline || ''}
+            onChange={(e) => updateSetting('hardsell_slide2_headline', e.target.value)}
+            placeholder="Leave blank to just show the product name"
+          />
+          <Input
+            label="Subheadline"
+            id="hardsell_slide2_subheadline"
+            value={settings.hardsell_slide2_subheadline || ''}
+            onChange={(e) => updateSetting('hardsell_slide2_subheadline', e.target.value)}
+            placeholder="Leave blank to omit"
+          />
+        </div>
+
         {/* Online Payment */}
         <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Online Payment</h2>
