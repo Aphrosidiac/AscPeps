@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${fullName} — Buy in Malaysia`;
 
   const shippingFee = settings.shipping_fee || '';
-  const shippingClause = !shippingFee || shippingFee === '0' ? 'free fast nationwide shipping' : 'fast nationwide shipping';
+  const shippingClause = !shippingFee || shippingFee === '0' ? 'free fast shipping across Peninsular Malaysia' : 'fast shipping across Peninsular Malaysia';
 
   // Build a rich description (target ~120-160 chars). Use the product's own copy as the
   // lead when it's substantial; otherwise compose one with name + locale + price + shipping.

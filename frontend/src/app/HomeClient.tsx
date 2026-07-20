@@ -83,7 +83,7 @@ export function HomeClient({
               </Animate>
               <Animate variant="fadeUp" delay={0.3} duration={0.7}>
                 <p className="text-lg text-neutral-300 mb-8 max-w-lg">
-                  Lab-grade peptides for anti-aging, fat loss, muscle growth, and immune support. Fast shipping across Malaysia.
+                  Lab-grade peptides for anti-aging, fat loss, muscle growth, and immune support. Fast shipping across Peninsular Malaysia.
                 </p>
               </Animate>
               <Animate variant="fadeUp" delay={0.45} duration={0.7} className="hidden md:block">
@@ -148,7 +148,7 @@ export function HomeClient({
               </div>
               <div>
                 <h3 className="font-display font-semibold mb-1">Fast Shipping</h3>
-                <p className="text-sm text-text-secondary">Nationwide delivery across Malaysia with tracking.</p>
+                <p className="text-sm text-text-secondary">Delivery across Peninsular Malaysia with tracking.</p>
               </div>
             </div>
             <div className="flex items-start gap-4">
@@ -254,10 +254,10 @@ export function HomeClient({
               </p>
               <p>
                 {freeShipping ? (
-                  <>Every order ships free across Malaysia — from the Klang Valley to Sabah and Sarawak — in discreet,
+                  <>Every order ships free across Peninsular Malaysia — from the Klang Valley to every other state — in discreet,
                   temperature-conscious packaging.</>
                 ) : (
-                  <>Every order is delivered nationwide across Malaysia — from the Klang Valley to Sabah and Sarawak — in discreet,
+                  <>Every order is delivered across Peninsular Malaysia — from the Klang Valley to every other state — in discreet,
                   temperature-conscious packaging.</>
                 )}{' '}
                 Prices are listed in Malaysian Ringgit (MYR) with no hidden fees,

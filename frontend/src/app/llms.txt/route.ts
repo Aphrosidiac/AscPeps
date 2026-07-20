@@ -14,7 +14,7 @@ export async function GET() {
 
   const shippingFee = settings.shipping_fee || '';
   const freeShipping = !shippingFee || shippingFee === '0';
-  const shippingSummaryClause = freeShipping ? 'free, fast nationwide shipping' : 'fast nationwide shipping';
+  const shippingSummaryClause = freeShipping ? 'free, fast shipping across Peninsular Malaysia' : 'fast shipping across Peninsular Malaysia';
   const shippingFactLine = freeShipping
     ? '- Currency: MYR. Shipping: free on all orders. Payment: bank transfer, FPX, credit/debit card.'
     : `- Currency: MYR. Shipping: flat RM${shippingFee} on all orders. Payment: bank transfer, FPX, credit/debit card.`;
@@ -47,7 +47,7 @@ export async function GET() {
     `- [Peptide guide](${BASE_URL}/guide): Reconstitution, storage and handling`,
     `- [Certificates of Analysis](${BASE_URL}/coa): Third-party testing methodology and how to request a batch COA`,
     `- [FAQ](${BASE_URL}/faq): Purity, COA, shipping, ordering and payment questions`,
-    `- [Shipping policy](${BASE_URL}/shipping): Nationwide delivery times and coverage`,
+    `- [Shipping policy](${BASE_URL}/shipping): Delivery times and coverage across Peninsular Malaysia`,
     `- [About ASCEND](${BASE_URL}/about): Who we are`,
     `- [Terms & Conditions](${BASE_URL}/terms): Ordering, payment, and returns terms`,
     `- [Disclaimer](${BASE_URL}/disclaimer): Research-use-only compliance statement`,
@@ -58,7 +58,7 @@ export async function GET() {
     ...(insightLines.length > 0 ? ['', '## Insights', ...insightLines] : []),
     '',
     '## Key facts',
-    '- Market served: Malaysia (nationwide shipping, including Sabah & Sarawak).',
+    '- Market served: Malaysia (shipping across Peninsular Malaysia; Sabah and Sarawak are not currently served).',
     shippingFactLine,
     '- Quality: 99%+ purity, third-party tested, Certificate of Analysis on request.',
     '- Contact: WhatsApp +60 11-6109 2723.',

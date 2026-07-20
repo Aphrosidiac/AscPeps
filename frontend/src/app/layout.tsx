@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     default: 'ASCEND — #1 Premium Peptides Malaysia | Retatrutide, GHK-Cu, BPC-157',
     template: '%s | ASCEND Peptides Malaysia',
   },
-  description: 'Malaysia\'s trusted source for premium research peptides. Buy Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and more. Lab-grade quality, fast nationwide shipping. Number 1 peptides provider in Malaysia.',
+  description: 'Malaysia\'s trusted source for premium research peptides. Buy Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and more. Lab-grade quality, fast shipping across Peninsular Malaysia. Number 1 peptides provider in Malaysia.',
   keywords: [
     'peptides malaysia',
     'buy peptides malaysia',
@@ -66,7 +66,7 @@ export const metadata: Metadata = {
     url: 'https://ascendpeptides.my',
     siteName: 'ASCEND',
     title: 'ASCEND — #1 Premium Peptides Malaysia',
-    description: 'Malaysia\'s trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Lab-grade quality with fast nationwide shipping.',
+    description: 'Malaysia\'s trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Lab-grade quality with fast shipping across Peninsular Malaysia.',
     images: [
       {
         url: '/images/pill-icon-512.png',
@@ -79,7 +79,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary',
     title: 'ASCEND — #1 Premium Peptides Malaysia',
-    description: 'Malaysia\'s trusted source for premium research peptides. Lab-grade quality with fast nationwide shipping.',
+    description: 'Malaysia\'s trusted source for premium research peptides. Lab-grade quality with fast shipping across Peninsular Malaysia.',
     images: ['/images/pill-icon-512.png'],
   },
   alternates: {

@@ -60,7 +60,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       <p className="text-text-secondary mb-8 max-w-2xl leading-relaxed">
         Browse ASCEND&apos;s full range of premium research peptides — including Retatrutide, GHK-Cu,
         BPC-157, Tesamorelin, MOTS-c and AOD9604. Every compound is lab-grade, tested to 99%+ purity,
-        priced in Malaysian Ringgit, and shipped free across Malaysia.
+        priced in Malaysian Ringgit, and shipped free across Peninsular Malaysia.
       </p>
 
       <ProductsFilters categories={categories} selectedCategory={category ?? null} search={search ?? ''} />

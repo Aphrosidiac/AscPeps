@@ -50,7 +50,7 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
         <div>
           <Animate variant="fade" duration={0.6}>
             <div
-              className="relative aspect-square max-w-[280px] mx-auto sm:max-w-none sm:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden transition-opacity duration-300 ease-out"
+              className="relative aspect-square max-w-[280px] mx-auto md:max-w-none md:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden transition-opacity duration-300 ease-out"
               style={{ opacity: imgVisible ? 1 : 0 }}
             >
               {variant.imageUrl ? (
@@ -71,7 +71,7 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
 
           {activeVariants.length > 1 && (
             <div
-              className="flex gap-2 overflow-x-auto pb-1 mt-4 max-w-[280px] mx-auto sm:max-w-none sm:mx-0"
+              className="flex gap-2 overflow-x-auto pb-1 mt-4 max-w-[280px] mx-auto md:max-w-none md:mx-0"
               role="group"
               aria-label="Choose a size"
             >
@@ -168,7 +168,7 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
                     {!shippingFee || shippingFee === '0' ? 'Free Shipping' : `Shipping: RM${shippingFee}`}
                   </p>
                   <p className="text-[11px] text-text-muted">
-                    {!shippingFee || shippingFee === '0' ? 'All orders, nationwide' : 'Nationwide delivery'}
+                    {!shippingFee || shippingFee === '0' ? 'All orders, Peninsular Malaysia' : 'Peninsular Malaysia delivery'}
                   </p>
                 </div>
               </div>

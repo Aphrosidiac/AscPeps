@@ -73,7 +73,7 @@ function buildFaqs(freeShipping: boolean, shippingFee: string) {
         },
         {
           q: 'How long does delivery take?',
-          a: 'Peninsular Malaysia (Klang Valley): 1-2 business days. Other Peninsular states: 2-4 business days. Sabah & Sarawak: 3-7 business days. Orders are processed within 1-2 business days after payment confirmation.',
+          a: 'Peninsular Malaysia (Klang Valley): 1-2 business days. Other Peninsular states: 2-4 business days. We currently do not ship to Sabah or Sarawak. Orders are processed within 1-2 business days after payment confirmation.',
         },
         {
           q: 'How is my order packaged?',
