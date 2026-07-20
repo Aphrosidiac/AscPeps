@@ -69,18 +69,18 @@ export const metadata: Metadata = {
     description: 'Malaysia\'s trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Lab-grade quality with fast shipping across Peninsular Malaysia.',
     images: [
       {
-        url: '/images/pill-icon-512.png',
-        width: 512,
-        height: 512,
-        alt: 'ASCEND Peptides Malaysia',
+        url: '/images/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'ASCEND — Premium Research Peptides in Malaysia',
       },
     ],
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'ASCEND — #1 Premium Peptides Malaysia',
     description: 'Malaysia\'s trusted source for premium research peptides. Lab-grade quality with fast shipping across Peninsular Malaysia.',
-    images: ['/images/pill-icon-512.png'],
+    images: ['/images/og-image.png'],
   },
   alternates: {
     canonical: 'https://ascendpeptides.my',
