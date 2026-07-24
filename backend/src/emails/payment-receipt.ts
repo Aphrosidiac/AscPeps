@@ -1,4 +1,4 @@
-import { renderLayout, renderOrderSummary, escapeHtml, formatDate, type EmailOrder } from './layout.js';
+import { renderLayout, renderOrderSummary, renderBadge, renderMetaLine, escapeHtml, formatDate, type EmailOrder } from './layout.js';
 
 export function renderPaymentReceipt(
   order: EmailOrder,
@@ -11,15 +11,20 @@ export function renderPaymentReceipt(
       ? 'Manual Transfer (WhatsApp)'
       : `Online (${escapeHtml(order.paymentGateway || 'Billplz')})`;
 
-  const html = renderLayout(`
-          <h1 style="margin:0 0 8px;font-family:Helvetica,Arial,sans-serif;font-size:20px;color:#000000;">Payment received <span style="color:#22863a;">&#10003; PAID</span></h1>
-          <p style="margin:0 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#555555;">
-            Hi ${escapeHtml(order.customerName)}, we&#39;ve received your payment for order <strong style="color:#111111;">${escapeHtml(order.orderNumber)}</strong> on ${formatDate(paidAt)} via ${payMethod}.
+  const html = renderLayout(
+    `
+          ${renderBadge('PAYMENT RECEIVED', 'success')}
+          <h1 style="margin:16px 0 10px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;color:#0A0A0A;">Your payment is confirmed</h1>
+${renderMetaLine(order)}
+          <p style="margin:-8px 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
+            Received on ${formatDate(paidAt)} via ${payMethod}.
           </p>
 ${renderOrderSummary(order)}
-          <p style="margin:24px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#555555;">
+          <p style="margin:28px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
             Your official receipt is attached as a PDF. We&#39;ll notify you once your order ships.
-          </p>`);
+          </p>`,
+    `Receipt for order ${order.orderNumber} — payment confirmed.`
+  );
 
   return { subject: `Receipt for order ${order.orderNumber}`, html };
 }

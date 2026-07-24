@@ -1,4 +1,4 @@
-import { renderLayout, renderOrderSummary, escapeHtml, type EmailOrder } from './layout.js';
+import { renderLayout, renderOrderSummary, renderBadge, renderMetaLine, renderButton, escapeHtml, type EmailOrder } from './layout.js';
 
 export function renderOrderConfirmation(
   order: EmailOrder,
@@ -9,35 +9,31 @@ export function renderOrderConfirmation(
   let paymentBlock: string;
   if (order.paymentMethod === 'WHATSAPP') {
     paymentBlock = `
-          <p style="margin:24px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#555555;">
-            <strong style="color:#111111;">Payment:</strong> Manual transfer via WhatsApp. Payment is completed through our WhatsApp chat — we&#39;ll confirm your order once it&#39;s received.
+          <p style="margin:28px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
+            <strong style="color:#0A0A0A;">Payment:</strong> Manual transfer via WhatsApp. Payment is completed through our WhatsApp chat — we&#39;ll confirm your order once it&#39;s received.
           </p>`;
   } else if (paymentUrl) {
     paymentBlock = `
-          <p style="margin:24px 0 12px;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#555555;">
-            <strong style="color:#111111;">Payment:</strong> Online (${escapeHtml(order.paymentGateway || 'Billplz')}). If you haven&#39;t completed payment yet, use the button below.
+          <p style="margin:28px 0 14px;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
+            <strong style="color:#0A0A0A;">Payment:</strong> Online (${escapeHtml(order.paymentGateway || 'Billplz')}). If you haven&#39;t completed payment yet, use the button below.
           </p>
-          <table role="presentation" cellpadding="0" cellspacing="0">
-            <tr>
-              <td style="background-color:#000000;">
-                <a href="${escapeHtml(paymentUrl)}" style="display:inline-block;padding:12px 28px;font-family:Helvetica,Arial,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1px;color:#ffffff;text-decoration:none;">COMPLETE PAYMENT</a>
-              </td>
-            </tr>
-          </table>`;
+          ${renderButton('COMPLETE PAYMENT', paymentUrl)}`;
   } else {
     paymentBlock = `
-          <p style="margin:24px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#555555;">
-            <strong style="color:#111111;">Payment:</strong> Online (${escapeHtml(order.paymentGateway || 'Billplz')}). If you haven&#39;t completed payment yet, please do so via the secure payment page from checkout.
+          <p style="margin:28px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
+            <strong style="color:#0A0A0A;">Payment:</strong> Online (${escapeHtml(order.paymentGateway || 'Billplz')}). If you haven&#39;t completed payment yet, please do so via the secure payment page from checkout.
           </p>`;
   }
 
-  const html = renderLayout(`
-          <h1 style="margin:0 0 8px;font-family:Helvetica,Arial,sans-serif;font-size:20px;color:#000000;">Order received</h1>
-          <p style="margin:0 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#555555;">
-            Hi ${escapeHtml(order.customerName)}, thank you for your order <strong style="color:#111111;">${escapeHtml(order.orderNumber)}</strong>. Here&#39;s a summary:
-          </p>
+  const html = renderLayout(
+    `
+          ${renderBadge('ORDER CONFIRMED')}
+          <h1 style="margin:16px 0 10px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;color:#0A0A0A;">Thanks for your order, ${escapeHtml(order.customerName.split(' ')[0])}</h1>
+${renderMetaLine(order)}
 ${renderOrderSummary(order)}
-${paymentBlock}`);
+${paymentBlock}`,
+    `Order ${order.orderNumber} received — here's your summary.`
+  );
 
   return { subject: `Order ${order.orderNumber} received — ASCEND Peptides`, html };
 }
