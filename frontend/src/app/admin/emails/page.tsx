@@ -3,9 +3,9 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail } from '@/lib/api';
+import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import type { AdminEmailsResponse, AdminEmailRow } from '@/types';
@@ -264,6 +264,93 @@ function AdminEmailsContent() {
             </div>
           )}
         </>
+      )}
+
+      <TemplatePreview token={token} />
+    </div>
+  );
+}
+
+// Read-only rendering of the actual email templates, straight from the same
+// server code the outbox worker uses — adjustable by type and sample order.
+function TemplatePreview({ token }: { token: string | null }) {
+  const [type, setType] = useState<'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'>('ORDER_CONFIRMATION');
+  const [orderId, setOrderId] = useState(''); // '' = latest order
+  const [orders, setOrders] = useState<{ id: string; orderNumber: string; customerName: string }[]>([]);
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    adminGetOrders(token, { limit: '20' })
+      .then((r) => setOrders(r.data.map((o) => ({ id: o.id, orderNumber: o.orderNumber, customerName: o.customerName }))))
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let stale = false;
+    adminPreviewEmail(token, { type, ...(orderId ? { orderId } : {}) })
+      .then((r) => { if (!stale) { setPreview(r); setPreviewError(false); } })
+      .catch(() => { if (!stale) setPreviewError(true); });
+    return () => { stale = true; };
+  }, [token, type, orderId]);
+
+  return (
+    <div className="mt-10">
+      <div className="flex items-center gap-2 mb-1">
+        <Eye className="w-4 h-4 text-text-muted" />
+        <h2 className="font-display text-lg font-bold">Template Preview</h2>
+      </div>
+      <p className="text-sm text-text-muted mb-4">
+        Rendered from a real order, exactly as the customer receives it. Read-only — templates are maintained in code.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex gap-2">
+          {(['ORDER_CONFIRMATION', 'PAYMENT_RECEIPT'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setType(t)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                type === t ? 'bg-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {EMAIL_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+        <select
+          value={orderId}
+          onChange={(e) => setOrderId(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="">Latest order</option>
+          {orders.map((o) => (
+            <option key={o.id} value={o.id}>{o.orderNumber} — {o.customerName}</option>
+          ))}
+        </select>
+      </div>
+
+      {previewError ? (
+        <div className="bg-surface rounded-xl border border-border p-8 text-center text-sm text-text-muted">
+          No order available to preview with yet.
+        </div>
+      ) : !preview ? (
+        <div className="h-[620px] bg-surface-elevated rounded-xl animate-pulse" />
+      ) : (
+        <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border text-sm">
+            <span className="text-text-muted">Subject:</span>{' '}
+            <span className="font-medium">{preview.subject}</span>
+          </div>
+          <iframe
+            title="Email template preview"
+            sandbox=""
+            srcDoc={preview.html}
+            className="w-full h-[620px] bg-white"
+          />
+        </div>
       )}
     </div>
   );
