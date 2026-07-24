@@ -244,7 +244,7 @@ export default function CheckoutPage() {
     if (!form.phone.trim()) errors.phone = 'Please enter your phone number';
     else if (phoneDigits.length < 9 || phoneDigits.length > 12) errors.phone = 'Please enter a valid phone number, e.g. 012-3456789';
     const email = form.email.trim();
-    if (paymentMethod === 'BILLPLZ' && !email) errors.email = 'Email is required for online payment — your receipt and payment link are sent there';
+    if (paymentMethod === 'BILLPLZ' && !email) errors.email = 'Email is required for online payment';
     else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
     if (!form.address.trim()) errors.address = 'Please enter your shipping address';
     if (!form.city.trim()) errors.city = 'Please enter your city';
