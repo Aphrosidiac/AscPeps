@@ -21,7 +21,7 @@ const MAX_ATTEMPTS = BACKOFF_MS.length;
 // Rebuild the gateway's payment URL from what IS persisted on the order —
 // the bill URL itself never is. Both gateways use stable <host>/<ref> style
 // URLs, so this matches what createBill originally returned.
-function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
+export function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
   if (!order.paymentRef) return undefined;
   if (order.paymentGateway === 'toyyibpay') {
     const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';

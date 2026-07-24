@@ -121,6 +121,9 @@ export const adminGetEmails = (token: string, params: { status?: string; page?: 
 export const adminRetryFailedEmails = (token: string) =>
   api.post<{ retried: number }>('/api/v1/admin/emails/retry-failed', {}, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
+export const adminPreviewEmail = (token: string, params: { type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'; orderId?: string }) =>
+  api.get<{ subject: string; html: string }>('/api/v1/admin/emails/preview', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
+
 export const adminDeleteProduct = (token: string, id: string) =>
   api.delete(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
