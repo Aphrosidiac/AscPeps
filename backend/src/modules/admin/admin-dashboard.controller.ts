@@ -12,6 +12,7 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     lowStockProducts,
     ordersByStatus,
     recentOrders,
+    failedEmails,
   ] = await Promise.all([
     fastify.prisma.order.count({ where: { createdAt: { gte: today }, deletedAt: null } }),
 
@@ -40,6 +41,8 @@ export async function getDashboardStats(fastify: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
       include: { items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } } },
     }),
+
+    fastify.prisma.emailOutbox.count({ where: { status: 'FAILED' } }),
   ]);
 
   return {
@@ -51,6 +54,7 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     })),
     ordersByStatus: Object.fromEntries(ordersByStatus.map((o) => [o.status, o._count])),
     recentOrders,
+    failedEmails,
   };
 }
 
