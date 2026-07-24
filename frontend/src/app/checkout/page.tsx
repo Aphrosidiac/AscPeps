@@ -13,12 +13,33 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 
+const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
+
+const makeIdempotencyKey = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const focusFirstError = (errors: Record<string, string>) => {
+  const first = FIELD_ORDER.find((f) => errors[f]);
+  if (!first) return;
+  // Field ids in the JSX: customerName -> name, others match their key.
+  const el = document.getElementById(first === 'customerName' ? 'name' : first);
+  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el?.focus({ preventScroll: true });
+};
+
+const redirectTo = (url: string) => {
+  window.location.href = url;
+};
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clearCart, hydrated } = useCart();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ'>('WHATSAPP');
   const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
   const [shippingFee, setShippingFee] = useState('');
@@ -110,16 +131,20 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting.current) return;
+    const errors = validateForm();
+    if (Object.values(errors).some(Boolean)) {
+      setFieldErrors(errors);
+      focusFirstError(errors);
+      return;
+    }
+    setFieldErrors({});
     submitting.current = true;
     setLoading(true);
     setError('');
 
     try {
       if (!idempotencyKeyRef.current) {
-        idempotencyKeyRef.current =
-          typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        idempotencyKeyRef.current = makeIdempotencyKey();
       }
       const result = await createOrder({
         ...form,
@@ -136,7 +161,7 @@ export default function CheckoutPage() {
 
       if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
         clearCart();
-        window.location.href = result.paymentUrl;
+        redirectTo(result.paymentUrl);
         return;
       }
 
@@ -147,7 +172,21 @@ export default function CheckoutPage() {
         window.open(result.whatsappUrl, '_blank');
       }
     } catch (err: unknown) {
-      setError(apiErrorMessage(err) || 'Failed to place order. Please try again.');
+      // If the API returned field-level validation errors, show them inline
+      // on the matching inputs; otherwise fall back to the banner.
+      const details = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { details?: { path?: string; message?: string }[] } } }).response?.data?.details
+        : undefined;
+      const inline: Record<string, string> = {};
+      for (const d of details ?? []) {
+        if (d.path && d.message && (FIELD_ORDER as readonly string[]).includes(d.path)) inline[d.path] = d.message;
+      }
+      if (Object.keys(inline).length) {
+        setFieldErrors(inline);
+        focusFirstError(inline);
+      } else {
+        setError(apiErrorMessage(err) || 'Failed to place order. Please try again.');
+      }
       setLoading(false);
       submitting.current = false;
     }
@@ -192,7 +231,28 @@ export default function CheckoutPage() {
     );
   }
 
-  const updateField = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
+  const updateField = (field: string, value: string) => {
+    setForm((f) => ({ ...f, [field]: value }));
+    // Clear the field's error as soon as the customer starts correcting it.
+    setFieldErrors((fe) => (fe[field] ? { ...fe, [field]: '' } : fe));
+  };
+
+  const validateForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    if (!form.customerName.trim()) errors.customerName = 'Please enter your full name';
+    const phoneDigits = form.phone.replace(/\D/g, '');
+    if (!form.phone.trim()) errors.phone = 'Please enter your phone number';
+    else if (phoneDigits.length < 9 || phoneDigits.length > 12) errors.phone = 'Please enter a valid phone number, e.g. 012-3456789';
+    const email = form.email.trim();
+    if (paymentMethod === 'BILLPLZ' && !email) errors.email = 'Email is required for online payment — your receipt and payment link are sent there';
+    else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
+    if (!form.address.trim()) errors.address = 'Please enter your shipping address';
+    if (!form.city.trim()) errors.city = 'Please enter your city';
+    if (!form.state) errors.state = 'Please select your state';
+    if (!form.postcode.trim()) errors.postcode = 'Please enter your postcode';
+    else if (!/^\d{5}$/.test(form.postcode.trim())) errors.postcode = 'Postcode must be 5 digits';
+    return errors;
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -204,7 +264,7 @@ export default function CheckoutPage() {
         <h1 className="font-display text-3xl font-bold mb-8">Checkout</h1>
       </Animate>
 
-      <form onSubmit={handleSubmit} className="grid lg:grid-cols-3 gap-6 lg:gap-8">
+      <form onSubmit={handleSubmit} noValidate className="grid lg:grid-cols-3 gap-6 lg:gap-8">
         <div className="lg:col-span-2 space-y-5">
           {/* Customer Info */}
           <Animate variant="fadeUp" delay={0.05}>
@@ -214,8 +274,8 @@ export default function CheckoutPage() {
               <h2 className="font-display font-semibold text-lg">Customer Information</h2>
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Full Name" id="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} required />
-              <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" required />
+              <Input label="Full Name" id="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} error={fieldErrors.customerName} required />
+              <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" error={fieldErrors.phone} required />
             </div>
             <Input
               label={paymentMethod === 'BILLPLZ' ? 'Email (required for online payment)' : 'Email (optional)'}
@@ -223,6 +283,7 @@ export default function CheckoutPage() {
               type="email"
               value={form.email}
               onChange={(e) => updateField('email', e.target.value)}
+              error={fieldErrors.email}
               required={paymentMethod === 'BILLPLZ'}
             />
           </div>
@@ -235,18 +296,19 @@ export default function CheckoutPage() {
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
               <h2 className="font-display font-semibold text-lg">Shipping Address</h2>
             </div>
-            <Input label="Address" id="address" value={form.address} onChange={(e) => updateField('address', e.target.value)} required />
+            <Input label="Address" id="address" value={form.address} onChange={(e) => updateField('address', e.target.value)} error={fieldErrors.address} required />
             <div className="grid sm:grid-cols-3 gap-4">
-              <Input label="City" id="city" value={form.city} onChange={(e) => updateField('city', e.target.value)} required />
+              <Input label="City" id="city" value={form.city} onChange={(e) => updateField('city', e.target.value)} error={fieldErrors.city} required />
               <Select
                 label="State"
                 id="state"
                 value={form.state}
                 onChange={(e) => updateField('state', e.target.value)}
                 options={MALAYSIAN_STATES.map((s) => ({ value: s, label: s }))}
+                error={fieldErrors.state}
                 required
               />
-              <Input label="Postcode" id="postcode" value={form.postcode} onChange={(e) => updateField('postcode', e.target.value)} required />
+              <Input label="Postcode" id="postcode" value={form.postcode} onChange={(e) => updateField('postcode', e.target.value)} error={fieldErrors.postcode} required />
             </div>
           </div>
           </Animate>
