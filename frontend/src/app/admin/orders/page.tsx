@@ -1,18 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf } from '@/lib/api';
+import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
-import type { Order } from '@/types';
+import type { Order, OrderEmail } from '@/types';
 
 // "DELETED" is a pseudo-status (not a real OrderStatus value) — it's a
 // dedicated filter tab showing only soft-deleted orders, which every other
 // tab excludes.
 const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELETED'];
+
+const EMAIL_TYPE_LABELS: Record<OrderEmail['type'], string> = {
+  ORDER_CONFIRMATION: 'Confirmation',
+  PAYMENT_RECEIPT: 'Receipt',
+};
+
+function emailStatusText(email?: OrderEmail): { text: string; className: string } {
+  if (!email) return { text: 'not queued', className: 'text-text-muted' };
+  if (email.status === 'SENT') return { text: 'sent ✓', className: 'text-success' };
+  if (email.status === 'FAILED') return { text: `failed (${email.attempts} attempt${email.attempts !== 1 ? 's' : ''})`, className: 'text-danger' };
+  return { text: email.attempts > 0 ? `retrying (${email.attempts} attempt${email.attempts !== 1 ? 's' : ''})` : 'pending', className: 'text-warning' };
+}
 
 export default function AdminOrdersPage() {
   const { token } = useAuth();
@@ -24,6 +36,7 @@ export default function AdminOrdersPage() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
 
   const getTrackingValue = (order: Order) =>
     trackingInputs[order.id] ?? order.trackingNumber ?? '';
@@ -119,6 +132,19 @@ export default function AdminOrdersPage() {
       load();
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleResendEmail = async (orderId: string, type: OrderEmail['type']) => {
+    if (!token) return;
+    setResendingEmail(`${orderId}:${type}`);
+    try {
+      await adminResendOrderEmail(token, orderId, type);
+      load();
+    } catch {
+      // Non-critical — the status line simply won't change.
+    } finally {
+      setResendingEmail(null);
     }
   };
 
@@ -275,6 +301,39 @@ export default function AdminOrdersPage() {
                       <div>
                         <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Notes</p>
                         <p className="text-sm text-text-secondary bg-surface-elevated rounded-lg px-4 py-3">{order.notes}</p>
+                      </div>
+                    )}
+
+                    {/* Transactional Emails */}
+                    {order.email && (
+                      <div>
+                        <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Emails</p>
+                        <div className="flex flex-col gap-1.5">
+                          {(['ORDER_CONFIRMATION', 'PAYMENT_RECEIPT'] as const)
+                            // A receipt only makes sense once the order is (or was) paid.
+                            .filter((type) => type !== 'PAYMENT_RECEIPT' || order.paymentStatus === 'PAID' || order.emails?.some((e) => e.type === type))
+                            .map((type) => {
+                              const email = order.emails?.find((e) => e.type === type);
+                              const { text, className } = emailStatusText(email);
+                              const isResending = resendingEmail === `${order.id}:${type}`;
+                              return (
+                                <div key={type} className="flex items-center gap-2 text-sm">
+                                  <Mail className="w-3.5 h-3.5 text-text-muted" />
+                                  <span className="font-medium">{EMAIL_TYPE_LABELS[type]}:</span>
+                                  <span className={className} title={email?.lastError ?? undefined}>{text}</span>
+                                  {!order.deletedAt && (
+                                    <button
+                                      onClick={() => handleResendEmail(order.id, type)}
+                                      disabled={isResending}
+                                      className="px-2 py-0.5 bg-surface-elevated text-text-secondary rounded text-xs font-medium hover:bg-border hover:text-text-primary transition-colors disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {isResending ? 'Queuing...' : email ? 'Resend' : 'Send'}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
                       </div>
                     )}
 

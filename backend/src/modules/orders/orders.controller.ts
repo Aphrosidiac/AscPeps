@@ -8,6 +8,7 @@ import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
+import { enqueueEmail } from '../../utils/email-outbox.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -206,6 +207,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       },
       include: { items: { include: { variant: { include: { product: true } } } } },
     });
+
+    // Same-transaction outbox insert — the confirmation email exists iff the
+    // order does. Actual sending happens in the background email worker.
+    await enqueueEmail(tx, created, 'ORDER_CONFIRMATION');
 
     // Conditional decrement guards against oversell under concurrency: the
     // WHERE clause only matches if enough stock remains, so two simultaneous
