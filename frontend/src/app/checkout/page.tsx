@@ -69,6 +69,19 @@ export default function CheckoutPage() {
 
   if (!hydrated || shouldRedirect) return null;
 
+  // The API reports errors as { message } for app errors and
+  // { error, details: [{ path, message }] } for validation errors — surface
+  // the most specific one instead of a generic fallback.
+  const apiErrorMessage = (err: unknown): string | undefined => {
+    if (!err || typeof err !== 'object' || !('response' in err)) return undefined;
+    const data = (err as {
+      response?: { data?: { message?: string; error?: string; details?: { path?: string; message?: string }[] } };
+    }).response?.data;
+    const detail = data?.details?.[0];
+    if (detail?.message) return detail.path ? `${detail.path}: ${detail.message}` : detail.message;
+    return data?.message || data?.error;
+  };
+
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) return;
     setDiscountLoading(true);
@@ -78,10 +91,7 @@ export default function CheckoutPage() {
       setAppliedDiscount(result);
       setDiscountCode('');
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response: { data: { message?: string } } }).response?.data?.message
-        : undefined;
-      setDiscountError(message || 'Invalid discount code');
+      setDiscountError(apiErrorMessage(err) || 'Invalid discount code');
     } finally {
       setDiscountLoading(false);
     }
@@ -113,6 +123,9 @@ export default function CheckoutPage() {
       }
       const result = await createOrder({
         ...form,
+        // Blank optional email must be omitted — the API rejects "" as an
+        // invalid email address.
+        email: form.email.trim() || undefined,
         paymentMethod,
         items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
         idempotencyKey: idempotencyKeyRef.current,
@@ -134,10 +147,7 @@ export default function CheckoutPage() {
         window.open(result.whatsappUrl, '_blank');
       }
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response: { data: { message?: string } } }).response?.data?.message
-        : undefined;
-      setError(message || 'Failed to place order. Please try again.');
+      setError(apiErrorMessage(err) || 'Failed to place order. Please try again.');
       setLoading(false);
       submitting.current = false;
     }

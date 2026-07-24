@@ -12,7 +12,9 @@ import { getVariantDisplayName } from '../../utils/product-addons.js';
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
   phone: z.string().min(1).transform(normalizePhone),
-  email: z.string().email().optional(),
+  // The checkout form sends "" when the (optional) email is left blank —
+  // treat that as absent instead of failing .email() validation.
+  email: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
   address: z.string().min(1),
   city: z.string().min(1),
   state: z.string().min(1),
