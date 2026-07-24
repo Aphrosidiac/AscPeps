@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ShoppingBag, DollarSign, Package, AlertTriangle, ArrowRight } from 'lucide-react';
+import { ShoppingBag, DollarSign, Package, AlertTriangle, ArrowRight, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetDashboard } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
@@ -15,6 +15,7 @@ interface DashboardStats {
   totalProducts: number;
   lowStockProducts: { id: string; code: string; name: string; stock: number }[];
   ordersByStatus: Record<string, number>;
+  failedEmails: number;
   recentOrders: {
     id: string;
     orderNumber: string;
@@ -84,6 +85,15 @@ export default function AdminDashboardPage() {
             <p className="font-display text-xl sm:text-2xl font-bold">{card.value}</p>
           </Link>
         ))}
+        {stats.failedEmails > 0 && (
+          <Link href="/admin/emails?status=FAILED" className="bg-danger/5 rounded-xl border border-danger/40 p-4 sm:p-5 hover:border-danger hover:shadow-sm transition-all group">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-danger">Failed Emails</span>
+              <Mail className="w-4 h-4 text-danger" />
+            </div>
+            <p className="font-display text-xl sm:text-2xl font-bold text-danger">{stats.failedEmails}</p>
+          </Link>
+        )}
       </div>
 
       {/* Order Status Breakdown */}
