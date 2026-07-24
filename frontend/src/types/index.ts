@@ -108,6 +108,15 @@ export interface OrderItem {
   };
 }
 
+// Per-order transactional email status from the backend outbox (admin only).
+export interface OrderEmail {
+  type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT';
+  status: 'PENDING' | 'SENT' | 'FAILED';
+  attempts: number;
+  sentAt: string | null;
+  lastError: string | null;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -133,6 +142,8 @@ export interface Order {
   deletedAt: string | null;
   createdAt: string;
   items: OrderItem[];
+  // Only present on admin order responses.
+  emails?: OrderEmail[];
 }
 
 export interface DiscountCode {

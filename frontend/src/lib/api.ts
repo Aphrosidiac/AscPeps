@@ -112,6 +112,9 @@ export const adminDeleteOrder = (token: string, id: string) =>
 export const adminRestoreOrder = (token: string, id: string) =>
   api.post(`/api/v1/admin/orders/${id}/restore`, {}, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
+export const adminResendOrderEmail = (token: string, id: string, type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT') =>
+  api.post(`/api/v1/admin/orders/${id}/resend-email`, { type }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminDeleteProduct = (token: string, id: string) =>
   api.delete(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 

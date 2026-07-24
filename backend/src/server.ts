@@ -27,6 +27,7 @@ import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
+import { processEmailOutbox } from './utils/email-worker.js';
 
 const fastify = Fastify({
   // Trust exactly one hop (the nginx in front) — `true` would trust the
@@ -114,6 +115,16 @@ try {
       );
     }, RECONCILE_INTERVAL_MS);
     timer.unref();
+
+    // Drain the transactional-email outbox (order confirmations / payment
+    // receipts queued by state changes). No-op until EMAIL_ENABLED=true.
+    const EMAIL_INTERVAL_MS = 30 * 1000;
+    const emailTimer = setInterval(() => {
+      processEmailOutbox(fastify).catch((err) =>
+        fastify.log.error({ err }, 'email outbox sweep failed')
+      );
+    }, EMAIL_INTERVAL_MS);
+    emailTimer.unref();
   }
 } catch (err) {
   fastify.log.error(err);
