@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
@@ -15,8 +16,31 @@ import type { Order, OrderEmail } from '@/types';
 // tab excludes.
 const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELETED'];
 
+// useSearchParams needs a Suspense boundary for this route to prerender —
+// mirrors the same wrapping the admin Emails page uses.
 export default function AdminOrdersPage() {
+  return (
+    <Suspense fallback={<OrdersPageSkeleton />}>
+      <AdminOrdersContent />
+    </Suspense>
+  );
+}
+
+function OrdersPageSkeleton() {
+  return (
+    <div className="animate-pulse space-y-3">
+      {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-20 bg-surface-elevated rounded-xl" />)}
+    </div>
+  );
+}
+
+function AdminOrdersContent() {
   const { token } = useAuth();
+  const searchParams = useSearchParams();
+  // The admin Emails page links here as ?orderId=<id> ("Order #" column) —
+  // auto-expand and scroll to that order once it's loaded.
+  const orderIdParam = searchParams.get('orderId');
+  const didAutoExpand = useRef(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -47,6 +71,23 @@ export default function AdminOrdersPage() {
   };
 
   useEffect(() => { load(); }, [token, statusFilter, search]);
+
+  // Runs once the target order has actually loaded — a plain status filter
+  // (e.g. the order is CANCELLED) could otherwise leave this waiting forever,
+  // so it only ever fires the one time and never fights a later manual
+  // collapse/expand.
+  useEffect(() => {
+    if (didAutoExpand.current || !orderIdParam || orders.length === 0) return;
+    if (!orders.some((o) => o.id === orderIdParam)) return;
+    didAutoExpand.current = true;
+    // Deferred to a frame rather than called synchronously here — same
+    // "sync setState in an effect body" pattern the lint rule flags, and the
+    // scroll needs the expanded row's layout to exist anyway.
+    requestAnimationFrame(() => {
+      setExpandedOrder(orderIdParam);
+      document.getElementById(`order-${orderIdParam}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [orderIdParam, orders]);
 
   const handleStatusUpdate = async (orderId: string, status: string) => {
     if (!token) return;
@@ -198,7 +239,7 @@ export default function AdminOrdersPage() {
             // WhatsApp/manual-transfer payment status) is freely editable.
             const paymentLocked = order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
             return (
-              <div key={order.id} className={`bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'}`}>
+              <div key={order.id} id={`order-${order.id}`} className={`bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'}`}>
                 <div
                   className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
                   onClick={() => { setExpandedOrder(isExpanded ? null : order.id); setTrackingError(null); }}

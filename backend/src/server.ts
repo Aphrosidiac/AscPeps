@@ -27,6 +27,7 @@ import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
+import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 import { processEmailOutbox } from './utils/email-worker.js';
 
@@ -98,6 +99,10 @@ await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' 
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
 await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
+// Public — Resend's servers call this directly (see the route file for why
+// it needs its own scoped raw-body content-type parser). The global rate
+// limiter above still applies fine as-is.
+await fastify.register(resendWebhookRoutes, { prefix: '/api/v1/webhooks/resend' });
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });

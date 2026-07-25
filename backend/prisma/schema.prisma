@@ -216,6 +216,11 @@ enum EmailStatus {
   PENDING
   SENT
   FAILED
+  // Set from the Resend webhook (modules/webhooks/resend-webhook.controller.ts)
+  // once a SENT row's message reaches one of these terminal delivery states.
+  DELIVERED
+  BOUNCED
+  COMPLAINED
 }
 
 // Transactional-email outbox: state changes (order created, payment

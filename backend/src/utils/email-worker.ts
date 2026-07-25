@@ -64,10 +64,14 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
     let html: string;
     let attachments: { filename: string; content: Buffer }[] | undefined;
 
+    // Same settings fetch feeds both the receipt PDF's company details AND
+    // the email templates' admin-editable subject/badge/button/instructions
+    // copy — one read, passed through to whichever template renders.
+    const settingsRows = await fastify.prisma.setting.findMany();
+    const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+
     if (row.type === 'PAYMENT_RECEIPT') {
-      ({ subject, html } = renderPaymentReceipt(order, order.updatedAt));
-      const settingsRows = await fastify.prisma.setting.findMany();
-      const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+      ({ subject, html } = renderPaymentReceipt(order, order.updatedAt, settings));
       const pdf = await generateReceiptPdf(order, settings);
       attachments = [{ filename: `receipt-${order.orderNumber}.pdf`, content: pdf }];
     } else {
@@ -75,7 +79,7 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
         order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
           ? undefined
           : reconstructPaymentUrl(order);
-      ({ subject, html } = renderOrderConfirmation(order, paymentUrl));
+      ({ subject, html } = renderOrderConfirmation(order, paymentUrl, settings));
     }
 
     const { id: resendId } = await sendEmail({ to: row.toEmail, subject, html, attachments });

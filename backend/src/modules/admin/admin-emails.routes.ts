@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { adminListEmails, adminPreviewEmail, adminRetryFailedEmails } from './admin-emails.controller.js';
+import { adminListEmails, adminPreviewEmail, adminRetryFailedEmails, adminSendTestEmail } from './admin-emails.controller.js';
 
 export default async function adminEmailRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -14,5 +14,9 @@ export default async function adminEmailRoutes(fastify: FastifyInstance) {
 
   fastify.post('/retry-failed', async () => {
     return adminRetryFailedEmails(fastify);
+  });
+
+  fastify.post('/test-send', async (request) => {
+    return adminSendTestEmail(fastify, request.body);
   });
 }

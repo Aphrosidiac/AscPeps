@@ -124,6 +124,11 @@ export const adminRetryFailedEmails = (token: string) =>
 export const adminPreviewEmail = (token: string, params: { type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'; orderId?: string }) =>
   api.get<{ subject: string; html: string }>('/api/v1/admin/emails/preview', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
 
+// Ad-hoc test send — bypasses the emails_enabled toggle server-side, but
+// still requires RESEND_API_KEY to be configured.
+export const adminSendTestEmail = (token: string, data: { type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'; orderId?: string; to: string }) =>
+  api.post<{ id: string }>('/api/v1/admin/emails/test-send', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminDeleteProduct = (token: string, id: string) =>
   api.delete(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 

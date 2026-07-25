@@ -109,9 +109,12 @@ export interface OrderItem {
 }
 
 // Per-order transactional email status from the backend outbox (admin only).
+// DELIVERED/BOUNCED/COMPLAINED are set by the Resend webhook
+// (modules/webhooks/resend-webhook.controller.ts) once a SENT message
+// reaches one of those terminal delivery events.
 export interface OrderEmail {
   type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT';
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'DELIVERED' | 'BOUNCED' | 'COMPLAINED';
   attempts: number;
   sentAt: string | null;
   lastError: string | null;
@@ -133,6 +136,10 @@ export interface AdminEmailsResponse extends PaginatedResponse<AdminEmailRow> {
     failed: number;
     sentLast7Days: number;
   };
+  // Whether RESEND_API_KEY is set on the server — distinct from the
+  // emails_enabled DB toggle, so the admin UI can tell "off because you
+  // turned it off" apart from "off because there's no key to turn on".
+  hasApiKey: boolean;
 }
 
 export interface Order {

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail, adminGetSettings, adminUpdateSettings } from '@/lib/api';
+import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail, adminSendTestEmail, adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import type { AdminEmailsResponse, AdminEmailRow } from '@/types';
@@ -135,9 +135,17 @@ function AdminEmailsContent() {
     }
   };
 
+  // Preview refetch trigger: bumped whenever the Email Content panel saves,
+  // so the Template Preview below reflects the new copy without the admin
+  // having to manually switch type/order to force a refetch.
+  const [contentRefreshKey, setContentRefreshKey] = useState(0);
+
   const stats = result?.stats;
   const rows = result?.data ?? [];
   const pagination = result?.pagination;
+  // Distinct from `emailsEnabled` — this is whether the server even has a
+  // key to turn sending on with at all, regardless of the DB toggle.
+  const hasApiKey = result?.hasApiKey ?? true; // default true so the banner doesn't flash on first load
 
   const statCards = [
     { label: 'Sent · last 7 days', value: stats?.sentLast7Days ?? 0, icon: CheckCircle2, accent: 'text-success' },
@@ -171,7 +179,7 @@ function AdminEmailsContent() {
       {/* Automated sending toggle — the real switch lives in this
           environment's database (see backend/src/utils/email.ts), so this
           can be on locally and off in production independently. */}
-      <div className="flex items-center justify-between gap-4 bg-surface rounded-xl border border-border p-4 sm:p-5 mb-6">
+      <div className="flex items-center justify-between gap-4 bg-surface rounded-xl border border-border p-4 sm:p-5 mb-4">
         <div>
           <p className="font-medium">Automated sending</p>
           <p className="text-sm text-text-muted mt-0.5">
@@ -186,7 +194,7 @@ function AdminEmailsContent() {
           aria-checked={emailsEnabled ?? false}
           aria-label="Toggle automated email sending"
           onClick={handleToggleEmails}
-          disabled={emailsEnabled === null || togglingEmails}
+          disabled={emailsEnabled === null || togglingEmails || !hasApiKey}
           className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default ${
             emailsEnabled ? 'bg-success' : 'bg-border'
           }`}
@@ -198,6 +206,19 @@ function AdminEmailsContent() {
           />
         </button>
       </div>
+
+      {/* RESEND_API_KEY missing — the toggle above can't do anything even if
+          flipped on, so say so distinctly from the "toggled off" state. */}
+      {!hasApiKey && (
+        <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 mb-6">
+          <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+          <p className="text-sm text-warning">
+            RESEND_API_KEY is not set on the server. Automated sending and test-sends can&#39;t work regardless of the toggle above until an admin sets it in the server environment.
+          </p>
+        </div>
+      )}
+
+      <EmailContentSettings token={token} onSaved={() => setContentRefreshKey((k) => k + 1)} />
 
       {/* Summary strip */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
@@ -268,7 +289,7 @@ function AdminEmailsContent() {
                   return (
                     <tr key={row.id} className="hover:bg-surface-elevated/50 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <Link href="/admin/orders" className="font-display font-semibold hover:text-primary transition-colors">
+                        <Link href={`/admin/orders?orderId=${row.order.id}`} className="font-display font-semibold hover:text-primary transition-colors">
                           {row.order.orderNumber}
                         </Link>
                       </td>
@@ -280,6 +301,9 @@ function AdminEmailsContent() {
                       <td className="px-4 py-3 whitespace-nowrap text-text-secondary">{row.attempts}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-text-muted text-xs">
                         {formatDate(row.sentAt ?? row.createdAt)}
+                        {(row.status === 'PENDING' || row.status === 'FAILED') && (
+                          <div className="mt-0.5">Next attempt: {formatDate(row.nextAttemptAt)}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right">
                         {row.status === 'FAILED' && (
@@ -325,19 +349,113 @@ function AdminEmailsContent() {
         </>
       )}
 
-      <TemplatePreview token={token} />
+      <TemplatePreview token={token} refreshKey={contentRefreshKey} />
+    </div>
+  );
+}
+
+// Editable copy behind the templates below — subjects, badge labels, the
+// payment button label, and the WhatsApp payment-instructions sentence.
+// Reuses the generic Settings GET/PUT (adminGetSettings/adminUpdateSettings)
+// the automated-sending toggle above already uses — no dedicated endpoint.
+const EMAIL_CONTENT_FIELDS: { key: string; label: string; placeholder: string }[] = [
+  { key: 'email_subject_confirmation', label: 'Confirmation email subject', placeholder: 'Order {orderNumber} received — ASCEND Peptides' },
+  { key: 'email_subject_receipt', label: 'Receipt email subject', placeholder: 'Receipt for order {orderNumber}' },
+  { key: 'email_badge_confirmation', label: 'Confirmation badge label', placeholder: 'ORDER CONFIRMED' },
+  { key: 'email_badge_receipt', label: 'Receipt badge label', placeholder: 'PAYMENT RECEIVED' },
+  { key: 'email_button_label', label: 'Payment button label', placeholder: 'COMPLETE PAYMENT' },
+  { key: 'email_whatsapp_instructions', label: 'WhatsApp payment instructions', placeholder: "Manual transfer via WhatsApp. Payment is completed through our WhatsApp chat — we'll confirm your order once it's received." },
+];
+
+function EmailContentSettings({ token, onSaved }: { token: string | null; onSaved: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    adminGetSettings(token)
+      .then((s) => setValues(Object.fromEntries(EMAIL_CONTENT_FIELDS.map((f) => [f.key, s[f.key] ?? '']))))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const updateValue = (key: string, value: string) => {
+    setValues((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    if (!token) return;
+    setSaving(true);
+    setError(false);
+    try {
+      await adminUpdateSettings(token, values);
+      setSaved(true);
+      onSaved();
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4 sm:p-5 mb-6">
+      <p className="font-medium">Email Content</p>
+      <p className="text-sm text-text-muted mt-0.5 mb-4">
+        Admin-editable copy used in the templates below. Leave a field blank to fall back to its built-in default. Use <code>{'{orderNumber}'}</code> in subjects to insert the order number.
+      </p>
+      {loading ? (
+        <div className="animate-pulse space-y-3">
+          {Array.from({ length: EMAIL_CONTENT_FIELDS.length }).map((_, i) => <div key={i} className="h-9 bg-surface-elevated rounded-lg" />)}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {EMAIL_CONTENT_FIELDS.map((f) => (
+            <div key={f.key}>
+              <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1">{f.label}</label>
+              <input
+                type="text"
+                value={values[f.key] ?? ''}
+                onChange={(e) => updateValue(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+          ))}
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            {saved && <span className="text-sm text-success font-medium">Saved</span>}
+            {error && <span className="text-sm text-danger">Failed to save</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Read-only rendering of the actual email templates, straight from the same
 // server code the outbox worker uses — adjustable by type and sample order.
-function TemplatePreview({ token }: { token: string | null }) {
+function TemplatePreview({ token, refreshKey }: { token: string | null; refreshKey: number }) {
   const [type, setType] = useState<'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'>('ORDER_CONFIRMATION');
   const [orderId, setOrderId] = useState(''); // '' = latest order
   const [orders, setOrders] = useState<{ id: string; orderNumber: string; customerName: string }[]>([]);
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [previewError, setPreviewError] = useState(false);
+
+  const [testEmail, setTestEmail] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -353,7 +471,24 @@ function TemplatePreview({ token }: { token: string | null }) {
       .then((r) => { if (!stale) { setPreview(r); setPreviewError(false); } })
       .catch(() => { if (!stale) setPreviewError(true); });
     return () => { stale = true; };
-  }, [token, type, orderId]);
+  }, [token, type, orderId, refreshKey]);
+
+  const handleSendTest = async () => {
+    if (!token || !testEmail) return;
+    setSendingTest(true);
+    setTestResult(null);
+    try {
+      await adminSendTestEmail(token, { type, ...(orderId ? { orderId } : {}), to: testEmail });
+      setTestResult({ ok: true, message: 'Sent — check the inbox.' });
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+        : undefined;
+      setTestResult({ ok: false, message: message || 'Failed to send test email.' });
+    } finally {
+      setSendingTest(false);
+    }
+  };
 
   return (
     <div className="mt-10">
@@ -365,7 +500,7 @@ function TemplatePreview({ token }: { token: string | null }) {
         Rendered from a real order, exactly as the customer receives it. Read-only — templates are maintained in code.
       </p>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
         <div className="flex gap-2">
           {(['ORDER_CONFIRMATION', 'PAYMENT_RECEIPT'] as const).map((t) => (
             <button
@@ -389,6 +524,27 @@ function TemplatePreview({ token }: { token: string | null }) {
             <option key={o.id} value={o.id}>{o.orderNumber} — {o.customerName}</option>
           ))}
         </select>
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <input
+            type="email"
+            value={testEmail}
+            onChange={(e) => { setTestEmail(e.target.value); setTestResult(null); }}
+            placeholder="test@email.com"
+            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-sm text-text-primary w-48 focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          <button
+            onClick={handleSendTest}
+            disabled={sendingTest || !testEmail}
+            className="px-3 py-1.5 bg-surface-elevated text-text-secondary rounded-lg text-xs font-medium hover:bg-border hover:text-text-primary transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap"
+          >
+            {sendingTest ? 'Sending...' : 'Send test'}
+          </button>
+        </div>
+      </div>
+      <div className="mb-4">
+        {testResult && (
+          <p className={`text-xs ${testResult.ok ? 'text-success' : 'text-danger'}`}>{testResult.message}</p>
+        )}
       </div>
 
       {previewError ? (
