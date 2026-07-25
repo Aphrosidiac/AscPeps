@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { Mail, Lock } from 'lucide-react';
 import { adminLogin } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
@@ -54,14 +55,45 @@ export default function AdminLoginPage() {
         </Animate>
 
         <Animate variant="fadeUp" delay={0.15} duration={0.6}>
-          <form onSubmit={handleSubmit} className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl p-6 sm:p-8 space-y-4">
-            <p className="text-sm text-text-secondary text-center mb-2">Sign in to manage your store</p>
-            <Input label="Email" id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input label="Password" id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
+          <form onSubmit={handleSubmit} className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl p-6 sm:p-8 space-y-5">
+            <div className="text-center">
+              <h2 className="font-display text-lg font-bold text-text-primary">Welcome back</h2>
+              <p className="text-sm text-text-muted mt-1">Sign in to manage your store</p>
+            </div>
+
+            <div className="space-y-4">
+              <Input
+                icon={Mail}
+                label="Email"
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                required
+              />
+              <Input
+                icon={Lock}
+                label="Password"
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+            {error && <p className="text-sm text-danger text-center">{error}</p>}
+
+            <Button type="submit" className="w-full" size="lg" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
+
+            <div className="flex items-center justify-center gap-1.5 pt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-success" />
+              <span className="text-xs text-text-muted">Secure admin access</span>
+            </div>
           </form>
         </Animate>
       </div>
