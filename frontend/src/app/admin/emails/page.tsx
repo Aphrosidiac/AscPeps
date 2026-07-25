@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail } from '@/lib/api';
+import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail, adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import type { AdminEmailsResponse, AdminEmailRow } from '@/types';
@@ -63,6 +63,34 @@ function AdminEmailsContent() {
   const [error, setError] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
+
+  // Whether automated sending is actually enabled for THIS environment's
+  // database — the real switch (see backend/src/utils/email.ts) so prod and
+  // local can be flipped independently with no redeploy or restart. null
+  // while loading, so the toggle never flashes a wrong state.
+  const [emailsEnabled, setEmailsEnabled] = useState<boolean | null>(null);
+  const [togglingEmails, setTogglingEmails] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    adminGetSettings(token)
+      .then((s) => setEmailsEnabled(s.emails_enabled === 'true'))
+      .catch(() => {});
+  }, [token]);
+
+  const handleToggleEmails = async () => {
+    if (!token || emailsEnabled === null) return;
+    const next = !emailsEnabled;
+    setTogglingEmails(true);
+    setEmailsEnabled(next); // optimistic — this is a single boolean, not worth a rollback dance
+    try {
+      await adminUpdateSettings(token, { emails_enabled: next ? 'true' : 'false' });
+    } catch {
+      setEmailsEnabled(!next);
+    } finally {
+      setTogglingEmails(false);
+    }
+  };
 
   const load = useCallback(() => {
     if (!token) return;
@@ -137,6 +165,37 @@ function AdminEmailsContent() {
         >
           <RotateCcw className="w-3.5 h-3.5" />
           {retryingAll ? 'Queuing...' : 'Retry all failed'}
+        </button>
+      </div>
+
+      {/* Automated sending toggle — the real switch lives in this
+          environment's database (see backend/src/utils/email.ts), so this
+          can be on locally and off in production independently. */}
+      <div className="flex items-center justify-between gap-4 bg-surface rounded-xl border border-border p-4 sm:p-5 mb-6">
+        <div>
+          <p className="font-medium">Automated sending</p>
+          <p className="text-sm text-text-muted mt-0.5">
+            {emailsEnabled
+              ? 'Order confirmations and payment receipts send automatically.'
+              : 'Off — no automated emails go out. Existing orders won’t queue confirmations while this is off.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={emailsEnabled ?? false}
+          aria-label="Toggle automated email sending"
+          onClick={handleToggleEmails}
+          disabled={emailsEnabled === null || togglingEmails}
+          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default ${
+            emailsEnabled ? 'bg-success' : 'bg-border'
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              emailsEnabled ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
         </button>
       </div>
 
