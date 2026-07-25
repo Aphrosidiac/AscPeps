@@ -193,7 +193,7 @@ ${renderPreheader(preheader)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4f4" style="background-color:#f4f4f4;padding:32px 0;">
   <tr>
     <td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:600px;max-width:94%;background-color:#ffffff !important;border-radius:12px;overflow:hidden;border:1px solid ${BORDER};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="max-width:600px;background-color:#ffffff !important;border-radius:12px;overflow:hidden;border:1px solid ${BORDER};">
         <tr>
           <td bgcolor="${INK}" style="background-color:${INK} !important;padding:26px 36px;">
             <table role="presentation" cellpadding="0" cellspacing="0">
