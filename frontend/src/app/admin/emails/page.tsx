@@ -3,26 +3,36 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Mail, CheckCircle2, Clock, AlertTriangle, RotateCcw, ChevronLeft, ChevronRight, Eye, FileEdit, ListChecks } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetEmails, adminRetryFailedEmails, adminResendOrderEmail, adminGetOrders, adminPreviewEmail, adminSendTestEmail, adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
+import { Animate } from '@/components/ui/Animate';
 import type { AdminEmailsResponse, AdminEmailRow } from '@/types';
 
 const PAGE_SIZE = 50;
 
 // "ALL" is the unfiltered tab; the rest map straight onto the outbox status
 // filter the backend accepts.
-const TABS = ['ALL', 'PENDING', 'FAILED', 'SENT'] as const;
-type Tab = (typeof TABS)[number];
+const STATUS_TABS = ['ALL', 'PENDING', 'FAILED', 'SENT'] as const;
+type StatusTab = (typeof STATUS_TABS)[number];
 
-const TAB_LABELS: Record<Tab, string> = {
+const STATUS_TAB_LABELS: Record<StatusTab, string> = {
   ALL: 'All',
   PENDING: 'Pending',
   FAILED: 'Failed',
   SENT: 'Sent',
 };
+
+// The three top-level sections this page is split into — kept separate so
+// each reads as one focused screen instead of one long scroll.
+const MAIN_TABS = [
+  { key: 'list', label: 'Email List', icon: ListChecks },
+  { key: 'content', label: 'Email Content', icon: FileEdit },
+  { key: 'preview', label: 'Template Preview', icon: Eye },
+] as const;
+type MainTab = (typeof MAIN_TABS)[number]['key'];
 
 // useSearchParams needs a Suspense boundary for this route to prerender —
 // the boundary wraps the whole page, so the fallback mirrors its skeleton.
@@ -38,6 +48,7 @@ function EmailsPageSkeleton() {
   return (
     <div className="animate-pulse space-y-6">
       <div className="h-8 bg-surface-elevated rounded w-48" />
+      <div className="h-20 bg-surface-elevated rounded-xl" />
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
         {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 bg-surface-elevated rounded-xl" />)}
       </div>
@@ -52,11 +63,14 @@ function AdminEmailsContent() {
   const { token } = useAuth();
   const searchParams = useSearchParams();
   // The dashboard's failed-emails warning links here as ?status=FAILED —
-  // seed the filter from the URL, then let client state take over.
+  // seed the filter from the URL, then let client state take over. The
+  // main tab always defaults to the List view (it's the only one with a
+  // status filter to seed in the first place).
   const statusParam = (searchParams.get('status') || '').toUpperCase();
-  const initialTab: Tab = (TABS as readonly string[]).includes(statusParam) && statusParam !== 'ALL' ? (statusParam as Tab) : 'ALL';
+  const initialStatusTab: StatusTab = (STATUS_TABS as readonly string[]).includes(statusParam) && statusParam !== 'ALL' ? (statusParam as StatusTab) : 'ALL';
 
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [mainTab, setMainTab] = useState<MainTab>('list');
+  const [statusTab, setStatusTab] = useState<StatusTab>(initialStatusTab);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<AdminEmailsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,17 +109,17 @@ function AdminEmailsContent() {
   const load = useCallback(() => {
     if (!token) return;
     const params: { status?: string; page: number; pageSize: number } = { page, pageSize: PAGE_SIZE };
-    if (tab !== 'ALL') params.status = tab;
+    if (statusTab !== 'ALL') params.status = statusTab;
     adminGetEmails(token, params)
       .then((r) => { setResult(r); setError(false); })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [token, tab, page]);
+  }, [token, statusTab, page]);
 
   useEffect(() => { load(); }, [load]);
 
-  const selectTab = (next: Tab) => {
-    setTab(next);
+  const selectStatusTab = (next: StatusTab) => {
+    setStatusTab(next);
     setPage(1);
   };
 
@@ -136,7 +150,7 @@ function AdminEmailsContent() {
   };
 
   // Preview refetch trigger: bumped whenever the Email Content panel saves,
-  // so the Template Preview below reflects the new copy without the admin
+  // so the Template Preview tab reflects the new copy without the admin
   // having to manually switch type/order to force a refetch.
   const [contentRefreshKey, setContentRefreshKey] = useState(0);
 
@@ -146,12 +160,6 @@ function AdminEmailsContent() {
   // Distinct from `emailsEnabled` — this is whether the server even has a
   // key to turn sending on with at all, regardless of the DB toggle.
   const hasApiKey = result?.hasApiKey ?? true; // default true so the banner doesn't flash on first load
-
-  const statCards = [
-    { label: 'Sent · last 7 days', value: stats?.sentLast7Days ?? 0, icon: CheckCircle2, accent: 'text-success' },
-    { label: 'Pending', value: stats?.pending ?? 0, icon: Clock, accent: 'text-warning' },
-    { label: 'Failed', value: stats?.failed ?? 0, icon: AlertTriangle, accent: 'text-danger' },
-  ];
 
   if (error) {
     return (
@@ -164,21 +172,13 @@ function AdminEmailsContent() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-2xl font-bold">Emails</h1>
-        <button
-          onClick={handleRetryAll}
-          disabled={retryingAll || !stats || stats.failed === 0}
-          className="inline-flex items-center gap-1.5 px-3 py-2 bg-danger/10 text-danger rounded-lg text-sm font-medium hover:bg-danger/20 transition-colors disabled:opacity-50 disabled:cursor-default cursor-pointer"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          {retryingAll ? 'Queuing...' : 'Retry all failed'}
-        </button>
-      </div>
+      <h1 className="font-display text-2xl font-bold mb-6">Emails</h1>
 
       {/* Automated sending toggle — the real switch lives in this
           environment's database (see backend/src/utils/email.ts), so this
-          can be on locally and off in production independently. */}
+          can be on locally and off in production independently. Stays
+          visible across every tab below since it's a global status, not
+          the content of any one section. */}
       <div className="flex items-center justify-between gap-4 bg-surface rounded-xl border border-border p-4 sm:p-5 mb-4">
         <div>
           <p className="font-medium">Automated sending</p>
@@ -218,8 +218,80 @@ function AdminEmailsContent() {
         </div>
       )}
 
-      <EmailContentSettings token={token} onSaved={() => setContentRefreshKey((k) => k + 1)} />
+      {/* Section tabs */}
+      <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
+        {MAIN_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setMainTab(t.key)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer whitespace-nowrap ${
+              mainTab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <t.icon className="w-4 h-4" />
+            {t.label}
+            {t.key === 'list' && (stats?.failed ?? 0) > 0 && (
+              <span className="px-1.5 py-px rounded-full text-[10px] font-semibold bg-danger text-white">{stats!.failed}</span>
+            )}
+          </button>
+        ))}
+      </div>
 
+      <Animate key={mainTab} variant="fade" duration={0.25}>
+        {mainTab === 'list' && (
+          <EmailListTab
+            loading={loading}
+            rows={rows}
+            stats={stats}
+            statusTab={statusTab}
+            selectStatusTab={selectStatusTab}
+            pagination={pagination}
+            setPage={setPage}
+            retrying={retrying}
+            retryingAll={retryingAll}
+            handleRetryRow={handleRetryRow}
+            handleRetryAll={handleRetryAll}
+          />
+        )}
+        {mainTab === 'content' && (
+          <EmailContentSettings token={token} onSaved={() => setContentRefreshKey((k) => k + 1)} />
+        )}
+        {mainTab === 'preview' && (
+          <TemplatePreview token={token} refreshKey={contentRefreshKey} />
+        )}
+      </Animate>
+    </div>
+  );
+}
+
+interface EmailListTabProps {
+  loading: boolean;
+  rows: AdminEmailRow[];
+  stats: AdminEmailsResponse['stats'] | undefined;
+  statusTab: StatusTab;
+  selectStatusTab: (t: StatusTab) => void;
+  pagination: AdminEmailsResponse['pagination'] | undefined;
+  setPage: (fn: (p: number) => number) => void;
+  retrying: string | null;
+  retryingAll: boolean;
+  handleRetryRow: (row: AdminEmailRow) => void;
+  handleRetryAll: () => void;
+}
+
+function EmailListTab({
+  loading, rows, stats, statusTab, selectStatusTab, pagination, setPage,
+  retrying, retryingAll, handleRetryRow, handleRetryAll,
+}: EmailListTabProps) {
+  const statCards = [
+    { label: 'Sent · last 7 days', value: stats?.sentLast7Days ?? 0, icon: CheckCircle2, accent: 'text-success' },
+    { label: 'Pending', value: stats?.pending ?? 0, icon: Clock, accent: 'text-warning' },
+    { label: 'Failed', value: stats?.failed ?? 0, icon: AlertTriangle, accent: 'text-danger' },
+  ];
+
+  return (
+    <div>
       {/* Summary strip */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
         {statCards.map((card) => (
@@ -233,26 +305,36 @@ function AdminEmailsContent() {
         ))}
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 flex-wrap mb-6">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => selectTab(t)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-              tab === t
-                ? t === 'FAILED' ? 'bg-danger text-white' : 'bg-primary text-white'
-                : t === 'FAILED' ? 'bg-danger/10 text-danger hover:bg-danger/20' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {TAB_LABELS[t]}
-            {t === 'FAILED' && (stats?.failed ?? 0) > 0 && (
-              <span className={`px-1.5 py-px rounded-full text-[10px] font-semibold ${tab === t ? 'bg-white/20' : 'bg-danger text-white'}`}>
-                {stats!.failed}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* Status filter + bulk retry */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div className="flex gap-2 flex-wrap">
+          {STATUS_TABS.map((t) => (
+            <button
+              key={t}
+              onClick={() => selectStatusTab(t)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                statusTab === t
+                  ? t === 'FAILED' ? 'bg-danger text-white' : 'bg-primary text-white'
+                  : t === 'FAILED' ? 'bg-danger/10 text-danger hover:bg-danger/20' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {STATUS_TAB_LABELS[t]}
+              {t === 'FAILED' && (stats?.failed ?? 0) > 0 && (
+                <span className={`px-1.5 py-px rounded-full text-[10px] font-semibold ${statusTab === t ? 'bg-white/20' : 'bg-danger text-white'}`}>
+                  {stats!.failed}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={handleRetryAll}
+          disabled={retryingAll || !stats || stats.failed === 0}
+          className="inline-flex items-center gap-1.5 px-3 py-2 bg-danger/10 text-danger rounded-lg text-sm font-medium hover:bg-danger/20 transition-colors disabled:opacity-50 disabled:cursor-default cursor-pointer"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          {retryingAll ? 'Queuing...' : 'Retry all failed'}
+        </button>
       </div>
 
       {loading ? (
@@ -264,7 +346,7 @@ function AdminEmailsContent() {
           <Mail className="w-8 h-8 text-text-muted mx-auto mb-3" />
           <p className="text-text-muted text-lg mb-1">No emails found</p>
           <p className="text-text-muted text-sm">
-            {tab !== 'ALL' ? 'No emails with this status.' : 'Transactional emails will appear here once orders come in.'}
+            {statusTab !== 'ALL' ? 'No emails with this status.' : 'Transactional emails will appear here once orders come in.'}
           </p>
         </div>
       ) : (
@@ -348,16 +430,14 @@ function AdminEmailsContent() {
           )}
         </>
       )}
-
-      <TemplatePreview token={token} refreshKey={contentRefreshKey} />
     </div>
   );
 }
 
-// Editable copy behind the templates below — subjects, badge labels, the
-// payment button label, and the WhatsApp payment-instructions sentence.
-// Reuses the generic Settings GET/PUT (adminGetSettings/adminUpdateSettings)
-// the automated-sending toggle above already uses — no dedicated endpoint.
+// Editable copy behind the templates — subjects, badge labels, the payment
+// button label, and the WhatsApp payment-instructions sentence. Reuses the
+// generic Settings GET/PUT (adminGetSettings/adminUpdateSettings) the
+// automated-sending toggle above already uses — no dedicated endpoint.
 const EMAIL_CONTENT_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: 'email_subject_confirmation', label: 'Confirmation email subject', placeholder: 'Order {orderNumber} received — ASCEND Peptides' },
   { key: 'email_subject_receipt', label: 'Receipt email subject', placeholder: 'Receipt for order {orderNumber}' },
@@ -404,10 +484,10 @@ function EmailContentSettings({ token, onSaved }: { token: string | null; onSave
   };
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-4 sm:p-5 mb-6">
+    <div className="bg-surface rounded-xl border border-border p-4 sm:p-5">
       <p className="font-medium">Email Content</p>
       <p className="text-sm text-text-muted mt-0.5 mb-4">
-        Admin-editable copy used in the templates below. Leave a field blank to fall back to its built-in default. Use <code>{'{orderNumber}'}</code> in subjects to insert the order number.
+        Admin-editable copy used in the templates. Leave a field blank to fall back to its built-in default. Use <code>{'{orderNumber}'}</code> in subjects to insert the order number.
       </p>
       {loading ? (
         <div className="animate-pulse space-y-3">
@@ -491,11 +571,7 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
   };
 
   return (
-    <div className="mt-10">
-      <div className="flex items-center gap-2 mb-1">
-        <Eye className="w-4 h-4 text-text-muted" />
-        <h2 className="font-display text-lg font-bold">Template Preview</h2>
-      </div>
+    <div>
       <p className="text-sm text-text-muted mb-4">
         Rendered from a real order, exactly as the customer receives it. Read-only — templates are maintained in code.
       </p>
