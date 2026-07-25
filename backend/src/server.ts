@@ -110,29 +110,41 @@ try {
 
   // Reconcile stale online-payment orders: confirm any whose callback was
   // missed, and release stock held by abandoned/never-paid orders.
-  // Run on a single instance only — if PM2 is ever switched to cluster mode,
-  // multiple sweepers would add load (state transitions are idempotent, but
-  // there's no point running N copies).
-  const pmId = process.env.NODE_APP_INSTANCE ?? process.env.pm_id;
-  if (pmId === undefined || pmId === '0') {
-    const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
-    const timer = setInterval(() => {
-      reconcileStaleOrders(fastify).catch((err) =>
-        fastify.log.error({ err }, 'payment reconcile sweep failed')
-      );
-    }, RECONCILE_INTERVAL_MS);
-    timer.unref();
+  //
+  // This deployment only ever runs each app as a single PM2 fork instance
+  // (never cluster mode — see the bcryptjs+cluster note elsewhere in this
+  // codebase), so there is inherently only one process to run these
+  // intervals on; no "primary instance" guard is needed.
+  //
+  // A previous version of this guard checked `pm_id === '0'`/
+  // `NODE_APP_INSTANCE === '0'` to skip extra copies in a hypothetical
+  // cluster-mode future. That check was actually silently broken in
+  // production the whole time it existed: this server runs six unrelated
+  // PM2 apps under one shared daemon, and pm_id/NODE_APP_INSTANCE are
+  // apparently assigned from a value tied to that daemon-wide process
+  // count, not one scoped per app name — ascend-api's pm_id was 2, never
+  // 0. The guard was therefore always false here, and both intervals below
+  // silently never ran. If cluster mode is ever introduced for a specific
+  // app, reintroduce a guard then — using something that actually
+  // identifies "am I cluster worker 0 of THIS app" (e.g. Node's own
+  // `cluster.isPrimary`), not a raw pm_id/NODE_APP_INSTANCE comparison.
+  const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
+  const timer = setInterval(() => {
+    reconcileStaleOrders(fastify).catch((err) =>
+      fastify.log.error({ err }, 'payment reconcile sweep failed')
+    );
+  }, RECONCILE_INTERVAL_MS);
+  timer.unref();
 
-    // Drain the transactional-email outbox (order confirmations / payment
-    // receipts queued by state changes). No-op until EMAIL_ENABLED=true.
-    const EMAIL_INTERVAL_MS = 30 * 1000;
-    const emailTimer = setInterval(() => {
-      processEmailOutbox(fastify).catch((err) =>
-        fastify.log.error({ err }, 'email outbox sweep failed')
-      );
-    }, EMAIL_INTERVAL_MS);
-    emailTimer.unref();
-  }
+  // Drain the transactional-email outbox (order confirmations / payment
+  // receipts queued by state changes). No-op until emails_enabled is set.
+  const EMAIL_INTERVAL_MS = 30 * 1000;
+  const emailTimer = setInterval(() => {
+    processEmailOutbox(fastify).catch((err) =>
+      fastify.log.error({ err }, 'email outbox sweep failed')
+    );
+  }, EMAIL_INTERVAL_MS);
+  emailTimer.unref();
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);
