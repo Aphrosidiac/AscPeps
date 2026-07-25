@@ -37,6 +37,14 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Subject templates now come from an admin-editable Setting — strip embedded
+// newlines defensively (header injection hygiene) before templating in the
+// order number. No HTML-escaping here: this is a plain email header, not markup.
+export function renderSubject(template: string, orderNumber: string): string {
+  const clean = template.replace(/[\r\n]+/g, ' ').trim();
+  return clean.replace('{orderNumber}', orderNumber);
+}
+
 // Same sen-to-RM formatting as receipt-pdf.ts — all money is stored in sen.
 export function formatRM(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -167,8 +175,9 @@ export function renderButton(label: string, href: string): string {
           </table>`;
 }
 
-// Mirrors the disclaimer used on the receipt PDF and site footer.
-const DISCLAIMER = 'All products are for research and laboratory use only.';
+// Same fallback as receipt-pdf.ts's footerNote — both read the same
+// `receipt_footer_note` Setting so the email and the PDF can never drift.
+const DEFAULT_DISCLAIMER = 'All products are for research and laboratory use only.';
 
 // Hidden preview text: the line an inbox shows next to the subject. Without
 // this, clients fall back to whatever text starts the body (often "View in
@@ -179,7 +188,8 @@ function renderPreheader(text: string): string {
   </div>`;
 }
 
-export function renderLayout(bodyHtml: string, preheader: string): string {
+export function renderLayout(bodyHtml: string, preheader: string, settings: Record<string, string>): string {
+  const disclaimer = escapeHtml(settings.receipt_footer_note || DEFAULT_DISCLAIMER);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -218,7 +228,7 @@ ${bodyHtml}
               </tr>
             </table>
             <p style="margin:0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">
-              ${DISCLAIMER}<br>
+              ${disclaimer}<br>
               <a href="${SITE_URL}" style="color:${MUTED};text-decoration:underline;">ascendpeptides.my</a>
             </p>
           </td>
