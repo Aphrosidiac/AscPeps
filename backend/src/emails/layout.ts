@@ -77,13 +77,13 @@ export function renderBadge(label: string, tone: 'neutral' | 'success' = 'neutra
   const dotColor = tone === 'success' ? ACCENT : '#6b6b70';
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-block;">
             <tr>
-              <td style="background-color:${INK};border-radius:999px;padding:7px 14px 7px 11px;">
+              <td bgcolor="${INK}" style="background-color:${INK} !important;border-radius:999px;padding:7px 14px 7px 11px;">
                 <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
                     <td width="7" style="width:7px;padding-right:7px;">
-                      <table role="presentation" width="7" height="7" cellpadding="0" cellspacing="0"><tr><td width="7" height="7" style="width:7px;height:7px;line-height:7px;font-size:0;background-color:${dotColor};border-radius:50%;">&nbsp;</td></tr></table>
+                      <table role="presentation" width="7" height="7" cellpadding="0" cellspacing="0"><tr><td width="7" height="7" bgcolor="${dotColor}" style="width:7px;height:7px;line-height:7px;font-size:0;background-color:${dotColor} !important;border-radius:50%;">&nbsp;</td></tr></table>
                     </td>
-                    <td style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.02em;color:#ffffff;white-space:nowrap;">${label}</td>
+                    <td style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.02em;color:#ffffff !important;white-space:nowrap;">${label}</td>
                   </tr>
                 </table>
               </td>
@@ -152,8 +152,8 @@ export function renderOrderSummary(order: EmailOrder): string {
 export function renderButton(label: string, href: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0">
             <tr>
-              <td style="background-color:${INK};border-radius:8px;">
-                <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 28px;font-family:${FONT};font-size:13px;font-weight:700;letter-spacing:0.04em;color:#ffffff;text-decoration:none;border-radius:8px;">${label}</a>
+              <td bgcolor="${INK}" style="background-color:${INK} !important;border-radius:8px;">
+                <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 28px;font-family:${FONT};font-size:13px;font-weight:700;letter-spacing:0.04em;color:#ffffff !important;text-decoration:none;border-radius:8px;">${label}</a>
               </td>
             </tr>
           </table>`;
@@ -180,29 +180,29 @@ export function renderLayout(bodyHtml: string, preheader: string): string {
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 </head>
-<body style="margin:0;padding:0;background-color:#f4f4f4;">
+<body style="margin:0;padding:0;background-color:#f4f4f4;" bgcolor="#f4f4f4">
 ${renderPreheader(preheader)}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:32px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4f4" style="background-color:#f4f4f4;padding:32px 0;">
   <tr>
     <td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:94%;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid ${BORDER};">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:600px;max-width:94%;background-color:#ffffff !important;border-radius:12px;overflow:hidden;border:1px solid ${BORDER};">
         <tr>
-          <td style="background-color:${INK};padding:26px 36px;">
+          <td bgcolor="${INK}" style="background-color:${INK} !important;padding:26px 36px;">
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 <td width="26" style="padding-right:10px;"><img src="${SITE_URL}/images/pill-icon-white.png" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
-                <td style="font-family:${FONT};font-size:19px;font-weight:700;letter-spacing:4px;color:#ffffff;">ASCEND</td>
+                <td style="font-family:${FONT};font-size:19px;font-weight:700;letter-spacing:4px;color:#ffffff !important;">ASCEND</td>
               </tr>
             </table>
           </td>
         </tr>
         <tr>
-          <td style="padding:40px 36px;font-family:${FONT};font-size:14px;line-height:1.6;color:${INK};">
+          <td bgcolor="#ffffff" style="background-color:#ffffff !important;padding:40px 36px;font-family:${FONT};font-size:14px;line-height:1.6;color:${INK};">
 ${bodyHtml}
           </td>
         </tr>
         <tr>
-          <td style="padding:26px 36px;border-top:1px solid ${BORDER};text-align:center;">
+          <td bgcolor="#ffffff" style="background-color:#ffffff !important;padding:26px 36px;border-top:1px solid ${BORDER};text-align:center;">
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 14px;">
               <tr>
                 <td width="14" style="padding-right:6px;"><img src="${SITE_URL}/images/pill-icon-192.png" width="14" height="14" alt="" style="display:block;width:14px;height:14px;"></td>
