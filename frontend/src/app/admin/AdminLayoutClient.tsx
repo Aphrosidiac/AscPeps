@@ -65,10 +65,18 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — stays position:fixed at every breakpoint (previously
+          lg:static let it fall into the row's normal flow on desktop, so it
+          stretched to match main's content height instead of the viewport;
+          on a page taller than one screen that left a tall blank gap below
+          Logout, matching only the content height rather than the actual
+          viewport). h-screen instead of h-full for the same reason: fixed
+          positioning's containing block is the viewport, so an explicit
+          viewport unit is the more direct/robust way to express "full
+          height" than a percentage. */}
       <aside className={cn(
-        'fixed top-0 left-0 z-30 h-full w-64 bg-surface border-r border-border p-4 flex flex-col transition-transform duration-300',
-        'lg:translate-x-0 lg:static lg:z-auto',
+        'fixed top-0 left-0 z-30 h-screen w-64 bg-surface border-r border-border p-4 flex flex-col transition-transform duration-300',
+        'lg:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         <div className="mb-8 pt-1">
@@ -97,8 +105,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         </button>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto pt-18 lg:pt-8">{children}</main>
+      {/* Main content — aside is fixed (out of flow) at every breakpoint
+          now, so this needs its own left margin to clear it on desktop
+          instead of relying on flexbox to share the row with aside. */}
+      <main className="flex-1 lg:ml-64 p-4 sm:p-6 lg:p-8 bg-background overflow-auto pt-18 lg:pt-8 min-h-screen">{children}</main>
     </div>
   );
 }
