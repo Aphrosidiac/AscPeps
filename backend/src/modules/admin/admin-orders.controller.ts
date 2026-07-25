@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { refundBill } from '../../utils/billplz.js';
 import { restoreOrderInventory } from '../../utils/order-inventory.js';
+import { enqueueEmail } from '../../utils/email-outbox.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -10,6 +11,17 @@ const updateOrderSchema = z.object({
   trackingNumber: z.string().max(50).optional(),
   notes: z.string().optional(),
 });
+
+const resendEmailSchema = z.object({
+  type: z.enum(['ORDER_CONFIRMATION', 'PAYMENT_RECEIPT']),
+});
+
+// Outbox fields surfaced per order in the admin list/detail responses —
+// enough for the "sent / pending / failed (n attempts)" chips and nothing
+// internal (no resendId/nextAttemptAt).
+const EMAIL_STATUS_SELECT = {
+  select: { type: true, status: true, attempts: true, sentAt: true, lastError: true },
+} as const;
 
 // Order status and payment status are otherwise freely editable in any
 // direction — the only restriction is this one: once an online-gateway
@@ -44,6 +56,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
       include: {
         items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
+        emails: EMAIL_STATUS_SELECT,
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -61,6 +74,7 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
     include: {
       items: { include: { variant: { include: { product: true } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
+      emails: EMAIL_STATUS_SELECT,
     },
   });
 
@@ -116,6 +130,17 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     updateData.trackingNumber = data.trackingNumber.trim() || null;
   }
 
+  // Admin manually marking an order Paid (the WhatsApp/manual-transfer flow)
+  // is a real payment confirmation — queue the receipt email with the same
+  // same-transaction guarantee the gateway path gets in applyPaid.
+  if (data.paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
+    return fastify.prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({ where: { id }, data: updateData });
+      await enqueueEmail(tx, updated, 'PAYMENT_RECEIPT');
+      return updated;
+    });
+  }
+
   return fastify.prisma.order.update({ where: { id }, data: updateData });
 }
 
@@ -132,4 +157,21 @@ export async function adminRestoreOrder(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({ where: { id } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
   return fastify.prisma.order.update({ where: { id }, data: { deletedAt: null } });
+}
+
+// Re-queue (or first-queue, if the row never existed — e.g. the email was
+// added to the order after checkout) an email for the worker to send. Resets
+// a FAILED row's attempt budget so the backoff starts over.
+export async function adminResendOrderEmail(fastify: FastifyInstance, id: string, body: unknown) {
+  const { type } = resendEmailSchema.parse(body);
+
+  const order = await fastify.prisma.order.findUnique({ where: { id } });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+  if (!order.email) throw { statusCode: 400, message: 'This order has no email address' };
+
+  return fastify.prisma.emailOutbox.upsert({
+    where: { orderId_type: { orderId: order.id, type } },
+    update: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, toEmail: order.email },
+    create: { orderId: order.id, type, toEmail: order.email },
+  });
 }

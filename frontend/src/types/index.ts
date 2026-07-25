@@ -108,6 +108,33 @@ export interface OrderItem {
   };
 }
 
+// Per-order transactional email status from the backend outbox (admin only).
+export interface OrderEmail {
+  type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT';
+  status: 'PENDING' | 'SENT' | 'FAILED';
+  attempts: number;
+  sentAt: string | null;
+  lastError: string | null;
+}
+
+// A full outbox row on the admin Emails ops page — the per-order OrderEmail
+// shape plus identity/scheduling fields and the parent order reference.
+export interface AdminEmailRow extends OrderEmail {
+  id: string;
+  toEmail: string;
+  createdAt: string;
+  nextAttemptAt: string;
+  order: { id: string; orderNumber: string };
+}
+
+export interface AdminEmailsResponse extends PaginatedResponse<AdminEmailRow> {
+  stats: {
+    pending: number;
+    failed: number;
+    sentLast7Days: number;
+  };
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -133,6 +160,8 @@ export interface Order {
   deletedAt: string | null;
   createdAt: string;
   items: OrderItem[];
+  // Only present on admin order responses.
+  emails?: OrderEmail[];
 }
 
 export interface DiscountCode {

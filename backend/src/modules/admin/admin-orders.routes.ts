@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { adminListOrders, adminGetOrder, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder } from './admin-orders.controller.js';
+import { adminListOrders, adminGetOrder, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminResendOrderEmail } from './admin-orders.controller.js';
 import { adminGetReceiptPdf } from '../orders/receipt.controller.js';
 
 export default async function adminOrderRoutes(fastify: FastifyInstance) {
@@ -23,6 +23,10 @@ export default async function adminOrderRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>('/:id/restore', async (request) => {
     return adminRestoreOrder(fastify, request.params.id);
+  });
+
+  fastify.post<{ Params: { id: string } }>('/:id/resend-email', async (request) => {
+    return adminResendOrderEmail(fastify, request.params.id, request.body);
   });
 
   fastify.get<{ Params: { id: string } }>('/:id/receipt', async (request, reply) => {

@@ -178,6 +178,7 @@ model Order {
 
   items        OrderItem[]
   discountCode DiscountCode? @relation(fields: [discountCodeId], references: [id])
+  emails       EmailOutbox[]
 
   @@index([phone])
   @@index([status])
@@ -204,6 +205,44 @@ model OrderItem {
   @@index([orderId])
   @@index([variantId])
   @@map("order_items")
+}
+
+enum EmailType {
+  ORDER_CONFIRMATION
+  PAYMENT_RECEIPT
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// Transactional-email outbox: state changes (order created, payment
+// confirmed) insert a row here inside the SAME transaction as the state
+// change, and a background worker (utils/email-worker.ts) drains it via
+// Resend. Emails are never sent inline — a gateway outage can't fail a
+// checkout, and a crashed send is retried instead of lost.
+model EmailOutbox {
+  id            String      @id @default(cuid())
+  orderId       String
+  type          EmailType
+  toEmail       String
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  lastError     String?
+  resendId      String?
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // At most one email of each type per order — payment callbacks can fire
+  // twice, so enqueue uses skipDuplicates against this instead of erroring.
+  @@unique([orderId, type])
+  @@index([status, nextAttemptAt])
+  @@map("email_outbox")
 }
 
 model AdminUser {
