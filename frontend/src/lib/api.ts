@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, PaginatedResponse, Insight } from '@/types';
+import type { Category, Product, Order, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -111,6 +111,18 @@ export const adminDeleteOrder = (token: string, id: string) =>
 
 export const adminRestoreOrder = (token: string, id: string) =>
   api.post(`/api/v1/admin/orders/${id}/restore`, {}, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminResendOrderEmail = (token: string, id: string, type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT') =>
+  api.post(`/api/v1/admin/orders/${id}/resend-email`, { type }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminGetEmails = (token: string, params: { status?: string; page?: number; pageSize?: number }) =>
+  api.get<AdminEmailsResponse>('/api/v1/admin/emails', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
+
+export const adminRetryFailedEmails = (token: string) =>
+  api.post<{ retried: number }>('/api/v1/admin/emails/retry-failed', {}, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminPreviewEmail = (token: string, params: { type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'; orderId?: string }) =>
+  api.get<{ subject: string; html: string }>('/api/v1/admin/emails/preview', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
 
 export const adminDeleteProduct = (token: string, id: string) =>
   api.delete(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);

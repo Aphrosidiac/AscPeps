@@ -18,6 +18,7 @@ import orderRoutes from './modules/orders/orders.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import adminProductRoutes from './modules/admin/admin-products.routes.js';
 import adminOrderRoutes from './modules/admin/admin-orders.routes.js';
+import adminEmailRoutes from './modules/admin/admin-emails.routes.js';
 import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
 import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
 import publicSettingsRoutes from './modules/settings/settings.routes.js';
@@ -27,6 +28,7 @@ import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
+import { processEmailOutbox } from './utils/email-worker.js';
 
 const fastify = Fastify({
   // Trust exactly one hop (the nginx in front) — `true` would trust the
@@ -88,6 +90,7 @@ await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
 await fastify.register(publicSettingsRoutes, { prefix: '/api/v1/settings' });
 await fastify.register(adminProductRoutes, { prefix: '/api/v1/admin/products' });
 await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
+await fastify.register(adminEmailRoutes, { prefix: '/api/v1/admin/emails' });
 await fastify.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
@@ -114,6 +117,16 @@ try {
       );
     }, RECONCILE_INTERVAL_MS);
     timer.unref();
+
+    // Drain the transactional-email outbox (order confirmations / payment
+    // receipts queued by state changes). No-op until EMAIL_ENABLED=true.
+    const EMAIL_INTERVAL_MS = 30 * 1000;
+    const emailTimer = setInterval(() => {
+      processEmailOutbox(fastify).catch((err) =>
+        fastify.log.error({ err }, 'email outbox sweep failed')
+      );
+    }, EMAIL_INTERVAL_MS);
+    emailTimer.unref();
   }
 } catch (err) {
   fastify.log.error(err);
