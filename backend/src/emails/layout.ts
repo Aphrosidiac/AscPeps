@@ -8,6 +8,14 @@
 
 const SITE_URL = 'https://ascendpeptides.my';
 
+// Bump this when either logo asset changes. The early test sends referenced
+// this exact URL while the asset was still 404ing (pre-deploy) — some
+// clients' image loaders cache that miss by URL rather than re-checking, so
+// a fixed unversioned path can keep showing blank indefinitely even after
+// the file is fixed server-side. A version query string forces every client
+// to treat it as a URL it's never seen before.
+const ASSET_VERSION = 2;
+
 // One token per role, used everywhere — the "vibe-coded" tell is usually 3
 // near-identical grays and 2 near-identical border colors sprinkled at
 // random. Pick one of each and stick to it.
@@ -190,7 +198,7 @@ ${renderPreheader(preheader)}
           <td bgcolor="${INK}" style="background-color:${INK} !important;padding:26px 36px;">
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
-                <td width="26" style="padding-right:10px;"><img src="${SITE_URL}/images/pill-icon-white.png" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
+                <td width="26" style="padding-right:10px;"><img src="${SITE_URL}/images/pill-icon-white.png?v=${ASSET_VERSION}" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
                 <td style="font-family:${FONT};font-size:19px;font-weight:700;letter-spacing:4px;color:#ffffff !important;">ASCEND</td>
               </tr>
             </table>
@@ -205,7 +213,7 @@ ${bodyHtml}
           <td bgcolor="#ffffff" style="background-color:#ffffff !important;padding:26px 36px;border-top:1px solid ${BORDER};text-align:center;">
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 14px;">
               <tr>
-                <td width="14" style="padding-right:6px;"><img src="${SITE_URL}/images/pill-icon-192.png" width="14" height="14" alt="" style="display:block;width:14px;height:14px;"></td>
+                <td width="14" style="padding-right:6px;"><img src="${SITE_URL}/images/pill-icon-192.png?v=${ASSET_VERSION}" width="14" height="14" alt="" style="display:block;width:14px;height:14px;"></td>
                 <td style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:2px;color:${MUTED};">ASCEND</td>
               </tr>
             </table>
