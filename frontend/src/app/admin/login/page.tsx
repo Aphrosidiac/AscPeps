@@ -89,11 +89,6 @@ export default function AdminLoginPage() {
             <Button type="submit" className="w-full" size="lg" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
-
-            <div className="flex items-center justify-center gap-1.5 pt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-success" />
-              <span className="text-xs text-text-muted">Secure admin access</span>
-            </div>
           </form>
         </Animate>
       </div>
