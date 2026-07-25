@@ -107,7 +107,7 @@ let running = false;
 
 /** Drain due PENDING outbox rows. Scheduled from server.ts. */
 export async function processEmailOutbox(fastify: FastifyInstance): Promise<void> {
-  if (running || !isEmailEnabled()) return;
+  if (running || !(await isEmailEnabled(fastify.prisma))) return;
   running = true;
   try {
     const rows = await fastify.prisma.emailOutbox.findMany({

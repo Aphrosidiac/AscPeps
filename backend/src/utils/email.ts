@@ -1,14 +1,25 @@
 import { Resend } from 'resend';
+import type { PrismaClient, Prisma } from '@prisma/client';
 
 // Deliberately read straight from process.env (dotenv is loaded by
 // config/env.ts) rather than the zod schema there: email is fully optional
 // infrastructure, and a missing/blank key must never fail server boot.
 const FROM_DEFAULT = 'ASCEND Peptides <orders@ascendpeptides.my>';
 
-// EMAIL_ENABLED must be EXACTLY 'true' — the kill switch defaults to off so a
-// fresh env (or a staging clone of the prod DB) can never mail real customers.
-export function isEmailEnabled(): boolean {
-  return process.env.EMAIL_ENABLED === 'true' && !!process.env.RESEND_API_KEY;
+type PrismaLike = PrismaClient | Prisma.TransactionClient;
+
+// The actual on/off switch is a DB setting (key "emails_enabled"), not an env
+// var — every environment (local, staging, prod) has its own database, so
+// this stays independently controllable per environment with no redeploy or
+// restart, toggleable from the admin Emails page. Defaults to disabled when
+// the row doesn't exist yet, so a freshly-deployed or staging-cloned database
+// can never mail real customers until someone flips it on deliberately.
+// RESEND_API_KEY is still a hard prerequisite — without it there's nothing to
+// toggle on.
+export async function isEmailEnabled(prisma: PrismaLike): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false;
+  const setting = await prisma.setting.findUnique({ where: { key: 'emails_enabled' } });
+  return setting?.value === 'true';
 }
 
 // Lazy singleton — constructing Resend at import time would throw when the
@@ -27,10 +38,12 @@ export interface SendEmailParams {
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<{ id: string }> {
-  // Guard only — the outbox worker checks isEmailEnabled() before picking
-  // rows, so hitting this means a code path bypassed the worker.
-  if (!isEmailEnabled()) {
-    throw new Error('Email sending is disabled (EMAIL_ENABLED must be "true" and RESEND_API_KEY set)');
+  // Guard only — the outbox worker and enqueueEmail() both check
+  // isEmailEnabled() before this is ever reached, so hitting this means a
+  // code path bypassed both. This checks just the capability (a key to call
+  // Resend with), not the on/off setting — that's their job, not this one's.
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('Email sending is disabled (RESEND_API_KEY not set)');
   }
 
   const { data, error } = await getClient().emails.send({
