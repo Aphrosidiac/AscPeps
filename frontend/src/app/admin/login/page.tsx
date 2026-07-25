@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { adminLogin } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Animate } from '@/components/ui/Animate';
+import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -32,21 +35,35 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="font-display text-2xl font-bold">ASCEND Admin</h1>
-          <p className="text-sm text-text-secondary mt-1">Sign in to manage your store</p>
-        </div>
+    // Same dark-hero treatment as the homepage: bg-primary + the animated
+    // dot/line network canvas, absolutely filling this relative container
+    // (AdminLayoutClient renders the login route with no sidebar chrome, so
+    // this owns the full viewport on its own).
+    <div className="min-h-screen bg-primary relative overflow-hidden flex items-center justify-center px-4">
+      <MolecularNetwork className="absolute inset-0 w-full h-full" />
 
-        <form onSubmit={handleSubmit} className="bg-surface rounded-xl border border-border p-6 space-y-4">
-          <Input label="Email" id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <Input label="Password" id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </Button>
-        </form>
+      <div className="relative z-10 w-full max-w-sm">
+        <Animate variant="fade" duration={0.7}>
+          <div className="flex flex-col items-center gap-3 mb-8">
+            <Image src="/images/pill-icon.png" alt="" width={40} height={40} className="invert" />
+            <div className="text-center">
+              <h1 className="font-display text-2xl font-bold text-white tracking-tight">ASCEND</h1>
+              <p className="text-sm text-white/50 mt-0.5">Admin</p>
+            </div>
+          </div>
+        </Animate>
+
+        <Animate variant="fadeUp" delay={0.15} duration={0.6}>
+          <form onSubmit={handleSubmit} className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl p-6 sm:p-8 space-y-4">
+            <p className="text-sm text-text-secondary text-center mb-2">Sign in to manage your store</p>
+            <Input label="Email" id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input label="Password" id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </form>
+        </Animate>
       </div>
     </div>
   );

@@ -38,19 +38,6 @@ export function MolecularNetwork({ className = '' }: { className?: string }) {
     let h = 0;
     let running = true;
 
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect();
-      if (!rect) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = rect.width;
-      h = rect.height;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-
     const initNodes = () => {
       nodesRef.current = Array.from({ length: NODE_COUNT }, () => ({
         x: Math.random() * (w || 800),
@@ -58,6 +45,31 @@ export function MolecularNetwork({ className = '' }: { className?: string }) {
         vx: (Math.random() - 0.5) * SPEED,
         vy: (Math.random() - 0.5) * SPEED,
       }));
+    };
+
+    // Some layouts (e.g. a flex-centered container with no other sized
+    // sibling) report a transiently narrow width on the very first
+    // ResizeObserver callback, before the surrounding layout has fully
+    // settled — a later callback then corrects the canvas's own box size,
+    // but without this, already-initialized nodes stay clustered near
+    // wherever that first narrow measurement placed them, only slowly
+    // drifting outward at SPEED px/frame. Re-seeding node positions
+    // whenever the measured size actually changes (not on every
+    // sub-pixel devicePixelRatio-driven fluctuation) keeps them
+    // distributed across whatever the current real size is.
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect();
+      if (!rect) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const changed = Math.abs(rect.width - w) > 4 || Math.abs(rect.height - h) > 4;
+      w = rect.width;
+      h = rect.height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (changed && nodesRef.current.length > 0) initNodes();
     };
 
     const draw = (timestamp: number) => {
