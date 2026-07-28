@@ -45,12 +45,17 @@ would leave that browser permanently opted out of storefront analytics.
 
 ## Setup
 
-1. Create a PostHog project. **Pick the EU region** unless you have a reason
-   not to; the defaults here assume EU. Copy the project token.
+The live project is **531983, on US Cloud**. Everything below is pinned to
+that region. A token/host region mismatch does not raise an error — it
+silently drops every event — so if the project is ever recreated in the EU,
+change the two `*_POSTHOG_HOST` values, their two code defaults, and the
+nginx block together.
+
+1. Copy the project token from PostHog > Settings > Project.
 2. Frontend — `frontend/.env` on the VPS:
    ```
    NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=phc_xxx
-   NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
+   NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
    NEXT_PUBLIC_POSTHOG_PROXY=/ingest
    ```
    These are inlined at build time — a rebuild is required, a restart is not
@@ -58,7 +63,7 @@ would leave that browser permanently opted out of storefront analytics.
 3. Backend — `backend/.env` on the VPS:
    ```
    POSTHOG_API_KEY=phc_xxx
-   POSTHOG_HOST=https://eu.i.posthog.com
+   POSTHOG_HOST=https://us.i.posthog.com
    POSTHOG_ENABLED=true
    ```
 4. Add the nginx proxy below, then `sudo nginx -t && sudo systemctl reload nginx`.
@@ -79,18 +84,19 @@ Add inside the `ascendpeptides.my` server block, **above** the `location /`
 block:
 
 ```nginx
-# PostHog ingestion proxy. EU region — change both hosts together if the
-# project region ever changes.
+# PostHog ingestion proxy. US region, matching project 531983 — change both
+# hosts here together with the two *_POSTHOG_HOST env vars if the project
+# region ever changes.
 location /ingest/static/ {
-    proxy_pass https://eu-assets.i.posthog.com/static/;
-    proxy_set_header Host eu-assets.i.posthog.com;
+    proxy_pass https://us-assets.i.posthog.com/static/;
+    proxy_set_header Host us-assets.i.posthog.com;
     proxy_ssl_server_name on;
     access_log off;
 }
 
 location /ingest/ {
-    proxy_pass https://eu.i.posthog.com/;
-    proxy_set_header Host eu.i.posthog.com;
+    proxy_pass https://us.i.posthog.com/;
+    proxy_set_header Host us.i.posthog.com;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_ssl_server_name on;
     access_log off;
