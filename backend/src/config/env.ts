@@ -35,6 +35,13 @@ const envSchema = z.object({
   TOYYIBPAY_SECRET_KEY: z.string().optional(),
   TOYYIBPAY_CATEGORY_CODE: z.string().optional(),
   TOYYIBPAY_SANDBOX: envBool(true),
+  // Server-side analytics. This is the SAME project token the frontend uses
+  // (PostHog project tokens are write-only, not a secret in the credential
+  // sense) — but it lives here unprefixed because it must never be inlined
+  // into the client bundle from this side. Absent key = analytics off.
+  POSTHOG_API_KEY: z.string().optional(),
+  POSTHOG_HOST: z.string().default('https://eu.i.posthog.com'),
+  POSTHOG_ENABLED: envBool(false),
 });
 
 export const env = envSchema.parse(process.env);

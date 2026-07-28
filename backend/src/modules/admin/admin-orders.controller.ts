@@ -4,6 +4,7 @@ import { getPaginationParams, paginatedResponse } from '../../utils/pagination.j
 import { refundBill } from '../../utils/billplz.js';
 import { restoreOrderInventory } from '../../utils/order-inventory.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
+import { capturePurchase } from '../../utils/posthog.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -134,11 +135,15 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
   // is a real payment confirmation — queue the receipt email with the same
   // same-transaction guarantee the gateway path gets in applyPaid.
   if (data.paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
-    return fastify.prisma.$transaction(async (tx) => {
-      const updated = await tx.order.update({ where: { id }, data: updateData });
-      await enqueueEmail(tx, updated, 'PAYMENT_RECEIPT');
-      return updated;
+    const updated = await fastify.prisma.$transaction(async (tx) => {
+      const row = await tx.order.update({ where: { id }, data: updateData });
+      await enqueueEmail(tx, row, 'PAYMENT_RECEIPT');
+      return row;
     });
+    // Manual confirmation is a real payment — WhatsApp orders never reach
+    // applyPaid, so without this they'd be invisible in revenue reporting.
+    capturePurchase(fastify, updated);
+    return updated;
   }
 
   return fastify.prisma.order.update({ where: { id }, data: updateData });

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getGatewayByBillId } from './payment-gateway.js';
 import { restoreOrderInventory } from './order-inventory.js';
 import { enqueueEmail } from './email-outbox.js';
+import { capturePurchase } from './posthog.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
@@ -17,13 +18,28 @@ const WHATSAPP_RELEASE_AFTER_MS = 48 * 60 * 60 * 1000; // 48 h — cancel and re
  * transitions from UNPAID, so duplicate callbacks/reconciles are no-ops.
  * Returns true if this call performed the transition.
  *
- * Every PAID transition funnels through here (gateway callback, redirect
- * verify, reconcile sweep), so this is also the single place the payment
- * receipt email gets queued — in the same transaction as the transition.
+ * Every gateway-backed PAID transition funnels through here (gateway callback,
+ * redirect verify, reconcile sweep), so this is also the single place the
+ * payment receipt email gets queued — in the same transaction as the
+ * transition — and the single place the `purchase` analytics event fires.
+ *
+ * Note the admin "mark as Paid" flow (WhatsApp / manual transfer) does NOT
+ * come through here; it has its own guarded transition in
+ * admin-orders.controller and fires its own purchase event.
  */
 export async function applyPaid(
   fastify: FastifyInstance,
-  order: { id: string; orderNumber: string; email: string | null }
+  order: {
+    id: string;
+    orderNumber: string;
+    email: string | null;
+    total: number;
+    subtotal: number;
+    shippingFee: number;
+    discountAmount: number;
+    paymentMethod: string;
+    paymentGateway: string | null;
+  }
 ): Promise<boolean> {
   const transitioned = await fastify.prisma.$transaction(async (tx) => {
     const { count } = await tx.order.updateMany({
@@ -33,7 +49,13 @@ export async function applyPaid(
     if (count > 0) await enqueueEmail(tx, order, 'PAYMENT_RECEIPT');
     return count > 0;
   });
-  if (transitioned) fastify.log.info(`Order ${order.orderNumber} marked PAID`);
+  if (transitioned) {
+    fastify.log.info(`Order ${order.orderNumber} marked PAID`);
+    // Outside the transaction and after the guard: only a genuine
+    // UNPAID -> PAID transition emits revenue, so duplicate callbacks and
+    // reconcile sweeps can't double-count.
+    capturePurchase(fastify, order);
+  }
   return transitioned;
 }
 
