@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { XCircle } from 'lucide-react';
+import posthog from 'posthog-js';
 import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
 import { getSettings } from '@/lib/api';
@@ -11,6 +12,7 @@ export default function CheckoutFailedPage() {
   const [whatsappNumber, setWhatsappNumber] = useState('601161092723');
 
   useEffect(() => {
+    posthog.capture('checkout_payment_failed');
     getSettings().then((s) => {
       if (s.whatsapp_number) setWhatsappNumber(s.whatsapp_number);
     }).catch(() => {});

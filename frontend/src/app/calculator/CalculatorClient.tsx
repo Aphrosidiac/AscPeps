@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Lightbulb } from 'lucide-react';
+import posthog from 'posthog-js';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/Input';
 import { SyringeGauge } from '@/components/calculator/SyringeGauge';
@@ -133,6 +134,20 @@ export function CalculatorClient() {
       mgPerUnit: concentration / 100,
     };
   }, [filledCount, validStrength, validWater, validDose, strengthMg, waterMl, doseMg]);
+
+  // Fire once, when the result panel first becomes visible. Doing this in an
+  // effect keyed on `effective` rather than inside the click handlers matters
+  // twice over: the handlers read the validity flags from the render that
+  // preceded their own setState, so they test stale values, and they only
+  // cover the preset buttons — a user typing custom amounts would never have
+  // registered as having used the calculator at all.
+  const capturedUse = useRef(false);
+  useEffect(() => {
+    if (effective && !capturedUse.current) {
+      capturedUse.current = true;
+      posthog.capture('calculator_used', { inputs_filled: filledCount });
+    }
+  }, [effective, filledCount]);
 
   const selectStrength = (v: number) => {
     setStrength(v);

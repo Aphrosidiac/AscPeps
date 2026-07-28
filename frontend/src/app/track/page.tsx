@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Search, Package, Truck, FileText } from 'lucide-react';
+import posthog from 'posthog-js';
 import { lookupOrders } from '@/lib/api';
 import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@/lib/constants';
@@ -31,6 +32,10 @@ export default function TrackPage() {
         orderNumber.trim() || undefined,
       );
       setOrders(result);
+      posthog.capture('order_tracked', {
+        orders_found: result.length,
+        search_type: normalizedPhone.length >= 10 ? 'phone' : 'order_number',
+      });
     } catch {
       setOrders([]);
     } finally {

@@ -19,6 +19,11 @@ const nextConfig: NextConfig = {
     // product photo 400'd with "isn't a valid image ... received null".
     // Proxying the same path to the backend fixes both that internal fetch
     // and any direct browser request to /uploads/*.
+    // PostHog's /ingest proxy is deliberately NOT here — it's an nginx
+    // location block instead (see docs/posthog.md). Proxying it through Next
+    // would put analytics traffic through a Node process on a memory-tight
+    // box, and would require `skipTrailingSlashRedirect: true`, which changes
+    // URL canonicalisation for every route on the site.
     return [{ source: "/uploads/:path*", destination: `${API_URL}/uploads/:path*` }];
   },
   async redirects() {
