@@ -62,6 +62,17 @@ if (token) {
       // deprecated in this version and warns on every init.)
       before_send: (event) => {
         if (!event) return event;
+
+        // Diagnostic: add ?__ph_trace=1 to any URL to log every event name
+        // reaching this hook, in production too. Production builds run with
+        // debug:false (which also disables PostHog's own ?__posthog_debug=1),
+        // and the failure mode this integration actually hit — $pageview
+        // silently never being captured while everything else worked — is
+        // invisible from the outside without something like this.
+        if (typeof window !== "undefined" && window.location.search.includes("__ph_trace=1")) {
+          console.info("[ph-trace]", event.event);
+        }
+
         const url = String(event.properties?.$current_url || "");
 
         // Staff aren't customers: drop admin events outright so internal
