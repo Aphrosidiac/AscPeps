@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail } from 'lucide-react';
-import posthog from 'posthog-js';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -100,7 +99,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
-        <button onClick={() => { posthog.capture('admin_logged_out'); posthog.reset(); logout(); router.push('/admin/login'); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-danger transition-colors cursor-pointer">
+        <button onClick={() => { logout(); router.push('/admin/login'); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-danger transition-colors cursor-pointer">
           <LogOut className="w-4 h-4" />
           Logout
         </button>

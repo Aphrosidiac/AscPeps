@@ -164,13 +164,26 @@ export default function CheckoutPage() {
 
       idempotencyKeyRef.current = null; // success — next order gets a fresh key
 
-      posthog.capture('order_placed', {
+      // Deliberately NOT called "purchase" and deliberately carries no revenue.
+      // At this point the order row exists but nothing has been paid: for
+      // BILLPLZ the customer hasn't even reached the gateway yet, and
+      // abandoning there is common enough that reconcileStaleOrders exists to
+      // restock it. Revenue is emitted server-side from applyPaid() once
+      // payment actually clears. Treat this event as "reached the end of the
+      // form", i.e. the last funnel step before money.
+      posthog.capture('checkout_submitted', {
         order_number: result.order.orderNumber,
         payment_method: paymentMethod,
         item_count: items.length,
-        total_cents: orderTotal,
+        cart_value_cents: orderTotal,
         discount_applied: !!appliedDiscount,
       });
+
+      // Bind this browsing session to the id the server will use when it
+      // emits `purchase` for this order. Without it the server-side purchase
+      // lands on its own personless id and every funnel breaks at the final
+      // step. Must happen before the gateway redirect below.
+      posthog.alias(`order_${result.order.orderNumber}`);
 
       if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
         clearCart();

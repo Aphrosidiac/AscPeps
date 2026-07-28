@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock } from 'lucide-react';
-import posthog from 'posthog-js';
 import { adminLogin } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
@@ -28,8 +27,6 @@ export default function AdminLoginPage() {
     try {
       const { token } = await adminLogin(email, password);
       setToken(token);
-      posthog.identify(email, { email, role: 'admin' });
-      posthog.capture('admin_logged_in');
       router.push('/admin/dashboard');
     } catch {
       setError('Invalid email or password');
