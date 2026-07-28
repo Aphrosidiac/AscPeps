@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShoppingCart, Check } from 'lucide-react';
+import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
@@ -73,6 +74,14 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         imageUrl: addOn.imageUrl,
       });
     }
+    posthog.capture('add_to_cart', {
+      variant_id: variantId,
+      product_code: code,
+      variant_size: size,
+      quantity,
+      price_cents: price,
+      add_on_count: selectedAddOnIds.length,
+    });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };

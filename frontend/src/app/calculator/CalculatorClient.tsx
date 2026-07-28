@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Lightbulb } from 'lucide-react';
+import posthog from 'posthog-js';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/Input';
 import { SyringeGauge } from '@/components/calculator/SyringeGauge';
@@ -137,14 +138,24 @@ export function CalculatorClient() {
   const selectStrength = (v: number) => {
     setStrength(v);
     setStrengthCustom('');
+    // Fire when this selection brings the result panel into view for the first time
+    if (!validStrength && (validWater ? 1 : 0) + (validDose ? 1 : 0) >= 1) {
+      posthog.capture('calculator_used', { triggered_by: 'strength' });
+    }
   };
   const selectWater = (v: number) => {
     setWater(v);
     setWaterCustom('');
+    if (!validWater && (validStrength ? 1 : 0) + (validDose ? 1 : 0) >= 1) {
+      posthog.capture('calculator_used', { triggered_by: 'water' });
+    }
   };
   const selectDose = (v: number) => {
     setDose(v);
     setDoseCustom('');
+    if (!validDose && (validStrength ? 1 : 0) + (validWater ? 1 : 0) >= 1) {
+      posthog.capture('calculator_used', { triggered_by: 'dose' });
+    }
   };
 
   return (

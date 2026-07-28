@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Check, ShieldCheck, Truck } from 'lucide-react';
+import posthog from 'posthog-js';
 import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
@@ -81,7 +82,16 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
                   <button
                     key={v.id}
                     type="button"
-                    onClick={() => setSelectedId(v.id)}
+                    onClick={() => {
+                      if (v.id !== variant.id) {
+                        posthog.capture('product_variant_selected', {
+                          product_name: product.name,
+                          variant_code: v.code,
+                          variant_size: v.size,
+                        });
+                      }
+                      setSelectedId(v.id);
+                    }}
                     aria-pressed={selected}
                     className={`shrink-0 flex flex-col items-center gap-1.5 rounded-lg border px-3 py-2 min-w-[76px] transition-colors cursor-pointer ${
                       selected ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
