@@ -29,18 +29,11 @@ if (token) {
       // Where "open in PostHog" links point. Ingestion and the dashboard are
       // different hostnames; this only affects link targets, not data.
       ui_host: host.replace("://eu.i.", "://eu.").replace("://us.i.", "://us."),
-      // DO NOT "upgrade" this date without re-verifying that $pageview still
-      // fires. This is the value PostHog's own Next.js docs specify, and it
-      // sets capture_pageview: 'history_change', which handles both the
-      // initial load and App Router client-side navigations.
-      //
-      // "2026-06-25" (the newest value the type union accepts) silently stops
-      // $pageview being captured at all — no error, no warning, autocapture
-      // and $pageleave keep working, so the install looks healthy while
-      // recording no pageviews. That's what PostHog's Installation Health
-      // flagged here. Confirmed by logging every event reaching before_send:
-      // under "2026-06-25" only $set ever arrived, under "2026-05-30" a
-      // $pageview arrives on every page load.
+      // The value PostHog's own Next.js docs specify. Keep it pinned; newer
+      // values in the ConfigDefaults union change capture behaviour and are
+      // not worth chasing. (Note: an earlier comment here blamed the defaults
+      // date for $pageview never firing — that was wrong. The real cause was
+      // this project's remote config, see capture_pageview below.)
       defaults: "2026-05-30",
       capture_exceptions: true,
 
