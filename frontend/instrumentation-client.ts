@@ -2,12 +2,13 @@ import posthog from "posthog-js";
 
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
-// Where events are ingested. Defaults to PostHog's EU region: this store
-// serves Malaysian customers under the PDPA, and EU ingestion is the more
-// defensible of the two hosted options. Must match the region the project
-// token was actually issued in — a US token pointed at the EU host silently
-// drops every event.
-const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://eu.i.posthog.com";
+// Where events are ingested. Defaults to US because that is the region the
+// live project (ID 531983) was actually created in. This MUST match the
+// token's region — a US token pointed at the EU host is not an error, it just
+// silently drops every event, so the default is pinned to reality rather than
+// to a preference. Change both this and POSTHOG_HOST in the backend together
+// if the project is ever recreated in the EU.
+const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
 // Optional same-origin path (set to "/ingest" in production) proxied to
 // PostHog by nginx. Keeps ingestion on ascendpeptides.my so tracker blockers
