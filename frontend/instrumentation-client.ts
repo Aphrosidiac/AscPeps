@@ -44,6 +44,17 @@ if (token) {
       defaults: "2026-05-30",
       capture_exceptions: true,
 
+      // Pageviews come from <PostHogPageView>, not from PostHog's automatic
+      // capture — see that component for the isolation evidence. In short:
+      // this project's remote config suppresses the automatic $pageview, so
+      // the documented "defaults makes it automatic" path records nothing.
+      // Pinned false so a future PostHog change re-enabling it can't silently
+      // double-count every pageview.
+      capture_pageview: false,
+      // Defaults to "if_capture_pageview", so the line above would disable it
+      // as a side effect. Pin it on — $pageleave drives bounce rate.
+      capture_pageleave: true,
+
       // --- Privacy ---
       // Checkout collects name, phone, address and email. Session replay is
       // disabled here in code rather than left to the project's UI toggle,

@@ -4,6 +4,7 @@ import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
 import { SiteChrome } from '@/components/layout/SiteChrome';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
+import { PostHogPageView } from '@/components/PostHogPageView';
 import { getSettingsServer, getProductsServer } from '@/lib/server-api';
 import './globals.css';
 
@@ -134,6 +135,9 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-4PHY1Z9BHD');`}
         </Script>
+        {/* PostHog's automatic $pageview is suppressed by this project's
+            remote config — see the component. Renders nothing. */}
+        <PostHogPageView />
         <CartProvider>
           <SiteChrome announcementEnabled={announcementEnabled} announcementText={settings.announcement_text || ''}>
             {children}
