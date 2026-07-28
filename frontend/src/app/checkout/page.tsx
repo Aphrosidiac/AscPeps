@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
+import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { createOrder, getSettings, validateDiscount } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
@@ -111,6 +112,10 @@ export default function CheckoutPage() {
       const result = await validateDiscount(discountCode.trim(), total);
       setAppliedDiscount(result);
       setDiscountCode('');
+      posthog.capture('discount_applied', {
+        discount_type: result.discountType,
+        discount_amount_cents: result.discountAmount,
+      });
     } catch (err: unknown) {
       setDiscountError(apiErrorMessage(err) || 'Invalid discount code');
     } finally {
@@ -158,6 +163,14 @@ export default function CheckoutPage() {
       });
 
       idempotencyKeyRef.current = null; // success — next order gets a fresh key
+
+      posthog.capture('order_placed', {
+        order_number: result.order.orderNumber,
+        payment_method: paymentMethod,
+        item_count: items.length,
+        total_cents: orderTotal,
+        discount_applied: !!appliedDiscount,
+      });
 
       if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
         clearCart();
@@ -323,7 +336,7 @@ export default function CheckoutPage() {
             <div className="grid sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setPaymentMethod('WHATSAPP')}
+                onClick={() => { setPaymentMethod('WHATSAPP'); posthog.capture('payment_method_selected', { method: 'WHATSAPP' }); }}
                 className={cn(
                   'p-4 rounded-xl border-2 text-left transition-all cursor-pointer group',
                   paymentMethod === 'WHATSAPP' ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
@@ -339,7 +352,7 @@ export default function CheckoutPage() {
               </button>
               <button
                 type="button"
-                onClick={() => onlinePaymentEnabled && setPaymentMethod('BILLPLZ')}
+                onClick={() => { if (onlinePaymentEnabled) { setPaymentMethod('BILLPLZ'); posthog.capture('payment_method_selected', { method: 'BILLPLZ', gateway: paymentGateway }); } }}
                 disabled={!onlinePaymentEnabled}
                 className={cn(
                   'p-4 rounded-xl border-2 text-left transition-all relative',

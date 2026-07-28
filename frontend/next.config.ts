@@ -5,6 +5,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3105";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Required to support PostHog trailing slash API requests through the proxy
+  skipTrailingSlashRedirect: true,
   experimental: {
     // Inlines the small (~11KB) atomic Tailwind CSS bundle into <head>
     // instead of a render-blocking <link>, per the performance audit's
@@ -19,7 +21,12 @@ const nextConfig: NextConfig = {
     // product photo 400'd with "isn't a valid image ... received null".
     // Proxying the same path to the backend fixes both that internal fetch
     // and any direct browser request to /uploads/*.
-    return [{ source: "/uploads/:path*", destination: `${API_URL}/uploads/:path*` }];
+    return [
+      { source: "/uploads/:path*", destination: `${API_URL}/uploads/:path*` },
+      { source: "/ingest/static/:path*", destination: "https://us-assets.i.posthog.com/static/:path*" },
+      { source: "/ingest/array/:path*", destination: "https://us-assets.i.posthog.com/array/:path*" },
+      { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
+    ];
   },
   async redirects() {
     // One entry per pre-rework per-size product URL (e.g.
