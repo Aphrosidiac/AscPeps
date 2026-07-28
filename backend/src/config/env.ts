@@ -40,7 +40,9 @@ const envSchema = z.object({
   // sense) — but it lives here unprefixed because it must never be inlined
   // into the client bundle from this side. Absent key = analytics off.
   POSTHOG_API_KEY: z.string().optional(),
-  POSTHOG_HOST: z.string().default('https://eu.i.posthog.com'),
+  // US to match the live project's region. A region mismatch does not error,
+  // it silently drops events — keep in step with NEXT_PUBLIC_POSTHOG_HOST.
+  POSTHOG_HOST: z.string().default('https://us.i.posthog.com'),
   POSTHOG_ENABLED: envBool(false),
 });
 
