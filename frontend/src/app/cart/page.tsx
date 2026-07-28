@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Trash2, ShoppingCart } from 'lucide-react';
+import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -48,7 +49,7 @@ export default function CartPage() {
                   <p className="text-sm text-text-secondary">{formatPrice(item.price)}</p>
                 </div>
 
-                <button onClick={() => removeItem(item.variantId)} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
+                <button onClick={() => { removeItem(item.variantId); posthog.capture('remove_from_cart', { variant_id: item.variantId, product_code: item.code, quantity: item.quantity }); }} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -90,7 +91,7 @@ export default function CartPage() {
               <span>{formatPrice(total)}</span>
             </div>
           </div>
-          <Link href="/checkout" className="block">
+          <Link href="/checkout" className="block" onClick={() => posthog.capture('checkout_started', { item_count: itemCount, total_cents: total })}>
             <Button className="w-full" size="lg">Proceed to Checkout</Button>
           </Link>
         </div>
