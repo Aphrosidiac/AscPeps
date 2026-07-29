@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -246,7 +247,16 @@ function AdminOrdersContent() {
                 >
                   <div className="flex items-center gap-4 sm:gap-6 min-w-0">
                     <div className="min-w-0">
-                      <p className="font-display font-semibold">{order.orderNumber}</p>
+                      {/* The order number is the way into the full detail page;
+                          the rest of the row still toggles the inline expand,
+                          so stop the click here from doing both. */}
+                      <Link
+                        href={`/admin/orders/${order.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-display font-semibold hover:text-primary hover:underline transition-colors"
+                      >
+                        {order.orderNumber}
+                      </Link>
                       <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
                     </div>
                     <div className="hidden sm:block min-w-0">

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -103,8 +103,14 @@ export const adminUpdateProduct = (token: string, id: string, data: Record<strin
 export const adminGetOrders = (token: string, params?: Record<string, string>) =>
   api.get<PaginatedResponse<Order>>('/api/v1/admin/orders', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
 
+export const adminGetOrder = (token: string, id: string) =>
+  api.get<Order>(`/api/v1/admin/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminUpdateOrder = (token: string, id: string, data: Record<string, unknown>) =>
   api.patch(`/api/v1/admin/orders/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminUpdateOrderProfitShares = (token: string, id: string, shares: OrderProfitShareInput[]) =>
+  api.put<OrderProfitShare[]>(`/api/v1/admin/orders/${id}/profit-shares`, { shares }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
 export const adminDeleteOrder = (token: string, id: string) =>
   api.delete(`/api/v1/admin/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);

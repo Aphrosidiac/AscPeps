@@ -164,12 +164,29 @@ export interface Order {
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;
   trackingNumber: string | null;
+  // Cents. null means no admin has entered a cost yet — which the Profit
+  // Sharing tab shows as unknown profit, not as a 100% margin.
+  costAmount?: number | null;
   deletedAt: string | null;
   createdAt: string;
   items: OrderItem[];
   // Only present on admin order responses.
   emails?: OrderEmail[];
+  // Only present on the admin single-order response, not the list.
+  profitShares?: OrderProfitShare[];
 }
+
+export interface OrderProfitShare {
+  id: string;
+  orderId: string;
+  name: string;
+  // Basis points — 5000 = 50%. Integer so an even three-way split is exact.
+  shareBps: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OrderProfitShareInput = Pick<OrderProfitShare, 'name' | 'shareBps'>;
 
 export interface DiscountCode {
   id: string;
