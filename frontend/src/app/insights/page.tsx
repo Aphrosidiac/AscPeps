@@ -33,11 +33,7 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <p className="text-xs text-text-muted font-medium uppercase tracking-wider mb-2">Research &amp; Insights</p>
-      <h1 className="font-display text-3xl font-bold mb-3">Insights</h1>
-      <p className="text-text-secondary mb-8 max-w-2xl leading-relaxed">
-        Peptide research, dosing science and product updates — written by Asywa, Founder &amp; CEO of ASCEND,
-        drawing on the same peer-reviewed literature cited on every product page.
-      </p>
+      <h1 className="font-display text-3xl font-bold mb-8">Insights</h1>
 
       {categories.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-8">
