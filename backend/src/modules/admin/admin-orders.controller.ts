@@ -11,6 +11,24 @@ const updateOrderSchema = z.object({
   paymentStatus: z.enum(['UNPAID', 'PAID', 'FAILED', 'REFUNDED']).optional(),
   trackingNumber: z.string().max(50).optional(),
   notes: z.string().optional(),
+  // Cents. Nullable so the Profit Sharing tab can clear a cost back to
+  // "not entered yet" — .nullable() rather than just .optional() because those
+  // are different intents here and only the former can write a NULL back.
+  costAmount: z.number().int().min(0).max(100_000_000).nullable().optional(),
+});
+
+// No .default() on any field — this schema is only ever used for partial
+// updates, and a default would silently write itself on every request that
+// omits the key. See the same footgun documented on the product schemas.
+const profitSharesSchema = z.object({
+  shares: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1, 'Name is required').max(60),
+        shareBps: z.number().int().min(0).max(10_000),
+      })
+    )
+    .max(10),
 });
 
 const resendEmailSchema = z.object({
@@ -76,11 +94,55 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
       items: { include: { variant: { include: { product: true } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
       emails: EMAIL_STATUS_SELECT,
+      profitShares: { orderBy: { createdAt: 'asc' } },
     },
   });
 
   if (!order) throw { statusCode: 404, message: 'Order not found' };
   return order;
+}
+
+// Replaces the whole split in one shot rather than exposing per-row CRUD: the
+// shares are only meaningful as a set (they have to add up), so a partial edit
+// that leaves the total at something other than 100% is not a state worth
+// being able to persist.
+export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id: string, body: unknown) {
+  const { shares } = profitSharesSchema.parse(body);
+
+  const order = await fastify.prisma.order.findUnique({ where: { id }, select: { id: true } });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+
+  // An empty list is allowed (it means "no split recorded"); a non-empty one
+  // must be exact. Validated server-side and not just in the form, since the
+  // numbers here decide what people get paid.
+  if (shares.length > 0) {
+    const total = shares.reduce((sum, s) => sum + s.shareBps, 0);
+    if (total !== 10_000) {
+      throw {
+        statusCode: 400,
+        message: `Shares must add up to exactly 100% — currently ${(total / 100).toFixed(2)}%.`,
+      };
+    }
+    const names = shares.map((s) => s.name.toLowerCase());
+    if (new Set(names).size !== names.length) {
+      throw { statusCode: 400, message: 'Each person can only appear once in the split.' };
+    }
+  }
+
+  // Delete-then-recreate inside a transaction: ids here carry no meaning to
+  // anything else, and it keeps "what's stored" identical to "what was sent"
+  // without diffing.
+  await fastify.prisma.$transaction([
+    fastify.prisma.orderProfitShare.deleteMany({ where: { orderId: id } }),
+    ...(shares.length > 0
+      ? [fastify.prisma.orderProfitShare.createMany({ data: shares.map((s) => ({ orderId: id, ...s })) })]
+      : []),
+  ]);
+
+  return fastify.prisma.orderProfitShare.findMany({
+    where: { orderId: id },
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
 export async function adminUpdateOrder(fastify: FastifyInstance, id: string, body: unknown) {

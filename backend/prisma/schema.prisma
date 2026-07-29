@@ -168,6 +168,13 @@ model Order {
   discountCodeId  String?
   notes           String?
   trackingNumber  String?
+  // Cost of goods for this order, in cents, entered by an admin on the order
+  // detail page's Profit Sharing tab. Nullable rather than defaulted to 0 so
+  // "nobody has filled this in yet" stays distinguishable from "this order
+  // genuinely cost nothing" — the tab shows profit as unknown, not as 100%
+  // margin, until it's set. Nothing in the catalogue tracks cost per variant
+  // yet, so this is deliberately a single manual figure for the whole order.
+  costAmount      Int?
   idempotencyKey  String?       @unique
   stockRestored   Boolean       @default(false)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
@@ -179,6 +186,7 @@ model Order {
   items        OrderItem[]
   discountCode DiscountCode? @relation(fields: [discountCodeId], references: [id])
   emails       EmailOutbox[]
+  profitShares OrderProfitShare[]
 
   @@index([phone])
   @@index([status])
@@ -205,6 +213,34 @@ model OrderItem {
   @@index([orderId])
   @@index([variantId])
   @@map("order_items")
+}
+
+// How one order's profit is split between the people behind ASCEND. Stored per
+// order rather than as one global rule because the split genuinely can differ
+// order to order (a partner who sourced a particular batch, a one-off referral
+// cut), and because backfilling a changed global rule onto historical orders
+// would silently rewrite what people were already told they earned.
+//
+// Deliberately minimal — this is a first pass. Payout tracking (paid/unpaid,
+// date, method), linking a share to a real user account, and per-item rather
+// than per-order splits are all obvious next steps and none of them are here.
+model OrderProfitShare {
+  id      String @id @default(cuid())
+  orderId String
+  // Free-text for now; no User/Partner table exists to point at yet.
+  name    String
+  // Basis points, not whole percent — 5000 = 50%. An even three-way split is
+  // the immediate reason (3333/3333/3334), and it matches the codebase's
+  // existing "money and rates are integers, never floats" convention.
+  shareBps Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_profit_shares")
 }
 
 enum EmailType {
