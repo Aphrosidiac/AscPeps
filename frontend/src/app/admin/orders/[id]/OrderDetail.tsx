@@ -85,7 +85,11 @@ function profitSummary(
   const itemsRevenue = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
   const revenue = order.total;
 
-  const unpricedCount = order.items.filter((i) => unitCostFor(i.id) === null).length;
+  // An order with no lines counts as uncosted, not as "fully costed with zero
+  // cost" — matching backend/src/utils/profit.ts, which would otherwise exclude
+  // it from analytics while this page happily showed it a profit.
+  const noItems = order.items.length === 0;
+  const unpricedCount = noItems ? 1 : order.items.filter((i) => unitCostFor(i.id) === null).length;
   const itemCostTotal = order.items.reduce((sum, i) => sum + (unitCostFor(i.id) ?? 0) * i.quantity, 0);
   const extrasTotal = extraCents.reduce((sum, c) => sum + c, 0);
 

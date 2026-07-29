@@ -59,6 +59,24 @@ export async function getDashboardStats(fastify: FastifyInstance) {
   };
 }
 
+// The business, its customers and every timestamp shown in the UI are Malaysian
+// time. `toISOString().slice(0, 10)` buckets by the UTC date instead, which
+// silently pushes every order placed between 00:00 and 08:00 MYT onto the
+// previous day's bar — a third of every day landing in the wrong column while
+// the orders list shows the correct date. Pinned rather than read from the host
+// so the numbers don't change if the VPS timezone ever does.
+const REPORTING_TIME_ZONE = 'Asia/Kuala_Lumpur';
+
+// en-CA gives YYYY-MM-DD, which is what the day keys need.
+const dayKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: REPORTING_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const localDayKey = (date: Date): string => dayKeyFormatter.format(date);
+
 interface DailyPoint {
   date: string;
   revenue: number;
@@ -101,8 +119,9 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   });
 
   const dailyRevenue: Record<string, DailyPoint> = {};
-  for (let d = new Date(since); d <= new Date(); d.setDate(d.getDate() + 1)) {
-    const key = d.toISOString().slice(0, 10);
+  const endOfRange = new Date();
+  for (let d = new Date(since); d <= endOfRange; d.setDate(d.getDate() + 1)) {
+    const key = localDayKey(d);
     dailyRevenue[key] = { date: key, revenue: 0, orders: 0, costedRevenue: 0, cost: 0, profit: 0 };
   }
 
@@ -128,7 +147,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   const profitByPerson: Record<string, number> = {};
 
   for (const order of orders) {
-    const dayKey = order.createdAt.toISOString().slice(0, 10);
+    const dayKey = localDayKey(order.createdAt);
     if (dailyRevenue[dayKey]) {
       dailyRevenue[dayKey].orders++;
       if (order.paymentStatus === 'PAID') {

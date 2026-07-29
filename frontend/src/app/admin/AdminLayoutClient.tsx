@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -99,6 +99,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+        {/* Back to the storefront. A plain <Link> rather than target="_blank"
+            so it's a normal same-tab navigation; the admin session survives it
+            either way since the token lives in localStorage. */}
+        <Link
+          href="/"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors border-t border-border mt-2 pt-3"
+        >
+          <Store className="w-4 h-4" />
+          View Storefront
+        </Link>
         <button onClick={() => { logout(); router.push('/admin/login'); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-danger transition-colors cursor-pointer">
           <LogOut className="w-4 h-4" />
           Logout

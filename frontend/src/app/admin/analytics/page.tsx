@@ -101,14 +101,22 @@ const PAYMENT_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp (Manual)',
 };
 
+/**
+ * Day keys from the API are bare "YYYY-MM-DD" in Malaysian time. `new Date()`
+ * parses a bare date as UTC midnight, so an admin viewing from a timezone
+ * behind UTC would see every bar labelled one day early. Appending a time makes
+ * it parse as local midnight, which keeps the label matching the key.
+ */
+function parseDayKey(dateStr: string): Date {
+  return new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr);
+}
+
 function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
+  return parseDayKey(dateStr).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
 }
 
 function formatFullDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' });
+  return parseDayKey(dateStr).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export default function AdminAnalyticsPage() {
