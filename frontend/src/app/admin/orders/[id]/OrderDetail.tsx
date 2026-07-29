@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, User, Users, FileText, Truck, Trash2, RotateCcw, Mail, ExternalLink,
-  Plus, X, Hash, Scale, Package, Coins, Wallet,
+  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -20,12 +20,14 @@ import type { Order, OrderEmail, OrderProfitShareInput } from '@/types';
 
 // ASCEND's pipeline, not a copy of the source design's six purchasing stages —
 // this catalogue has no quotation/PO/warehouse chain to model. The stepper and
-// the tab bar are two views of the same three sections and stay in sync;
-// clicking either moves both.
+// the tab bar are two views of the same sections and stay in sync; clicking
+// either moves both. Order Complete is read-only and reports only what has
+// actually been saved, which is why it reads as a summary rather than a form.
 const STEPS = [
   { key: 'info', label: 'Order Info' },
   { key: 'detail', label: 'Order Detail' },
   { key: 'profit', label: 'Profit Sharing' },
+  { key: 'complete', label: 'Order Complete' },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]['key'];
@@ -65,6 +67,34 @@ function allocate(profit: number, bps: number[]): number[] {
 }
 
 const bpsToPercent = (bps: number) => (bps / 100).toFixed(2).replace(/\.00$/, '');
+
+/**
+ * The one place the profit arithmetic lives. Both the Profit Sharing tab (from
+ * whatever is currently typed into its fields) and the Order Complete tab (from
+ * what's actually saved) call this — two tabs quietly disagreeing about the
+ * bottom line is exactly the bug worth designing out on a page that decides
+ * what people are paid.
+ *
+ * `unitCostFor` returns cents per unit, or null for "this line isn't priced".
+ */
+function profitSummary(
+  order: Order,
+  unitCostFor: (itemId: string) => number | null,
+  extraCents: number[]
+) {
+  const itemsRevenue = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const revenue = order.total;
+
+  const unpricedCount = order.items.filter((i) => unitCostFor(i.id) === null).length;
+  const itemCostTotal = order.items.reduce((sum, i) => sum + (unitCostFor(i.id) ?? 0) * i.quantity, 0);
+  const extrasTotal = extraCents.reduce((sum, c) => sum + c, 0);
+
+  // Withheld while any line is unpriced: a partial total reads as a real profit
+  // figure and is simply wrong.
+  const netProfit = unpricedCount > 0 ? null : revenue - itemCostTotal - extrasTotal;
+
+  return { itemsRevenue, revenue, unpricedCount, itemCostTotal, extrasTotal, netProfit };
+}
 
 // Ringgit text field <-> integer cents. Empty string is a real state ("not
 // entered"), distinct from 0, so it maps to null rather than to zero.
@@ -229,6 +259,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
       {step === 'info' && <OrderInfoTab order={order} />}
       {step === 'detail' && <OrderDetailTab order={order} onChange={load} />}
       {step === 'profit' && <ProfitSharingTab order={order} onChange={load} />}
+      {step === 'complete' && <OrderCompleteTab order={order} onGoTo={setStep} />}
     </div>
   );
 }
@@ -594,26 +625,19 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const [saved, setSaved] = useState(false);
   const touch = () => setSaved(false);
 
-  /* ----- revenue: every ringgit the customer actually paid, shipping included */
-  const itemsRevenue = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  /* ----- live totals, from what's currently typed rather than what's saved */
   const shipping = order.shippingFee;
   const discount = order.discountAmount;
-  const revenue = order.total;
+  const { itemsRevenue, revenue, unpricedCount, itemCostTotal, extrasTotal, netProfit } = profitSummary(
+    order,
+    (itemId) => inputToCents(itemCosts[itemId] ?? ''),
+    extras.map((e) => inputToCents(e.amount) ?? 0)
+  );
 
-  /* ----- costs */
   const lineCost = (itemId: string, quantity: number) => {
     const cents = inputToCents(itemCosts[itemId] ?? '');
     return cents === null ? null : cents * quantity;
   };
-
-  const unpricedCount = order.items.filter((i) => inputToCents(itemCosts[i.id] ?? '') === null).length;
-  const itemCostTotal = order.items.reduce((sum, i) => sum + (lineCost(i.id, i.quantity) ?? 0), 0);
-  const extrasTotal = extras.reduce((sum, e) => sum + (inputToCents(e.amount) ?? 0), 0);
-
-  // Deliberately withheld until every line is priced. A partial total would
-  // render as a plausible-looking profit that is simply wrong, and this page
-  // is the input to what people get paid.
-  const netProfit = unpricedCount > 0 ? null : revenue - itemCostTotal - extrasTotal;
 
   const totalBps = shares.reduce((sum, s) => sum + s.shareBps, 0);
   const amounts = netProfit === null ? [] : allocate(netProfit, shares.map((s) => s.shareBps));
@@ -968,6 +992,224 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         </button>
         {saved && !dirty && <span className="text-sm text-success">Saved</span>}
       </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------- Order Complete */
+
+function StatTile({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: 'good' | 'bad' }) {
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5">
+      <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">{label}</p>
+      <p className={`font-display text-2xl font-bold ${tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : ''}`}>
+        {value}
+      </p>
+      {hint && <p className="text-xs text-text-muted mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: StepKey) => void }) {
+  // Reads saved values only — never the Profit Sharing tab's unsaved drafts.
+  // This tab answers "what is recorded against this order", which is a
+  // different question from "what am I currently typing".
+  const { revenue, unpricedCount, itemCostTotal, extrasTotal, netProfit } = profitSummary(
+    order,
+    (itemId) => order.items.find((i) => i.id === itemId)?.unitCost ?? null,
+    (order.extraCosts ?? []).map((c) => c.amount)
+  );
+
+  const shares = order.profitShares ?? [];
+  const sharesTotalBps = shares.reduce((sum, s) => sum + s.shareBps, 0);
+  const amounts = netProfit === null ? [] : allocate(netProfit, shares.map((s) => s.shareBps));
+
+  const cancelled = order.status === 'CANCELLED';
+
+  // Deliberately not the same thing as status === DELIVERED. An order isn't
+  // finished for our purposes until the money is in, it has physically arrived,
+  // and it's costed — otherwise it silently never shows up in what anyone is owed.
+  const checks = [
+    { label: 'Payment received', done: order.paymentStatus === 'PAID', fix: 'detail' as StepKey, todo: `Payment is ${order.paymentStatus.toLowerCase()}` },
+    { label: 'Delivered to customer', done: order.status === 'DELIVERED', fix: 'detail' as StepKey, todo: `Order is ${ORDER_STATUS_LABELS[order.status].toLowerCase()}` },
+    { label: 'All items costed', done: unpricedCount === 0, fix: 'profit' as StepKey, todo: `${unpricedCount} item${unpricedCount === 1 ? '' : 's'} still unpriced` },
+    { label: 'Profit split recorded', done: shares.length > 0 && sharesTotalBps === 10_000, fix: 'profit' as StepKey, todo: shares.length === 0 ? 'No split saved' : 'Split does not total 100%' },
+  ];
+  const outstanding = checks.filter((c) => !c.done);
+
+  return (
+    <div className="space-y-6">
+      {cancelled ? (
+        <div className="bg-danger/10 border border-danger/20 rounded-xl px-5 py-4">
+          <p className="text-sm font-semibold text-danger mb-1">This order was cancelled</p>
+          <p className="text-sm text-text-secondary">
+            Stock was returned and nothing is payable. The figures below are kept for the record only.
+          </p>
+        </div>
+      ) : outstanding.length === 0 ? (
+        <div className="bg-success/10 border border-success/20 rounded-xl px-5 py-4 flex items-start gap-3">
+          <Check className="w-5 h-5 text-success shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-success mb-0.5">This order is complete</p>
+            <p className="text-sm text-text-secondary">Paid, delivered, fully costed, and the split is recorded.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-warning/10 border border-warning/20 rounded-xl px-5 py-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold mb-0.5">
+              {outstanding.length} thing{outstanding.length === 1 ? '' : 's'} left before this order is done
+            </p>
+            <p className="text-sm text-text-secondary">See the checklist below.</p>
+          </div>
+        </div>
+      )}
+
+      {/* The headline numbers */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <StatTile label="Revenue" value={formatPrice(revenue)} hint="Including shipping charged" />
+        <StatTile
+          label="Total costs"
+          value={formatPrice(itemCostTotal + extrasTotal)}
+          hint={`${formatPrice(itemCostTotal)} items + ${formatPrice(extrasTotal)} extras`}
+        />
+        <StatTile
+          label="Net profit"
+          value={netProfit === null ? '—' : formatPrice(netProfit)}
+          tone={netProfit === null ? undefined : netProfit < 0 ? 'bad' : 'good'}
+          hint={
+            netProfit === null
+              ? `${unpricedCount} item${unpricedCount === 1 ? '' : 's'} not costed yet`
+              : revenue > 0
+                ? `${((netProfit / revenue) * 100).toFixed(1)}% margin`
+                : undefined
+          }
+        />
+      </div>
+
+      {/* Profit per person — the number people actually came here for */}
+      <Card title="Profit Per Person" icon={<Users className="w-4 h-4" />}>
+        {shares.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-text-muted mb-4">No split recorded for this order yet.</p>
+            <button
+              onClick={() => onGoTo('profit')}
+              className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer"
+            >
+              Set the split
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-border -my-1">
+            {shares.map((share, i) => (
+              <div key={share.id} className="flex items-center justify-between gap-4 py-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-9 h-9 rounded-full bg-surface-elevated flex items-center justify-center text-xs font-semibold shrink-0">
+                    {share.name.trim().charAt(0).toUpperCase() || '?'}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{share.name}</p>
+                    <p className="text-xs text-text-muted">{bpsToPercent(share.shareBps)}% share</p>
+                  </div>
+                </div>
+                <p className="font-display text-lg font-bold shrink-0">
+                  {netProfit === null ? (
+                    <span className="text-text-muted text-base font-normal">pending costing</span>
+                  ) : (
+                    <span className={netProfit < 0 ? 'text-danger' : ''}>{formatPrice(amounts[i] ?? 0)}</span>
+                  )}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Checklist */}
+      <Card title="Checklist" icon={<Check className="w-4 h-4" />}>
+        <div className="space-y-3">
+          {checks.map((check) => (
+            <div key={check.label} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    check.done ? 'bg-success/15 text-success' : 'bg-surface-elevated text-text-muted'
+                  }`}
+                >
+                  {check.done ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                </span>
+                <span className={`text-sm ${check.done ? '' : 'text-text-secondary'}`}>{check.label}</span>
+              </div>
+              {check.done ? (
+                <span className="text-xs text-success shrink-0">Done</span>
+              ) : (
+                <button
+                  onClick={() => onGoTo(check.fix)}
+                  className="text-xs text-text-muted hover:text-primary transition-colors cursor-pointer shrink-0 text-right inline-flex items-center gap-1.5"
+                >
+                  {check.todo}<span aria-hidden="true">&rarr;</span>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Where the money went */}
+      <Card title="Breakdown" icon={<Receipt className="w-4 h-4" />}>
+        <div className="space-y-1 max-w-md">
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Items</span>
+            <span className="font-medium">{formatPrice(order.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0))}</span>
+          </div>
+          {order.discountAmount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-text-muted">Discount</span>
+              <span className="font-medium text-success">-{formatPrice(order.discountAmount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Shipping charged</span>
+            <span className="font-medium">{order.shippingFee ? formatPrice(order.shippingFee) : 'Free'}</span>
+          </div>
+          <div className="flex justify-between text-sm border-t border-border pt-1.5 mt-1.5">
+            <span className="text-text-muted">Item costs</span>
+            <span className="font-medium text-danger">-{formatPrice(itemCostTotal)}</span>
+          </div>
+          {/* Not indented under Item costs — these are their own deductions, and
+              nesting them read as though they were part of the goods figure. */}
+          {(order.extraCosts ?? []).map((cost) => (
+            <div key={cost.id} className="flex justify-between text-sm">
+              <span className="text-text-muted">{cost.label}</span>
+              <span className="font-medium text-danger">-{formatPrice(cost.amount)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
+            <span>Net profit</span>
+            {netProfit === null ? (
+              <span className="text-text-muted">—</span>
+            ) : (
+              <span className={netProfit < 0 ? 'text-danger' : 'text-success'}>{formatPrice(netProfit)}</span>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Fulfilment facts, so this tab stands alone as the "what happened" view */}
+      <Card title="Record" icon={<Truck className="w-4 h-4" />}>
+        <div className="grid sm:grid-cols-2 gap-x-10">
+          <Field label="Order placed" value={formatDate(order.createdAt)} />
+          <Field label="Order status" value={ORDER_STATUS_LABELS[order.status]} />
+          <Field label="Payment status" value={order.paymentStatus} />
+          <Field
+            label="Paid via"
+            value={order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : `Online (${order.paymentGateway || 'Billplz'})`}
+          />
+          <Field label="Customer" value={order.customerName} />
+          <Field label="Tracking" value={order.trackingNumber ? <span className="font-mono">{order.trackingNumber}</span> : null} />
+        </div>
+      </Card>
     </div>
   );
 }
