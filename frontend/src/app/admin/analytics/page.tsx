@@ -5,10 +5,11 @@ import {
   BarChart3,
   DollarSign,
   ShoppingBag,
-  CheckCircle,
+  Coins,
   TrendingUp,
   CreditCard,
   Package,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetAnalytics } from '@/lib/api';
@@ -24,9 +25,18 @@ interface AnalyticsData {
     failedOrders: number;
     conversionRate: number;
     avgOrderValue: number;
+    totalItemCost: number;
+    totalExtraCost: number;
+    totalCost: number;
+    netProfit: number;
+    profitMargin: number;
+    costedRevenue: number;
+    costedOrders: number;
+    uncostedOrders: number;
   };
-  dailyRevenue: { date: string; revenue: number; orders: number }[];
+  dailyRevenue: { date: string; revenue: number; orders: number; costedRevenue: number; cost: number; profit: number }[];
   topProducts: { name: string; code: string; quantity: number; revenue: number }[];
+  profitShare: { name: string; amount: number }[];
   paymentMethods: Record<string, number>;
   orderStatuses: Record<string, number>;
 }
@@ -36,6 +46,39 @@ const PERIOD_OPTIONS = [
   { label: '30d', days: 30 },
   { label: '90d', days: 90 },
 ] as const;
+
+const SERIES_OPTIONS = [
+  { key: 'revenue', label: 'Revenue' },
+  { key: 'profit', label: 'Profit' },
+] as const;
+
+type SeriesKey = (typeof SERIES_OPTIONS)[number]['key'];
+
+const CHART_HEIGHT = 220;
+const TICK_COUNT = 4;
+/** Roughly how many dated labels fit under the x axis without colliding. */
+const MAX_X_LABELS = 6;
+
+/**
+ * Rounds an axis maximum up to a readable number, so ticks land on values a
+ * person would actually write down. The previous chart divided the raw maximum
+ * in half, which produced axis labels like "RM387.50".
+ */
+function niceCeil(value: number): number {
+  if (value <= 0) return 100;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+  const normalised = value / magnitude;
+  const step = normalised <= 1 ? 1 : normalised <= 2 ? 2 : normalised <= 2.5 ? 2.5 : normalised <= 5 ? 5 : 10;
+  return step * magnitude;
+}
+
+/** Compact axis money — "RM1.2k" rather than "RM1200.00" on a cramped axis. */
+function formatAxis(cents: number): string {
+  const ringgit = cents / 100;
+  const abs = Math.abs(ringgit);
+  if (abs >= 1000) return `RM${(ringgit / 1000).toFixed(abs >= 10_000 ? 0 : 1).replace(/\.0$/, '')}k`;
+  return `RM${abs % 1 === 0 ? ringgit.toFixed(0) : ringgit.toFixed(2)}`;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-400',
@@ -74,6 +117,7 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [days, setDays] = useState(30);
+  const [series, setSeries] = useState<SeriesKey>('revenue');
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
 
   const load = useCallback(() => {
@@ -131,34 +175,70 @@ export default function AdminAnalyticsPage() {
     );
   }
 
-  const { summary, dailyRevenue, topProducts, paymentMethods, orderStatuses } = data;
+  const { summary, dailyRevenue, topProducts, profitShare, paymentMethods, orderStatuses } = data;
 
-  const maxRevenue = Math.max(...dailyRevenue.map((d) => d.revenue), 1);
+  // Profit covers only the paid orders that are fully costed. Saying so on the
+  // card matters: without it, a small netProfit reads as a bad month rather
+  // than as most of the month simply not being costed yet.
+  const hasProfit = summary.costedOrders > 0;
+
+  /* ----- chart scale.
+     The domain is built from a rounded maximum (and a rounded minimum when a
+     day ran at a loss) so ticks land on whole numbers and bars share one
+     baseline. Profit can legitimately go negative, hence the explicit zero
+     line rather than assuming everything grows up from the floor. */
+  const chartPoints = dailyRevenue.map((d) => ({ ...d, value: series === 'revenue' ? d.revenue : d.profit }));
+  const rawMax = Math.max(...chartPoints.map((p) => p.value), 0);
+  const rawMin = Math.min(...chartPoints.map((p) => p.value), 0);
+  const axisTop = niceCeil(rawMax);
+  const axisBottom = rawMin < 0 ? -niceCeil(-rawMin) : 0;
+  const span = axisTop - axisBottom || 1;
+  const zeroPct = ((0 - axisBottom) / span) * 100;
+
+  const ticks = Array.from({ length: TICK_COUNT + 1 }, (_, i) => {
+    const value = axisBottom + (span / TICK_COUNT) * i;
+    return { value: Math.round(value), pct: ((value - axisBottom) / span) * 100 };
+  });
+
+  // Left-to-right stagger, but budgeted: the whole sweep finishes in ~350ms
+  // whether that's 7 bars or 90, so the 90d view doesn't crawl in.
+  const barStagger = chartPoints.length > 0 ? Math.min(24, 350 / chartPoints.length) : 0;
+
+  // Evenly spaced label positions, always including the first and last day.
+  const labelStride = Math.max(1, Math.ceil(chartPoints.length / MAX_X_LABELS));
+  const labelIndices = new Set<number>();
+  for (let i = 0; i < chartPoints.length; i += labelStride) labelIndices.add(i);
+  labelIndices.add(chartPoints.length - 1);
 
   const summaryCards = [
     {
-      label: 'Total Revenue',
+      label: 'Revenue',
       value: formatPrice(summary.totalRevenue),
       icon: DollarSign,
-      subtext: `Since ${formatShortDate(data.period.since)}`,
+      subtext: `${summary.paidOrders} paid order${summary.paidOrders === 1 ? '' : 's'}`,
     },
     {
-      label: 'Total Orders',
+      label: 'Costs',
+      value: hasProfit ? formatPrice(summary.totalCost) : '—',
+      icon: Coins,
+      subtext: hasProfit
+        ? `${formatPrice(summary.totalItemCost)} goods + ${formatPrice(summary.totalExtraCost)} extras`
+        : 'Nothing costed yet',
+    },
+    {
+      label: 'Net Profit',
+      value: hasProfit ? formatPrice(summary.netProfit) : '—',
+      icon: TrendingUp,
+      subtext: hasProfit
+        ? `${summary.profitMargin.toFixed(1)}% margin${summary.uncostedOrders > 0 ? ` · ${summary.uncostedOrders} not costed` : ''}`
+        : 'Cost an order to see profit',
+      tone: hasProfit ? (summary.netProfit < 0 ? 'bad' : 'good') : undefined,
+    },
+    {
+      label: 'Orders',
       value: summary.totalOrders.toLocaleString(),
       icon: ShoppingBag,
-      subtext: `${summary.failedOrders} failed`,
-    },
-    {
-      label: 'Paid Orders',
-      value: summary.paidOrders.toLocaleString(),
-      icon: CheckCircle,
-      subtext: `${((summary.paidOrders / Math.max(summary.totalOrders, 1)) * 100).toFixed(0)}% of total`,
-    },
-    {
-      label: 'Conversion Rate',
-      value: `${summary.conversionRate.toFixed(1)}%`,
-      icon: TrendingUp,
-      subtext: 'Paid / Total',
+      subtext: `${summary.conversionRate.toFixed(0)}% paid · ${summary.failedOrders} failed`,
     },
     {
       label: 'Avg Order Value',
@@ -214,7 +294,13 @@ export default function AdminAnalyticsPage() {
                 <span className="text-xs sm:text-sm text-text-secondary">{card.label}</span>
                 <card.icon className="w-4 h-4 text-text-muted" />
               </div>
-              <p className="font-display text-xl sm:text-2xl font-bold tracking-tight">
+              <p
+                className={cn(
+                  'font-display text-xl sm:text-2xl font-bold tracking-tight',
+                  card.tone === 'good' && 'text-success',
+                  card.tone === 'bad' && 'text-danger'
+                )}
+              >
                 {card.value}
               </p>
               <p className="text-xs text-text-muted mt-1">{card.subtext}</p>
@@ -223,114 +309,189 @@ export default function AdminAnalyticsPage() {
         </div>
       </Animate>
 
-      {/* Revenue Chart */}
+
+      {/* Revenue / Profit Chart */}
       <Animate variant="fadeUp" delay={0.15}>
         <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
             <div>
-              <h2 className="font-display font-semibold text-lg">Daily Revenue</h2>
+              <h2 className="font-display font-semibold text-lg">
+                Daily {series === 'revenue' ? 'Revenue' : 'Profit'}
+              </h2>
               <p className="text-xs text-text-muted mt-0.5">
-                {formatShortDate(data.period.since)} &mdash; Today
+                {formatShortDate(data.period.since)}{' '}&mdash;{' '}Today
               </p>
             </div>
-            <div className="text-right">
-              <p className="font-display text-lg font-bold">
-                {formatPrice(summary.totalRevenue)}
-              </p>
-              <p className="text-xs text-text-muted">
-                {summary.totalOrders} order{summary.totalOrders !== 1 ? 's' : ''}
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="font-display text-lg font-bold">
+                  {series === 'revenue'
+                    ? formatPrice(summary.totalRevenue)
+                    : hasProfit ? formatPrice(summary.netProfit) : '—'}
+                </p>
+                <p className="text-xs text-text-muted">
+                  {series === 'revenue'
+                    ? `${summary.paidOrders} paid order${summary.paidOrders === 1 ? '' : 's'}`
+                    : `${summary.costedOrders} costed order${summary.costedOrders === 1 ? '' : 's'}`}
+                </p>
+              </div>
+              {/* Series toggle rather than a second chart — same axes, same
+                  shape, one thing to read at a time. */}
+              <div className="flex items-center gap-1 bg-surface-elevated rounded-lg p-1 shrink-0">
+                {SERIES_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setSeries(opt.key)}
+                    className={cn(
+                      'px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer',
+                      series === opt.key
+                        ? 'bg-surface text-text-primary shadow-sm'
+                        : 'text-text-muted hover:text-text-primary'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {dailyRevenue.length === 0 ? (
+          {chartPoints.length === 0 ? (
             <div className="text-center py-12">
               <BarChart3 className="w-8 h-8 text-text-muted mx-auto mb-2" />
-              <p className="text-sm text-text-muted">No revenue data for this period</p>
+              <p className="text-sm text-text-muted">No data for this period</p>
             </div>
           ) : (
-            <div className="relative">
-              {/* Y-axis labels */}
-              <div className="flex justify-between text-[10px] text-text-muted mb-2 px-0.5">
-                <span>{formatPrice(maxRevenue)}</span>
-                <span>{formatPrice(Math.round(maxRevenue / 2))}</span>
-                <span>RM0.00</span>
-              </div>
-
-              {/* Chart area */}
-              <div
-                className="flex items-end gap-[2px] sm:gap-1"
-                style={{ height: '200px' }}
-                onMouseLeave={() => setHoveredBar(null)}
-              >
-                {dailyRevenue.map((day, idx) => {
-                  const heightPct = (day.revenue / maxRevenue) * 100;
-                  const isHovered = hoveredBar === idx;
-
-                  return (
-                    <div
-                      key={day.date}
-                      className="relative flex-1 flex items-end justify-center group"
-                      style={{ height: '100%' }}
-                      onMouseEnter={() => setHoveredBar(idx)}
+            <>
+              {/* pt-3 keeps the topmost axis label, which is centred on its
+                  gridline and so sits half above it, clear of the heading. */}
+              <div className="flex pt-3" onMouseLeave={() => setHoveredBar(null)}>
+                {/* Y axis. Labels sit ON their gridline — the previous version
+                    laid these out in a horizontal row, so they read as three
+                    values across the top rather than as an axis. */}
+                <div className="relative w-14 sm:w-16 shrink-0" style={{ height: CHART_HEIGHT }}>
+                  {ticks.map((tick) => (
+                    <span
+                      key={tick.value}
+                      className="absolute right-2 text-[10px] text-text-muted tabular-nums -translate-y-1/2 whitespace-nowrap"
+                      style={{ bottom: `${tick.pct}%` }}
                     >
-                      {/* Tooltip */}
-                      {isHovered && (
-                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-                          <div className="bg-primary text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
-                            <p className="font-semibold">{formatFullDate(day.date)}</p>
-                            <p className="mt-0.5">
-                              {formatPrice(day.revenue)} &middot; {day.orders} order
-                              {day.orders !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                          <div className="w-2 h-2 bg-primary rotate-45 mx-auto -mt-1" />
-                        </div>
+                      {formatAxis(tick.value)}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="relative flex-1 min-w-0" style={{ height: CHART_HEIGHT }}>
+                  {/* Gridlines */}
+                  {ticks.map((tick) => (
+                    <div
+                      key={tick.value}
+                      className={cn(
+                        'absolute inset-x-0 border-t',
+                        tick.value === 0 ? 'border-border' : 'border-border/50'
                       )}
+                      style={{ bottom: `${tick.pct}%` }}
+                    />
+                  ))}
 
-                      {/* Bar */}
-                      <div
+                  {/* Bars. The key is what replays the grow-in animation:
+                      remounting on a series or period change restarts the CSS
+                      keyframes, which a plain class toggle would not. */}
+                  <div key={`${series}-${days}`} className="absolute inset-0 flex items-stretch gap-px">
+                    {chartPoints.map((point, idx) => {
+                      const isHovered = hoveredBar === idx;
+                      const magnitude = Math.abs(point.value);
+                      const heightPct = (magnitude / span) * 100;
+                      const basePct = point.value >= 0 ? zeroPct : zeroPct - heightPct;
+
+                      return (
+                        <div
+                          key={point.date}
+                          className="relative flex-1 min-w-0 cursor-pointer"
+                          onMouseEnter={() => setHoveredBar(idx)}
+                        >
+                          {/* Full-height hover band, so thin bars and empty
+                              days are still targetable and readable. */}
+                          <div
+                            className={cn(
+                              'absolute inset-0 transition-colors',
+                              isHovered ? 'bg-surface-elevated' : 'bg-transparent'
+                            )}
+                          />
+                          {point.value !== 0 && (
+                            <div
+                              className={cn(
+                                'absolute inset-x-0 sm:inset-x-[1px] rounded-t-[2px] transition-colors chart-bar-rise',
+                                point.value < 0
+                                  ? 'bg-danger rounded-t-none rounded-b-[2px]'
+                                  : isHovered
+                                    ? 'bg-primary'
+                                    : 'bg-primary/70'
+                              )}
+                              style={{
+                                bottom: `${basePct}%`,
+                                height: `${Math.max(heightPct, 0.8)}%`,
+                                transformOrigin: point.value < 0 ? 'top' : 'bottom',
+                                animationDelay: `${idx * barStagger}ms`,
+                              }}
+                            />
+                          )}
+
+                          {isHovered && (
+                            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                              <div className="bg-primary text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                                <p className="font-semibold">{formatFullDate(point.date)}</p>
+                                <p className="mt-1">
+                                  Revenue {formatPrice(point.revenue)} &middot; {point.orders} order
+                                  {point.orders !== 1 ? 's' : ''}
+                                </p>
+                                {point.costedRevenue > 0 && (
+                                  <p className="opacity-80">
+                                    Profit {formatPrice(point.profit)} on {formatPrice(point.costedRevenue)} costed
+                                  </p>
+                                )}
+                              </div>
+                              <div className="w-2 h-2 bg-primary rotate-45 mx-auto -mt-1" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* X axis — labels aligned to their own bar slot rather than
+                  spread with justify-between, which never lined up. */}
+              <div className="flex gap-px mt-2 ml-14 sm:ml-16">
+                {chartPoints.map((point, idx) => (
+                  <div key={point.date} className="relative flex-1 min-w-0 h-4">
+                    {labelIndices.has(idx) && (
+                      <span
                         className={cn(
-                          'w-full rounded-t-sm transition-all duration-200 cursor-pointer',
-                          isHovered ? 'opacity-100' : 'opacity-80 hover:opacity-100'
+                          'absolute text-[10px] text-text-muted whitespace-nowrap top-0',
+                          idx === 0
+                            ? 'left-0'
+                            : idx === chartPoints.length - 1
+                              ? 'right-0'
+                              : 'left-1/2 -translate-x-1/2'
                         )}
-                        style={{
-                          height: `${Math.max(heightPct, day.revenue > 0 ? 2 : 0)}%`,
-                          background:
-                            day.revenue > 0
-                              ? 'linear-gradient(to top, #0A0A0A, #404040)'
-                              : 'transparent',
-                          minHeight: day.revenue > 0 ? '3px' : '0',
-                        }}
-                      />
-                    </div>
-                  );
-                })}
+                      >
+                        {formatShortDate(point.date)}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
 
-              {/* X-axis labels */}
-              <div className="flex justify-between mt-2 px-0.5">
-                {dailyRevenue.length <= 14 ? (
-                  dailyRevenue.map((day) => (
-                    <span key={day.date} className="text-[10px] text-text-muted flex-1 text-center truncate">
-                      {formatShortDate(day.date)}
-                    </span>
-                  ))
-                ) : (
-                  <>
-                    <span className="text-[10px] text-text-muted">
-                      {formatShortDate(dailyRevenue[0].date)}
-                    </span>
-                    <span className="text-[10px] text-text-muted">
-                      {formatShortDate(dailyRevenue[Math.floor(dailyRevenue.length / 2)].date)}
-                    </span>
-                    <span className="text-[10px] text-text-muted">
-                      {formatShortDate(dailyRevenue[dailyRevenue.length - 1].date)}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
+              {series === 'profit' && summary.uncostedOrders > 0 && (
+                <p className="text-xs text-text-muted mt-4 pt-4 border-t border-border">
+                  {summary.uncostedOrders} paid order{summary.uncostedOrders === 1 ? '' : 's'} in this period
+                  {summary.uncostedOrders === 1 ? " isn't" : " aren't"} costed yet and{' '}
+                  {summary.uncostedOrders === 1 ? 'is' : 'are'} excluded from profit.
+                </p>
+              )}
+            </>
           )}
         </div>
       </Animate>
@@ -419,11 +580,58 @@ export default function AdminAnalyticsPage() {
         </div>
       </Animate>
 
-      {/* Payment Methods & Order Statuses */}
-      <div className="grid lg:grid-cols-2 gap-6">
+      {/* Profit Share, Payment Methods & Order Statuses */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Profit Share — who earned what across the period, summed from each
+            order's own recorded split rather than from one global rule. */}
+        <Animate variant="fadeUp" delay={0.22}>
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 h-full">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-display font-semibold text-lg">Profit Share</h2>
+              <span className="text-xs text-text-muted">
+                {summary.costedOrders} order{summary.costedOrders === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            {profitShare.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="w-8 h-8 text-text-muted mx-auto mb-2" />
+                <p className="text-sm text-text-muted">
+                  {hasProfit ? 'No splits recorded yet' : 'Cost an order to see profit'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {profitShare.map((person) => {
+                  const pct = summary.netProfit !== 0
+                    ? Math.abs(person.amount / summary.netProfit) * 100
+                    : 0;
+
+                  return (
+                    <div key={person.name}>
+                      <div className="flex items-center justify-between mb-1.5 gap-3">
+                        <span className="text-sm font-medium truncate">{person.name}</span>
+                        <span className="text-sm font-semibold tabular-nums shrink-0">
+                          {formatPrice(person.amount)}
+                        </span>
+                      </div>
+                      <div className="h-2.5 bg-surface-elevated rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-500"
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Animate>
+
         {/* Payment Methods */}
         <Animate variant="fadeUp" delay={0.25}>
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 h-full">
             <h2 className="font-display font-semibold text-lg mb-5">Payment Methods</h2>
 
             {totalPayments === 0 ? (
@@ -466,7 +674,7 @@ export default function AdminAnalyticsPage() {
 
         {/* Order Statuses */}
         <Animate variant="fadeUp" delay={0.3}>
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
+          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 h-full">
             <h2 className="font-display font-semibold text-lg mb-5">Order Status Breakdown</h2>
 
             {totalStatuses === 0 ? (

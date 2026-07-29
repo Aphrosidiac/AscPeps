@@ -140,6 +140,22 @@ h1, h2, h3, h4, h5, h6 {
   transform-origin: center;
 }
 
+/* Analytics chart bars growing in from their baseline. transform-origin is set
+   per bar (bottom for profit, top for a loss) so a negative bar grows down from
+   the zero line rather than up off the floor. */
+@keyframes chart-bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.chart-bar-rise {
+  animation: chart-bar-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-bar-rise {
+    animation: none;
+  }
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
