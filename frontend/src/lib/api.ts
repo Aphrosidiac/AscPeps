@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -108,6 +108,13 @@ export const adminGetOrder = (token: string, id: string) =>
 
 export const adminUpdateOrder = (token: string, id: string, data: Record<string, unknown>) =>
   api.patch(`/api/v1/admin/orders/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminUpdateOrderCosts = (
+  token: string,
+  id: string,
+  data: { itemCosts: OrderItemCostInput[]; extraCosts: OrderExtraCostInput[] }
+) =>
+  api.put<Order>(`/api/v1/admin/orders/${id}/costs`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
 export const adminUpdateOrderProfitShares = (token: string, id: string, shares: OrderProfitShareInput[]) =>
   api.put<OrderProfitShare[]>(`/api/v1/admin/orders/${id}/profit-shares`, { shares }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);

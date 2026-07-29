@@ -11,10 +11,27 @@ const updateOrderSchema = z.object({
   paymentStatus: z.enum(['UNPAID', 'PAID', 'FAILED', 'REFUNDED']).optional(),
   trackingNumber: z.string().max(50).optional(),
   notes: z.string().optional(),
-  // Cents. Nullable so the Profit Sharing tab can clear a cost back to
-  // "not entered yet" — .nullable() rather than just .optional() because those
-  // are different intents here and only the former can write a NULL back.
-  costAmount: z.number().int().min(0).max(100_000_000).nullable().optional(),
+});
+
+// Cents. Capped well above any plausible order so a mistyped figure can't
+// silently overflow the INTEGER column.
+const moneyCents = z.number().int().min(0).max(100_000_000);
+
+// Item costs and extra costs are saved together: they're two halves of the same
+// "what did this order cost us" answer and the UI has one Save button for both.
+const orderCostsSchema = z.object({
+  itemCosts: z
+    .array(
+      z.object({
+        itemId: z.string().min(1),
+        // Nullable so a line can be cleared back to "not priced yet".
+        unitCost: moneyCents.nullable(),
+      })
+    )
+    .max(100),
+  extraCosts: z
+    .array(z.object({ label: z.string().trim().min(1, 'Label is required').max(60), amount: moneyCents }))
+    .max(20),
 });
 
 // No .default() on any field — this schema is only ever used for partial
@@ -95,11 +112,45 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
       emails: EMAIL_STATUS_SELECT,
       profitShares: { orderBy: { createdAt: 'asc' } },
+      extraCosts: { orderBy: { createdAt: 'asc' } },
     },
   });
 
   if (!order) throw { statusCode: 404, message: 'Order not found' };
   return order;
+}
+
+// Saves per-line costs and extra costs in one call.
+export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string, body: unknown) {
+  const { itemCosts, extraCosts } = orderCostsSchema.parse(body);
+
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    select: { id: true, items: { select: { id: true } } },
+  });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+
+  // Every itemId must belong to THIS order. Without this check the endpoint
+  // would happily write a cost onto another order's line by id.
+  const ownIds = new Set(order.items.map((i) => i.id));
+  const foreign = itemCosts.filter((c) => !ownIds.has(c.itemId));
+  if (foreign.length > 0) {
+    throw { statusCode: 400, message: 'One or more items do not belong to this order.' };
+  }
+
+  await fastify.prisma.$transaction([
+    ...itemCosts.map((c) =>
+      fastify.prisma.orderItem.update({ where: { id: c.itemId }, data: { unitCost: c.unitCost } })
+    ),
+    // Replace-all, same as the profit split: extra costs are only meaningful as
+    // a set, and diffing free-text rows by id buys nothing here.
+    fastify.prisma.orderExtraCost.deleteMany({ where: { orderId: id } }),
+    ...(extraCosts.length > 0
+      ? [fastify.prisma.orderExtraCost.createMany({ data: extraCosts.map((c) => ({ orderId: id, ...c })) })]
+      : []),
+  ]);
+
+  return adminGetOrder(fastify, id);
 }
 
 // Replaces the whole split in one shot rather than exposing per-row CRUD: the

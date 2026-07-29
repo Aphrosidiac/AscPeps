@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft, User, FileText, Truck, Trash2, RotateCcw, Mail, ExternalLink, Plus, X, Hash, Scale,
+  ArrowLeft, User, Users, FileText, Truck, Trash2, RotateCcw, Mail, ExternalLink,
+  Plus, X, Hash, Scale, Package, Coins, Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  adminGetOrder, adminUpdateOrder, adminUpdateOrderProfitShares,
+  adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
@@ -64,6 +65,28 @@ function allocate(profit: number, bps: number[]): number[] {
 }
 
 const bpsToPercent = (bps: number) => (bps / 100).toFixed(2).replace(/\.00$/, '');
+
+// Ringgit text field <-> integer cents. Empty string is a real state ("not
+// entered"), distinct from 0, so it maps to null rather than to zero.
+const centsToInput = (cents: number | null | undefined) =>
+  cents == null ? '' : (cents / 100).toFixed(2);
+
+function inputToCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+// Prefilled on any order that has no split saved yet. Just a starting point —
+// it's editable per order, and changing it here never touches an order whose
+// split is already recorded.
+const DEFAULT_SHARES: OrderProfitShareInput[] = [
+  { name: 'Fakhrul', shareBps: 3000 },
+  { name: 'Asyraf', shareBps: 3000 },
+  { name: 'Investors', shareBps: 4000 },
+];
 
 export function OrderDetail({ orderId }: { orderId: string }) {
   const { token } = useAuth();
@@ -549,66 +572,102 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
 
 /* ------------------------------------------------------------ Profit Sharing */
 
+
 function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => void }) {
   const { token } = useAuth();
-  const [cost, setCost] = useState(order.costAmount != null ? (order.costAmount / 100).toFixed(2) : '');
-  const [rows, setRows] = useState<OrderProfitShareInput[]>(
-    () => (order.profitShares ?? []).map((s) => ({ name: s.name, shareBps: s.shareBps }))
+
+  // Ringgit text, not cents, while editing — an empty field has to stay empty
+  // rather than snapping to "0.00" on every keystroke.
+  const [itemCosts, setItemCosts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]))
   );
+  const [extras, setExtras] = useState<{ label: string; amount: string }[]>(() =>
+    (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }))
+  );
+  const [shares, setShares] = useState<OrderProfitShareInput[]>(() => {
+    const saved = order.profitShares ?? [];
+    return saved.length > 0 ? saved.map((s) => ({ name: s.name, shareBps: s.shareBps })) : DEFAULT_SHARES;
+  });
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const touch = () => setSaved(false);
 
+  /* ----- revenue: every ringgit the customer actually paid, shipping included */
+  const itemsRevenue = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const shipping = order.shippingFee;
+  const discount = order.discountAmount;
   const revenue = order.total;
-  const costCents = cost.trim() === '' ? null : Math.round(Number(cost) * 100);
-  const costValid = costCents === null || (Number.isFinite(costCents) && costCents >= 0);
-  const profit = costCents === null || !costValid ? null : revenue - costCents;
 
-  const totalBps = rows.reduce((sum, r) => sum + r.shareBps, 0);
-  const amounts = profit === null ? [] : allocate(profit, rows.map((r) => r.shareBps));
+  /* ----- costs */
+  const lineCost = (itemId: string, quantity: number) => {
+    const cents = inputToCents(itemCosts[itemId] ?? '');
+    return cents === null ? null : cents * quantity;
+  };
 
-  const costDirty = (order.costAmount ?? null) !== (costValid ? costCents : order.costAmount ?? null);
-  const rowsDirty = JSON.stringify(rows) !== JSON.stringify((order.profitShares ?? []).map((s) => ({ name: s.name, shareBps: s.shareBps })));
-  const dirty = costDirty || rowsDirty;
+  const unpricedCount = order.items.filter((i) => inputToCents(itemCosts[i.id] ?? '') === null).length;
+  const itemCostTotal = order.items.reduce((sum, i) => sum + (lineCost(i.id, i.quantity) ?? 0), 0);
+  const extrasTotal = extras.reduce((sum, e) => sum + (inputToCents(e.amount) ?? 0), 0);
 
-  // Re-splits evenly across every row, giving the remainder to the last person
-  // so the total is exactly 100% (3 people => 33.33 / 33.33 / 33.34).
+  // Deliberately withheld until every line is priced. A partial total would
+  // render as a plausible-looking profit that is simply wrong, and this page
+  // is the input to what people get paid.
+  const netProfit = unpricedCount > 0 ? null : revenue - itemCostTotal - extrasTotal;
+
+  const totalBps = shares.reduce((sum, s) => sum + s.shareBps, 0);
+  const amounts = netProfit === null ? [] : allocate(netProfit, shares.map((s) => s.shareBps));
+
+  /* ----- dirty tracking, so Save only fires the calls that changed */
+  const savedItemCosts = Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]));
+  const savedExtras = (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }));
+  const savedShares = (order.profitShares ?? []).map((s) => ({ name: s.name, shareBps: s.shareBps }));
+
+  const normalisedItemCosts = Object.fromEntries(
+    order.items.map((i) => [i.id, centsToInput(inputToCents(itemCosts[i.id] ?? ''))])
+  );
+  const normalisedExtras = extras
+    .filter((e) => e.label.trim() !== '' || inputToCents(e.amount) !== null)
+    .map((e) => ({ label: e.label.trim(), amount: centsToInput(inputToCents(e.amount)) }));
+
+  const costsDirty =
+    JSON.stringify(normalisedItemCosts) !== JSON.stringify(savedItemCosts) ||
+    JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras);
+  const sharesDirty = JSON.stringify(shares) !== JSON.stringify(savedShares);
+  const dirty = costsDirty || sharesDirty;
+
+  const extrasValid = extras.every((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null);
+  const sharesValid =
+    shares.length === 0 || (totalBps === 10_000 && shares.every((s) => s.name.trim() !== ''));
+  const canSave = extrasValid && sharesValid;
+
+  /* ----- split editing */
   const splitEvenly = (list: OrderProfitShareInput[]) => {
     if (list.length === 0) return list;
     const each = Math.floor(10_000 / list.length);
-    return list.map((r, i) => ({ ...r, shareBps: i === list.length - 1 ? 10_000 - each * (list.length - 1) : each }));
+    return list.map((s, i) => ({ ...s, shareBps: i === list.length - 1 ? 10_000 - each * (list.length - 1) : each }));
   };
-
-  const addRow = () => {
-    setSaved(false);
-    setRows((prev) => splitEvenly([...prev, { name: '', shareBps: 0 }]));
-  };
-
-  const removeRow = (index: number) => {
-    setSaved(false);
-    setRows((prev) => splitEvenly(prev.filter((_, i) => i !== index)));
-  };
-
-  const updateRow = (index: number, patch: Partial<OrderProfitShareInput>) => {
-    setSaved(false);
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
-  };
-
-  const canSave =
-    costValid &&
-    (rows.length === 0 || (totalBps === 10_000 && rows.every((r) => r.name.trim() !== '')));
 
   const handleSave = async () => {
     if (!token || !canSave) return;
     setError(null);
     setSaving(true);
     try {
-      if (costDirty) await adminUpdateOrder(token, order.id, { costAmount: costCents });
-      if (rowsDirty) await adminUpdateOrderProfitShares(token, order.id, rows.map((r) => ({ ...r, name: r.name.trim() })));
+      if (costsDirty) {
+        await adminUpdateOrderCosts(token, order.id, {
+          itemCosts: order.items.map((i) => ({ itemId: i.id, unitCost: inputToCents(itemCosts[i.id] ?? '') })),
+          extraCosts: extras
+            .filter((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null)
+            .map((e) => ({ label: e.label.trim(), amount: inputToCents(e.amount) as number })),
+        });
+      }
+      if (sharesDirty) {
+        await adminUpdateOrderProfitShares(token, order.id, shares.map((s) => ({ ...s, name: s.name.trim() })));
+      }
       setSaved(true);
       onChange();
     } catch (err) {
-      setError(apiErrorMessage(err) ?? 'Could not save the profit split.');
+      setError(apiErrorMessage(err) ?? 'Could not save.');
     } finally {
       setSaving(false);
     }
@@ -616,79 +675,232 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
   return (
     <div className="space-y-6">
-      <div className="bg-surface-elevated border border-border rounded-xl px-5 py-3.5 text-sm text-text-secondary">
-        First pass — profit is revenue minus one manually-entered cost figure, since nothing in the
-        catalogue tracks cost per product yet. The split is stored per order, so changing it later
-        never rewrites what a past order already recorded.
-      </div>
-
-      <Card title="Profit" icon={<Scale className="w-4 h-4" />}>
-        <div className="grid sm:grid-cols-3 gap-5">
-          <div>
-            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Revenue</p>
-            <p className="font-display text-xl font-bold">{formatPrice(revenue)}</p>
-            <p className="text-xs text-text-muted mt-1">Order total paid</p>
+      {/* Revenue — shipping and discount shown as their own lines so the gap
+          between the items total and what the customer actually paid is never
+          unexplained. */}
+      <Card title="Revenue" icon={<Wallet className="w-4 h-4" />}>
+        <div className="space-y-1 max-w-md">
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Items</span>
+            <span className="font-medium">{formatPrice(itemsRevenue)}</span>
           </div>
-          <div>
-            <label htmlFor="cost" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
-              Cost of Goods
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">RM</span>
-              <input
-                id="cost"
-                type="number"
-                min="0"
-                step="0.01"
-                value={cost}
-                onChange={(e) => { setCost(e.target.value); setSaved(false); }}
-                placeholder="0.00"
-                className="w-full pl-10 pr-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
+          {discount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-text-muted">Discount{order.discountCode?.code ? ` (${order.discountCode.code})` : ''}</span>
+              <span className="font-medium text-success">-{formatPrice(discount)}</span>
             </div>
-            {!costValid && <p className="text-xs text-danger mt-1">Enter a valid amount.</p>}
+          )}
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Shipping charged</span>
+            <span className="font-medium">{shipping ? formatPrice(shipping) : 'Free'}</span>
           </div>
-          <div>
-            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Gross Profit</p>
-            {profit === null ? (
-              <>
-                <p className="font-display text-xl font-bold text-text-muted">—</p>
-                <p className="text-xs text-text-muted mt-1">Enter a cost to calculate</p>
-              </>
-            ) : (
-              <>
-                <p className={`font-display text-xl font-bold ${profit < 0 ? 'text-danger' : 'text-success'}`}>
-                  {formatPrice(profit)}
-                </p>
-                <p className="text-xs text-text-muted mt-1">
-                  {revenue > 0 ? `${((profit / revenue) * 100).toFixed(1)}% margin` : '—'}
-                </p>
-              </>
-            )}
+          <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
+            <span>Total revenue</span>
+            <span>{formatPrice(revenue)}</span>
           </div>
         </div>
+        {shipping > 0 && (
+          <p className="text-xs text-text-muted mt-3">
+            Shipping the customer paid counts as revenue. What the courier actually charged belongs
+            in Extra Costs below.
+          </p>
+        )}
       </Card>
 
-      <Card title="Split" icon={<User className="w-4 h-4" />}>
-        {rows.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-sm text-text-muted mb-4">No split recorded for this order yet.</p>
+      {/* Per-item cost */}
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
+          <Package className="w-4 h-4 text-text-muted" />
+          <h2 className="text-sm font-semibold">Item Costs</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
+                <th className="text-left px-5 py-3">Item</th>
+                <th className="text-right px-3 py-3">Qty</th>
+                <th className="text-right px-3 py-3 whitespace-nowrap">Revenue</th>
+                <th className="text-right px-3 py-3 whitespace-nowrap">Unit Cost</th>
+                <th className="text-right px-3 py-3 whitespace-nowrap">Line Cost</th>
+                <th className="text-right px-5 py-3 whitespace-nowrap">Profit</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {order.items.map((item) => {
+                const lineRevenue = item.unitPrice * item.quantity;
+                const cost = lineCost(item.id, item.quantity);
+                const lineProfit = cost === null ? null : lineRevenue - cost;
+                return (
+                  <tr key={item.id}>
+                    <td className="px-5 py-3">
+                      <span className="font-medium">
+                        {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                      </span>
+                      <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
+                    </td>
+                    <td className="px-3 py-3 text-right">{item.quantity}</td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">{formatPrice(lineRevenue)}</td>
+                    <td className="px-3 py-3">
+                      <div className="relative w-32 ml-auto">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={itemCosts[item.id] ?? ''}
+                          onChange={(e) => { setItemCosts((p) => ({ ...p, [item.id]: e.target.value })); touch(); }}
+                          placeholder="0.00"
+                          aria-label={`Unit cost for ${item.variant.product.name}`}
+                          className="w-full pl-9 pr-2 py-1.5 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        />
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {cost === null ? <span className="text-text-muted">—</span> : formatPrice(cost)}
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold whitespace-nowrap">
+                      {lineProfit === null ? (
+                        <span className="text-text-muted font-normal">—</span>
+                      ) : (
+                        <span className={lineProfit < 0 ? 'text-danger' : 'text-success'}>{formatPrice(lineProfit)}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-border bg-surface-elevated px-5 py-3 flex justify-between text-sm">
+          <span className="text-text-muted">Total item cost</span>
+          <span className="font-semibold">
+            {unpricedCount > 0 && <span className="text-warning font-normal mr-2">{unpricedCount} not priced</span>}
+            {formatPrice(itemCostTotal)}
+          </span>
+        </div>
+      </div>
+
+      {/* Extra costs */}
+      <Card title="Extra Costs" icon={<Coins className="w-4 h-4" />}>
+        {extras.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-text-muted mb-4">No extra costs recorded — fuel, courier charge, packaging.</p>
             <button
-              onClick={addRow}
+              onClick={() => { setExtras([{ label: '', amount: '' }]); touch(); }}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" /> Add person
+              <Plus className="w-3.5 h-3.5" /> Add cost
             </button>
           </div>
         ) : (
           <>
             <div className="space-y-3">
-              {rows.map((row, i) => (
+              {extras.map((row, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    value={row.label}
+                    onChange={(e) => { setExtras((p) => p.map((r, j) => (j === i ? { ...r, label: e.target.value } : r))); touch(); }}
+                    placeholder="e.g. Fuel, Courier, Packaging"
+                    maxLength={60}
+                    aria-label={`Extra cost ${i + 1} label`}
+                    className="flex-1 min-w-0 px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  <div className="relative w-36 shrink-0">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">RM</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={row.amount}
+                      onChange={(e) => { setExtras((p) => p.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r))); touch(); }}
+                      placeholder="0.00"
+                      aria-label={`Extra cost ${i + 1} amount`}
+                      className="w-full pl-10 pr-3 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { setExtras((p) => p.filter((_, j) => j !== i)); touch(); }}
+                    aria-label={`Remove extra cost ${i + 1}`}
+                    className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border">
+              <button
+                onClick={() => { setExtras((p) => [...p, { label: '', amount: '' }]); touch(); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add cost
+              </button>
+              <span className="text-sm font-semibold">{formatPrice(extrasTotal)}</span>
+            </div>
+            {!extrasValid && (
+              <p className="text-xs text-danger mt-2">Every extra cost needs both a label and an amount.</p>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* Bottom line */}
+      <Card title="Net Profit" icon={<Scale className="w-4 h-4" />}>
+        <div className="space-y-1 max-w-md">
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Total revenue</span>
+            <span className="font-medium">{formatPrice(revenue)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Item costs</span>
+            <span className="font-medium text-danger">-{formatPrice(itemCostTotal)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Extra costs</span>
+            <span className="font-medium text-danger">-{formatPrice(extrasTotal)}</span>
+          </div>
+          <div className="flex justify-between font-display font-bold text-lg border-t border-border pt-2 mt-1">
+            <span>Net profit</span>
+            {netProfit === null ? (
+              <span className="text-text-muted">—</span>
+            ) : (
+              <span className={netProfit < 0 ? 'text-danger' : 'text-success'}>{formatPrice(netProfit)}</span>
+            )}
+          </div>
+          {netProfit === null ? (
+            <p className="text-xs text-warning pt-1">
+              Give every item a unit cost to see profit — {unpricedCount} still unpriced.
+            </p>
+          ) : (
+            revenue > 0 && (
+              <p className="text-xs text-text-muted pt-1">{((netProfit / revenue) * 100).toFixed(1)}% margin</p>
+            )
+          )}
+        </div>
+      </Card>
+
+      {/* Split */}
+      <Card title="Split" icon={<Users className="w-4 h-4" />}>
+        {shares.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-text-muted mb-4">No split recorded for this order.</p>
+            <button
+              onClick={() => { setShares(DEFAULT_SHARES); touch(); }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add people
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {shares.map((row, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <input
                     type="text"
                     value={row.name}
-                    onChange={(e) => updateRow(i, { name: e.target.value })}
+                    onChange={(e) => { setShares((p) => p.map((r, j) => (j === i ? { ...r, name: e.target.value } : r))); touch(); }}
                     placeholder="Name"
                     maxLength={60}
                     aria-label={`Person ${i + 1} name`}
@@ -701,17 +913,17 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                       max="100"
                       step="0.01"
                       value={bpsToPercent(row.shareBps)}
-                      onChange={(e) => updateRow(i, { shareBps: Math.round(Number(e.target.value) * 100) || 0 })}
+                      onChange={(e) => { setShares((p) => p.map((r, j) => (j === i ? { ...r, shareBps: Math.round(Number(e.target.value) * 100) || 0 } : r))); touch(); }}
                       aria-label={`Person ${i + 1} share percent`}
                       className="w-full pl-3 pr-7 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">%</span>
                   </div>
                   <span className="w-24 shrink-0 text-right text-sm font-semibold">
-                    {profit === null ? <span className="text-text-muted">—</span> : formatPrice(amounts[i] ?? 0)}
+                    {netProfit === null ? <span className="text-text-muted">—</span> : formatPrice(amounts[i] ?? 0)}
                   </span>
                   <button
-                    onClick={() => removeRow(i)}
+                    onClick={() => { setShares((p) => splitEvenly(p.filter((_, j) => j !== i))); touch(); }}
                     aria-label={`Remove person ${i + 1}`}
                     className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0"
                   >
@@ -724,13 +936,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border">
               <div className="flex gap-2">
                 <button
-                  onClick={addRow}
+                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0 }])); touch(); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add person
                 </button>
                 <button
-                  onClick={() => { setRows(splitEvenly(rows)); setSaved(false); }}
+                  onClick={() => { setShares(splitEvenly(shares)); touch(); }}
                   className="px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                 >
                   Split evenly

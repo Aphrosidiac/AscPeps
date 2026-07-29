@@ -100,6 +100,10 @@ export interface OrderItem {
   variantId: string;
   quantity: number;
   unitPrice: number;
+  // Cents, per unit. null means this line hasn't been priced yet — which the
+  // Profit Sharing tab reports as unknown profit, not as a 100% margin.
+  // Admin responses only.
+  unitCost?: number | null;
   variant: {
     code: string;
     size: string | null;
@@ -164,9 +168,6 @@ export interface Order {
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;
   trackingNumber: string | null;
-  // Cents. null means no admin has entered a cost yet — which the Profit
-  // Sharing tab shows as unknown profit, not as a 100% margin.
-  costAmount?: number | null;
   deletedAt: string | null;
   createdAt: string;
   items: OrderItem[];
@@ -174,6 +175,24 @@ export interface Order {
   emails?: OrderEmail[];
   // Only present on the admin single-order response, not the list.
   profitShares?: OrderProfitShare[];
+  extraCosts?: OrderExtraCost[];
+}
+
+export interface OrderExtraCost {
+  id: string;
+  orderId: string;
+  label: string;
+  // Cents.
+  amount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OrderExtraCostInput = Pick<OrderExtraCost, 'label' | 'amount'>;
+
+export interface OrderItemCostInput {
+  itemId: string;
+  unitCost: number | null;
 }
 
 export interface OrderProfitShare {

@@ -168,13 +168,6 @@ model Order {
   discountCodeId  String?
   notes           String?
   trackingNumber  String?
-  // Cost of goods for this order, in cents, entered by an admin on the order
-  // detail page's Profit Sharing tab. Nullable rather than defaulted to 0 so
-  // "nobody has filled this in yet" stays distinguishable from "this order
-  // genuinely cost nothing" — the tab shows profit as unknown, not as 100%
-  // margin, until it's set. Nothing in the catalogue tracks cost per variant
-  // yet, so this is deliberately a single manual figure for the whole order.
-  costAmount      Int?
   idempotencyKey  String?       @unique
   stockRestored   Boolean       @default(false)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
@@ -187,6 +180,7 @@ model Order {
   discountCode DiscountCode? @relation(fields: [discountCodeId], references: [id])
   emails       EmailOutbox[]
   profitShares OrderProfitShare[]
+  extraCosts   OrderExtraCost[]
 
   @@index([phone])
   @@index([status])
@@ -205,6 +199,17 @@ model OrderItem {
   variantId String   @map("productId")
   quantity  Int
   unitPrice Int
+  // What this line actually cost us, per unit, in cents — entered by an admin
+  // on the order detail page's Profit Sharing tab. Line cost is unitCost ×
+  // quantity. Nullable rather than defaulted to 0 so "nobody has priced this
+  // line yet" stays distinguishable from "this line genuinely cost nothing";
+  // the tab reports profit as unknown until every line has a cost.
+  //
+  // Lives here rather than on ProductVariant on purpose: this is the cost of
+  // *this* purchase, and it must not move when a supplier price changes later.
+  // A default cost per variant is a reasonable thing to add above this one day,
+  // but it would be a prefill for this field, never a replacement.
+  unitCost  Int?
   createdAt DateTime @default(now())
 
   order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -213,6 +218,26 @@ model OrderItem {
   @@index([orderId])
   @@index([variantId])
   @@map("order_items")
+}
+
+// Costs attached to an order that aren't the goods themselves — fuel, the
+// courier charge, packaging, a one-off fee. Free-form label + amount rather
+// than a fixed enum of categories, because the useful categories aren't known
+// yet and an enum would need a migration every time a new kind of cost shows up.
+model OrderExtraCost {
+  id      String @id @default(cuid())
+  orderId String
+  label   String
+  // Cents, same as every other money field in this schema.
+  amount  Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_extra_costs")
 }
 
 // How one order's profit is split between the people behind ASCEND. Stored per
