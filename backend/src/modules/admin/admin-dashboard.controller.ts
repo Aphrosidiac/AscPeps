@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
+import { costOrder, allocate } from '../../utils/profit.js';
 
 export async function getDashboardStats(fastify: FastifyInstance) {
   const today = new Date();
@@ -58,6 +59,16 @@ export async function getDashboardStats(fastify: FastifyInstance) {
   };
 }
 
+interface DailyPoint {
+  date: string;
+  revenue: number;
+  orders: number;
+  /** Revenue from the paid orders on this day that are fully costed. */
+  costedRevenue: number;
+  cost: number;
+  profit: number;
+}
+
 export async function getAnalytics(fastify: FastifyInstance, query: { days?: string }) {
   const parsedDays = parseInt(query.days ?? '30', 10);
   const days = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 30;
@@ -79,18 +90,20 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       createdAt: true,
       items: {
         select: {
-          variantId: true, quantity: true, unitPrice: true,
+          variantId: true, quantity: true, unitPrice: true, unitCost: true,
           variant: { select: { code: true, size: true, product: { select: { name: true, categoryId: true } } } },
         },
       },
+      extraCosts: { select: { amount: true } },
+      profitShares: { select: { name: true, shareBps: true } },
     },
     orderBy: { createdAt: 'asc' },
   });
 
-  const dailyRevenue: Record<string, { date: string; revenue: number; orders: number }> = {};
+  const dailyRevenue: Record<string, DailyPoint> = {};
   for (let d = new Date(since); d <= new Date(); d.setDate(d.getDate() + 1)) {
     const key = d.toISOString().slice(0, 10);
-    dailyRevenue[key] = { date: key, revenue: 0, orders: 0 };
+    dailyRevenue[key] = { date: key, revenue: 0, orders: 0, costedRevenue: 0, cost: 0, profit: 0 };
   }
 
   const productSales: Record<string, { name: string; code: string; quantity: number; revenue: number }> = {};
@@ -100,6 +113,19 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   let failedOrders = 0;
   const paymentMethodCounts: Record<string, number> = {};
   const statusCounts: Record<string, number> = {};
+
+  // Profit is measured only over paid orders that are FULLY costed, and
+  // reported against that subset's own revenue (costedRevenue) rather than
+  // against all revenue. Dividing a fully-costed subset's profit by every
+  // paid order's revenue would understate margin badly while orders are still
+  // being costed — and quietly, which is worse. `uncostedOrders` is returned
+  // so the UI can say how much of the period is actually covered.
+  let costedRevenue = 0;
+  let costedOrders = 0;
+  let uncostedOrders = 0;
+  let totalItemCost = 0;
+  let totalExtraCost = 0;
+  const profitByPerson: Record<string, number> = {};
 
   for (const order of orders) {
     const dayKey = order.createdAt.toISOString().slice(0, 10);
@@ -114,6 +140,32 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
     if (order.paymentStatus === 'PAID') {
       paidOrders++;
       totalRevenue += order.total;
+
+      const costing = costOrder(order);
+      if (costing.profit === null) {
+        uncostedOrders++;
+      } else {
+        costedOrders++;
+        costedRevenue += order.total;
+        totalItemCost += costing.itemCost;
+        totalExtraCost += costing.extraCost;
+
+        if (dailyRevenue[dayKey]) {
+          dailyRevenue[dayKey].costedRevenue += order.total;
+          dailyRevenue[dayKey].cost += costing.itemCost + costing.extraCost;
+          dailyRevenue[dayKey].profit += costing.profit;
+        }
+
+        // Allocated per order, then summed — so each order's split lands
+        // exactly and the per-person column adds back up to net profit.
+        const shares = order.profitShares;
+        if (shares.length > 0) {
+          const amounts = allocate(costing.profit, shares.map((s) => s.shareBps));
+          shares.forEach((share, i) => {
+            profitByPerson[share.name] = (profitByPerson[share.name] || 0) + amounts[i];
+          });
+        }
+      }
     }
     if (order.paymentStatus === 'FAILED') failedOrders++;
 
@@ -141,6 +193,15 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   const conversionRate = totalOrders > 0 ? Math.round((paidOrders / totalOrders) * 10000) / 100 : 0;
   const avgOrderValue = paidOrders > 0 ? Math.round(totalRevenue / paidOrders) : 0;
 
+  const totalCost = totalItemCost + totalExtraCost;
+  const netProfit = costedRevenue - totalCost;
+  // Against costedRevenue, not totalRevenue — see the note where these are summed.
+  const profitMargin = costedRevenue > 0 ? Math.round((netProfit / costedRevenue) * 10000) / 100 : 0;
+
+  const profitShare = Object.entries(profitByPerson)
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
   return {
     period: { days, since: since.toISOString() },
     summary: {
@@ -150,9 +211,18 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       failedOrders,
       conversionRate,
       avgOrderValue,
+      totalItemCost,
+      totalExtraCost,
+      totalCost,
+      netProfit,
+      profitMargin,
+      costedRevenue,
+      costedOrders,
+      uncostedOrders,
     },
     dailyRevenue: Object.values(dailyRevenue),
     topProducts,
+    profitShare,
     paymentMethods: paymentMethodCounts,
     orderStatuses: statusCounts,
   };
