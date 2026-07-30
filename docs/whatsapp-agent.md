@@ -124,7 +124,7 @@ Redis binds to 127.0.0.1 by default on Debian/Ubuntu. Leave it that way.
 OPENROUTER_API_KEY="sk-or-v1-..."
 OPENROUTER_MODEL="deepseek/deepseek-v4-flash"
 
-WORKER_HTTP_PORT=3106
+WORKER_HTTP_PORT=3107   # 3106 is taken by ascend-draw-api on this box
 WORKER_HTTP_TOKEN="<openssl rand -base64 24>"   # MUST be set in production
 REDIS_URL="redis://127.0.0.1:6379"
 
@@ -184,7 +184,13 @@ Admin dashboard → **Agent**:
 
 ## Operating it
 
-**Ports:** web 3000, api 3105, worker control plane 3106 (loopback only).
+**Ports:** web 3000, api 3105, worker control plane **3107** (loopback only).
+
+3106 was the intended default but is taken by `ascend-draw-api` on this box —
+it also hosts `ascendb2b-*`, `guaner-*` and `pagoh-confess`, so check
+`sudo ss -lntp | grep 31` before assuming a port is free. The worker reads
+`WORKER_HTTP_PORT`, and the API proxies to the same value, so changing it means
+restarting **both** `ascend-api` and `ascend-wa`.
 
 **`pm2 ls` showing "online" proves nothing.** The worker process stays alive
 when the socket underneath it dies — that exact silence hid a 9.5-hour outage on
