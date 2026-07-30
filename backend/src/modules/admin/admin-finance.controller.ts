@@ -80,18 +80,112 @@ async function loadFinanceInput(fastify: FastifyInstance) {
   return { partners, orders: orders as FinanceOrder[], expenses, funding, payouts };
 }
 
+type ActivityKind = 'EXPENSE' | 'CONTRIBUTION' | 'ADVANCE' | 'REPAYMENT' | 'PAYOUT';
+
+interface FinanceActivity {
+  id: string;
+  kind: ActivityKind;
+  occurredAt: Date;
+  description: string;
+  partnerId: string | null;
+  partnerName: string | null;
+  amount: number;
+  /** Which way the money moved relative to the company. */
+  direction: 'IN' | 'OUT';
+  /** EXPENSE only. */
+  category?: string;
+  /** EXPENSE only — set when a partner fronted it, saying on what terms. */
+  fundedAs?: 'CONTRIBUTION' | 'ADVANCE' | null;
+}
+
+/**
+ * One feed covering every way money moves, not just company expenses — an
+ * advance or a payout is just as much "something happened" as buying ads, and
+ * a feed that silently omitted them made recorded money look like it vanished.
+ */
+async function loadRecentActivity(fastify: FastifyInstance, take = 8): Promise<FinanceActivity[]> {
+  const [expenses, funding, repayments, payouts] = await Promise.all([
+    fastify.prisma.companyExpense.findMany({
+      orderBy: { occurredAt: 'desc' },
+      take,
+      include: { paidBy: { select: { id: true, name: true } }, funding: { select: { type: true } } },
+    }),
+    fastify.prisma.partnerFunding.findMany({
+      // Funding attached to an expense is skipped: the expense row already
+      // reports it ("paid by X · owed back"), and listing both reads as the
+      // money having moved twice.
+      where: { expenseId: null },
+      orderBy: { occurredAt: 'desc' },
+      take,
+      include: { partner: { select: { id: true, name: true } } },
+    }),
+    fastify.prisma.partnerRepayment.findMany({
+      orderBy: { occurredAt: 'desc' },
+      take,
+      include: { funding: { include: { partner: { select: { id: true, name: true } } } } },
+    }),
+    fastify.prisma.profitPayout.findMany({
+      orderBy: { occurredAt: 'desc' },
+      take,
+      include: { partner: { select: { id: true, name: true } } },
+    }),
+  ]);
+
+  const activity: FinanceActivity[] = [
+    ...expenses.map((e) => ({
+      id: e.id,
+      kind: 'EXPENSE' as const,
+      occurredAt: e.occurredAt,
+      description: e.description,
+      partnerId: e.paidBy?.id ?? null,
+      partnerName: e.paidBy?.name ?? null,
+      amount: e.amount,
+      direction: 'OUT' as const,
+      category: e.category,
+      fundedAs: e.funding?.type ?? null,
+    })),
+    ...funding.map((f) => ({
+      id: f.id,
+      kind: f.type as 'CONTRIBUTION' | 'ADVANCE',
+      occurredAt: f.occurredAt,
+      description: f.description,
+      partnerId: f.partner.id,
+      partnerName: f.partner.name,
+      amount: f.amount,
+      direction: 'IN' as const,
+    })),
+    ...repayments.map((r) => ({
+      id: r.id,
+      kind: 'REPAYMENT' as const,
+      occurredAt: r.occurredAt,
+      description: r.note || `Repaid: ${r.funding.description}`,
+      partnerId: r.funding.partner.id,
+      partnerName: r.funding.partner.name,
+      amount: r.amount,
+      direction: 'OUT' as const,
+    })),
+    ...payouts.map((p) => ({
+      id: p.id,
+      kind: 'PAYOUT' as const,
+      occurredAt: p.occurredAt,
+      description: p.note || 'Profit payout',
+      partnerId: p.partner.id,
+      partnerName: p.partner.name,
+      amount: p.amount,
+      direction: 'OUT' as const,
+    })),
+  ];
+
+  return activity
+    .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
+    .slice(0, take);
+}
+
 export async function getFinanceOverview(fastify: FastifyInstance) {
   const input = await loadFinanceInput(fastify);
   const summary = computeFinance(input);
 
-  return {
-    ...summary,
-    recentExpenses: await fastify.prisma.companyExpense.findMany({
-      orderBy: { occurredAt: 'desc' },
-      take: 5,
-      include: { paidBy: { select: { id: true, name: true } } },
-    }),
-  };
+  return { ...summary, recentActivity: await loadRecentActivity(fastify) };
 }
 
 /** One partner's full history — the "show me why" behind their balance. */
