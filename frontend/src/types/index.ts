@@ -386,7 +386,31 @@ export interface FinanceOverview {
   costedOrders: number;
   uncostedOrders: number;
   partners: PartnerBalance[];
-  recentExpenses: CompanyExpense[];
+  recentActivity: FinanceActivity[];
+}
+
+export type FinanceActivityKind =
+  | 'EXPENSE'
+  | 'CONTRIBUTION'
+  | 'ADVANCE'
+  | 'REPAYMENT'
+  | 'PAYOUT';
+
+/** One entry in the finance feed — every way money moves, not just spending. */
+export interface FinanceActivity {
+  id: string;
+  kind: FinanceActivityKind;
+  occurredAt: string;
+  description: string;
+  partnerId: string | null;
+  partnerName: string | null;
+  amount: number;
+  /** Which way the money moved relative to the company. */
+  direction: 'IN' | 'OUT';
+  /** EXPENSE only. */
+  category?: string;
+  /** EXPENSE only — set when a partner fronted it, saying on what terms. */
+  fundedAs?: 'CONTRIBUTION' | 'ADVANCE' | null;
 }
 
 export interface PartnerDetail {

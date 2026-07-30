@@ -10,9 +10,15 @@ import { adminGetFinanceOverview } from '@/lib/api';
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 import { RecordMoneyDialog } from './RecordMoneyDialog';
-import type { FinanceOverview } from '@/types';
+import type { FinanceOverview, FinanceActivityKind } from '@/types';
 
-const bpsToPercent = (bps: number) => (bps / 100).toFixed(2).replace(/\.00$/, '');
+const ACTIVITY_STYLES: Record<FinanceActivityKind, { label: string; chip: string }> = {
+  EXPENSE: { label: 'Spending', chip: 'bg-surface-elevated text-text-secondary' },
+  CONTRIBUTION: { label: 'Contribution', chip: 'bg-blue-100 text-blue-800' },
+  ADVANCE: { label: 'Advance', chip: 'bg-yellow-100 text-yellow-800' },
+  REPAYMENT: { label: 'Repayment', chip: 'bg-green-100 text-green-800' },
+  PAYOUT: { label: 'Payout', chip: 'bg-purple-100 text-purple-800' },
+};
 
 function StatCard({
   label, value, hint, icon: Icon, tone,
@@ -215,35 +221,59 @@ export default function AdminFinancePage() {
         </div>
       </Animate>
 
-      {/* Recent expenses */}
+      {/* Recent activity — every money movement, not just spending. An advance
+          or a payout is as much "something happened" as buying ads, and a feed
+          that showed only expenses made recorded money look like it vanished. */}
       <Animate variant="fadeUp" delay={0.2}>
         <div className="bg-surface rounded-xl border border-border overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-            <h2 className="font-display font-semibold">Recent spending</h2>
+            <h2 className="font-display font-semibold">Recent activity</h2>
             <Link href="/admin/finance/expenses" className="text-xs text-text-muted hover:text-primary transition-colors inline-flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
+              All spending <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          {data.recentExpenses.length === 0 ? (
+          {data.recentActivity.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-text-muted">
-              Nothing recorded yet. Company spending is what turns gross profit into a real number.
+              Nothing recorded yet — no spending, contributions, advances or payouts.
             </p>
           ) : (
             <div className="divide-y divide-border">
-              {data.recentExpenses.map((e) => (
-                <div key={e.id} className="flex items-center justify-between gap-4 px-5 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{e.description}</p>
-                    <p className="text-xs text-text-muted">
-                      {e.category} · {formatShortDate(e.occurredAt)}
-                      {e.paidBy && ` · paid by ${e.paidBy.name}`}
+              {data.recentActivity.map((a) => {
+                const style = ACTIVITY_STYLES[a.kind];
+                return (
+                  <div key={`${a.kind}-${a.id}`} className="flex items-center justify-between gap-4 px-5 py-3">
+                    <div className="min-w-0 flex items-center gap-3">
+                      <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0', style.chip)}>
+                        {style.label}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{a.description}</p>
+                        <p className="text-xs text-text-muted truncate">
+                          {[
+                            a.category,
+                            formatShortDate(a.occurredAt),
+                            a.partnerName &&
+                              (a.kind === 'EXPENSE'
+                                ? `paid by ${a.partnerName}${a.fundedAs === 'ADVANCE' ? ' · owed back' : a.fundedAs === 'CONTRIBUTION' ? ' · investment' : ''}`
+                                : a.partnerName),
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      </div>
+                    </div>
+                    <p className={cn('text-sm font-semibold shrink-0 tabular-nums', a.direction === 'IN' ? 'text-success' : '')}>
+                      {a.direction === 'IN' ? '+' : '−'}{formatPrice(a.amount)}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold shrink-0 tabular-nums">{formatPrice(e.amount)}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+          <p className="px-5 py-3 border-t border-border text-xs text-text-muted">
+            <span className="text-success">+</span> money into the company,{' '}
+            <span>−</span> money out. An expense a partner paid for shows once, on the expense.
+          </p>
         </div>
       </Animate>
 
