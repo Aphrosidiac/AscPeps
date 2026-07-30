@@ -29,6 +29,8 @@ import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
+import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
+import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 import { processEmailOutbox } from './utils/email-worker.js';
 
@@ -64,7 +66,17 @@ await fastify.register(cors, {
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
 });
 await fastify.register(helmet, { contentSecurityPolicy: false });
-await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute', keyGenerator: (req) => req.ip });
+await fastify.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  keyGenerator: (req) => req.ip,
+  // The WhatsApp worker calls the agent endpoint from the loopback interface,
+  // so every message it forwards shares a single per-IP bucket — a busy ops
+  // group would rate-limit the agent against itself. That route has its own
+  // stronger gate (loopback source address + the shared worker token), so the
+  // public limiter adds nothing there but a failure mode.
+  allowList: (req) => req.url.startsWith('/api/v1/internal/agent'),
+});
 await fastify.register(formbody);
 await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
 await fastify.register(fastifyStatic, {
@@ -105,6 +117,13 @@ await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' })
 // it needs its own scoped raw-body content-type parser). The global rate
 // limiter above still applies fine as-is.
 await fastify.register(resendWebhookRoutes, { prefix: '/api/v1/webhooks/resend' });
+// Admin-authenticated control of the WhatsApp worker and the agent's allowlists.
+await fastify.register(whatsappRoutes, { prefix: '/api/v1/admin/whatsapp' });
+// The WhatsApp worker's callback into the agent. Guarded by loopback source
+// address + the shared worker token rather than the admin JWT — the caller is a
+// sibling process, not a signed-in human. Registered last so nothing above can
+// shadow it.
+await fastify.register(internalAgentRoutes, { prefix: '/api/v1/internal/agent' });
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });
