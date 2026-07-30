@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, AdminEmailsResponse } from '@/types';
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -198,3 +198,50 @@ export const adminUpdateInsight = (token: string, id: string, data: Record<strin
 
 export const adminDeleteInsight = (token: string, id: string) =>
   api.delete(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+/* ------------------------------------------------------------------ Finance */
+
+const auth = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
+
+export const adminGetFinanceOverview = (token: string) =>
+  api.get<FinanceOverview>('/api/v1/admin/finance/overview', auth(token)).then((r) => r.data);
+
+export const adminGetPartner = (token: string, id: string) =>
+  api.get<PartnerDetail>(`/api/v1/admin/finance/partners/${id}`, auth(token)).then((r) => r.data);
+
+export const adminSavePartners = (
+  token: string,
+  partners: { id?: string; name: string; ownershipBps: number; active: boolean; notes?: string | null }[]
+) => api.put<Partner[]>('/api/v1/admin/finance/partners', { partners }, auth(token)).then((r) => r.data);
+
+export const adminGetExpenses = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{ expenses: CompanyExpense[]; categories: string[] }>('/api/v1/admin/finance/expenses', {
+      ...auth(token),
+      params,
+    })
+    .then((r) => r.data);
+
+export const adminCreateExpense = (token: string, data: Record<string, unknown>) =>
+  api.post<CompanyExpense>('/api/v1/admin/finance/expenses', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteExpense = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/expenses/${id}`, auth(token)).then((r) => r.data);
+
+export const adminCreateFunding = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/finance/funding', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteFunding = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/funding/${id}`, auth(token)).then((r) => r.data);
+
+export const adminCreateRepayment = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/finance/repayments', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteRepayment = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/repayments/${id}`, auth(token)).then((r) => r.data);
+
+export const adminCreatePayout = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/finance/payouts', data, auth(token)).then((r) => r.data);
+
+export const adminDeletePayout = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/payouts/${id}`, auth(token)).then((r) => r.data);

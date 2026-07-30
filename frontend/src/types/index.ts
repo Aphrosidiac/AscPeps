@@ -286,3 +286,120 @@ export type InsightFigureInput = Pick<
   InsightFigure,
   'imageUrl' | 'caption' | 'altText' | 'credit' | 'creditUrl'
 >;
+
+/* ------------------------------------------------------------------ Finance */
+
+export type FundingType = 'CONTRIBUTION' | 'ADVANCE';
+export type ExpenseAllocation = 'OWNERSHIP' | 'SINGLE_PARTNER' | 'UNALLOCATED';
+
+export interface Partner {
+  id: string;
+  name: string;
+  active: boolean;
+  /** Share of COMPANY expenses, basis points. Not the per-order split. */
+  ownershipBps: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PartnerBalance {
+  partnerId: string;
+  name: string;
+  active: boolean;
+  ownershipBps: number;
+  earned: number;
+  /** Positive = charged to them. */
+  expenseShare: number;
+  /** Capital they never want back — deliberately absent from `owed`. */
+  contributed: number;
+  advancesTotal: number;
+  advancesRepaid: number;
+  advancesOutstanding: number;
+  paidOut: number;
+  /** earned − expenseShare + advancesOutstanding − paidOut */
+  owed: number;
+}
+
+export interface PartnerRef {
+  id: string;
+  name: string;
+}
+
+export interface CompanyExpense {
+  id: string;
+  occurredAt: string;
+  category: string;
+  description: string;
+  amount: number;
+  allocation: ExpenseAllocation;
+  chargedToPartnerId: string | null;
+  paidByPartnerId: string | null;
+  receiptUrl: string | null;
+  paidBy?: PartnerRef | null;
+  chargedTo?: PartnerRef | null;
+  funding?: { id: string; type: FundingType; repayments: { amount: number }[] } | null;
+}
+
+export interface PartnerFunding {
+  id: string;
+  partnerId: string;
+  type: FundingType;
+  amount: number;
+  occurredAt: string;
+  description: string;
+  /** Set when this funding is a partner having paid a company expense. */
+  expenseId: string | null;
+  expense?: { id: string; description: string; category: string } | null;
+  repayments: PartnerRepayment[];
+}
+
+export interface PartnerRepayment {
+  id: string;
+  fundingId: string;
+  amount: number;
+  occurredAt: string;
+  note: string | null;
+}
+
+export interface ProfitPayout {
+  id: string;
+  partnerId: string;
+  amount: number;
+  occurredAt: string;
+  note: string | null;
+}
+
+export interface PartnerEarning {
+  orderId: string;
+  orderNumber: string;
+  occurredAt: string;
+  shareBps: number;
+  orderProfit: number;
+  amount: number;
+  costed: boolean;
+}
+
+export interface FinanceOverview {
+  grossOrderProfit: number;
+  companySpend: number;
+  netProfit: number;
+  unallocatedSpend: number;
+  totalContributed: number;
+  totalAdvancesOutstanding: number;
+  totalPaidOut: number;
+  costedOrders: number;
+  uncostedOrders: number;
+  partners: PartnerBalance[];
+  /** Total ownership across active partners. Should be 10000. */
+  ownershipBps: number;
+  recentExpenses: CompanyExpense[];
+}
+
+export interface PartnerDetail {
+  partner: Partner;
+  balance?: PartnerBalance;
+  earnings: PartnerEarning[];
+  funding: PartnerFunding[];
+  payouts: ProfitPayout[];
+}
