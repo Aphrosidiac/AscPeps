@@ -436,6 +436,16 @@ async function handleInbound(msg: any) {
   // so treating the digits as a real phone would silently match the wrong
   // operator — or worse, match one by coincidence. Refuse to guess.
   if (senderJid.endsWith('@lid')) {
+    // TEMPORARY DIAGNOSTIC — dump everything WhatsApp gave us for this sender,
+    // so the LID->operator resolution can be built on what is actually on the
+    // wire rather than on what the type definitions claim.
+    console.warn(
+      `[worker][LID-DIAG] key=${JSON.stringify(msg.key)} pushName=${JSON.stringify(msg.pushName)} ` +
+        `verifiedBizName=${JSON.stringify((msg as any).verifiedBizName)} ` +
+        `participantAlt=${JSON.stringify((msg.key as any).participantAlt ?? null)} ` +
+        `senderAlt=${JSON.stringify((msg as any).senderAlt ?? null)} ` +
+        `topLevelKeys=${JSON.stringify(Object.keys(msg))}`
+    )
     console.warn(`[worker] Ignoring message from unresolvable @lid sender (${senderJid}) — cannot verify which operator this is`)
     return
   }
@@ -593,6 +603,22 @@ app.get('/groups', async (_request, reply) => {
     }
   } catch (err: any) {
     return reply.status(500).send({ error: err?.message || 'Failed to fetch groups' })
+  }
+})
+
+// TEMPORARY DIAGNOSTIC — what does WhatsApp's own directory lookup return for a
+// known phone number? The typings say `{jid, exists}`, but USync responses have
+// carried more than that in practice, and a LID here would let an operator's
+// number be mapped to their LID directly.
+app.get('/diag/onwhatsapp', async (request, reply) => {
+  if (!sock || !connected) return reply.status(409).send({ error: 'not_connected' })
+  const phone = String((request.query as any)?.phone || '')
+  if (!phone) return reply.status(400).send({ error: 'phone required' })
+  try {
+    const res = await sock.onWhatsApp(toJid(phone))
+    return { raw: res, stringified: JSON.stringify(res) }
+  } catch (err: any) {
+    return reply.status(500).send({ error: err?.message })
   }
 })
 
