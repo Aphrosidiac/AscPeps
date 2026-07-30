@@ -575,3 +575,158 @@ model ProfitPayout {
   @@index([partnerId])
   @@map("profit_payouts")
 }
+
+// ------------------------------------------------- WhatsApp AI agent
+//
+// An operator-facing agent: it does admin work on instruction, over WhatsApp.
+// It is NOT a customer-facing chatbot, and the models below are what keep it
+// that way. Two independent gates decide whether an inbound message is even
+// looked at:
+//
+//   1. WhatsAppOperator — the sender's phone must be listed and active.
+//   2. WhatsAppGroup    — in a group, the group must ALSO be listed and active.
+//
+// Both must pass in a group; only the first applies in a DM. A message from an
+// unknown number is dropped silently (no reply at all) rather than refused —
+// a refusal confirms the number is live and tells a stranger there is an
+// admin bot on the other end.
+
+model WhatsAppOperator {
+  id    String @id @default(cuid())
+  // Normalized to digits-only international form (60123456789) by
+  // utils/phone.ts before storage AND before every lookup — a number stored
+  // as "+60 12-345 6789" would never match an inbound JID and would silently
+  // lock the operator out.
+  phone String @unique
+  name  String
+  // Revoked rather than deleted, so the tool-call audit trail below keeps
+  // resolving to a real name after someone leaves.
+  active Boolean @default(true)
+  // False = read-only operator: reports, lookups and summaries run, every
+  // mutating tool is refused. Lets a partner query the business without
+  // being able to change it.
+  canWrite Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@map("whatsapp_operators")
+}
+
+// A group the agent is allowed to work in. Deliberately an allowlist of
+// specific groups rather than "any group an admin is in": the connected
+// number sits in supplier and customer groups too, and the agent must never
+// act on chatter there.
+model WhatsAppGroup {
+  id       String @id @default(cuid())
+  groupJid String @unique
+  subject  String
+  active   Boolean @default(true)
+  // When true (the default), the agent only responds in this group if the
+  // message @-mentions it or replies to one of its own messages. Without
+  // this a busy ops group turns every passing remark into an LLM call — and,
+  // worse, into a tool call.
+  requireMention Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@map("whatsapp_groups")
+}
+
+// One running conversation. A group is a single shared conversation (so two
+// operators in the same group see one coherent thread), while each DM is its
+// own — hence a synthetic `chatKey` rather than a phone number as the identity.
+model AgentConversation {
+  id      String @id @default(cuid())
+  // "dm:60123456789" or "group:120363...@g.us"
+  chatKey String @unique
+  kind    String
+  title   String
+
+  lastMessageAt DateTime @default(now())
+  messageCount  Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages AgentMessage[]
+  pending  AgentPendingAction[]
+
+  @@index([lastMessageAt])
+  @@map("agent_conversations")
+}
+
+model AgentMessage {
+  id             String @id @default(cuid())
+  conversationId String
+  // 'user' | 'assistant'. Tool traffic is NOT stored here — it lives in
+  // AgentToolCall below. Replaying raw tool payloads back into the model on
+  // every turn would blow the context window on a long-running ops thread,
+  // and the tool results are stale by then anyway.
+  role    String
+  content String
+  // Who actually spoke. Meaningful in groups, where one conversation carries
+  // several operators; null on assistant rows.
+  senderPhone String?
+  senderName  String?
+
+  createdAt DateTime @default(now())
+
+  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("agent_messages")
+}
+
+// Every tool invocation, successful or not. This is the accountability record
+// for a system that can delete an order or move money: `AgentMessage` says what
+// was asked, this says what was actually done, by whom, and whether it worked.
+model AgentToolCall {
+  id             String  @id @default(cuid())
+  conversationId String?
+  actorPhone     String
+  toolName       String
+  // JSON. Truncated on write — a bulk tool's arguments can be large and this
+  // table is an audit trail, not a backup.
+  input  String
+  ok     Boolean
+  result String
+  // Whether this tool required an explicit confirmation before running.
+  destructive Boolean @default(false)
+  durationMs  Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([toolName])
+  @@index([actorPhone])
+  @@map("agent_tool_calls")
+}
+
+// A destructive tool call parked awaiting a yes. Stored rather than held in
+// memory so a worker restart mid-confirmation can't resurrect a stale
+// "delete everything" the operator has since walked away from — and so the
+// pending action survives long enough to actually be answered.
+model AgentPendingAction {
+  id             String @id @default(cuid())
+  conversationId String
+  actorPhone     String
+  toolName       String
+  input          String
+  // Human-readable description of exactly what will happen, echoed back to
+  // the operator. This is what they are agreeing to, so it is generated from
+  // the resolved arguments, never from the raw request text.
+  summary   String
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([expiresAt])
+  @@map("agent_pending_actions")
+}

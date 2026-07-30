@@ -245,3 +245,47 @@ export const adminCreatePayout = (token: string, data: Record<string, unknown>) 
 
 export const adminDeletePayout = (token: string, id: string) =>
   api.delete(`/api/v1/admin/finance/payouts/${id}`, auth(token)).then((r) => r.data);
+
+// ---- WhatsApp AI agent ----
+
+export const adminWhatsAppStatus = (token: string) =>
+  api.get('/api/v1/admin/whatsapp/status', auth(token)).then((r) => r.data);
+
+export const adminWhatsAppQR = (token: string) =>
+  api.get('/api/v1/admin/whatsapp/qr', auth(token)).then((r) => r.data);
+
+export const adminWhatsAppConnect = (token: string) =>
+  api.post('/api/v1/admin/whatsapp/connect', {}, auth(token)).then((r) => r.data);
+
+export const adminWhatsAppStop = (token: string) =>
+  api.post('/api/v1/admin/whatsapp/stop', {}, auth(token)).then((r) => r.data);
+
+export const adminWhatsAppDisconnect = (token: string) =>
+  api.post('/api/v1/admin/whatsapp/disconnect', {}, auth(token)).then((r) => r.data);
+
+export const adminWhatsAppSend = (token: string, phone: string, message: string) =>
+  api.post('/api/v1/admin/whatsapp/send', { phone, message }, auth(token)).then((r) => r.data);
+
+export const adminWhatsAppGroups = (token: string) =>
+  api.get('/api/v1/admin/whatsapp/groups', auth(token)).then((r) => r.data);
+
+export const adminAgentOperators = (token: string) =>
+  api.get('/api/v1/admin/whatsapp/operators', auth(token)).then((r) => r.data);
+
+export const adminAgentSaveOperator = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/whatsapp/operators', data, auth(token)).then((r) => r.data);
+
+export const adminAgentDeleteOperator = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/whatsapp/operators/${id}`, auth(token)).then((r) => r.data);
+
+export const adminAgentSaveGroup = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/whatsapp/groups', data, auth(token)).then((r) => r.data);
+
+export const adminAgentConversations = (token: string) =>
+  api.get('/api/v1/admin/whatsapp/conversations', auth(token)).then((r) => r.data);
+
+export const adminAgentConversation = (token: string, id: string) =>
+  api.get(`/api/v1/admin/whatsapp/conversations/${id}`, auth(token)).then((r) => r.data);
+
+export const adminAgentToolCalls = (token: string, params?: Record<string, string>) =>
+  api.get('/api/v1/admin/whatsapp/tool-calls', { ...auth(token), params }).then((r) => r.data);

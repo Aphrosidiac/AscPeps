@@ -31,5 +31,25 @@ cp -r .next/static .next/standalone/.next/static
 # 1-hour cache, so an admin save looks like it did nothing for up to an hour.
 cp .env .next/standalone/.env
 
-pm2 restart ascend-api ascend-web --update-env
+# Ports are pinned explicitly on every restart. `--update-env` re-reads the
+# CALLING shell's environment, and any deploy step that sources backend/.env
+# exports PORT=3105 — which then gets handed to the FRONTEND, producing
+# EADDRINUSE on 3105, a dead ascend-web, and a 502 on the whole site. That
+# happened on 2026-07-31. Naming the port here makes the shell's value
+# irrelevant no matter how this script is invoked.
+PORT=3105 pm2 restart ascend-api --update-env
+PORT=3000 pm2 restart ascend-web --update-env
+
+# The WhatsApp agent worker holds the baileys socket. Restarting it drops the
+# connection briefly; the saved session means it reconnects without a re-scan.
+# `|| true` because a first deploy has no such process yet — see
+# docs/whatsapp-agent.md for the one-time pm2 start command.
+PORT=3105 pm2 restart ascend-wa --update-env || echo "NOTE: ascend-wa not running — see docs/whatsapp-agent.md to start it the first time"
+
 pm2 ls | grep ascend
+
+# PM2 reporting "online" says nothing about whether the ports are actually
+# bound — a crash-looping process shows green between restarts. Check the
+# sockets, which is what the 2026-07-31 outage needed and didn't have.
+echo "--- listening ports (expect 3000 web, 3105 api, 3106 worker control plane) ---"
+ss -lntp 2>/dev/null | grep -E ":(3000|3105|3106)" || echo "WARN: expected ports are not all listening"
