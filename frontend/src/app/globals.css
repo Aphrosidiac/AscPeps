@@ -156,6 +156,65 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Modal and inline-panel transitions for the finance screens.
+   Class names deliberately avoid an `animate-` prefix — that is Tailwind v4's
+   own utility namespace and silently resolves to `animation: none`. */
+
+@keyframes dialog-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialog-backdrop-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+/* The panel travels further than the backdrop fades, which is what makes it
+   read as landing on top of the page rather than the whole thing blinking in. */
+@keyframes dialog-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dialog-panel-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+
+.dialog-backdrop { animation: dialog-backdrop-in 0.18s ease-out both; }
+.dialog-backdrop.is-closing { animation: dialog-backdrop-out 0.15s ease-in both; }
+.dialog-panel { animation: dialog-panel-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.dialog-panel.is-closing { animation: dialog-panel-out 0.15s ease-in both; }
+
+/* An inline section expanding into place — the Add expense form. */
+@keyframes panel-reveal-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes panel-reveal-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+.panel-reveal { animation: panel-reveal-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.panel-reveal.is-closing { animation: panel-reveal-out 0.15s ease-in both; }
+
+/* Rows arriving in sequence inside a freshly-opened panel. */
+@keyframes row-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.row-rise { animation: row-rise-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop,
+  .dialog-backdrop.is-closing,
+  .dialog-panel,
+  .dialog-panel.is-closing,
+  .panel-reveal,
+  .panel-reveal.is-closing,
+  .row-rise {
+    animation: none;
+  }
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
