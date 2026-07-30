@@ -117,9 +117,9 @@ function inputToCents(value: string): number | null {
 // it's editable per order, and changing it here never touches an order whose
 // split is already recorded.
 const DEFAULT_SHARES: OrderProfitShareInput[] = [
-  { name: 'Fakhrul', shareBps: 3000 },
-  { name: 'Asyraf', shareBps: 3000 },
-  { name: 'Investors', shareBps: 4000 },
+  { name: 'Fakhrul', shareBps: 3000, expenseAmount: 0 },
+  { name: 'Asyraf', shareBps: 3000, expenseAmount: 0 },
+  { name: 'Investors', shareBps: 4000, expenseAmount: 0 },
 ];
 
 export function OrderDetail({ orderId }: { orderId: string }) {
@@ -621,7 +621,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   );
   const [shares, setShares] = useState<OrderProfitShareInput[]>(() => {
     const saved = order.profitShares ?? [];
-    return saved.length > 0 ? saved.map((s) => ({ name: s.name, shareBps: s.shareBps })) : DEFAULT_SHARES;
+    return saved.length > 0
+      ? saved.map((s) => ({ name: s.name, shareBps: s.shareBps, expenseAmount: s.expenseAmount ?? 0 }))
+      : DEFAULT_SHARES;
   });
 
   const [saving, setSaving] = useState(false);
@@ -649,7 +651,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   /* ----- dirty tracking, so Save only fires the calls that changed */
   const savedItemCosts = Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]));
   const savedExtras = (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }));
-  const savedShares = (order.profitShares ?? []).map((s) => ({ name: s.name, shareBps: s.shareBps }));
+  const savedShares = (order.profitShares ?? []).map((s) => ({
+    name: s.name, shareBps: s.shareBps, expenseAmount: s.expenseAmount ?? 0,
+  }));
 
   const normalisedItemCosts = Object.fromEntries(
     order.items.map((i) => [i.id, centsToInput(inputToCents(itemCosts[i.id] ?? ''))])
@@ -675,6 +679,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     const each = Math.floor(10_000 / list.length);
     return list.map((s, i) => ({ ...s, shareBps: i === list.length - 1 ? 10_000 - each * (list.length - 1) : each }));
   };
+
+  // Each person's take-home on this order: their cut of profit, less the flat
+  // running-cost amount they carry. These deliberately do NOT sum to the order
+  // profit — the expense amounts are charges on people, not order costs.
+  const shareNet = (index: number) =>
+    netProfit === null ? null : (amounts[index] ?? 0) - shares[index].expenseAmount;
+  const expenseTotal = shares.reduce((sum, s) => sum + s.expenseAmount, 0);
 
   const handleSave = async () => {
     if (!token || !canSave) return;
@@ -922,6 +933,14 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           </div>
         ) : (
           <>
+            <div className="hidden sm:flex items-center gap-3 pb-2 text-[11px] font-medium text-text-muted uppercase tracking-wider">
+              <span className="flex-1 min-w-0">Person</span>
+              <span className="w-28 shrink-0 text-right">Profit share</span>
+              <span className="w-32 shrink-0 text-right">Expense</span>
+              <span className="w-24 shrink-0 text-right">Net</span>
+              <span className="w-7 shrink-0" />
+            </div>
+
             <div className="space-y-3">
               {shares.map((row, i) => (
                 <div key={i} className="flex items-center gap-3">
@@ -947,8 +966,34 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">%</span>
                   </div>
+                  {/* Flat running-cost amount this person carries on this
+                      order. Not a percentage — how much each person absorbs is
+                      a per-order judgement, not a formula. */}
+                  <div className="relative w-32 shrink-0">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={row.expenseAmount === 0 ? '' : (row.expenseAmount / 100).toFixed(2)}
+                      onChange={(e) => {
+                        const cents = inputToCents(e.target.value);
+                        setShares((p) => p.map((r, j) => (j === i ? { ...r, expenseAmount: cents ?? 0 } : r)));
+                        touch();
+                      }}
+                      placeholder="0.00"
+                      aria-label={`Person ${i + 1} expense share`}
+                      className="w-full pl-9 pr-2 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
                   <span className="w-24 shrink-0 text-right text-sm font-semibold">
-                    {netProfit === null ? <span className="text-text-muted">—</span> : formatPrice(amounts[i] ?? 0)}
+                    {shareNet(i) === null ? (
+                      <span className="text-text-muted">—</span>
+                    ) : (
+                      <span className={(shareNet(i) as number) < 0 ? 'text-danger' : ''}>
+                        {formatPrice(shareNet(i) as number)}
+                      </span>
+                    )}
                   </span>
                   <button
                     onClick={() => { setShares((p) => splitEvenly(p.filter((_, j) => j !== i))); touch(); }}
@@ -964,7 +1009,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border">
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0 }])); touch(); }}
+                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, expenseAmount: 0 }])); touch(); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add person
@@ -976,9 +1021,16 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                   Split evenly
                 </button>
               </div>
-              <p className={`text-sm font-medium ${totalBps === 10_000 ? 'text-success' : 'text-danger'}`}>
-                {bpsToPercent(totalBps)}%{totalBps !== 10_000 && ' — must be 100%'}
-              </p>
+              <div className="text-right">
+                <p className={`text-sm font-medium ${totalBps === 10_000 ? 'text-success' : 'text-danger'}`}>
+                  {bpsToPercent(totalBps)}%{totalBps !== 10_000 && ' — must be 100%'}
+                </p>
+                {expenseTotal > 0 && (
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {formatPrice(expenseTotal)} of expenses carried
+                  </p>
+                )}
+              </div>
             </div>
           </>
         )}

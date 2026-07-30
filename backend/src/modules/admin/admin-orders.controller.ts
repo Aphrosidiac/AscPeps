@@ -42,7 +42,11 @@ const profitSharesSchema = z.object({
     .array(
       z.object({
         name: z.string().trim().min(1, 'Name is required').max(60),
+        // Share of this order's PROFIT.
         shareBps: z.number().int().min(0).max(10_000),
+        // Flat cents of this order's running costs this person absorbs.
+        // Not a percentage and not derived — see the schema comment.
+        expenseAmount: z.number().int().min(0).max(100_000_000).optional(),
       })
     )
     .max(10),
@@ -205,7 +209,13 @@ export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id:
     ...(shares.length > 0
       ? [
           fastify.prisma.orderProfitShare.createMany({
-            data: shares.map((s) => ({ orderId: id, ...s, partnerId: partnerIdByName.get(s.name) ?? null })),
+            data: shares.map((s) => ({
+              orderId: id,
+              name: s.name,
+              shareBps: s.shareBps,
+              expenseAmount: s.expenseAmount ?? 0,
+              partnerId: partnerIdByName.get(s.name) ?? null,
+            })),
           }),
         ]
       : []),

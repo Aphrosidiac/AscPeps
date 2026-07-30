@@ -8,13 +8,7 @@ import {
   adminGetExpenses, adminCreateExpense, adminDeleteExpense, adminGetFinanceOverview,
 } from '@/lib/api';
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
-import type { CompanyExpense, PartnerBalance, ExpenseAllocation, FundingType } from '@/types';
-
-const ALLOCATION_LABELS: Record<ExpenseAllocation, string> = {
-  OWNERSHIP: 'Split by ownership',
-  SINGLE_PARTNER: 'Charged to one person',
-  UNALLOCATED: 'Company absorbs',
-};
+import type { CompanyExpense, PartnerBalance, FundingType } from '@/types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -23,8 +17,6 @@ const emptyForm = {
   category: '',
   description: '',
   amount: '',
-  allocation: 'OWNERSHIP' as ExpenseAllocation,
-  chargedToPartnerId: '',
   paidByPartnerId: '',
   paidByFundingType: 'ADVANCE' as FundingType,
 };
@@ -58,8 +50,7 @@ export default function AdminExpensesPage() {
   const valid =
     form.category.trim() !== '' &&
     form.description.trim() !== '' &&
-    Number.isFinite(cents) && cents > 0 &&
-    (form.allocation !== 'SINGLE_PARTNER' || form.chargedToPartnerId !== '');
+    Number.isFinite(cents) && cents > 0;
 
   const submit = async () => {
     if (!token || !valid) return;
@@ -71,8 +62,6 @@ export default function AdminExpensesPage() {
         category: form.category.trim(),
         description: form.description.trim(),
         amount: cents,
-        allocation: form.allocation,
-        chargedToPartnerId: form.allocation === 'SINGLE_PARTNER' ? form.chargedToPartnerId : null,
         paidByPartnerId: form.paidByPartnerId || null,
         // Only meaningful when a partner fronted it — this is the question that
         // decides whether the company now owes them.
@@ -167,25 +156,6 @@ export default function AdminExpensesPage() {
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
             </div>
             <div>
-              <label htmlFor="e-alloc" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">How is it shared</label>
-              <select id="e-alloc" value={form.allocation}
-                onChange={(e) => setForm((f) => ({ ...f, allocation: e.target.value as ExpenseAllocation }))}
-                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface">
-                {Object.entries(ALLOCATION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
-            {form.allocation === 'SINGLE_PARTNER' && (
-              <div>
-                <label htmlFor="e-charged" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Charged to</label>
-                <select id="e-charged" value={form.chargedToPartnerId}
-                  onChange={(e) => setForm((f) => ({ ...f, chargedToPartnerId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface">
-                  <option value="">Choose…</option>
-                  {partners.map((p) => <option key={p.partnerId} value={p.partnerId}>{p.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
               <label htmlFor="e-paidby" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Who paid</label>
               <select id="e-paidby" value={form.paidByPartnerId}
                 onChange={(e) => setForm((f) => ({ ...f, paidByPartnerId: e.target.value }))}
@@ -233,7 +203,7 @@ export default function AdminExpensesPage() {
           <Receipt className="w-10 h-10 text-text-muted mx-auto mb-3" />
           <p className="text-text-muted mb-1">No company spending recorded.</p>
           <p className="text-sm text-text-muted">
-            Until it&rsquo;s here, every per-person profit figure is an overstatement.
+            Company spending reduces net profit. What each person carries is set per order.
           </p>
         </div>
       ) : (
@@ -245,7 +215,6 @@ export default function AdminExpensesPage() {
                   <th className="text-left px-5 py-3">Date</th>
                   <th className="text-left px-3 py-3">Category</th>
                   <th className="text-left px-3 py-3">Description</th>
-                  <th className="text-left px-3 py-3">Shared</th>
                   <th className="text-left px-3 py-3">Paid by</th>
                   <th className="text-right px-3 py-3">Amount</th>
                   <th className="px-5 py-3" />
@@ -259,10 +228,6 @@ export default function AdminExpensesPage() {
                       <span className="px-2 py-0.5 rounded-full bg-surface-elevated text-xs">{e.category}</span>
                     </td>
                     <td className="px-3 py-3 font-medium">{e.description}</td>
-                    <td className="px-3 py-3 text-text-secondary text-xs">
-                      {ALLOCATION_LABELS[e.allocation]}
-                      {e.chargedTo && ` · ${e.chargedTo.name}`}
-                    </td>
                     <td className="px-3 py-3 text-xs">
                       {e.paidBy ? (
                         <span>

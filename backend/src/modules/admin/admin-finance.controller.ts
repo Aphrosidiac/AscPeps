@@ -5,7 +5,6 @@ import { computeFinance, type FinanceOrder } from '../../utils/finance.js';
 // Cents. Capped well above any plausible figure so a mistyped amount can't
 // overflow the INTEGER column.
 const moneyCents = z.number().int().min(1).max(1_000_000_000);
-const bps = z.number().int().min(0).max(10_000);
 
 const partnersSchema = z.object({
   partners: z
@@ -14,7 +13,6 @@ const partnersSchema = z.object({
         // Absent for a partner being created in this same save.
         id: z.string().optional(),
         name: z.string().trim().min(1, 'Name is required').max(60),
-        ownershipBps: bps,
         active: z.boolean(),
         notes: z.string().trim().max(500).nullable().optional(),
       })
@@ -27,8 +25,6 @@ const expenseSchema = z.object({
   category: z.string().trim().min(1, 'Category is required').max(60),
   description: z.string().trim().min(1, 'Description is required').max(300),
   amount: moneyCents,
-  allocation: z.enum(['OWNERSHIP', 'SINGLE_PARTNER', 'UNALLOCATED']),
-  chargedToPartnerId: z.string().nullable().optional(),
   paidByPartnerId: z.string().nullable().optional(),
   // Only meaningful alongside paidByPartnerId — decides whether fronting this
   // cost created a debt to that partner or was pure investment.
@@ -71,12 +67,10 @@ async function loadFinanceInput(fastify: FastifyInstance) {
         total: true,
         items: { select: { quantity: true, unitCost: true } },
         extraCosts: { select: { amount: true } },
-        profitShares: { select: { partnerId: true, shareBps: true } },
+        profitShares: { select: { partnerId: true, shareBps: true, expenseAmount: true } },
       },
     }),
-    fastify.prisma.companyExpense.findMany({
-      select: { id: true, amount: true, allocation: true, chargedToPartnerId: true },
-    }),
+    fastify.prisma.companyExpense.findMany({ select: { id: true, amount: true } }),
     fastify.prisma.partnerFunding.findMany({
       select: { id: true, partnerId: true, type: true, amount: true, repayments: { select: { amount: true } } },
     }),
@@ -90,23 +84,12 @@ export async function getFinanceOverview(fastify: FastifyInstance) {
   const input = await loadFinanceInput(fastify);
   const summary = computeFinance(input);
 
-  const ownershipBps = input.partners
-    .filter((p) => p.active)
-    .reduce((sum, p) => sum + p.ownershipBps, 0);
-
   return {
     ...summary,
-    // Surfaced so the UI can warn rather than silently mis-allocating: if this
-    // isn't 10000, expenses are still fully distributed (weights are
-    // normalised) but not in the proportions anyone intended.
-    ownershipBps,
     recentExpenses: await fastify.prisma.companyExpense.findMany({
       orderBy: { occurredAt: 'desc' },
       take: 5,
-      include: {
-        paidBy: { select: { id: true, name: true } },
-        chargedTo: { select: { id: true, name: true } },
-      },
+      include: { paidBy: { select: { id: true, name: true } } },
     }),
   };
 }
@@ -138,7 +121,7 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
             id: true, orderNumber: true, createdAt: true, total: true, deletedAt: true, paymentStatus: true,
             items: { select: { quantity: true, unitCost: true } },
             extraCosts: { select: { amount: true } },
-            profitShares: { select: { partnerId: true, shareBps: true } },
+            profitShares: { select: { partnerId: true, shareBps: true, expenseAmount: true } },
           },
         },
       },
@@ -174,21 +157,8 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
   return { partner, balance, earnings, funding, payouts };
 }
 
-/**
- * Partners are saved as a set: ownership only means anything relative to the
- * others, so validating one at a time would let the total drift past 100%
- * between saves.
- */
 export async function saveFinancePartners(fastify: FastifyInstance, body: unknown) {
   const { partners } = partnersSchema.parse(body);
-
-  const activeTotal = partners.filter((p) => p.active).reduce((sum, p) => sum + p.ownershipBps, 0);
-  if (partners.some((p) => p.active) && activeTotal !== 10_000) {
-    throw {
-      statusCode: 400,
-      message: `Ownership across active partners must total exactly 100% — currently ${(activeTotal / 100).toFixed(2)}%.`,
-    };
-  }
 
   const names = partners.map((p) => p.name.trim().toLowerCase());
   if (new Set(names).size !== names.length) {
@@ -200,10 +170,10 @@ export async function saveFinancePartners(fastify: FastifyInstance, body: unknow
       p.id
         ? fastify.prisma.partner.update({
             where: { id: p.id },
-            data: { name: p.name, ownershipBps: p.ownershipBps, active: p.active, notes: p.notes ?? null },
+            data: { name: p.name, active: p.active, notes: p.notes ?? null },
           })
         : fastify.prisma.partner.create({
-            data: { name: p.name, ownershipBps: p.ownershipBps, active: p.active, notes: p.notes ?? null },
+            data: { name: p.name, active: p.active, notes: p.notes ?? null },
           })
     )
   );
@@ -221,7 +191,6 @@ export async function listExpenses(fastify: FastifyInstance, query: Record<strin
       orderBy: { occurredAt: 'desc' },
       include: {
         paidBy: { select: { id: true, name: true } },
-        chargedTo: { select: { id: true, name: true } },
         funding: { select: { id: true, type: true, repayments: { select: { amount: true } } } },
       },
     }),
@@ -242,9 +211,6 @@ export async function listExpenses(fastify: FastifyInstance, query: Record<strin
 export async function createExpense(fastify: FastifyInstance, body: unknown) {
   const data = expenseSchema.parse(body);
 
-  if (data.allocation === 'SINGLE_PARTNER' && !data.chargedToPartnerId) {
-    throw { statusCode: 400, message: 'Choose which partner this expense is charged to.' };
-  }
   if (data.paidByPartnerId && !data.paidByFundingType) {
     throw { statusCode: 400, message: 'Say whether the partner who paid gets this back.' };
   }
@@ -252,12 +218,7 @@ export async function createExpense(fastify: FastifyInstance, body: unknown) {
   const { paidByFundingType, ...expenseData } = data;
 
   return fastify.prisma.$transaction(async (tx) => {
-    const expense = await tx.companyExpense.create({
-      data: {
-        ...expenseData,
-        chargedToPartnerId: data.allocation === 'SINGLE_PARTNER' ? data.chargedToPartnerId : null,
-      },
-    });
+    const expense = await tx.companyExpense.create({ data: expenseData });
 
     if (data.paidByPartnerId && paidByFundingType) {
       await tx.partnerFunding.create({
