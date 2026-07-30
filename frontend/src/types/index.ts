@@ -199,13 +199,16 @@ export interface OrderProfitShare {
   id: string;
   orderId: string;
   name: string;
-  // Basis points — 5000 = 50%. Integer so an even three-way split is exact.
+  // Basis points — 5000 = 50%. Governs PROFIT only.
   shareBps: number;
+  // Flat cents of this order's running costs this person absorbs. Not a
+  // percentage and not derived — subtracted from their profit cut.
+  expenseAmount: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export type OrderProfitShareInput = Pick<OrderProfitShare, 'name' | 'shareBps'>;
+export type OrderProfitShareInput = Pick<OrderProfitShare, 'name' | 'shareBps' | 'expenseAmount'>;
 
 export interface DiscountCode {
   id: string;
@@ -290,14 +293,11 @@ export type InsightFigureInput = Pick<
 /* ------------------------------------------------------------------ Finance */
 
 export type FundingType = 'CONTRIBUTION' | 'ADVANCE';
-export type ExpenseAllocation = 'OWNERSHIP' | 'SINGLE_PARTNER' | 'UNALLOCATED';
 
 export interface Partner {
   id: string;
   name: string;
   active: boolean;
-  /** Share of COMPANY expenses, basis points. Not the per-order split. */
-  ownershipBps: number;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -307,9 +307,8 @@ export interface PartnerBalance {
   partnerId: string;
   name: string;
   active: boolean;
-  ownershipBps: number;
   earned: number;
-  /** Positive = charged to them. */
+  /** Sum of the flat amounts set against them on each order. */
   expenseShare: number;
   /** Capital they never want back — deliberately absent from `owed`. */
   contributed: number;
@@ -332,12 +331,9 @@ export interface CompanyExpense {
   category: string;
   description: string;
   amount: number;
-  allocation: ExpenseAllocation;
-  chargedToPartnerId: string | null;
   paidByPartnerId: string | null;
   receiptUrl: string | null;
   paidBy?: PartnerRef | null;
-  chargedTo?: PartnerRef | null;
   funding?: { id: string; type: FundingType; repayments: { amount: number }[] } | null;
 }
 
@@ -384,15 +380,12 @@ export interface FinanceOverview {
   grossOrderProfit: number;
   companySpend: number;
   netProfit: number;
-  unallocatedSpend: number;
   totalContributed: number;
   totalAdvancesOutstanding: number;
   totalPaidOut: number;
   costedOrders: number;
   uncostedOrders: number;
   partners: PartnerBalance[];
-  /** Total ownership across active partners. Should be 10000. */
-  ownershipBps: number;
   recentExpenses: CompanyExpense[];
 }
 

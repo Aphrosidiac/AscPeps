@@ -250,20 +250,27 @@ model OrderExtraCost {
 // (see below), which is what makes lifetime per-person totals possible. Still
 // absent: per-item rather than per-order splits.
 model OrderProfitShare {
-  id        String  @id @default(cuid())
-  orderId   String
+  id            String  @id @default(cuid())
+  orderId       String
   // The person this share belongs to. Nullable only so the column could be
   // added to existing rows before the backfill ran — every row written since
   // has one, and the API resolves/creates a Partner from `name` on save.
-  partnerId String?
+  partnerId     String?
   // The display label as it was typed on the order. Kept alongside partnerId
   // as a frozen historical record: renaming a Partner must not silently rewrite
   // what an old order says it agreed to.
-  name      String
+  name          String
   // Basis points, not whole percent — 5000 = 50%. An even three-way split is
   // the immediate reason (3333/3333/3334), and it matches the codebase's
   // existing "money and rates are integers, never floats" convention.
-  shareBps  Int
+  //
+  // This governs PROFIT only. Expenses are not a percentage — see below.
+  shareBps      Int
+  // A flat amount, in cents, this person absorbs on this order. Deliberately
+  // NOT a percentage and not derived from anything: how much of the running
+  // costs each person carries is a judgement made per order, not a formula.
+  // Subtracted from their profit cut, so sum(cuts) != order profit by design.
+  expenseAmount Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -447,33 +454,28 @@ model InsightFigure {
 //
 // Design notes live in docs/finance-section-plan.md. Two rules matter most:
 //
-//  1. Company spending is real and must land on someone, or the per-person
-//     earnings are overstatements — a business can distribute RM2,000 of order
-//     profit while only RM1,200 survived its own costs.
+//  1. Company spending reduces company profit, and nothing else. What each
+//     person carries is set per order, as a flat amount on their split row —
+//     never a percentage, never derived. See OrderProfitShare.expenseAmount.
 //  2. Money a partner puts in is NOT one thing. A CONTRIBUTION is capital they
 //     never want back; an ADVANCE is a debt the company must return. Only the
 //     second belongs in "owed".
 
 model Partner {
-  id           String  @id @default(cuid())
-  name         String  @unique
+  id     String  @id @default(cuid())
+  name   String  @unique
   // Deactivated rather than deleted — a former partner still has history, and
   // inactive partners drop out of the pickers for new records.
-  active       Boolean @default(true)
-  // Share of COMPANY-level expenses, in basis points. Deliberately a different
-  // field from OrderProfitShare.shareBps: that one is per order and may vary
-  // sale by sale, this is the standing ownership split.
-  ownershipBps Int     @default(0)
-  notes        String?
+  active Boolean @default(true)
+  notes  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profitShares    OrderProfitShare[]
-  funding         PartnerFunding[]
-  payouts         ProfitPayout[]
-  expensesPaid    CompanyExpense[]   @relation("ExpensePaidBy")
-  expensesCharged CompanyExpense[]   @relation("ExpenseChargedTo")
+  profitShares OrderProfitShare[]
+  funding      PartnerFunding[]
+  payouts      ProfitPayout[]
+  expensesPaid CompanyExpense[]   @relation("ExpensePaidBy")
 
   @@index([active])
   @@map("partners")
@@ -489,34 +491,23 @@ model CompanyExpense {
   description String
   amount      Int
 
-  allocation         ExpenseAllocation @default(OWNERSHIP)
-  // Set only when allocation = SINGLE_PARTNER.
-  chargedToPartnerId String?
   // Who actually fronted the cash. Null means it came from a company account
-  // and creates no obligation to anyone.
-  paidByPartnerId    String?
-  receiptUrl         String?
+  // and creates no obligation to anyone. This is the ONLY way an expense
+  // touches a person: it never lands on anyone's balance as a cost, only as
+  // money the company may owe the person who paid it.
+  paidByPartnerId String?
+  receiptUrl      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  chargedTo Partner?        @relation("ExpenseChargedTo", fields: [chargedToPartnerId], references: [id])
-  paidBy    Partner?        @relation("ExpensePaidBy", fields: [paidByPartnerId], references: [id])
+  paidBy  Partner?        @relation("ExpensePaidBy", fields: [paidByPartnerId], references: [id])
   // The funding record created when a partner paid for this out of pocket.
-  funding   PartnerFunding?
+  funding PartnerFunding?
 
   @@index([occurredAt])
   @@index([category])
   @@map("company_expenses")
-}
-
-enum ExpenseAllocation {
-  // Split across active partners by ownershipBps.
-  OWNERSHIP
-  // Charged wholly to one person.
-  SINGLE_PARTNER
-  // The company absorbs it: reduces company profit, touches no one's balance.
-  UNALLOCATED
 }
 
 model PartnerFunding {

@@ -16,45 +16,28 @@
 
 import { costOrder, allocate, type CostableOrder } from './profit.js';
 
-/**
- * Splits `amount` across arbitrary weights (not necessarily summing to 10000),
- * largest-remainder, so the parts always sum back to exactly `amount`.
- *
- * `allocate()` in profit.ts assumes basis points out of 10000 because a profit
- * split is validated to total 100%. Ownership is edited independently and can
- * legitimately be mid-edit or drifted, and an expense must still be fully
- * distributed rather than partly vanishing — hence normalising here instead of
- * reusing that assumption.
- */
-export function allocateByWeights(amount: number, weights: number[]): number[] {
-  const total = weights.reduce((sum, w) => sum + w, 0);
-  if (weights.length === 0 || total <= 0) return weights.map(() => 0);
-  // Scale to basis points, then defer to the same largest-remainder routine so
-  // both allocations round identically.
-  const bps = weights.map((w) => (w / total) * 10_000);
-  return allocate(amount, bps);
-}
-
 export type FundingType = 'CONTRIBUTION' | 'ADVANCE';
-export type ExpenseAllocationMode = 'OWNERSHIP' | 'SINGLE_PARTNER' | 'UNALLOCATED';
 
 export interface FinancePartner {
   id: string;
   name: string;
   active: boolean;
-  ownershipBps: number;
 }
 
 export interface FinanceOrder extends CostableOrder {
   id: string;
-  profitShares: { partnerId: string | null; shareBps: number }[];
+  /**
+   * `shareBps` governs profit only. `expenseAmount` is a flat figure this
+   * person absorbs on this order — entered by hand, not derived from anything,
+   * because how much of the running costs each person carries is a judgement
+   * per order rather than a formula.
+   */
+  profitShares: { partnerId: string | null; shareBps: number; expenseAmount: number }[];
 }
 
 export interface FinanceExpense {
   id: string;
   amount: number;
-  allocation: ExpenseAllocationMode;
-  chargedToPartnerId: string | null;
 }
 
 export interface FinanceFunding {
@@ -74,10 +57,9 @@ export interface PartnerBalance {
   partnerId: string;
   name: string;
   active: boolean;
-  ownershipBps: number;
   /** Their cut of profit from every fully-costed, paid order. */
   earned: number;
-  /** Their share of company spending. Positive = charged to them. */
+  /** Sum of the flat expense amounts set against them on each order. */
   expenseShare: number;
   /** Capital they never want back. Never counted in `owed`. */
   contributed: number;
@@ -97,8 +79,6 @@ export interface FinanceSummary {
   companySpend: number;
   /** grossOrderProfit − companySpend. The number that's actually real. */
   netProfit: number;
-  /** Spending the company absorbed rather than charging to anyone. */
-  unallocatedSpend: number;
   totalContributed: number;
   totalAdvancesOutstanding: number;
   totalPaidOut: number;
@@ -121,7 +101,6 @@ export function computeFinance(input: {
     partnerId: p.id,
     name: p.name,
     active: p.active,
-    ownershipBps: p.ownershipBps,
     earned: 0,
     expenseShare: 0,
     contributed: 0,
@@ -159,36 +138,23 @@ export function computeFinance(input: {
     });
   }
 
-  /* ----- company spending */
-  let companySpend = 0;
-  let unallocatedSpend = 0;
-
-  // Ownership allocation covers ACTIVE partners only — a departed partner
-  // shouldn't be charged for spending that happened after they left.
-  const owners = partners.filter((p) => p.active && p.ownershipBps > 0);
-
-  for (const expense of expenses) {
-    companySpend += expense.amount;
-
-    if (expense.allocation === 'SINGLE_PARTNER') {
-      const target = expense.chargedToPartnerId ? byId.get(expense.chargedToPartnerId) : undefined;
-      if (target) target.expenseShare += expense.amount;
-      // Charged to a partner who no longer exists: treat as absorbed rather
-      // than silently spreading it onto everyone else.
-      else unallocatedSpend += expense.amount;
-      continue;
+  /* ----- expense share: the flat amounts set per person, per order.
+     Counted from every paid order that has a split, whether or not that order
+     is costed — unlike profit, this figure isn't derived from anything, it was
+     typed in deliberately, so withholding it until the order is costed would
+     just hide a charge someone has already agreed to carry. */
+  for (const order of orders) {
+    for (const share of order.profitShares) {
+      if (!share.partnerId || share.expenseAmount === 0) continue;
+      const balance = byId.get(share.partnerId);
+      if (balance) balance.expenseShare += share.expenseAmount;
     }
-
-    if (expense.allocation === 'UNALLOCATED' || owners.length === 0) {
-      unallocatedSpend += expense.amount;
-      continue;
-    }
-
-    const amounts = allocateByWeights(expense.amount, owners.map((p) => p.ownershipBps));
-    owners.forEach((owner, i) => {
-      byId.get(owner.id)!.expenseShare += amounts[i];
-    });
   }
+
+  /* ----- company spending: reduces company profit, and nothing else. It never
+     lands on a person as a cost. The only way an expense touches someone is if
+     they fronted the cash, which is recorded as funding, not as a charge. */
+  const companySpend = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   /* ----- money in */
   for (const entry of funding) {
@@ -227,7 +193,6 @@ export function computeFinance(input: {
     grossOrderProfit,
     companySpend,
     netProfit: grossOrderProfit - companySpend,
-    unallocatedSpend,
     totalContributed: balances.reduce((s, b) => s + b.contributed, 0),
     totalAdvancesOutstanding: balances.reduce((s, b) => s + b.advancesOutstanding, 0),
     totalPaidOut: balances.reduce((s, b) => s + b.paidOut, 0),
