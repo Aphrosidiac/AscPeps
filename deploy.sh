@@ -51,5 +51,5 @@ pm2 ls | grep ascend
 # PM2 reporting "online" says nothing about whether the ports are actually
 # bound — a crash-looping process shows green between restarts. Check the
 # sockets, which is what the 2026-07-31 outage needed and didn't have.
-echo "--- listening ports (expect 3000 web, 3105 api, 3106 worker control plane) ---"
-ss -lntp 2>/dev/null | grep -E ":(3000|3105|3106)" || echo "WARN: expected ports are not all listening"
+echo "--- listening ports (expect 3000 web, 3105 api, 3107 worker control plane) ---"
+ss -lntp 2>/dev/null | grep -E ":(3000|3105|3107)" || echo "WARN: expected ports are not all listening"
