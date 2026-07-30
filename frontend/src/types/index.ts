@@ -261,4 +261,28 @@ export interface Insight {
   // Present only on the public single-insight response (resolved server-side
   // from relatedProductIds, excluding hidden/discontinued products).
   relatedProducts?: RelatedProductRef[];
+  // Present on the single-insight responses (public + admin), not on lists.
+  figures?: InsightFigure[];
 }
+
+export interface InsightFigure {
+  id: string;
+  insightId: string;
+  // 1-based, and it is the printed label the reader sees ("Figure 3").
+  order: number;
+  imageUrl: string;
+  caption: string;
+  altText: string;
+  credit: string | null;
+  creditUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// What the admin form sends. `order` is omitted on purpose — the server derives
+// it from array position, so the printed number can't disagree with the order
+// the figures were sent in.
+export type InsightFigureInput = Pick<
+  InsightFigure,
+  'imageUrl' | 'caption' | 'altText' | 'credit' | 'creditUrl'
+>;

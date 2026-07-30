@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ExternalLink, FileText } from 'lucide-react';
 import { InsightCard } from '@/components/insights/InsightCard';
+import { InsightFigures } from '@/components/insights/InsightFigures';
 import { JsonLd } from '@/components/JsonLd';
 import { getInsightServer, getInsightsServer } from '@/lib/server-api';
 import { absoluteImageUrl, formatShortDate } from '@/lib/utils';
@@ -39,6 +40,14 @@ export async function generateMetadata({ params }: InsightPageProps): Promise<Me
 }
 
 function ArticleJsonLd({ insight }: { insight: NonNullable<Awaited<ReturnType<typeof getInsightServer>>> }) {
+  // Cover first, then every figure. Google reads `image` as an array and the
+  // figures genuinely are this article's images — leaving them out meant a
+  // figure-heavy piece advertised a single stock cover. Relative upload paths
+  // must be absolute here; JSON-LD has no document base to resolve against.
+  const images = [insight.coverImageUrl, ...(insight.figures ?? []).map((f) => f.imageUrl)]
+    .map((url) => absoluteImageUrl(url))
+    .filter((url): url is string => Boolean(url));
+
   const data = {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -49,7 +58,7 @@ function ArticleJsonLd({ insight }: { insight: NonNullable<Awaited<ReturnType<ty
     dateModified: insight.updatedAt,
     author: { '@type': 'Person', name: insight.authorName, jobTitle: insight.authorRole },
     publisher: { '@type': 'Organization', name: 'ASCEND' },
-    ...(insight.coverImageUrl && { image: absoluteImageUrl(insight.coverImageUrl) }),
+    ...(images.length > 0 && { image: images }),
   };
 
   return <JsonLd data={data} />;
@@ -110,6 +119,9 @@ export default async function InsightPage({ params }: InsightPageProps) {
 
       <p className="text-lg leading-relaxed mb-6">{insight.excerpt}</p>
       <p className="text-[15px] leading-relaxed text-text-secondary whitespace-pre-line mb-6">{insight.content}</p>
+
+      {/* Body, then the figures it refers to, then the paper they came from. */}
+      {insight.figures && insight.figures.length > 0 && <InsightFigures figures={insight.figures} />}
 
       {insight.citationTitle && (
         <div className="bg-surface-elevated border border-border rounded-xl p-4 my-8">

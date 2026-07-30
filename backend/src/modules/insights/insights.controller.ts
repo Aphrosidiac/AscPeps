@@ -21,7 +21,10 @@ export async function listInsights(fastify: FastifyInstance, query: Record<strin
 }
 
 export async function getInsightBySlug(fastify: FastifyInstance, slug: string) {
-  const insight = await fastify.prisma.insight.findFirst({ where: { slug, published: true } });
+  const insight = await fastify.prisma.insight.findFirst({
+    where: { slug, published: true },
+    include: { figures: { orderBy: { order: 'asc' } } },
+  });
   if (!insight) {
     throw { statusCode: 404, message: 'Insight not found' };
   }
