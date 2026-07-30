@@ -9,6 +9,14 @@ import sharp from 'sharp';
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 const WEBP_QUALITY = 82;
 
+// Widest we'll store. Re-encoding to WebP alone doesn't bound dimensions, so a
+// phone photo or a screenshot of a journal figure was previously kept at full
+// size — an article with several such images is a very heavy page. 1600px is
+// comfortably above the widest slot anything is rendered in (the article column
+// is max-w-3xl) while leaving enough detail to zoom into a diagram's labels.
+// `withoutEnlargement` so a small image is never upscaled into blur.
+const MAX_IMAGE_WIDTH = 1600;
+
 // Detect the real image type from the file's magic bytes — the client-declared
 // Content-Type is spoofable and must not be trusted.
 async function sniffImageType(filepath: string): Promise<string | null> {
@@ -71,7 +79,11 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     // and one consistent format for every stored product image.
     const filename = `${id}.webp`;
     try {
-      await sharp(tmppath).webp({ quality: WEBP_QUALITY }).toFile(path.join(uploadsDir, filename));
+      await sharp(tmppath)
+        .rotate() // honour EXIF orientation before resizing, or a phone photo lands sideways
+        .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
+        .webp({ quality: WEBP_QUALITY })
+        .toFile(path.join(uploadsDir, filename));
     } catch {
       return reply.status(400).send({ error: 'Failed to process image.' });
     } finally {

@@ -21,10 +21,42 @@ const insightObjectSchema = z.object({
   citationUrl: z.string().nullable().optional(),
   relatedProductIds: z.array(z.string()).optional(),
   published: z.boolean().optional(),
+  // Sent as the complete, ordered list — array position IS the figure number,
+  // so the client never has to compute or send `order` itself. Omitting the key
+  // entirely leaves existing figures alone; sending [] clears them.
+  figures: z
+    .array(
+      z.object({
+        imageUrl: z.string().min(1),
+        caption: z.string().trim().min(1, 'Caption is required').max(500),
+        altText: z.string().trim().max(300).optional(),
+        credit: z.string().trim().max(300).nullable().optional(),
+        creditUrl: z.string().trim().max(500).nullable().optional(),
+      })
+    )
+    .max(20)
+    .optional(),
 });
 
 const createInsightSchema = insightObjectSchema;
 const updateInsightSchema = insightObjectSchema.partial();
+
+type FigureInput = NonNullable<z.infer<typeof insightObjectSchema>['figures']>;
+
+// Figures are replaced wholesale rather than diffed: they're only meaningful as
+// an ordered set (the position is the printed number), and their ids mean
+// nothing to anything else. `order` is derived from array position here so the
+// number a reader sees can never disagree with the order they were sent in.
+function figureCreateData(figures: FigureInput) {
+  return figures.map((figure, index) => ({
+    order: index + 1,
+    imageUrl: figure.imageUrl,
+    caption: figure.caption,
+    altText: figure.altText ?? '',
+    credit: figure.credit ?? null,
+    creditUrl: figure.creditUrl ?? null,
+  }));
+}
 
 // ~200 words/minute, rounded up so even a short update never reads as 0 min.
 function estimateReadTime(content: string): number {
@@ -50,20 +82,25 @@ export async function adminListInsights(fastify: FastifyInstance, query: Record<
 }
 
 export async function adminGetInsight(fastify: FastifyInstance, id: string) {
-  const insight = await fastify.prisma.insight.findUnique({ where: { id } });
+  const insight = await fastify.prisma.insight.findUnique({
+    where: { id },
+    include: { figures: { orderBy: { order: 'asc' } } },
+  });
   if (!insight) throw { statusCode: 404, message: 'Insight not found' };
   return insight;
 }
 
 export async function adminCreateInsight(fastify: FastifyInstance, body: unknown) {
-  const data = createInsightSchema.parse(body);
+  const { figures, ...data } = createInsightSchema.parse(body);
 
   const insight = await fastify.prisma.insight.create({
     data: {
       ...data,
       readTimeMinutes: estimateReadTime(data.content),
       publishedAt: data.published ? new Date() : null,
+      ...(figures && figures.length > 0 ? { figures: { create: figureCreateData(figures) } } : {}),
     },
+    include: { figures: { orderBy: { order: 'asc' } } },
   });
 
   notifyRevalidate(['insights']);
@@ -71,18 +108,34 @@ export async function adminCreateInsight(fastify: FastifyInstance, body: unknown
 }
 
 export async function adminUpdateInsight(fastify: FastifyInstance, id: string, body: unknown) {
-  const data = updateInsightSchema.parse(body);
+  const { figures, ...data } = updateInsightSchema.parse(body);
 
   const existing = await fastify.prisma.insight.findUnique({ where: { id } });
   if (!existing) throw { statusCode: 404, message: 'Insight not found' };
 
-  const insight = await fastify.prisma.insight.update({
-    where: { id },
-    data: {
-      ...data,
-      ...(data.content !== undefined ? { readTimeMinutes: estimateReadTime(data.content) } : {}),
-      ...(data.published && !existing.publishedAt ? { publishedAt: new Date() } : {}),
-    },
+  // Delete-then-recreate inside one transaction. Without the transaction a
+  // failure partway would leave the article with no figures at all, and the
+  // (insightId, order) unique index makes an in-place reorder impossible to do
+  // safely row by row anyway — swapping two figures would collide mid-update.
+  const insight = await fastify.prisma.$transaction(async (tx) => {
+    if (figures !== undefined) {
+      await tx.insightFigure.deleteMany({ where: { insightId: id } });
+      if (figures.length > 0) {
+        await tx.insightFigure.createMany({
+          data: figureCreateData(figures).map((f) => ({ ...f, insightId: id })),
+        });
+      }
+    }
+
+    return tx.insight.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(data.content !== undefined ? { readTimeMinutes: estimateReadTime(data.content) } : {}),
+        ...(data.published && !existing.publishedAt ? { publishedAt: new Date() } : {}),
+      },
+      include: { figures: { orderBy: { order: 'asc' } } },
+    });
   });
 
   notifyRevalidate(['insights']);

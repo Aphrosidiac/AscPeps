@@ -385,7 +385,47 @@ model Insight {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  figures InsightFigure[]
+
   @@index([published])
   @@index([category])
   @@map("insights")
+}
+
+// A labelled figure belonging to an article — image, caption, attribution —
+// rendered as a numbered grid below the body, the way a journal paper presents
+// them. The prose refers to them by number ("see Figure 2").
+//
+// A real table rather than a string array (contrast `relatedProductIds` above,
+// which is deliberately a bare id list): every column here is a per-row
+// attribute, which is exactly the case that note says a join model is *not*
+// overhead for.
+model InsightFigure {
+  id        String @id @default(cuid())
+  insightId String
+  // 1-based, and it IS the label the reader sees ("Figure 3") — not a hidden
+  // sort key. Renumbered on save whenever figures are reordered.
+  order     Int
+  imageUrl  String
+  caption   String
+  // Describes what the diagram actually shows, for screen readers. Distinct
+  // from the caption, which is the printed label. Defaulted rather than
+  // required at the DB level so this column can be added without a backfill;
+  // the admin form is what insists on it.
+  altText   String  @default("")
+  // Attribution, e.g. "Adapted from Doe et al., Biomolecules 2025 (CC BY 4.0)".
+  // Journal figures are usually copyrighted — see docs/insights-figures-plan.md.
+  credit    String?
+  creditUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  insight Insight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+
+  // A figure has no meaning without its article, hence the cascade above; the
+  // unique pair keeps two figures from claiming the same printed number.
+  @@unique([insightId, order])
+  @@index([insightId])
+  @@map("insight_figures")
 }
