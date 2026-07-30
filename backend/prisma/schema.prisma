@@ -8,13 +8,13 @@ datasource db {
 }
 
 model Category {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
-  slug        String    @unique
+  slug        String   @unique
   description String?
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   products Product[]
 
@@ -107,7 +107,7 @@ model ProductVariant {
 // regardless of which of its own variants is purchased); addOnId = the
 // specific sellable variant being offered (e.g. a particular Bac Water size).
 model ProductAddOn {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   productId String
   addOnId   String
   // Force-selected and locked on the storefront product page — the customer
@@ -147,37 +147,37 @@ enum PaymentStatus {
 }
 
 model Order {
-  id              String        @id @default(cuid())
-  orderNumber     String        @unique
-  customerName    String
-  phone           String
-  email           String?
-  address         String
-  city            String
-  state           String
-  postcode        String
-  subtotal        Int           @default(0)
-  shippingFee     Int           @default(0)
-  discountAmount  Int           @default(0)
-  total           Int
-  status          OrderStatus   @default(PENDING)
-  paymentMethod   PaymentMethod
-  paymentGateway  String?
-  paymentStatus   PaymentStatus @default(UNPAID)
-  paymentRef      String?
-  discountCodeId  String?
-  notes           String?
-  trackingNumber  String?
-  idempotencyKey  String?       @unique
-  stockRestored   Boolean       @default(false)
+  id             String        @id @default(cuid())
+  orderNumber    String        @unique
+  customerName   String
+  phone          String
+  email          String?
+  address        String
+  city           String
+  state          String
+  postcode       String
+  subtotal       Int           @default(0)
+  shippingFee    Int           @default(0)
+  discountAmount Int           @default(0)
+  total          Int
+  status         OrderStatus   @default(PENDING)
+  paymentMethod  PaymentMethod
+  paymentGateway String?
+  paymentStatus  PaymentStatus @default(UNPAID)
+  paymentRef     String?
+  discountCodeId String?
+  notes          String?
+  trackingNumber String?
+  idempotencyKey String?       @unique
+  stockRestored  Boolean       @default(false)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
-  deletedAt       DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   items        OrderItem[]
-  discountCode DiscountCode? @relation(fields: [discountCodeId], references: [id])
+  discountCode DiscountCode?      @relation(fields: [discountCodeId], references: [id])
   emails       EmailOutbox[]
   profitShares OrderProfitShare[]
   extraCosts   OrderExtraCost[]
@@ -246,25 +246,33 @@ model OrderExtraCost {
 // cut), and because backfilling a changed global rule onto historical orders
 // would silently rewrite what people were already told they earned.
 //
-// Deliberately minimal — this is a first pass. Payout tracking (paid/unpaid,
-// date, method), linking a share to a real user account, and per-item rather
-// than per-order splits are all obvious next steps and none of them are here.
+// Since the finance section landed, a share also points at a real Partner
+// (see below), which is what makes lifetime per-person totals possible. Still
+// absent: per-item rather than per-order splits.
 model OrderProfitShare {
-  id      String @id @default(cuid())
-  orderId String
-  // Free-text for now; no User/Partner table exists to point at yet.
-  name    String
+  id        String  @id @default(cuid())
+  orderId   String
+  // The person this share belongs to. Nullable only so the column could be
+  // added to existing rows before the backfill ran — every row written since
+  // has one, and the API resolves/creates a Partner from `name` on save.
+  partnerId String?
+  // The display label as it was typed on the order. Kept alongside partnerId
+  // as a frozen historical record: renaming a Partner must not silently rewrite
+  // what an old order says it agreed to.
+  name      String
   // Basis points, not whole percent — 5000 = 50%. An even three-way split is
   // the immediate reason (3333/3333/3334), and it matches the codebase's
   // existing "money and rates are integers, never floats" convention.
-  shareBps Int
+  shareBps  Int
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partner Partner? @relation(fields: [partnerId], references: [id])
 
   @@index([orderId])
+  @@index([partnerId])
   @@map("order_profit_shares")
 }
 
@@ -322,18 +330,18 @@ model AdminUser {
 }
 
 model DiscountCode {
-  id             String    @id @default(cuid())
-  code           String    @unique
+  id             String       @id @default(cuid())
+  code           String       @unique
   description    String?
   discountType   DiscountType
   discountValue  Int
   minOrderAmount Int?
   maxUses        Int?
-  usedCount      Int       @default(0)
-  isActive       Boolean   @default(true)
+  usedCount      Int          @default(0)
+  isActive       Boolean      @default(true)
   expiresAt      DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   orders Order[]
 
@@ -358,32 +366,32 @@ model Setting {
 // its own flat model rather than reusing Product: no variants/pricing/stock,
 // and its lifecycle (draft -> published) doesn't map to Product.active.
 model Insight {
-  id             String    @id @default(cuid())
-  title          String
-  slug           String    @unique
-  category       String
-  excerpt        String
-  content        String
-  coverImageUrl  String?
-  authorName     String    @default("Asywa")
-  authorRole     String    @default("Founder & CEO, ASCEND")
-  citationTitle  String?
-  citationSource String?
-  citationUrl    String?
+  id                String    @id @default(cuid())
+  title             String
+  slug              String    @unique
+  category          String
+  excerpt           String
+  content           String
+  coverImageUrl     String?
+  authorName        String    @default("Asywa")
+  authorRole        String    @default("Founder & CEO, ASCEND")
+  citationTitle     String?
+  citationSource    String?
+  citationUrl       String?
   // Estimated server-side from `content` on every save (~200 words/minute) —
   // never client-supplied, so it can't drift from the actual body length.
-  readTimeMinutes Int      @default(1)
+  readTimeMinutes   Int       @default(1)
   // Product (parent) ids surfaced as "Mentioned in this article" chips.
   // A plain id array rather than a join table: no per-relation attributes
   // (unlike ProductAddOn's required/quantity), so a join model would be
   // pure overhead here.
-  relatedProductIds String[] @default([])
-  published      Boolean   @default(false)
+  relatedProductIds String[]  @default([])
+  published         Boolean   @default(false)
   // Set once, the first time `published` flips true — a later edit-and-resave
   // must not look like a brand new publish date.
-  publishedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  publishedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   figures InsightFigure[]
 
@@ -401,7 +409,7 @@ model Insight {
 // attribute, which is exactly the case that note says a join model is *not*
 // overhead for.
 model InsightFigure {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   insightId String
   // 1-based, and it IS the label the reader sees ("Figure 3") — not a hidden
   // sort key. Renumbered on save whenever figures are reordered.
@@ -428,4 +436,151 @@ model InsightFigure {
   @@unique([insightId, order])
   @@index([insightId])
   @@map("insight_figures")
+}
+
+// ---------------------------------------------------------------- Finance
+//
+// Order-level profit (OrderProfitShare above) answers "how was THIS sale
+// divided". The models below answer the lifetime questions: what has each
+// person earned in total, what has the company spent on itself, who has put
+// money in, and what is each person actually owed right now.
+//
+// Design notes live in docs/finance-section-plan.md. Two rules matter most:
+//
+//  1. Company spending is real and must land on someone, or the per-person
+//     earnings are overstatements — a business can distribute RM2,000 of order
+//     profit while only RM1,200 survived its own costs.
+//  2. Money a partner puts in is NOT one thing. A CONTRIBUTION is capital they
+//     never want back; an ADVANCE is a debt the company must return. Only the
+//     second belongs in "owed".
+
+model Partner {
+  id           String  @id @default(cuid())
+  name         String  @unique
+  // Deactivated rather than deleted — a former partner still has history, and
+  // inactive partners drop out of the pickers for new records.
+  active       Boolean @default(true)
+  // Share of COMPANY-level expenses, in basis points. Deliberately a different
+  // field from OrderProfitShare.shareBps: that one is per order and may vary
+  // sale by sale, this is the standing ownership split.
+  ownershipBps Int     @default(0)
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profitShares    OrderProfitShare[]
+  funding         PartnerFunding[]
+  payouts         ProfitPayout[]
+  expensesPaid    CompanyExpense[]   @relation("ExpensePaidBy")
+  expensesCharged CompanyExpense[]   @relation("ExpenseChargedTo")
+
+  @@index([active])
+  @@map("partners")
+}
+
+// Spending on the business itself — ads, software, equipment, stock bought
+// ahead of demand. Distinct from OrderExtraCost, which is tied to one order.
+model CompanyExpense {
+  id          String   @id @default(cuid())
+  occurredAt  DateTime
+  // Free text by design, with the form suggesting categories already in use.
+  category    String
+  description String
+  amount      Int
+
+  allocation         ExpenseAllocation @default(OWNERSHIP)
+  // Set only when allocation = SINGLE_PARTNER.
+  chargedToPartnerId String?
+  // Who actually fronted the cash. Null means it came from a company account
+  // and creates no obligation to anyone.
+  paidByPartnerId    String?
+  receiptUrl         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chargedTo Partner?        @relation("ExpenseChargedTo", fields: [chargedToPartnerId], references: [id])
+  paidBy    Partner?        @relation("ExpensePaidBy", fields: [paidByPartnerId], references: [id])
+  // The funding record created when a partner paid for this out of pocket.
+  funding   PartnerFunding?
+
+  @@index([occurredAt])
+  @@index([category])
+  @@map("company_expenses")
+}
+
+enum ExpenseAllocation {
+  // Split across active partners by ownershipBps.
+  OWNERSHIP
+  // Charged wholly to one person.
+  SINGLE_PARTNER
+  // The company absorbs it: reduces company profit, touches no one's balance.
+  UNALLOCATED
+}
+
+model PartnerFunding {
+  id          String      @id @default(cuid())
+  partnerId   String
+  type        FundingType
+  amount      Int
+  occurredAt  DateTime
+  description String
+  // Set when this funding IS a partner paying a company expense, rather than
+  // transferring cash in. Unique: one expense can only be funded once.
+  expenseId   String?     @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  partner    Partner            @relation(fields: [partnerId], references: [id])
+  expense    CompanyExpense?    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  repayments PartnerRepayment[]
+
+  @@index([partnerId])
+  @@map("partner_funding")
+}
+
+enum FundingType {
+  // Pure investment. Never repaid, creates no debt, never appears in "owed".
+  CONTRIBUTION
+  // The company owes this back. Outstanding until repaid, whole or in parts.
+  ADVANCE
+}
+
+// A repayment against one specific ADVANCE. Its own rows rather than a `repaid`
+// boolean because partly repaying an advance is the normal case — outstanding
+// is then derived (amount − sum of repayments) and never stored.
+model PartnerRepayment {
+  id         String   @id @default(cuid())
+  fundingId  String
+  amount     Int
+  occurredAt DateTime
+  note       String?
+
+  createdAt DateTime @default(now())
+
+  funding PartnerFunding @relation(fields: [fundingId], references: [id], onDelete: Cascade)
+
+  @@index([fundingId])
+  @@map("partner_repayments")
+}
+
+// Paying out profit a partner has earned. Kept separate from repaying an
+// advance on purpose: one settles a debt, the other distributes earnings, and
+// merging them makes "what has this business actually returned to people"
+// unanswerable.
+model ProfitPayout {
+  id         String   @id @default(cuid())
+  partnerId  String
+  amount     Int
+  occurredAt DateTime
+  note       String?
+
+  createdAt DateTime @default(now())
+
+  partner Partner @relation(fields: [partnerId], references: [id])
+
+  @@index([partnerId])
+  @@map("profit_payouts")
 }

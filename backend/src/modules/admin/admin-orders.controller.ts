@@ -180,13 +180,34 @@ export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id:
     }
   }
 
+  // Resolve each name to a real Partner, creating one if it's new. This is what
+  // lets the finance section total a person's earnings across their whole
+  // history — without it a split is just a string and "what has Asyraf earned"
+  // has no answer. `name` is still stored on the share as a frozen record of
+  // what the order agreed to, so renaming a partner can't rewrite history.
+  const partnerIdByName = new Map<string, string>();
+  for (const share of shares) {
+    if (partnerIdByName.has(share.name)) continue;
+    const partner = await fastify.prisma.partner.upsert({
+      where: { name: share.name },
+      update: {},
+      create: { name: share.name },
+      select: { id: true },
+    });
+    partnerIdByName.set(share.name, partner.id);
+  }
+
   // Delete-then-recreate inside a transaction: ids here carry no meaning to
   // anything else, and it keeps "what's stored" identical to "what was sent"
   // without diffing.
   await fastify.prisma.$transaction([
     fastify.prisma.orderProfitShare.deleteMany({ where: { orderId: id } }),
     ...(shares.length > 0
-      ? [fastify.prisma.orderProfitShare.createMany({ data: shares.map((s) => ({ orderId: id, ...s })) })]
+      ? [
+          fastify.prisma.orderProfitShare.createMany({
+            data: shares.map((s) => ({ orderId: id, ...s, partnerId: partnerIdByName.get(s.name) ?? null })),
+          }),
+        ]
       : []),
   ]);
 
