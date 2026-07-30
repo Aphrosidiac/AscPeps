@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminCreateFunding, adminCreatePayout } from '@/lib/api';
@@ -53,12 +53,30 @@ export function RecordMoneyDialog({
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [closing, setClosing] = useState(false);
+
+  // Play the exit animation before unmounting. Without this the dialog would
+  // vanish instantly on close, which reads as a glitch next to a panel that
+  // animated its way in.
+  const EXIT_MS = 150;
+  const dismiss = useCallback((after: () => void) => {
+    setClosing(true);
+    setTimeout(after, EXIT_MS);
+  }, []);
+  const requestClose = useCallback(() => dismiss(onClose), [dismiss, onClose]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    // The page behind must not scroll while a modal is open — closing it and
+    // finding yourself somewhere else in the list is disorienting.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [requestClose]);
 
   const cents = Math.round(Number(amount) * 100);
   const valid = partnerId && Number.isFinite(cents) && cents > 0 &&
@@ -78,7 +96,7 @@ export function RecordMoneyDialog({
           partnerId, type: kind, amount: cents, occurredAt, description: description.trim(),
         });
       }
-      onSaved();
+      dismiss(onSaved);
     } catch (err) {
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
@@ -91,32 +109,33 @@ export function RecordMoneyDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-      onClick={onClose}
+      className={cn('dialog-backdrop fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4', closing && 'is-closing')}
+      onClick={requestClose}
       role="dialog"
       aria-modal="true"
       aria-label="Record money"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-surface rounded-xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className={cn('dialog-panel bg-surface rounded-xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto', closing && 'is-closing')}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface">
           <h2 className="font-display font-semibold">Record money</h2>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer">
+          <button onClick={requestClose} aria-label="Close" className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-5 space-y-5">
           <div className="space-y-2">
-            {MOVEMENTS.map((m) => (
+            {MOVEMENTS.map((m, i) => (
               <button
                 key={m.key}
                 type="button"
                 onClick={() => setKind(m.key)}
+                style={{ animationDelay: `${60 + i * 45}ms` }}
                 className={cn(
-                  'w-full text-left px-4 py-3 rounded-lg border transition-colors cursor-pointer',
+                  'row-rise w-full text-left px-4 py-3 rounded-lg border transition-colors cursor-pointer',
                   kind === m.key ? 'border-primary bg-primary/5' : 'border-border hover:bg-surface-elevated'
                 )}
               >
@@ -186,7 +205,7 @@ export function RecordMoneyDialog({
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border sticky bottom-0 bg-surface">
-          <button onClick={onClose} className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
+          <button onClick={requestClose} className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
             Cancel
           </button>
           <button

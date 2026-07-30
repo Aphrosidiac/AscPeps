@@ -28,6 +28,7 @@ export default function AdminExpensesPage() {
   const [partners, setPartners] = useState<PartnerBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [closingForm, setClosingForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -45,6 +46,17 @@ export default function AdminExpensesPage() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Let the collapse animation finish before unmounting the form, so it
+  // retracts rather than blinking out.
+  const closeForm = (reset = true) => {
+    setClosingForm(true);
+    setTimeout(() => {
+      setAdding(false);
+      setClosingForm(false);
+      if (reset) { setForm(emptyForm); setError(''); }
+    }, 150);
+  };
 
   const cents = Math.round(Number(form.amount) * 100);
   const valid =
@@ -67,8 +79,7 @@ export default function AdminExpensesPage() {
         // decides whether the company now owes them.
         paidByFundingType: form.paidByPartnerId ? form.paidByFundingType : null,
       });
-      setForm(emptyForm);
-      setAdding(false);
+      closeForm();
       load();
     } catch (err) {
       const message = err && typeof err === 'object' && 'response' in err
@@ -121,7 +132,7 @@ export default function AdminExpensesPage() {
       </div>
 
       {adding && (
-        <div className="bg-surface border border-border rounded-xl p-5 mb-6">
+        <div className={cn('panel-reveal bg-surface border border-border rounded-xl p-5 mb-6', closingForm && 'is-closing')}>
           <h2 className="font-display font-semibold mb-4">New expense</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -186,7 +197,7 @@ export default function AdminExpensesPage() {
               className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
               {saving ? 'Saving…' : 'Add expense'}
             </button>
-            <button onClick={() => { setAdding(false); setForm(emptyForm); setError(''); }}
+            <button onClick={() => closeForm()}
               className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
               Cancel
             </button>
@@ -221,8 +232,13 @@ export default function AdminExpensesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {expenses.map((e) => (
-                  <tr key={e.id} className="hover:bg-surface-elevated/50 transition-colors">
+                {expenses.map((e, i) => (
+                  <tr
+                    key={e.id}
+                    // Capped so a long list still finishes arriving quickly.
+                    style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+                    className="row-rise hover:bg-surface-elevated/50 transition-colors"
+                  >
                     <td className="px-5 py-3 text-text-muted whitespace-nowrap">{formatShortDate(e.occurredAt)}</td>
                     <td className="px-3 py-3">
                       <span className="px-2 py-0.5 rounded-full bg-surface-elevated text-xs">{e.category}</span>
