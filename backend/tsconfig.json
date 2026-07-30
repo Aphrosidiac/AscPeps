@@ -14,6 +14,6 @@
     "outDir": "./dist",
     "rootDir": "."
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "whatsapp-worker/**/*"],
   "exclude": ["node_modules", "dist"]
 }
