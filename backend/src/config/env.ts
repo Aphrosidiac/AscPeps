@@ -44,6 +44,41 @@ const envSchema = z.object({
   // it silently drops events — keep in step with NEXT_PUBLIC_POSTHOG_HOST.
   POSTHOG_HOST: z.string().default('https://us.i.posthog.com'),
   POSTHOG_ENABLED: envBool(false),
+
+  // ---- WhatsApp AI agent ----
+  // The agent runs in its own PM2 process (whatsapp-worker/worker.ts) holding
+  // the baileys socket; this API process only ever proxies to its localhost
+  // control plane. Both read the same .env independently.
+  WORKER_HTTP_PORT: z.coerce.number().default(3106),
+  WORKER_HTTP_TOKEN: z.string().default('ascend-worker-token'),
+  // Redis backs message dedup. Without it a worker restart re-processes the
+  // messages baileys replays on reconnect — which for an agent with write
+  // tools means re-running real mutations, not just a duplicate reply.
+  REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
+  // Master kill-switch for ALL outbound WhatsApp traffic. Off by default so a
+  // fresh deploy can pair the number and watch inbound traffic land before the
+  // agent is allowed to speak (or act) in a real chat.
+  WHATSAPP_AGENT_ENABLED: envBool(false),
+  // OpenRouter (OpenAI-compatible). Absent key = agent disabled, worker still
+  // connects and records inbound messages.
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default('deepseek/deepseek-v4-flash'),
+  // Downtime alerting. A dropped baileys socket is invisible from outside:
+  // PM2 stays green (the process never dies, only the socket does) and the
+  // site keeps returning 200. These are the out-of-band signal.
+  ALERT_DOWN_AFTER_MINUTES: z.coerce.number().default(10),
+  ALERT_TELEGRAM_BOT_TOKEN: z.string().optional(),
+  ALERT_TELEGRAM_CHAT_ID: z.string().optional(),
+  ALERT_WEBHOOK_URL: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
+
+// Mirrors the production guard the worker applies to itself. Kept here too so
+// a misconfigured API process fails at boot rather than silently proxying to a
+// control plane protected by a publicly-known default token.
+if (process.env.NODE_ENV === 'production' && env.WORKER_HTTP_TOKEN === 'ascend-worker-token') {
+  throw new Error(
+    "WORKER_HTTP_TOKEN must be set to a non-default value in production (openssl rand -base64 24), matching the value in the worker's environment."
+  );
+}
