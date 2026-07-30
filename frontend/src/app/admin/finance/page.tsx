@@ -243,7 +243,16 @@ export default function AdminFinancePage() {
                 return (
                   <div key={`${a.kind}-${a.id}`} className="flex items-center justify-between gap-4 px-5 py-3">
                     <div className="min-w-0 flex items-center gap-3">
-                      <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0', style.chip)}>
+                      {/* Fixed width so every row's text starts at the same x —
+                          "Spending" and "Contribution" are very different
+                          lengths, and left-aligning to the chip made the list
+                          look ragged. */}
+                      <span
+                        className={cn(
+                          'w-24 shrink-0 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-medium',
+                          style.chip
+                        )}
+                      >
                         {style.label}
                       </span>
                       <div className="min-w-0">
