@@ -117,9 +117,9 @@ function inputToCents(value: string): number | null {
 // it's editable per order, and changing it here never touches an order whose
 // split is already recorded.
 const DEFAULT_SHARES: OrderProfitShareInput[] = [
-  { name: 'Fakhrul', shareBps: 3000, expenseAmount: 0 },
-  { name: 'Asyraf', shareBps: 3000, expenseAmount: 0 },
-  { name: 'Investors', shareBps: 4000, expenseAmount: 0 },
+  { name: 'Fakhrul', shareBps: 3000, capitalAmount: 0 },
+  { name: 'Asyraf', shareBps: 3000, capitalAmount: 0 },
+  { name: 'Investors', shareBps: 4000, capitalAmount: 0 },
 ];
 
 export function OrderDetail({ orderId }: { orderId: string }) {
@@ -622,7 +622,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const [shares, setShares] = useState<OrderProfitShareInput[]>(() => {
     const saved = order.profitShares ?? [];
     return saved.length > 0
-      ? saved.map((s) => ({ name: s.name, shareBps: s.shareBps, expenseAmount: s.expenseAmount ?? 0 }))
+      ? saved.map((s) => ({ name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount ?? 0 }))
       : DEFAULT_SHARES;
   });
 
@@ -652,7 +652,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const savedItemCosts = Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]));
   const savedExtras = (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }));
   const savedShares = (order.profitShares ?? []).map((s) => ({
-    name: s.name, shareBps: s.shareBps, expenseAmount: s.expenseAmount ?? 0,
+    name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount ?? 0,
   }));
 
   const normalisedItemCosts = Object.fromEntries(
@@ -680,12 +680,20 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     return list.map((s, i) => ({ ...s, shareBps: i === list.length - 1 ? 10_000 - each * (list.length - 1) : each }));
   };
 
-  // Each person's take-home on this order: their cut of profit, less the flat
-  // running-cost amount they carry. These deliberately do NOT sum to the order
-  // profit — the expense amounts are charges on people, not order costs.
+  // Each person's take-home: their cut of the profit PLUS whatever they put in
+  // to cover this order's costs, because that money is owed straight back to
+  // them. On a RM145 order costing RM60, someone who fronted the whole RM60
+  // takes home RM60 + their share of the RM85.
+  //
+  // These sum to more than the profit by design — they sum to the profit plus
+  // all the capital being returned, which is what actually leaves the account.
   const shareNet = (index: number) =>
-    netProfit === null ? null : (amounts[index] ?? 0) - shares[index].expenseAmount;
-  const expenseTotal = shares.reduce((sum, s) => sum + s.expenseAmount, 0);
+    netProfit === null ? null : (amounts[index] ?? 0) + shares[index].capitalAmount;
+  const capitalTotal = shares.reduce((sum, s) => sum + s.capitalAmount, 0);
+  // What the order actually cost, for reconciling against the capital column:
+  // every ringgit of cost came out of somebody's pocket.
+  const totalCost = itemCostTotal + extrasTotal;
+  const capitalGap = totalCost - capitalTotal;
 
   const handleSave = async () => {
     if (!token || !canSave) return;
@@ -936,8 +944,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <div className="hidden sm:flex items-center gap-3 pb-2 text-[11px] font-medium text-text-muted uppercase tracking-wider">
               <span className="flex-1 min-w-0">Person</span>
               <span className="w-28 shrink-0 text-right">Profit share</span>
-              <span className="w-32 shrink-0 text-right">Expense</span>
-              <span className="w-24 shrink-0 text-right">Net</span>
+              <span className="w-32 shrink-0 text-right">Capital put in</span>
+              <span className="w-28 shrink-0 text-right">Take-home</span>
               <span className="w-7 shrink-0" />
             </div>
 
@@ -966,33 +974,43 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">%</span>
                   </div>
-                  {/* Flat running-cost amount this person carries on this
-                      order. Not a percentage — how much each person absorbs is
-                      a per-order judgement, not a formula. */}
+                  {/* What this person paid up front to cover the order's
+                      costs. Returned to them on top of their profit cut — it is
+                      money owed back, not a charge. */}
                   <div className="relative w-32 shrink-0">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
-                      value={row.expenseAmount === 0 ? '' : (row.expenseAmount / 100).toFixed(2)}
+                      value={row.capitalAmount === 0 ? '' : (row.capitalAmount / 100).toFixed(2)}
                       onChange={(e) => {
                         const cents = inputToCents(e.target.value);
-                        setShares((p) => p.map((r, j) => (j === i ? { ...r, expenseAmount: cents ?? 0 } : r)));
+                        setShares((p) => p.map((r, j) => (j === i ? { ...r, capitalAmount: cents ?? 0 } : r)));
                         touch();
                       }}
                       placeholder="0.00"
-                      aria-label={`Person ${i + 1} expense share`}
+                      aria-label={`Person ${i + 1} capital put in`}
                       className="w-full pl-9 pr-2 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
-                  <span className="w-24 shrink-0 text-right text-sm font-semibold">
+                  <span className="w-28 shrink-0 text-right text-sm font-semibold">
                     {shareNet(i) === null ? (
                       <span className="text-text-muted">—</span>
                     ) : (
-                      <span className={(shareNet(i) as number) < 0 ? 'text-danger' : ''}>
-                        {formatPrice(shareNet(i) as number)}
-                      </span>
+                      <>
+                        <span className={(shareNet(i) as number) < 0 ? 'text-danger' : ''}>
+                          {formatPrice(shareNet(i) as number)}
+                        </span>
+                        {/* Spelled out when capital is involved, because
+                            "profit + your money back" is the whole point and a
+                            single figure hides it. */}
+                        {row.capitalAmount > 0 && (
+                          <span className="block text-[11px] font-normal text-text-muted">
+                            {formatPrice(amounts[i] ?? 0)} + {formatPrice(row.capitalAmount)} back
+                          </span>
+                        )}
+                      </>
                     )}
                   </span>
                   <button
@@ -1009,7 +1027,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border">
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, expenseAmount: 0 }])); touch(); }}
+                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, capitalAmount: 0 }])); touch(); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add person
@@ -1025,9 +1043,23 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                 <p className={`text-sm font-medium ${totalBps === 10_000 ? 'text-success' : 'text-danger'}`}>
                   {bpsToPercent(totalBps)}%{totalBps !== 10_000 && ' — must be 100%'}
                 </p>
-                {expenseTotal > 0 && (
+                {/* Every ringgit this order cost came out of somebody's
+                    pocket, so the capital column should add up to the order's
+                    total cost. Shown as a reconciliation rather than enforced:
+                    the company float can legitimately cover part of it, and a
+                    hard gate here would block real orders. */}
+                {(capitalTotal > 0 || totalCost > 0) && unpricedCount === 0 && (
+                  <p className={`text-xs mt-0.5 ${capitalGap === 0 ? 'text-text-muted' : 'text-warning'}`}>
+                    {capitalGap === 0
+                      ? `${formatPrice(capitalTotal)} put in, covering the full cost`
+                      : capitalGap > 0
+                        ? `${formatPrice(capitalTotal)} put in of ${formatPrice(totalCost)} costs — ${formatPrice(capitalGap)} unaccounted for`
+                        : `${formatPrice(capitalTotal)} put in, ${formatPrice(-capitalGap)} more than this order cost`}
+                  </p>
+                )}
+                {capitalTotal > 0 && unpricedCount > 0 && (
                   <p className="text-xs text-text-muted mt-0.5">
-                    {formatPrice(expenseTotal)} of expenses carried
+                    {formatPrice(capitalTotal)} put in — cost the items to check it against
                   </p>
                 )}
               </div>
@@ -1145,7 +1177,7 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
       </div>
 
       {/* Profit per person — the number people actually came here for */}
-      <Card title="Profit Per Person" icon={<Users className="w-4 h-4" />}>
+      <Card title="Payout Per Person" icon={<Users className="w-4 h-4" />}>
         {shares.length === 0 ? (
           <div className="text-center py-6">
             <p className="text-sm text-text-muted mb-4">No split recorded for this order yet.</p>
@@ -1166,16 +1198,30 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
                   </span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{share.name}</p>
-                    <p className="text-xs text-text-muted">{bpsToPercent(share.shareBps)}% share</p>
+                    <p className="text-xs text-text-muted">
+                      {bpsToPercent(share.shareBps)}% share
+                      {share.capitalAmount > 0 && ` · put in ${formatPrice(share.capitalAmount)}`}
+                    </p>
                   </div>
                 </div>
-                <p className="font-display text-lg font-bold shrink-0">
+                <div className="shrink-0 text-right">
                   {netProfit === null ? (
-                    <span className="text-text-muted text-base font-normal">pending costing</span>
+                    <p className="text-text-muted text-base">pending costing</p>
                   ) : (
-                    <span className={netProfit < 0 ? 'text-danger' : ''}>{formatPrice(amounts[i] ?? 0)}</span>
+                    <>
+                      {/* Take-home, not profit: capital they fronted is coming
+                          back to them and belongs in the number they're paid. */}
+                      <p className={`font-display text-lg font-bold ${netProfit < 0 ? 'text-danger' : ''}`}>
+                        {formatPrice((amounts[i] ?? 0) + share.capitalAmount)}
+                      </p>
+                      {share.capitalAmount > 0 && (
+                        <p className="text-xs text-text-muted">
+                          {formatPrice(amounts[i] ?? 0)} profit + {formatPrice(share.capitalAmount)} back
+                        </p>
+                      )}
+                    </>
                   )}
-                </p>
+                </div>
               </div>
             ))}
           </div>

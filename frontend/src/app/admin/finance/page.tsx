@@ -172,7 +172,7 @@ export default function AdminFinancePage() {
                 <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
                   <th className="text-left px-5 py-3">Partner</th>
                   <th className="text-right px-3 py-3">Earned</th>
-                  <th className="text-right px-3 py-3 whitespace-nowrap">Expense carried</th>
+                  <th className="text-right px-3 py-3 whitespace-nowrap">Capital fronted</th>
                   <th className="text-right px-3 py-3">Contributed</th>
                   <th className="text-right px-3 py-3 whitespace-nowrap">Advances o/s</th>
                   <th className="text-right px-3 py-3 whitespace-nowrap">Paid out</th>
@@ -192,9 +192,7 @@ export default function AdminFinancePage() {
                       {!p.active && <span className="ml-2 text-xs text-text-muted">inactive</span>}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">{formatPrice(p.earned)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-danger">
-                      {p.expenseShare > 0 ? `−${formatPrice(p.expenseShare)}` : formatPrice(0)}
-                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums">{formatPrice(p.capitalFronted)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-text-muted">{formatPrice(p.contributed)}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{formatPrice(p.advancesOutstanding)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-text-muted">
@@ -212,11 +210,11 @@ export default function AdminFinancePage() {
           </div>
 
           <p className="px-5 py-3 border-t border-border text-xs text-text-muted">
-            Owed = earned − expense carried + advances outstanding − paid out.{' '}
-            <span className="text-text-secondary">Expense carried is the flat amounts set per person on each
-            order</span>, not a share of company spending.{' '}
-            <span className="text-text-secondary">Contributions are capital, never owed back</span>, so they
-            sit outside the sum.
+            Owed = earned + capital fronted + advances outstanding − paid out.{' '}
+            <span className="text-text-secondary">Capital fronted is money they put up to cover an order&apos;s
+            costs before the customer paid</span> — it comes back to them, so it adds to what they are owed.{' '}
+            <span className="text-text-secondary">Contributions are capital they never want back</span>, so
+            they sit outside the sum.
           </p>
         </div>
       </Animate>

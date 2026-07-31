@@ -1,0 +1,13 @@
+-- Renames order_profit_shares."expenseAmount" to "capitalAmount".
+--
+-- The column was modelled as a charge: a flat amount a person "absorbed" on an
+-- order, subtracted from their profit cut. That is not what the number is. An
+-- order's costs have to be paid before the customer pays, and this records who
+-- put up that money. It is owed straight back to them, so it ADDS to what they
+-- take home rather than reducing it — on a RM145 order costing RM60, whoever
+-- fronted the RM60 gets it back plus their share of the RM85 profit.
+--
+-- The stored values are unchanged and need no transform: they always meant
+-- "this much money, this person, this order", and only the direction was wrong.
+-- (Every row in production is 0 at the time of writing, so nothing moves.)
+ALTER TABLE "order_profit_shares" RENAME COLUMN "expenseAmount" TO "capitalAmount";

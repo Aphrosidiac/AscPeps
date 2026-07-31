@@ -57,8 +57,10 @@ order_items(id, "orderId", "productId" AS the variant id, quantity,
   - "unitCost" is NULL until an admin prices the line.
 order_extra_costs(id, "orderId", label, amount)
 order_profit_shares(id, "orderId", "partnerId", name, "shareBps",
-       "expenseAmount")
+       "capitalAmount")
   - "shareBps" is basis points: 5000 = 50%.
+  - "capitalAmount" is cents that person PUT IN to cover the order's costs.
+    It is paid back to them on top of their profit cut — never subtracted.
 
 discount_codes(id, code, description, "discountType", "discountValue",
        "minOrderAmount", "maxUses", "usedCount", "isActive", "expiresAt")
