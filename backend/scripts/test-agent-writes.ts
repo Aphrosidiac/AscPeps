@@ -266,6 +266,145 @@ await check('set_order_profit_shares saves a valid split', async () => {
   return '33.33/33.33/33.34 = exactly 100% (restored)';
 });
 
+await check('create_order (full lifecycle, rolled back)', async () => {
+  // Pick a product that has a REQUIRED add-on, so the auto-add path is
+  // exercised rather than a trivial single-line order.
+  // Set up a required add-on if the database has none, rather than skipping —
+  // the auto-add path is the most consequential part of order creation and a
+  // silent skip would hide a regression in it.
+  let rel = await prisma.productAddOn.findFirst({
+    where: { required: true, addOn: { active: true, product: { active: true } } },
+    include: { product: { include: { variants: { where: { active: true }, orderBy: { price: 'asc' } } } }, addOn: true },
+  });
+  let temporaryRelationId: string | null = null;
+
+  if (!rel) {
+    const parent = await prisma.product.findFirst({
+      where: { active: true, variants: { some: { active: true, stock: { gt: 2 } } } },
+      include: { variants: { where: { active: true }, orderBy: { price: 'asc' } } },
+    });
+    const addOnVariant = await prisma.productVariant.findFirst({
+      where: { active: true, stock: { gt: 2 }, productId: { not: parent?.id } },
+    });
+    if (!parent || !addOnVariant) return 'skipped (dev db has no suitable product pair)';
+    const createdRel = await prisma.productAddOn.create({
+      data: { productId: parent.id, addOnId: addOnVariant.id, required: true, quantity: 2 },
+    });
+    temporaryRelationId = createdRel.id;
+    rel = await prisma.productAddOn.findUniqueOrThrow({
+      where: { id: createdRel.id },
+      include: { product: { include: { variants: { where: { active: true }, orderBy: { price: 'asc' } } } }, addOn: true },
+    });
+  }
+
+  const parentVariant = rel.product.variants[0];
+  if (!parentVariant) return 'skipped (parent product has no active variant)';
+
+  const stockBefore = parentVariant.stock;
+  const addOnStockBefore = (await prisma.productVariant.findUniqueOrThrow({ where: { id: rel.addOnId } })).stock;
+  const orderCountBefore = await prisma.order.count();
+
+  const res: any = await run('create_order', {
+    customerName: 'Agent Audit Customer',
+    phone: '0123456789',
+    address: '1 Audit Street',
+    city: 'Shah Alam',
+    state: 'Selangor',
+    postcode: '40000',
+    paymentMethod: 'WHATSAPP',
+    items: [{ code: parentVariant.code, quantity: 1 }],
+  });
+
+  try {
+    assert(res.orderNumber, 'no order number returned');
+    assert(res.paymentStatus === 'UNPAID', `expected UNPAID, got ${res.paymentStatus}`);
+
+    const created = await prisma.order.findFirstOrThrow({
+      where: { orderNumber: res.orderNumber },
+      include: { items: true },
+    });
+
+    // Stock actually moved for the parent.
+    const parentAfter = await prisma.productVariant.findUniqueOrThrow({ where: { id: parentVariant.id } });
+    assert(parentAfter.stock === stockBefore - 1, `parent stock ${stockBefore} -> ${parentAfter.stock}, expected -1`);
+
+    // The required add-on was added automatically, and its stock moved too.
+    const addOnLine = created.items.find((i) => i.variantId === rel.addOnId);
+    assert(addOnLine, 'required add-on was NOT added to the order');
+    const addOnAfter = await prisma.productVariant.findUniqueOrThrow({ where: { id: rel.addOnId } });
+    assert(
+      addOnAfter.stock === addOnStockBefore - addOnLine!.quantity,
+      `add-on stock ${addOnStockBefore} -> ${addOnAfter.stock}, expected -${addOnLine!.quantity}`
+    );
+
+    // Totals are computed from the database, never from the caller.
+    const expectedSubtotal = created.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+    assert(created.subtotal === expectedSubtotal, `subtotal ${created.subtotal} != sum of lines ${expectedSubtotal}`);
+    assert(
+      created.total === created.subtotal + created.shippingFee - created.discountAmount,
+      'total does not reconcile with subtotal + shipping - discount'
+    );
+
+    // Roll everything back: stock, the order, and its queued email.
+    await prisma.emailOutbox.deleteMany({ where: { orderId: created.id } });
+    await prisma.order.delete({ where: { id: created.id } });
+    await prisma.productVariant.update({ where: { id: parentVariant.id }, data: { stock: stockBefore } });
+    await prisma.productVariant.update({ where: { id: rel.addOnId }, data: { stock: addOnStockBefore } });
+    assert((await prisma.order.count()) === orderCountBefore, 'order count did not return to baseline');
+    if (temporaryRelationId) await prisma.productAddOn.delete({ where: { id: temporaryRelationId } });
+
+    return `${res.orderNumber} created with auto add-on (${addOnLine!.quantity}x), ${res.total.display}, stock moved and restored`;
+  } catch (e) {
+    // Never leave a stray order behind if an assertion fails mid-way.
+    const stray = await prisma.order.findFirst({ where: { orderNumber: res.orderNumber } });
+    if (stray) {
+      await prisma.emailOutbox.deleteMany({ where: { orderId: stray.id } });
+      await prisma.order.delete({ where: { id: stray.id } });
+    }
+    await prisma.productVariant.update({ where: { id: parentVariant.id }, data: { stock: stockBefore } });
+    await prisma.productVariant.update({ where: { id: rel.addOnId }, data: { stock: addOnStockBefore } });
+    if (temporaryRelationId) await prisma.productAddOn.delete({ where: { id: temporaryRelationId } }).catch(() => {});
+    throw e;
+  }
+});
+
+await check('create_order refuses to oversell', async () => {
+  const v = await prisma.productVariant.findFirstOrThrow({ where: { active: true, product: { active: true } } });
+  try {
+    await run('create_order', {
+      customerName: 'Agent Audit Customer',
+      phone: '0123456789',
+      address: '1 Audit Street',
+      city: 'Shah Alam',
+      state: 'Selangor',
+      postcode: '40000',
+      items: [{ code: v.code, quantity: v.stock + 500 }],
+    });
+  } catch (e: any) {
+    assert(/left in stock/i.test(e.message), `wrong error: ${e.message}`);
+    return 'refused an order larger than available stock';
+  }
+  throw new Error('allowed an order exceeding stock');
+});
+
+await check('create_order rejects an unknown product', async () => {
+  try {
+    await run('create_order', {
+      customerName: 'Agent Audit Customer',
+      phone: '0123456789',
+      address: '1 Audit Street',
+      city: 'Shah Alam',
+      state: 'Selangor',
+      postcode: '40000',
+      items: [{ code: 'NOPE_NOT_A_SKU', quantity: 1 }],
+    });
+  } catch (e: any) {
+    assert(/No active product matches/i.test(e.message), `wrong error: ${e.message}`);
+    return 'refused an unknown SKU rather than guessing';
+  }
+  throw new Error('accepted an unknown SKU');
+});
+
 await check('delete_order + restore_order', async () => {
   const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null } });
   await run('delete_order', { orderRef: o.orderNumber });

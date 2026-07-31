@@ -284,6 +284,32 @@ is that it never acts without a yes, not that it takes a fixed number of turns.
 
 ---
 
+## Creating orders
+
+`create_order` exists for sales agreed over WhatsApp or in person. It delegates
+to the **public checkout controller** — the same path a customer goes through —
+which is what keeps the atomic stock decrement, the discount reservation,
+required add-ons and the confirmation email queued inside one transaction.
+
+Things worth knowing:
+
+- **Prices always come from the database.** The tool takes a variant id or SKU
+  code and a quantity, never a price. A price the model suggested is no more
+  trustworthy than one posted by a browser, and the checkout has never trusted
+  those either.
+- **Required add-ons are added by the controller**, not by the tool — bac water,
+  syringes, swabs. The confirmation summary lists them so they are not a
+  surprise on the finished order. The larger requirement wins and quantities do
+  not scale with how many units of the parent were bought.
+- It is **destructive**: it takes stock immediately, and with an email address
+  and store emails on it sends a real customer a real confirmation. The summary
+  states both before you agree.
+- Stock is re-checked at execution, not just at confirmation — the two can be
+  minutes apart.
+- `WHATSAPP` (default) means manual transfer, order stays UNPAID until someone
+  confirms the money. `BILLPLZ` creates a **real bill at the gateway** and
+  returns a payment link; it needs an email address.
+
 ## Adding a tool
 
 1. Add it to the right file in `src/modules/ai-agent/tools/`.
