@@ -171,8 +171,32 @@ export async function shouldHandle(
   fastify: FastifyInstance,
   msg: InboundMessage
 ): Promise<{ ok: false; reason: string } | { ok: true; actor: AgentActor }> {
+  // The ROOM is checked before the person, and before anything is recorded.
+  //
+  // Order matters here. The connected number sits in supplier, customer and
+  // unrelated project groups, and every participant in all of them is an
+  // unresolvable sender. Resolving the person first meant every one of those
+  // strangers got written to the unknown-senders table — turning a recovery
+  // aid into a log of other people's group chatter, and burying the one entry
+  // that actually needs binding.
+  if (msg.kind === 'group') {
+    if (!msg.groupJid) return { ok: false, reason: 'group message without a group jid' };
+    const group = await fastify.prisma.whatsAppGroup.findFirst({
+      where: { groupJid: msg.groupJid, active: true },
+    });
+    // Both gates must pass in a group: the person AND the room. A group is
+    // never a way around the operator allowlist — it is an additional
+    // restriction on top of it.
+    if (!group) return { ok: false, reason: 'group is not allowlisted' };
+    if (group.requireMention && !msg.mentionsBot) {
+      return { ok: false, reason: 'group requires an explicit mention' };
+    }
+  }
+
   const actor = await resolveActor(fastify, msg.senderPhone, msg.senderLid);
   if (!actor) {
+    // Only reached in a DM, or in a group the agent was actually addressed in —
+    // i.e. somewhere a real operator plausibly just tried to talk to it.
     await noteUnknownSender(fastify, msg);
     return {
       ok: false,
@@ -180,20 +204,6 @@ export async function shouldHandle(
         ? `sender arrived as a WhatsApp LID (${msg.senderLid}) that is not bound to any operator — bind it on the admin Agent page`
         : 'sender is not an allowlisted operator',
     };
-  }
-
-  if (msg.kind === 'group') {
-    if (!msg.groupJid) return { ok: false, reason: 'group message without a group jid' };
-    const group = await fastify.prisma.whatsAppGroup.findFirst({
-      where: { groupJid: msg.groupJid, active: true },
-    });
-    // Both gates must pass in a group: the person AND the room. The connected
-    // number also sits in supplier and customer groups, and an operator
-    // chatting there must not be issuing commands by accident.
-    if (!group) return { ok: false, reason: 'group is not allowlisted' };
-    if (group.requireMention && !msg.mentionsBot) {
-      return { ok: false, reason: 'group requires an explicit mention' };
-    }
   }
 
   return { ok: true, actor };
