@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Animate } from '@/components/ui/Animate';
-import { CalendarDays, CalendarOff, CheckCircle2, Clock, Loader2, Plus, RefreshCw, Trash2, Truck, XCircle } from 'lucide-react';
+import { DeliveryCalendar } from './DeliveryCalendar';
+import { CalendarDays, CalendarOff, CheckCircle2, Clock, Loader2, MapPin, Plus, RefreshCw, Trash2, Truck, User, XCircle } from 'lucide-react';
 import {
   adminCancelDelivery,
   adminCreateDeliveryBlackout,
@@ -79,6 +80,17 @@ const errorMessage = (e: unknown, fallback: string) => {
   return err?.response?.data?.message ?? err?.message ?? fallback;
 };
 
+// The admin's browser could be anywhere; the schedule is always Malaysia time.
+// Deriving "today" from a fixed +08 keeps the calendar's past/future boundary
+// identical to the server's.
+const mytTodayKey = () => new Date(Date.now() + 8 * 60 * 60_000).toISOString().slice(0, 10);
+
+/** Add days to a "YYYY-MM-DD" key without touching the clock or local time. */
+const addDays = (key: string, days: number) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+};
+
 const fmtMinute = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const rm = (cents: number) => `RM ${(cents / 100).toFixed(2)}`;
 
@@ -94,6 +106,9 @@ export default function DeliveryPage() {
   const [newWindow, setNewWindow] = useState({ day: 1, from: '10:00', to: '13:00', slotMinutes: 60, capacity: 1 });
   const [newBlackout, setNewBlackout] = useState({ date: '', reason: '' });
   const [assigning, setAssigning] = useState<UnscheduledOrder | null>(null);
+  const [today] = useState(mytTodayKey);
+  const [month, setMonth] = useState(() => mytTodayKey().slice(0, 7));
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (!token) return;
@@ -104,9 +119,18 @@ export default function DeliveryPage() {
       })
       .catch(() => {});
     adminDeliveryBookings(token, { limit: '100' }).then(setBookings).catch(() => {});
-    adminDeliverySlots(token).then(setSlots).catch(() => {});
+    // The calendar shows a month, so ask for a month — and include full slots
+    // so a booked-out day can say "full" rather than silently disappearing.
+    const [y, m] = month.split('-').map(Number);
+    adminDeliverySlots(token, {
+      from: `${month}-01T00:00:00+08:00`,
+      to: `${y}-${String(m).padStart(2, '0')}-${new Date(Date.UTC(y, m, 0)).getUTCDate()}T23:59:59+08:00`,
+      includeFull: 'true',
+    })
+      .then(setSlots)
+      .catch(() => {});
     adminUnscheduledOrders(token).then(setUnscheduled).catch(() => {});
-  }, [token]);
+  }, [token, month]);
 
   useEffect(() => {
     refresh();
@@ -122,7 +146,30 @@ export default function DeliveryPage() {
 
   if (!token) return <div className="p-8 text-text-secondary">Loading…</div>;
 
+  // Open the picker on the first month that actually has a free slot, the way
+  // Calendly does. Landing on an empty current month — which is exactly what
+  // happens on the last day of a month, or during a quiet week — reads as
+  // "nothing is available at all" rather than "look further ahead".
+  const openPicker = (order: UnscheduledOrder) => {
+    setPickedDate(null);
+    setAssigning(order);
+    adminDeliverySlots(token, {
+      from: `${today}T00:00:00+08:00`,
+      to: `${addDays(today, 90)}T23:59:59+08:00`,
+    })
+      .then((upcoming: Slot[]) => {
+        const first = upcoming.find((s) => s.open);
+        setMonth(first ? first.localDate.slice(0, 7) : today.slice(0, 7));
+      })
+      .catch(() => setMonth(today.slice(0, 7)));
+  };
+
+
   const upcoming = bookings.filter((b) => b.status === 'SCHEDULED');
+  const bookingsByDate = upcoming.reduce<Record<string, number>>((acc, b) => {
+    acc[b.localDate] = (acc[b.localDate] ?? 0) + 1;
+    return acc;
+  }, {});
   // Group the run sheet by day — that is how a delivery day is actually planned.
   const byDate = upcoming.reduce<Record<string, Booking[]>>((acc, b) => {
     (acc[b.localDate] ??= []).push(b);
@@ -258,7 +305,7 @@ export default function DeliveryPage() {
                 </p>
               </div>
               <button
-                onClick={() => setAssigning(o)}
+                onClick={() => openPicker(o)}
                 className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
               >
                 Book a slot
@@ -505,56 +552,132 @@ export default function DeliveryPage() {
 
       </Animate>
 
-      {/* ---- Slot picker ---- */}
+      {/* ---- Slot picker — the Calendly layout: details on the left, month
+           grid in the middle, that day's times sliding in beside it ---- */}
       {assigning && (
         <div
           className="dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => setAssigning(null)}
         >
           <div
-            className="dialog-panel max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6"
+            className="dialog-panel flex max-h-[86vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-surface shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="font-medium text-text-primary">Book a delivery slot</h3>
-              <button onClick={() => setAssigning(null)} className="text-text-muted hover:text-text-primary">
-                ✕
-              </button>
-            </div>
-            <p className="mb-4 text-sm text-text-secondary">
-              {assigning.customerName} · {assigning.orderNumber} · {assigning.city}, {assigning.state}
-            </p>
+            {/* Left rail — what is being booked. */}
+            <div className="hidden w-64 shrink-0 border-r border-border bg-surface-elevated/50 p-6 sm:block">
+              <p className="text-sm text-text-muted">{assigning.orderNumber}</p>
+              <h3 className="mt-1 font-display text-lg font-semibold text-text-primary">
+                {assigning.customerName}
+              </h3>
 
-            <div className="space-y-1.5">
-              {slots
-                .filter((s) => s.open)
-                .slice(0, 40)
-                .map((s, i) => (
-                  <button
-                    key={s.startsAt}
-                    disabled={!!busy}
-                    style={{ animationDelay: `${Math.min(i * 22, 320)}ms` }}
-                    onClick={() =>
-                      act('assign', async () => {
-                        await adminScheduleDelivery(token, { orderId: assigning.id, scheduledFor: s.startsAt });
-                        setAssigning(null);
-                      })
-                    }
-                    className="row-rise flex w-full items-center justify-between rounded-lg border border-border px-4 py-2.5 text-left text-sm transition-all hover:border-border-hover hover:bg-surface-elevated active:scale-[0.99] disabled:opacity-50"
-                  >
-                    <span className="text-text-primary">{s.label}</span>
-                    <span className="text-xs text-text-muted">{s.capacity - s.booked} free</span>
-                  </button>
-                ))}
-              {!slots.filter((s) => s.open).length && (
-                <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">
-                  No open slots in the next two weeks. Add a delivery window or free one up.
+              <div className="mt-5 space-y-3 text-sm text-text-secondary">
+                <p className="flex items-start gap-2">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                  <span>60 min delivery slot</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                  <span>
+                    {assigning.city}, {assigning.state}
+                  </span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <User className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                  <span>{assigning.phone}</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                  <span>Malaysia time (UTC+8)</span>
+                </p>
+              </div>
+
+              <p className="mt-6 border-t border-border pt-4 text-xs text-text-muted">
+                {rm(assigning.total)} · {assigning.paymentStatus}
+              </p>
+            </div>
+
+            {/* Calendar + times */}
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="flex items-center justify-between border-b border-border px-6 py-4">
+                <h3 className="font-medium text-text-primary">Select a date &amp; time</h3>
+                <button
+                  onClick={() => setAssigning(null)}
+                  className="rounded-lg p-1 text-text-muted transition-colors hover:bg-surface-elevated hover:text-text-primary"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex min-h-0 flex-1 gap-6 overflow-y-auto p-6">
+                <div className="min-w-0 flex-1">
+                  <DeliveryCalendar
+                    slots={slots}
+                    blackouts={blackouts}
+                    bookingsByDate={bookingsByDate}
+                    month={month}
+                    onMonthChange={(m) => {
+                      setMonth(m);
+                      setPickedDate(null);
+                    }}
+                    selectedDate={pickedDate}
+                    onSelectDate={setPickedDate}
+                    today={today}
+                  />
+                </div>
+
+                {/* Times for the chosen day. Slides in rather than appearing,
+                    and is keyed on the date so switching days re-runs it. */}
+                {pickedDate && (
+                  <div key={pickedDate} className="slot-column w-44 shrink-0 border-l border-border pl-5">
+                    <p className="mb-3 text-sm font-medium text-text-primary">
+                      {new Date(`${pickedDate}T00:00:00`).toLocaleDateString('en-MY', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                    </p>
+                    <div className="space-y-2">
+                      {slots
+                        .filter((s) => s.localDate === pickedDate && s.open)
+                        .map((s, i) => (
+                          <button
+                            key={s.startsAt}
+                            disabled={!!busy}
+                            style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }}
+                            onClick={() =>
+                              act('assign', async () => {
+                                await adminScheduleDelivery(token, {
+                                  orderId: assigning.id,
+                                  scheduledFor: s.startsAt,
+                                });
+                                setAssigning(null);
+                                setPickedDate(null);
+                              })
+                            }
+                            className="row-rise w-full rounded-lg border border-accent/40 py-2.5 text-center text-sm font-medium text-accent transition-all hover:bg-accent hover:text-white active:scale-[0.97] disabled:opacity-50"
+                          >
+                            {s.localTime}
+                          </button>
+                        ))}
+                      {!slots.filter((s) => s.localDate === pickedDate && s.open).length && (
+                        <p className="text-sm text-text-muted">No free slots left on this day.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!pickedDate && (
+                <p className="border-t border-border px-6 py-3 text-xs text-text-muted">
+                  Pick a day with free slots to see its times.
                 </p>
               )}
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
