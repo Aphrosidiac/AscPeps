@@ -44,7 +44,10 @@ orders(id, "orderNumber", "customerName", phone, email, address, city, state,
        "discountCodeId", notes, "deletedAt", "createdAt")
   - status: PENDING|CONFIRMED|SHIPPED|DELIVERED|CANCELLED
   - "paymentStatus": UNPAID|PAID|FAILED|REFUNDED
-  - "paymentMethod": WHATSAPP|BILLPLZ
+  - "paymentMethod": WHATSAPP|BILLPLZ. BILLPLZ is a legacy enum name meaning
+    "paid online" — it does NOT mean the Billplz gateway. The gateway actually
+    used is the "paymentGateway" column (e.g. 'toyyibpay'). When reporting,
+    label it "online payment", never "Billplz".
   - IMPORTANT: always filter "deletedAt" IS NULL unless deleted orders are
     explicitly wanted. Real revenue means "paymentStatus" = 'PAID'.
 order_items(id, "orderId", "productId" AS the variant id, quantity,
