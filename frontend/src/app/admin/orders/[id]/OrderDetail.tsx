@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress, type OrderCheckKey } from '@/lib/order-progress';
-import type { Order, OrderEmail, OrderProfitShareInput } from '@/types';
+import type { Order, OrderEmail } from '@/types';
 
 // ASCEND's pipeline, not a copy of the source design's six purchasing stages —
 // this catalogue has no quotation/PO/warehouse chain to model. The stepper and
@@ -114,13 +114,31 @@ function inputToCents(value: string): number | null {
   return Math.round(n * 100);
 }
 
+/**
+ * A split row while it is being edited. `capital` is the RAW STRING the user is
+ * typing, exactly like the unit-cost and extra-cost fields, and is converted to
+ * cents once on save.
+ *
+ * It used to hold cents and re-derive the input's value with
+ * `(cents / 100).toFixed(2)` on every render, which fights whoever is typing:
+ * entering "60" into a field showing "0.00" reformats mid-keystroke and lands
+ * on "6.00". Money fields in this form are strings until they are saved.
+ */
+interface ShareRow {
+  name: string;
+  shareBps: number;
+  capital: string;
+}
+
+const shareCapitalCents = (row: ShareRow) => inputToCents(row.capital) ?? 0;
+
 // Prefilled on any order that has no split saved yet. Just a starting point —
 // it's editable per order, and changing it here never touches an order whose
 // split is already recorded.
-const DEFAULT_SHARES: OrderProfitShareInput[] = [
-  { name: 'Fakhrul', shareBps: 3000, capitalAmount: 0 },
-  { name: 'Asyraf', shareBps: 3000, capitalAmount: 0 },
-  { name: 'Investors', shareBps: 4000, capitalAmount: 0 },
+const DEFAULT_SHARES: ShareRow[] = [
+  { name: 'Fakhrul', shareBps: 3000, capital: '' },
+  { name: 'Asyraf', shareBps: 3000, capital: '' },
+  { name: 'Investors', shareBps: 4000, capital: '' },
 ];
 
 export function OrderDetail({ orderId }: { orderId: string }) {
@@ -620,10 +638,18 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const [extras, setExtras] = useState<{ label: string; amount: string }[]>(() =>
     (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }))
   );
-  const [shares, setShares] = useState<OrderProfitShareInput[]>(() => {
+  const [shares, setShares] = useState<ShareRow[]>(() => {
     const saved = order.profitShares ?? [];
     return saved.length > 0
-      ? saved.map((s) => ({ name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount ?? 0 }))
+      // Zero shows as an empty field rather than "0.00": most people on a
+      // split put nothing in, and a column of literal zeroes is harder to scan
+      // than a column of blanks with the odd figure in it. Unlike unit cost,
+      // where a zero is unusual enough to be worth stating.
+      ? saved.map((s) => ({
+          name: s.name,
+          shareBps: s.shareBps,
+          capital: s.capitalAmount ? centsToInput(s.capitalAmount) : '',
+        }))
       : DEFAULT_SHARES;
   });
 
@@ -655,6 +681,11 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const savedShares = (order.profitShares ?? []).map((s) => ({
     name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount ?? 0,
   }));
+  // Compared in cents, not as typed: "60", "60.00" and "60.0" are the same
+  // saved split, and none of them should light up the Save button.
+  const normalisedShares = shares.map((s) => ({
+    name: s.name, shareBps: s.shareBps, capitalAmount: shareCapitalCents(s),
+  }));
 
   const normalisedItemCosts = Object.fromEntries(
     order.items.map((i) => [i.id, centsToInput(inputToCents(itemCosts[i.id] ?? ''))])
@@ -666,16 +697,20 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const costsDirty =
     JSON.stringify(normalisedItemCosts) !== JSON.stringify(savedItemCosts) ||
     JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras);
-  const sharesDirty = JSON.stringify(shares) !== JSON.stringify(savedShares);
+  const sharesDirty = JSON.stringify(normalisedShares) !== JSON.stringify(savedShares);
   const dirty = costsDirty || sharesDirty;
 
   const extrasValid = extras.every((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null);
+  // Blank capital means "put in nothing", which is fine. Anything typed has to
+  // actually parse, so a stray character cannot silently save as zero.
   const sharesValid =
-    shares.length === 0 || (totalBps === 10_000 && shares.every((s) => s.name.trim() !== ''));
+    shares.length === 0 ||
+    (totalBps === 10_000 &&
+      shares.every((s) => s.name.trim() !== '' && (s.capital.trim() === '' || inputToCents(s.capital) !== null)));
   const canSave = extrasValid && sharesValid;
 
   /* ----- split editing */
-  const splitEvenly = (list: OrderProfitShareInput[]) => {
+  const splitEvenly = (list: ShareRow[]) => {
     if (list.length === 0) return list;
     const each = Math.floor(10_000 / list.length);
     return list.map((s, i) => ({ ...s, shareBps: i === list.length - 1 ? 10_000 - each * (list.length - 1) : each }));
@@ -689,8 +724,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   // These sum to more than the profit by design — they sum to the profit plus
   // all the capital being returned, which is what actually leaves the account.
   const shareNet = (index: number) =>
-    netProfit === null ? null : (amounts[index] ?? 0) + shares[index].capitalAmount;
-  const capitalTotal = shares.reduce((sum, s) => sum + s.capitalAmount, 0);
+    netProfit === null ? null : (amounts[index] ?? 0) + shareCapitalCents(shares[index]);
+  const capitalTotal = shares.reduce((sum, s) => sum + shareCapitalCents(s), 0);
   // What the order actually cost, for reconciling against the capital column:
   // every ringgit of cost came out of somebody's pocket.
   const totalCost = itemCostTotal + extrasTotal;
@@ -710,7 +745,12 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         });
       }
       if (sharesDirty) {
-        await adminUpdateOrderProfitShares(token, order.id, shares.map((s) => ({ ...s, name: s.name.trim() })));
+        // `capital` is the raw typed string; the API takes cents.
+        await adminUpdateOrderProfitShares(
+          token,
+          order.id,
+          shares.map((s) => ({ name: s.name.trim(), shareBps: s.shareBps, capitalAmount: shareCapitalCents(s) }))
+        );
       }
       setSaved(true);
       onChange();
@@ -984,10 +1024,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                       type="number"
                       min="0"
                       step="0.01"
-                      value={row.capitalAmount === 0 ? '' : (row.capitalAmount / 100).toFixed(2)}
+                      value={row.capital}
                       onChange={(e) => {
-                        const cents = inputToCents(e.target.value);
-                        setShares((p) => p.map((r, j) => (j === i ? { ...r, capitalAmount: cents ?? 0 } : r)));
+                        setShares((p) => p.map((r, j) => (j === i ? { ...r, capital: e.target.value } : r)));
                         touch();
                       }}
                       placeholder="0.00"
@@ -1006,9 +1045,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                         {/* Spelled out when capital is involved, because
                             "profit + your money back" is the whole point and a
                             single figure hides it. */}
-                        {row.capitalAmount > 0 && (
+                        {shareCapitalCents(row) > 0 && (
                           <span className="block text-[11px] font-normal text-text-muted">
-                            {formatPrice(amounts[i] ?? 0)} + {formatPrice(row.capitalAmount)} back
+                            {formatPrice(amounts[i] ?? 0)} + {formatPrice(shareCapitalCents(row))} back
                           </span>
                         )}
                       </>
@@ -1028,7 +1067,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border">
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, capitalAmount: 0 }])); touch(); }}
+                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, capital: '' }])); touch(); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add person
