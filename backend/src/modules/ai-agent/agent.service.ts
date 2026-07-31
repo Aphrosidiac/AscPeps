@@ -10,8 +10,13 @@ import { truncate } from './tool-kit.js';
 export interface InboundMessage {
   // 'dm' | 'group'
   kind: 'dm' | 'group';
-  // Sender's phone as digits from the JID (60...). Normalized here.
+  // Sender's phone as digits from the JID (60...). Normalized here. Empty when
+  // WhatsApp only gave us a LID.
   senderPhone: string;
+  // WhatsApp's privacy identifier, when that is all the message carried. Many
+  // direct messages now arrive this way with no phone number at all, so this is
+  // the primary identity for those senders — see WhatsAppOperator.lid.
+  senderLid?: string;
   senderName: string | null;
   text: string;
   // Group only.
@@ -108,11 +113,54 @@ CARE
 
 // ------------------------------------------------------------------ access
 
-export async function resolveActor(fastify: FastifyInstance, rawPhone: string): Promise<AgentActor | null> {
+export async function resolveActor(
+  fastify: FastifyInstance,
+  rawPhone: string,
+  lid?: string
+): Promise<AgentActor | null> {
+  // LID first. When WhatsApp sends a LID there is no phone number in the
+  // message at all, so this is the only identity available — and it is a
+  // stronger one, because it was bound to this operator by an admin rather
+  // than inferred.
+  if (lid) {
+    const byLid = await fastify.prisma.whatsAppOperator.findFirst({ where: { lid, active: true } });
+    return byLid ? { phone: byLid.phone, name: byLid.name, canWrite: byLid.canWrite } : null;
+  }
+
+  if (!rawPhone) return null;
   const phone = normalizePhone(rawPhone);
   const op = await fastify.prisma.whatsAppOperator.findFirst({ where: { phone, active: true } });
   if (!op) return null;
   return { phone: op.phone, name: op.name, canWrite: op.canWrite };
+}
+
+// Records a sender we could not resolve, so the dashboard can offer to bind
+// them. Without this the LID case is invisible: the operator messages, nothing
+// happens, and the only trace is a line in the PM2 log.
+//
+// Recording grants nothing — the sender is still ignored.
+async function noteUnknownSender(fastify: FastifyInstance, msg: InboundMessage) {
+  const identifier = msg.senderLid || normalizePhone(msg.senderPhone);
+  if (!identifier) return;
+  try {
+    await fastify.prisma.whatsAppUnknownSender.upsert({
+      where: { identifier },
+      create: {
+        identifier,
+        isLid: !!msg.senderLid,
+        pushName: msg.senderName,
+        lastMessage: msg.text.slice(0, 200),
+      },
+      update: {
+        pushName: msg.senderName,
+        lastMessage: msg.text.slice(0, 200),
+        lastSeenAt: new Date(),
+        messageCount: { increment: 1 },
+      },
+    });
+  } catch (err) {
+    fastify.log.error({ err }, 'failed to record unknown WhatsApp sender');
+  }
 }
 
 // Decide whether a message should be acted on at all. Runs before any LLM call,
@@ -123,8 +171,16 @@ export async function shouldHandle(
   fastify: FastifyInstance,
   msg: InboundMessage
 ): Promise<{ ok: false; reason: string } | { ok: true; actor: AgentActor }> {
-  const actor = await resolveActor(fastify, msg.senderPhone);
-  if (!actor) return { ok: false, reason: 'sender is not an allowlisted operator' };
+  const actor = await resolveActor(fastify, msg.senderPhone, msg.senderLid);
+  if (!actor) {
+    await noteUnknownSender(fastify, msg);
+    return {
+      ok: false,
+      reason: msg.senderLid
+        ? `sender arrived as a WhatsApp LID (${msg.senderLid}) that is not bound to any operator — bind it on the admin Agent page`
+        : 'sender is not an allowlisted operator',
+    };
+  }
 
   if (msg.kind === 'group') {
     if (!msg.groupJid) return { ok: false, reason: 'group message without a group jid' };
@@ -145,9 +201,12 @@ export async function shouldHandle(
 
 // ------------------------------------------------------------- conversation
 
-async function getConversation(fastify: FastifyInstance, msg: InboundMessage) {
-  const chatKey = msg.kind === 'group' ? `group:${msg.groupJid}` : `dm:${normalizePhone(msg.senderPhone)}`;
-  const title = msg.kind === 'group' ? (msg.groupSubject ?? 'Group') : (msg.senderName ?? normalizePhone(msg.senderPhone));
+async function getConversation(fastify: FastifyInstance, msg: InboundMessage, actor: AgentActor) {
+  // Keyed on the RESOLVED operator, not the raw sender. The same person can
+  // reach us by phone JID one day and by LID the next; keying on whatever the
+  // transport happened to send would split their history into two threads.
+  const chatKey = msg.kind === 'group' ? `group:${msg.groupJid}` : `dm:${actor.phone}`;
+  const title = msg.kind === 'group' ? (msg.groupSubject ?? 'Group') : actor.name;
   return fastify.prisma.agentConversation.upsert({
     where: { chatKey },
     create: { chatKey, kind: msg.kind, title },
@@ -223,7 +282,7 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
   if (!gate.ok) return { action: 'ignore', reason: gate.reason };
   const actor = gate.actor;
 
-  const conversation = await getConversation(fastify, msg);
+  const conversation = await getConversation(fastify, msg, actor);
   const text = msg.text.trim();
 
   await fastify.prisma.agentMessage.create({

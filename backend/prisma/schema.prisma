@@ -599,6 +599,20 @@ model WhatsAppOperator {
   // lock the operator out.
   phone String @unique
   name  String
+  // WhatsApp's privacy identifier for this person, e.g. "67615754068059".
+  //
+  // Load-bearing, not a nicety. WhatsApp now delivers many direct messages
+  // with ONLY a `@lid` sender — no phone number anywhere in the payload
+  // (verified on the wire: the whole message key is
+  // {remoteJid:"...@lid", fromMe, id}). baileys 6.17.16 exposes no LID→phone
+  // mapping and `onWhatsApp()` returns nothing useful, so an operator whose
+  // messages arrive as a LID cannot be matched by phone at all.
+  //
+  // Filled in by an admin explicitly binding an unrecognised sender to this
+  // operator. Deliberately never inferred from `pushName`: that is a display
+  // name the sender chooses, so matching on it would let anyone claim an
+  // operator's identity by renaming themselves.
+  lid   String? @unique
   // Revoked rather than deleted, so the tool-call audit trail below keeps
   // resolving to a real name after someone leaves.
   active Boolean @default(true)
@@ -612,6 +626,35 @@ model WhatsAppOperator {
 
   @@index([active])
   @@map("whatsapp_operators")
+}
+
+// Someone who messaged the agent and could not be resolved to an operator.
+//
+// Exists so the LID problem is recoverable from the dashboard rather than from
+// the server logs. Without it, an operator whose messages arrive as a `@lid`
+// is silently ignored forever with no visible explanation — which is exactly
+// how this system first appeared broken.
+//
+// Recorded for ANY unresolved sender, including genuine strangers, so it also
+// doubles as a "who is messaging this number" view. The sender is still
+// ignored — nothing here grants access; it only makes the binding possible.
+model WhatsAppUnknownSender {
+  id  String  @id @default(cuid())
+  // The `@lid` identifier, or a phone number for non-LID senders.
+  identifier String @unique
+  isLid      Boolean @default(false)
+  // Whatever display name the sender set. UNTRUSTED — shown to the admin only
+  // as a hint when binding, never used to match automatically.
+  pushName   String?
+  // Kept so an admin can see what they were trying to do before deciding
+  // whether this is a colleague or a stranger. Truncated.
+  lastMessage  String?
+  messageCount Int      @default(1)
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([lastSeenAt])
+  @@map("whatsapp_unknown_senders")
 }
 
 // A group the agent is allowed to work in. Deliberately an allowlist of

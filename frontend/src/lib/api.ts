@@ -289,3 +289,14 @@ export const adminAgentConversation = (token: string, id: string) =>
 
 export const adminAgentToolCalls = (token: string, params?: Record<string, string>) =>
   api.get('/api/v1/admin/whatsapp/tool-calls', { ...auth(token), params }).then((r) => r.data);
+
+export const adminAgentUnknownSenders = (token: string) =>
+  api.get('/api/v1/admin/whatsapp/unknown-senders', auth(token)).then((r) => r.data);
+
+export const adminAgentBindSender = (token: string, identifier: string, operatorId: string) =>
+  api.post('/api/v1/admin/whatsapp/unknown-senders/bind', { identifier, operatorId }, auth(token)).then((r) => r.data);
+
+export const adminAgentDismissSender = (token: string, identifier: string) =>
+  api
+    .delete(`/api/v1/admin/whatsapp/unknown-senders/${encodeURIComponent(identifier)}`, auth(token))
+    .then((r) => r.data);

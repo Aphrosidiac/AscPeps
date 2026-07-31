@@ -431,27 +431,21 @@ async function handleInbound(msg: any) {
   // In a group the sender is `participant`; `remoteJid` is the group itself.
   const senderJid: string = (isGroup ? msg.key.participant : remoteJid) || ''
 
-  // A `@lid` JID is baileys/WhatsApp's privacy-preserving identifier, NOT a
-  // phone number. This baileys version exposes no supported LID→phone mapping,
-  // so treating the digits as a real phone would silently match the wrong
-  // operator — or worse, match one by coincidence. Refuse to guess.
-  if (senderJid.endsWith('@lid')) {
-    // TEMPORARY DIAGNOSTIC — dump everything WhatsApp gave us for this sender,
-    // so the LID->operator resolution can be built on what is actually on the
-    // wire rather than on what the type definitions claim.
-    console.warn(
-      `[worker][LID-DIAG] key=${JSON.stringify(msg.key)} pushName=${JSON.stringify(msg.pushName)} ` +
-        `verifiedBizName=${JSON.stringify((msg as any).verifiedBizName)} ` +
-        `participantAlt=${JSON.stringify((msg.key as any).participantAlt ?? null)} ` +
-        `senderAlt=${JSON.stringify((msg as any).senderAlt ?? null)} ` +
-        `topLevelKeys=${JSON.stringify(Object.keys(msg))}`
-    )
-    console.warn(`[worker] Ignoring message from unresolvable @lid sender (${senderJid}) — cannot verify which operator this is`)
-    return
-  }
-
-  const senderPhone = senderJid.replace('@s.whatsapp.net', '').split(':')[0]
-  if (!senderPhone) return
+  // A `@lid` JID is WhatsApp's privacy identifier, NOT a phone number, and
+  // WhatsApp now delivers many direct messages with only a LID. Verified on the
+  // wire: the entire message key is {remoteJid:"...@lid", fromMe, id} — there is
+  // no phone number in the payload, `onWhatsApp()` returns nothing for it, and
+  // baileys 6.17.16 exposes no LID→phone mapping.
+  //
+  // The digits of a LID are NOT a phone number, so they must never be treated
+  // as one — that could match the wrong operator, or one by coincidence.
+  // Instead the identifier is passed through as-is and the API resolves it
+  // against operators an admin has explicitly bound. Unbound senders are
+  // recorded (so the dashboard can offer the binding) and still ignored.
+  const isLid = senderJid.endsWith('@lid')
+  const senderLid = isLid ? senderJid.replace('@lid', '') : undefined
+  const senderPhone = isLid ? '' : senderJid.replace('@s.whatsapp.net', '').split(':')[0]
+  if (!senderLid && !senderPhone) return
 
   let text = extractText(msg)
 
@@ -472,6 +466,7 @@ async function handleInbound(msg: any) {
   const payload = {
     kind: isGroup ? 'group' : 'dm',
     senderPhone,
+    senderLid,
     senderName: msg.pushName || null,
     text,
     groupJid: isGroup ? remoteJid : undefined,
@@ -480,7 +475,7 @@ async function handleInbound(msg: any) {
   }
 
   if (!AGENT_ENABLED) {
-    console.log(`[worker] (agent disabled) inbound from ${senderPhone}${isGroup ? ` in ${remoteJid}` : ''}: ${text.slice(0, 80)}`)
+    console.log(`[worker] (agent disabled) inbound from ${senderLid ? `lid:${senderLid}` : senderPhone}${isGroup ? ` in ${remoteJid}` : ''}: ${text.slice(0, 80)}`)
     return
   }
 
@@ -510,7 +505,7 @@ async function handleInbound(msg: any) {
 
     const data = (await res.json()) as { action: 'ignore' | 'reply'; text?: string; reason?: string }
     if (data.action !== 'reply' || !data.text) {
-      if (data.reason) console.log(`[worker] ignored message from ${senderPhone}: ${data.reason}`)
+      if (data.reason) console.log(`[worker] ignored message from ${senderLid ? `lid:${senderLid}` : senderPhone}: ${data.reason}`)
       return
     }
 
@@ -603,22 +598,6 @@ app.get('/groups', async (_request, reply) => {
     }
   } catch (err: any) {
     return reply.status(500).send({ error: err?.message || 'Failed to fetch groups' })
-  }
-})
-
-// TEMPORARY DIAGNOSTIC — what does WhatsApp's own directory lookup return for a
-// known phone number? The typings say `{jid, exists}`, but USync responses have
-// carried more than that in practice, and a LID here would let an operator's
-// number be mapped to their LID directly.
-app.get('/diag/onwhatsapp', async (request, reply) => {
-  if (!sock || !connected) return reply.status(409).send({ error: 'not_connected' })
-  const phone = String((request.query as any)?.phone || '')
-  if (!phone) return reply.status(400).send({ error: 'phone required' })
-  try {
-    const res = await sock.onWhatsApp(toJid(phone))
-    return { raw: res, stringified: JSON.stringify(res) }
-  } catch (err: any) {
-    return reply.status(500).send({ error: err?.message })
   }
 })
 

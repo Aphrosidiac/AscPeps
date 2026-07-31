@@ -23,13 +23,15 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
 
   fastify.post('/inbound', async (request, reply) => {
     const body = request.body as Partial<InboundMessage>;
-    if (!body?.senderPhone || typeof body.text !== 'string') {
-      return reply.status(400).send({ error: 'senderPhone and text are required' });
+    // Either identity is acceptable — a LID-only sender has no phone at all.
+    if ((!body?.senderPhone && !body?.senderLid) || typeof body.text !== 'string') {
+      return reply.status(400).send({ error: 'senderPhone or senderLid, plus text, are required' });
     }
 
     const msg: InboundMessage = {
       kind: body.kind === 'group' ? 'group' : 'dm',
-      senderPhone: body.senderPhone,
+      senderPhone: body.senderPhone ?? '',
+      senderLid: body.senderLid,
       senderName: body.senderName ?? null,
       text: body.text,
       groupJid: body.groupJid,
