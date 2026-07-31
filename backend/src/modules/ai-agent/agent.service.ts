@@ -626,9 +626,21 @@ async function produceReply(
 async function narrate(_f: FastifyInstance, _ctx: ToolContext, tool: string, result: any): Promise<string> {
   const bits: string[] = [];
   for (const [k, v] of Object.entries(result ?? {})) {
-    if (v == null || typeof v === 'object') continue;
+    if (v == null) continue;
+    // Internal identifiers are noise to an operator reading this on a phone —
+    // and orderId in particular was being shown while the total was not.
+    if (/^(orderId|insightId|expenseId|fundingId|payoutId|repaymentId|discountId|variantId|productId)$/.test(k)) continue;
+
+    if (typeof v === 'object') {
+      // Money values are `{ cents, display }`; show the formatted side. Any
+      // other object is structure the operator does not need here.
+      const display = (v as any).display;
+      if (typeof display === 'string') bits.push(`${k}: ${display}`);
+      continue;
+    }
+    if (typeof v === 'boolean' && !v) continue;
     bits.push(`${k}: ${v}`);
-    if (bits.length >= 6) break;
+    if (bits.length >= 8) break;
   }
   return bits.length ? bits.join('\n') : `(${tool} completed)`;
 }
