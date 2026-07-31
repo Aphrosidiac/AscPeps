@@ -252,9 +252,25 @@ function currentPhase(): 'connected' | 'stopped' | 'qr_pending' | 'connecting' |
   return 'idle'
 }
 
-// The connected number, digits only — used to detect @-mentions of ourselves.
+// The connected number, digits only. Used for display and for detecting
+// @-mentions of ourselves.
 function selfNumber(): string | null {
   return sock?.user?.id?.split(':')[0]?.split('@')[0] ?? null
+}
+
+// Every identifier that means "us". WhatsApp addresses us by phone JID in some
+// chats and by our own LID in others (baileys exposes both on `sock.user` —
+// e.g. id "60137566001:4@s.whatsapp.net", lid "80943691858039:4@lid"), and a
+// mention in a LID-addressed group carries the LID form. Matching only the
+// phone digits meant an @-mention in such a group was never recognised, so a
+// group with requireMention on would ignore the operator entirely.
+function selfIds(): string[] {
+  const ids: string[] = []
+  const phone = selfNumber()
+  if (phone) ids.push(phone)
+  const lid = (sock?.user as any)?.lid?.split(':')[0]?.split('@')[0]
+  if (lid) ids.push(lid)
+  return ids
 }
 
 async function connectWhatsApp() {
@@ -410,16 +426,18 @@ function extractText(msg: any): string {
 // the connected number, a reply to one of the bot's own messages, or the text
 // opening with the trigger word. Groups with requireMention set act on nothing else.
 function mentionsBot(msg: any, text: string): boolean {
-  const me = selfNumber()
-  if (!me) return false
+  const ids = selfIds()
 
   const ctx = msg.message?.extendedTextMessage?.contextInfo
   const mentioned: string[] = ctx?.mentionedJid ?? []
-  if (mentioned.some((jid) => jid.startsWith(me))) return true
+  if (ids.length && mentioned.some((jid) => ids.some((id) => jid.startsWith(id)))) return true
 
   // A reply to one of our own messages.
-  if (ctx?.participant?.startsWith(me)) return true
+  if (ids.length && ctx?.participant && ids.some((id) => ctx.participant.startsWith(id))) return true
 
+  // Text trigger. Deliberately kept as a fallback that needs no identifier at
+  // all, so addressing the agent still works even if WhatsApp changes how
+  // mentions are encoded again.
   return /^\s*(@?ascend|@?bot)\b/i.test(text)
 }
 
