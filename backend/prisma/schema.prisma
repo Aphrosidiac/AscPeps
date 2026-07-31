@@ -473,11 +473,10 @@ model Partner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profitShares    OrderProfitShare[]
-  funding         PartnerFunding[]
-  payouts         ProfitPayout[]
-  expensesPaid    CompanyExpense[]   @relation("ExpensePaidBy")
-  deliveryWindows DeliveryWindow[]
+  profitShares OrderProfitShare[]
+  funding      PartnerFunding[]
+  payouts      ProfitPayout[]
+  expensesPaid CompanyExpense[]   @relation("ExpensePaidBy")
 
   @@index([active])
   @@map("partners")
@@ -778,66 +777,22 @@ model AgentPendingAction {
 
 // ------------------------------------------------- Delivery scheduling
 //
-// Asywa's delivery diary. She sets the windows she can deliver in, the system
-// works out the individual slots inside them, and each slot can be assigned to
-// an order. There is no public booking page: slots are assigned from the admin
-// or by telling the WhatsApp agent.
+// Asywa's delivery diary: one booking per order, at whatever time she says.
 //
-// TIMEZONE: every window here is Malaysia local wall-clock, stored as a
-// day-of-week plus minutes-from-midnight rather than a timestamp. The slot
-// instants are computed against a fixed UTC+8, NOT against the server's own
-// clock — this box is currently set to Asia/Shanghai, which happens to be the
-// same offset as Malaysia, and a schedule that silently depends on that
-// coincidence would shift by hours the day the box is rebuilt or moved.
-// Malaysia has no daylight saving, so a fixed offset is exactly right.
-
-model DeliveryWindow {
-  id          String  @id @default(cuid())
-  // 0 = Sunday ... 6 = Saturday, matching JavaScript's getDay().
-  dayOfWeek   Int
-  // Minutes from local midnight. 600 = 10:00, 780 = 13:00.
-  startMinute Int
-  endMinute   Int
-  // How long one delivery slot is. A 10:00-13:00 window at 60 gives 10:00,
-  // 11:00 and 12:00. A trailing part-slot is never offered.
-  slotMinutes Int     @default(60)
-  // How many deliveries can be booked into the same slot.
-  capacity    Int     @default(1)
-  // Turned off rather than deleted, so a window can be paused for a season
-  // without losing its shape or the bookings already made against it.
-  active      Boolean @default(true)
-  // Whose window this is. Nullable and pointing at the existing people table
-  // rather than inventing a second one — today every window is Asywa's, but
-  // naming the owner now costs nothing and avoids a migration the first time
-  // someone else does a run.
-  partnerId   String?
-  notes       String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  partner Partner? @relation(fields: [partnerId], references: [id])
-
-  @@index([dayOfWeek, active])
-  @@map("delivery_windows")
-}
-
-// A day (or part of one) that is closed regardless of the recurring windows —
-// a public holiday, leave, a van in the workshop.
-model DeliveryBlackout {
-  id          String   @id @default(cuid())
-  // Local Malaysia date, midnight-anchored. A whole-day closure leaves the
-  // minute bounds null; a partial closure sets them.
-  date        DateTime
-  startMinute Int?
-  endMinute   Int?
-  reason      String
-
-  createdAt DateTime @default(now())
-
-  @@index([date])
-  @@map("delivery_blackouts")
-}
+// There is deliberately NO availability layer here. An earlier version had
+// recurring weekly windows and blackout dates, copied from how Calendly works
+// — but Calendly declares availability so that STRANGERS can book against your
+// calendar unsupervised. Asywa is the only person booking these, so windows
+// only ever constrained her, had to be maintained by her, and blocked the
+// obvious case: a customer asks for Tuesday 6pm and she cannot enter it
+// without first editing a rule. Removed on purpose; don't reintroduce it
+// unless customers start booking their own slots.
+//
+// TIMEZONE: `scheduledFor` is a real instant. Everything that converts to and
+// from Malaysia wall-clock does so against a fixed UTC+8, NOT the server's own
+// clock — this box is set to Asia/Shanghai, the same offset as Malaysia only by
+// coincidence, and depending on that would shift the whole diary the day the
+// box is rebuilt elsewhere. Malaysia has no daylight saving.
 
 enum DeliveryStatus {
   SCHEDULED

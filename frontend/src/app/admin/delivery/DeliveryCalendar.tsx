@@ -5,37 +5,19 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 /**
  * Month grid for picking a delivery date — the Calendly shape: see the whole
- * month at a glance, click a day, then pick a time from that day.
+ * month at a glance, click a day, then choose a time.
  *
- * Everything here works on "YYYY-MM-DD" date KEYS in Malaysia local time, never
- * on Date objects, so the grid can never drift a day. The backend already
- * returns each slot's `localDate` in exactly that form; building the grid from
- * the same string space means the two can't disagree about which day a 23:00
- * slot belongs to.
+ * Every future day is selectable. There is no availability layer to grey days
+ * out against (see the delivery models in schema.prisma); the only thing the
+ * grid reports is how many deliveries are already booked on each day, which is
+ * what actually helps when deciding where to put the next one.
+ *
+ * Works on "YYYY-MM-DD" date KEYS in Malaysia local time, never on Date
+ * objects, so the grid cannot drift a day against what the backend returns.
  */
 
-export interface CalendarSlot {
-  startsAt: string;
-  localDate: string;
-  localTime: string;
-  label: string;
-  booked: number;
-  capacity: number;
-  open: boolean;
-}
-
-export interface CalendarBlackout {
-  date: string;
-  startMinute: number | null;
-  endMinute: number | null;
-  reason: string;
-}
-
 interface Props {
-  /** Every slot in the visible month (open and full). */
-  slots: CalendarSlot[];
-  blackouts: CalendarBlackout[];
-  /** Count of existing bookings per "YYYY-MM-DD", for the schedule overview. */
+  /** Count of existing bookings per "YYYY-MM-DD". */
   bookingsByDate?: Record<string, number>;
   /** First of the visible month, as "YYYY-MM". */
   month: string;
@@ -73,8 +55,6 @@ export function shiftMonth(month: string, delta: number): string {
 }
 
 export function DeliveryCalendar({
-  slots,
-  blackouts,
   bookingsByDate = {},
   month,
   onMonthChange,
@@ -83,27 +63,6 @@ export function DeliveryCalendar({
   today,
 }: Props) {
   const [year, monthNum] = month.split('-').map(Number);
-
-  const byDate = useMemo(() => {
-    const map: Record<string, { open: number; total: number }> = {};
-    for (const s of slots) {
-      const entry = (map[s.localDate] ??= { open: 0, total: 0 });
-      entry.total += 1;
-      if (s.open) entry.open += 1;
-    }
-    return map;
-  }, [slots]);
-
-  const blackoutByDate = useMemo(() => {
-    const map: Record<string, CalendarBlackout> = {};
-    for (const b of blackouts) {
-      // The API returns an ISO instant; the first 10 chars of the MYT-anchored
-      // date are the day it refers to.
-      const key = b.date.slice(0, 10);
-      map[key] = b;
-    }
-    return map;
-  }, [blackouts]);
 
   // Leading blanks so the 1st lands under the right weekday, then the days.
   const cells = useMemo(() => {
@@ -152,17 +111,13 @@ export function DeliveryCalendar({
         {cells.map((key, i) => {
           if (!key) return <div key={`blank-${i}`} />;
 
-          const avail = byDate[key];
-          const blackout = blackoutByDate[key];
           const bookings = bookingsByDate[key] ?? 0;
           const isPast = key < today;
           const isToday = key === today;
           const isSelected = key === selectedDate;
-          // A day is bookable when it has open slots and is not in the past.
-          // A whole-day blackout removes its slots server-side, so `avail`
-          // being absent already covers it — the styling below only exists to
-          // say *why* the day is closed.
-          const selectable = !isPast && !!avail?.open;
+          // Any day from today onwards can be booked. Past days are excluded
+          // because scheduling a delivery into the past is always a mistake.
+          const selectable = !isPast;
           const dayNum = Number(key.slice(8));
 
           return (
@@ -173,13 +128,11 @@ export function DeliveryCalendar({
               onClick={() => onSelectDate(isSelected ? null : key)}
               style={{ animationDelay: `${Math.min(i * 8, 200)}ms` }}
               title={
-                blackout
-                  ? `Blocked — ${blackout.reason}`
-                  : avail
-                    ? `${avail.open} of ${avail.total} slots free`
-                    : isPast
-                      ? 'Past'
-                      : 'No delivery window'
+                isPast
+                  ? 'In the past'
+                  : bookings
+                    ? `${bookings} delivery${bookings === 1 ? '' : 's'} already booked`
+                    : 'No deliveries booked'
               }
               className={[
                 'row-rise relative flex aspect-square flex-col items-center justify-center rounded-lg border text-sm transition-all',
@@ -193,28 +146,12 @@ export function DeliveryCalendar({
             >
               <span className={isPast && !isSelected ? 'opacity-50' : ''}>{dayNum}</span>
 
-              {/* Availability read at a glance: a count when the day is open,
-                  a struck-through marker when it is deliberately blocked. */}
-              {blackout ? (
-                <span className={`text-[9px] leading-none ${isSelected ? 'text-white/80' : 'text-danger/70'}`}>
-                  blocked
-                </span>
-              ) : avail?.open ? (
-                <span className={`text-[9px] leading-none ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>
-                  {avail.open} free
-                </span>
-              ) : avail && !avail.open ? (
-                <span className={`text-[9px] leading-none ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>
-                  full
-                </span>
-              ) : null}
-
-              {/* Existing deliveries on this day. */}
+              {/* How busy the day already is — the only signal that helps
+                  when choosing where to put the next drop. */}
               {bookings > 0 && (
-                <span
-                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-accent'}`}
-                  aria-label={`${bookings} booked`}
-                />
+                <span className={`text-[9px] leading-none ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>
+                  {bookings} booked
+                </span>
               )}
             </button>
           );
