@@ -9,6 +9,9 @@ import {
   listConversations,
   listOperators,
   listToolCalls,
+  bindUnknownSender,
+  dismissUnknownSender,
+  listUnknownSenders,
   listWhatsAppGroups,
   sendTestMessage,
   stopWhatsApp,
@@ -40,6 +43,13 @@ export default async function whatsappRoutes(fastify: FastifyInstance) {
     deleteOperator(fastify, request.params.id)
   );
   fastify.post('/groups', async (request) => upsertGroup(fastify, request.body));
+
+  // Unrecognised senders (the WhatsApp LID binding flow)
+  fastify.get('/unknown-senders', async () => listUnknownSenders(fastify));
+  fastify.post('/unknown-senders/bind', async (request) => bindUnknownSender(fastify, request.body));
+  fastify.delete<{ Params: { id: string } }>('/unknown-senders/:id', async (request) =>
+    dismissUnknownSender(fastify, decodeURIComponent(request.params.id))
+  );
 
   // Conversations + audit
   fastify.get('/conversations', async () => listConversations(fastify));

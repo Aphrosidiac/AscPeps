@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Bot,
+  Link2,
   CheckCircle2,
   Loader2,
   LogOut,
@@ -17,13 +18,16 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  adminAgentBindSender,
   adminAgentConversation,
   adminAgentConversations,
+  adminAgentDismissSender,
   adminAgentDeleteOperator,
   adminAgentOperators,
   adminAgentSaveGroup,
   adminAgentSaveOperator,
   adminAgentToolCalls,
+  adminAgentUnknownSenders,
   adminWhatsAppConnect,
   adminWhatsAppDisconnect,
   adminWhatsAppGroups,
@@ -81,6 +85,16 @@ interface Conversation {
   lastMessageAt: string;
 }
 
+interface UnknownSender {
+  id: string;
+  identifier: string;
+  isLid: boolean;
+  pushName: string | null;
+  lastMessage: string | null;
+  messageCount: number;
+  lastSeenAt: string;
+}
+
 interface ConversationMessage {
   id: string;
   role: string;
@@ -128,6 +142,7 @@ export default function AgentPage() {
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [openConversation, setOpenConversation] = useState<ConversationDetail | null>(null);
+  const [unknown, setUnknown] = useState<UnknownSender[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [newOp, setNewOp] = useState({ phone: '', name: '', canWrite: true });
 
@@ -175,6 +190,10 @@ export default function AgentPage() {
 
     adminAgentConversations(token)
       .then(setConversations)
+      .catch(() => {});
+
+    adminAgentUnknownSenders(token)
+      .then(setUnknown)
       .catch(() => {});
   }, [token]);
 
@@ -420,6 +439,74 @@ export default function AgentPage() {
           </button>
         </div>
       </section>
+
+      {/* ---- Unrecognised senders ----
+           The recovery path for WhatsApp LIDs: many DMs now carry a privacy
+           identifier and no phone number, so the operator cannot be matched by
+           number and would otherwise be ignored with no visible reason. */}
+      {unknown.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-6">
+          <h2 className="flex items-center gap-2 text-lg font-medium text-amber-900">
+            <Link2 className="h-5 w-5" /> Unrecognised senders
+          </h2>
+          <p className="mt-1 text-sm text-amber-800">
+            These messaged the agent but could not be matched to an operator, so they were ignored. WhatsApp often hides
+            the phone number and sends only a privacy ID — if one of these is you or your team, bind it to the right
+            operator. The name shown is whatever the sender set, so confirm it is really them before binding.
+          </p>
+
+          <div className="mt-4 space-y-2">
+            {unknown.map((u) => (
+              <div key={u.id} className="rounded-lg border border-amber-200 bg-surface px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-text-primary">
+                      {u.pushName || 'Unnamed'}{' '}
+                      <span className="text-xs font-normal text-text-muted">
+                        {u.isLid ? `privacy ID ${u.identifier}` : u.identifier}
+                      </span>
+                    </p>
+                    {u.lastMessage && (
+                      <p className="mt-0.5 truncate text-sm text-text-secondary">&ldquo;{u.lastMessage}&rdquo;</p>
+                    )}
+                    <p className="mt-0.5 text-xs text-text-muted">
+                      {u.messageCount} message{u.messageCount === 1 ? '' : 's'} · last{' '}
+                      {new Date(u.lastSeenAt).toLocaleString('en-MY')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const operatorId = e.target.value;
+                        if (!operatorId) return;
+                        act(`bind-${u.id}`, () => adminAgentBindSender(token, u.identifier, operatorId));
+                      }}
+                      className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
+                    >
+                      <option value="">Bind to…</option>
+                      {operators
+                        .filter((o) => o.active)
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name} ({o.phone})
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={() => act(`dismiss-${u.id}`, () => adminAgentDismissSender(token, u.identifier))}
+                      className="rounded border border-border p-1.5 text-text-muted hover:bg-surface-elevated"
+                      title="Dismiss — not one of ours"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ---- Groups ---- */}
       <section className="rounded-xl border border-border bg-surface p-6">
