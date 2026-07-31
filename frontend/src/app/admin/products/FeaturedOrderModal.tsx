@@ -51,8 +51,8 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-surface rounded-xl border border-border w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div className="dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="dialog-panel bg-surface rounded-xl border border-border w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-border">
           <h2 className="font-display font-semibold text-lg">Featured Order</h2>
           <button onClick={onClose} className="p-1 hover:bg-surface-elevated rounded cursor-pointer">

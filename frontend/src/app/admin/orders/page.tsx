@@ -232,7 +232,7 @@ function AdminOrdersContent() {
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((order) => {
+          {orders.map((order, rowIndex) => {
             const isExpanded = expandedOrder === order.id;
             const isUpdating = updating === order.id;
             // Only lock: an online-transfer payment that's already confirmed
@@ -240,7 +240,12 @@ function AdminOrdersContent() {
             // WhatsApp/manual-transfer payment status) is freely editable.
             const paymentLocked = order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
             return (
-              <div key={order.id} id={`order-${order.id}`} className={`bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'}`}>
+              <div
+                key={order.id}
+                id={`order-${order.id}`}
+                style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }}
+                className={`row-rise bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border hover:border-border-hover'}`}
+              >
                 <div
                   className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
                   onClick={() => { setExpandedOrder(isExpanded ? null : order.id); setTrackingError(null); }}
@@ -276,7 +281,7 @@ function AdminOrdersContent() {
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t border-border p-4 sm:p-6 space-y-5">
+                  <div className="panel-reveal border-t border-border p-4 sm:p-6 space-y-5">
                     {/* Customer & Address */}
                     <div className="grid sm:grid-cols-3 gap-4">
                       <div>

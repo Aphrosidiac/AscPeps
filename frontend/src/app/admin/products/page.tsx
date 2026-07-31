@@ -244,12 +244,12 @@ export default function AdminProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {displayedProducts.map((product) => {
+              {displayedProducts.map((product, rowIndex) => {
                 const defaultVariant = getDefaultVariant(product);
                 const activeVariants = product.variants.filter((v) => v.active);
                 const distinctPrices = new Set(activeVariants.map((v) => v.price)).size;
                 return (
-                  <tr key={product.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+                  <tr key={product.id} style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }} className="row-rise border-b border-border last:border-0 hover:bg-surface-elevated/50 transition-colors">
                     <td className="px-4 py-3 font-medium">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">

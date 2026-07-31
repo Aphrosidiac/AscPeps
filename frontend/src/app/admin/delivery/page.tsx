@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { Animate } from '@/components/ui/Animate';
 import { CalendarDays, CalendarOff, CheckCircle2, Clock, Loader2, Plus, RefreshCw, Trash2, Truck, XCircle } from 'lucide-react';
 import {
   adminCancelDelivery,
@@ -142,13 +143,14 @@ export default function DeliveryPage() {
         </div>
         <button
           onClick={refresh}
-          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-elevated"
+          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-elevated active:scale-[0.98]"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
       </header>
 
       {/* ---- Run sheet ---- */}
+      <Animate variant="fadeUp">
       <section className="rounded-xl border border-border bg-surface p-6">
         <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
           <CalendarDays className="h-5 w-5" /> Upcoming deliveries
@@ -156,8 +158,8 @@ export default function DeliveryPage() {
         <p className="mt-1 text-sm text-text-secondary">{upcoming.length} scheduled.</p>
 
         <div className="mt-4 space-y-5">
-          {Object.entries(byDate).map(([date, list]) => (
-            <div key={date}>
+          {Object.entries(byDate).map(([date, list], dayIndex) => (
+            <div key={date} className="row-rise" style={{ animationDelay: `${Math.min(dayIndex * 60, 300)}ms` }}>
               <p className="mb-2 text-sm font-medium text-text-primary">
                 {new Date(`${date}T00:00:00`).toLocaleDateString('en-MY', {
                   weekday: 'long',
@@ -166,8 +168,12 @@ export default function DeliveryPage() {
                 })}
               </p>
               <div className="space-y-2">
-                {list.map((b) => (
-                  <div key={b.id} className="rounded-lg border border-border bg-surface-elevated px-4 py-3">
+                {list.map((b, i) => (
+                  <div
+                    key={b.id}
+                    style={{ animationDelay: `${Math.min(dayIndex * 60 + i * 35, 400)}ms` }}
+                    className="row-rise rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-all hover:border-border-hover hover:shadow-sm"
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium text-text-primary">
@@ -187,14 +193,14 @@ export default function DeliveryPage() {
                         <button
                           disabled={!!busy}
                           onClick={() => act(`done-${b.id}`, () => adminUpdateDeliveryStatus(token, b.id, { status: 'COMPLETED' }))}
-                          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50"
+                          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-green-700 transition-colors hover:bg-green-50 active:scale-[0.97] disabled:opacity-50"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" /> Delivered
                         </button>
                         <button
                           disabled={!!busy}
                           onClick={() => act(`fail-${b.id}`, () => adminUpdateDeliveryStatus(token, b.id, { status: 'FAILED' }))}
-                          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-elevated disabled:opacity-50"
+                          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-elevated active:scale-[0.97] disabled:opacity-50"
                         >
                           <XCircle className="h-3.5 w-3.5" /> Failed
                         </button>
@@ -204,7 +210,7 @@ export default function DeliveryPage() {
                             if (!confirm(`Cancel the delivery for ${b.orderNumber}? The slot will be freed.`)) return;
                             act(`cancel-${b.id}`, () => adminCancelDelivery(token, b.id));
                           }}
-                          className="rounded border border-border p-1.5 text-danger hover:bg-red-50 disabled:opacity-50"
+                          className="rounded border border-border p-1.5 text-danger transition-colors hover:bg-red-50 active:scale-[0.95] disabled:opacity-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -223,7 +229,10 @@ export default function DeliveryPage() {
         </div>
       </section>
 
+      </Animate>
+
       {/* ---- Orders waiting for a slot ---- */}
+      <Animate variant="fadeUp" delay={0.05}>
       <section className="rounded-xl border border-border bg-surface p-6">
         <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
           <Clock className="h-5 w-5" /> Waiting for a slot
@@ -231,10 +240,11 @@ export default function DeliveryPage() {
         <p className="mt-1 text-sm text-text-secondary">Live orders with no delivery booked yet.</p>
 
         <div className="mt-4 space-y-2">
-          {unscheduled.map((o) => (
+          {unscheduled.map((o, i) => (
             <div
               key={o.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3"
+              style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+              className="row-rise flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-all hover:border-border-hover hover:shadow-sm"
             >
               <div className="min-w-0">
                 <p className="font-medium text-text-primary">
@@ -249,7 +259,7 @@ export default function DeliveryPage() {
               </div>
               <button
                 onClick={() => setAssigning(o)}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
               >
                 Book a slot
               </button>
@@ -263,7 +273,10 @@ export default function DeliveryPage() {
         </div>
       </section>
 
+      </Animate>
+
       {/* ---- Weekly availability ---- */}
+      <Animate variant="fadeUp" delay={0.1}>
       <section className="rounded-xl border border-border bg-surface p-6">
         <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
           <CalendarDays className="h-5 w-5" /> Weekly delivery windows
@@ -274,10 +287,11 @@ export default function DeliveryPage() {
         </p>
 
         <div className="mt-4 space-y-2">
-          {windows.map((w) => (
+          {windows.map((w, i) => (
             <div
               key={w.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3"
+              style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+              className="row-rise flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-colors hover:border-border-hover"
             >
               <div>
                 <p className="font-medium text-text-primary">
@@ -323,7 +337,7 @@ export default function DeliveryPage() {
                     if (!confirm('Remove this window? Deliveries already booked keep their times.')) return;
                     act(`w-${w.id}`, () => adminDeleteDeliveryWindow(token, w.id));
                   }}
-                  className="rounded border border-border p-1.5 text-danger hover:bg-red-50"
+                  className="rounded border border-border p-1.5 text-danger transition-colors hover:bg-red-50 active:scale-[0.95]"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -407,7 +421,7 @@ export default function DeliveryPage() {
                 })
               );
             }}
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             {busy === 'add-window' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
             window
@@ -415,7 +429,10 @@ export default function DeliveryPage() {
         </div>
       </section>
 
+      </Animate>
+
       {/* ---- Blocked dates ---- */}
+      <Animate variant="fadeUp" delay={0.15}>
       <section className="rounded-xl border border-border bg-surface p-6">
         <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
           <CalendarOff className="h-5 w-5" /> Blocked dates
@@ -425,10 +442,11 @@ export default function DeliveryPage() {
         </p>
 
         <div className="mt-4 space-y-2">
-          {blackouts.map((b) => (
+          {blackouts.map((b, i) => (
             <div
               key={b.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-2.5"
+              style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+              className="row-rise flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-2.5 transition-colors hover:border-border-hover"
             >
               <p className="text-sm text-text-primary">
                 {new Date(b.date).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -439,7 +457,7 @@ export default function DeliveryPage() {
               </p>
               <button
                 onClick={() => act(`b-${b.id}`, () => adminDeleteDeliveryBlackout(token, b.id))}
-                className="rounded border border-border p-1.5 text-danger hover:bg-red-50"
+                className="rounded border border-border p-1.5 text-danger transition-colors hover:bg-red-50 active:scale-[0.95]"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -478,18 +496,23 @@ export default function DeliveryPage() {
                 setNewBlackout({ date: '', reason: '' });
               })
             }
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             Block date
           </button>
         </div>
       </section>
 
+      </Animate>
+
       {/* ---- Slot picker ---- */}
       {assigning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAssigning(null)}>
+        <div
+          className="dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setAssigning(null)}
+        >
           <div
-            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6"
+            className="dialog-panel max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-1 flex items-center justify-between">
@@ -506,17 +529,18 @@ export default function DeliveryPage() {
               {slots
                 .filter((s) => s.open)
                 .slice(0, 40)
-                .map((s) => (
+                .map((s, i) => (
                   <button
                     key={s.startsAt}
                     disabled={!!busy}
+                    style={{ animationDelay: `${Math.min(i * 22, 320)}ms` }}
                     onClick={() =>
                       act('assign', async () => {
                         await adminScheduleDelivery(token, { orderId: assigning.id, scheduledFor: s.startsAt });
                         setAssigning(null);
                       })
                     }
-                    className="flex w-full items-center justify-between rounded-lg border border-border px-4 py-2.5 text-left text-sm hover:bg-surface-elevated disabled:opacity-50"
+                    className="row-rise flex w-full items-center justify-between rounded-lg border border-border px-4 py-2.5 text-left text-sm transition-all hover:border-border-hover hover:bg-surface-elevated active:scale-[0.99] disabled:opacity-50"
                   >
                     <span className="text-text-primary">{s.label}</span>
                     <span className="text-xs text-text-muted">{s.capacity - s.booked} free</span>
