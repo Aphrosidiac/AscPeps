@@ -527,9 +527,32 @@ async function handleInbound(msg: any) {
       return
     }
 
-    if (sock) await sock.sendMessage(remoteJid, { text: data.text })
+    // Sending is its own failure domain and must be logged as such. Folding it
+    // in with the API call produced "[worker] agent call failed: not-acceptable"
+    // for a reply the agent had generated perfectly well — the failure was
+    // WhatsApp rejecting the outbound stanza, which reads nothing like that.
+    if (sock) {
+      try {
+        await sock.sendMessage(remoteJid, { text: data.text })
+      } catch (sendErr: any) {
+        const reason = sendErr?.message ?? String(sendErr)
+        console.error(
+          `[worker] REPLY GENERATED BUT SEND FAILED to ${remoteJid} (${isGroup ? 'group' : 'dm'}): ${reason}`
+        )
+        // `not-acceptable` on a group is the known signature of this baileys
+        // version not understanding LID-addressed groups: it has no concept of
+        // addressingMode, so the stanza it builds is rejected outright. Nothing
+        // in the agent or the gating is wrong when this happens.
+        if (isGroup && /not-acceptable/i.test(reason)) {
+          console.error(
+            '[worker] This is the known LID-addressed group limitation of baileys 6.x — group replies cannot be delivered until the library is upgraded. Direct messages are unaffected.'
+          )
+        }
+        throw sendErr
+      }
+    }
   } catch (err: any) {
-    console.error('[worker] agent call failed:', err?.message ?? err)
+    console.error('[worker] inbound handling failed:', err?.message ?? err)
     // Only surface an error to a chat the agent is actually allowed to speak
     // in — an unknown sender must get silence even when things break, or the
     // failure itself becomes the confirmation that a bot is listening.
