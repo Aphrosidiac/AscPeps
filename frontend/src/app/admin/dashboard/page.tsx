@@ -76,8 +76,8 @@ export default function AdminDashboardPage() {
       <h1 className="font-display text-2xl font-bold mb-6">Dashboard</h1>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
-        {statCards.map((card) => (
-          <Link key={card.label} href={card.href} className="bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover hover:shadow-sm transition-all group">
+        {statCards.map((card, i) => (
+          <Link key={card.label} href={card.href} style={{ animationDelay: `${i * 45}ms` }} className="row-rise bg-surface rounded-xl border border-border p-4 sm:p-5 hover:border-border-hover hover:shadow-sm transition-all group">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-text-secondary">{card.label}</span>
               <card.icon className="w-4 h-4 text-text-muted group-hover:text-text-primary transition-colors" />
@@ -128,8 +128,8 @@ export default function AdminDashboardPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {stats.recentOrders.map((order) => (
-                <Link key={order.id} href="/admin/orders" className="flex items-center justify-between py-2.5 border-b border-border last:border-0 hover:bg-surface-elevated/50 -mx-2 px-2 rounded transition-colors">
+              {stats.recentOrders.map((order, i) => (
+                <Link key={order.id} href="/admin/orders" style={{ animationDelay: `${Math.min(i * 35, 300)}ms` }} className="row-rise flex items-center justify-between py-2.5 border-b border-border last:border-0 hover:bg-surface-elevated/50 -mx-2 px-2 rounded transition-colors">
                   <div>
                     <p className="font-medium text-sm">{order.orderNumber}</p>
                     <p className="text-xs text-text-muted">{order.customerName} &middot; {formatDate(order.createdAt)}</p>

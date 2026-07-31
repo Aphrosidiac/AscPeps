@@ -94,8 +94,8 @@ export default function AdminInsightsPage() {
               </tr>
             </thead>
             <tbody>
-              {displayed.map((insight) => (
-                <tr key={insight.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50">
+              {displayed.map((insight, rowIndex) => (
+                <tr key={insight.id} style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }} className="row-rise border-b border-border last:border-0 hover:bg-surface-elevated/50 transition-colors">
                   <td className="px-4 py-3 font-medium max-w-xs truncate">{insight.title}</td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{insight.category}</td>
                   <td className="px-4 py-3 text-text-secondary text-xs">{insight.authorName}</td>

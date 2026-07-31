@@ -201,7 +201,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
       </div>
 
       {/* Stepper */}
-      <div className="bg-surface border border-border rounded-xl p-5 sm:p-6 mb-6">
+      <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface border border-border rounded-xl p-5 sm:p-6 mb-6">
         <div className="flex items-start">
           {STEPS.map((s, i) => {
             const isActive = i === activeIndex;
@@ -272,7 +272,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
 
 function Card({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+    <div style={{ animationDelay: `45ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
         <span className="text-text-muted">{icon}</span>
         <h2 className="text-sm font-semibold">{title}</h2>
@@ -320,7 +320,7 @@ function OrderInfoTab({ order }: { order: Order }) {
       </Card>
 
       {/* Items */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -747,7 +747,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
       </Card>
 
       {/* Per-item cost */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div style={{ animationDelay: `135ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
           <Package className="w-4 h-4 text-text-muted" />
           <h2 className="text-sm font-semibold">Item Costs</h2>
@@ -1056,7 +1056,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
 function StatTile({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: 'good' | 'bad' }) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-5">
+    <div style={{ animationDelay: `180ms` }} className="row-rise bg-surface border border-border rounded-xl p-5">
       <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">{label}</p>
       <p className={`font-display text-2xl font-bold ${tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : ''}`}>
         {value}

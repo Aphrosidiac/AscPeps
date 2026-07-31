@@ -86,15 +86,18 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           <h2 className="font-display font-bold text-lg">ASCEND Admin</h2>
         </div>
         <nav className="space-y-1 flex-1">
-          {navItems.map((item) => (
+          {navItems.map((item, i) => (
             <Link
               key={item.href}
               href={item.href}
+              // Nav items cascade in on first paint. Capped so a longer menu
+              // never leaves the last item arriving noticeably late.
+              style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                'row-rise flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
                 pathname === item.href
                   ? 'bg-primary text-white'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated hover:translate-x-0.5'
               )}
             >
               <item.icon className="w-4 h-4" />

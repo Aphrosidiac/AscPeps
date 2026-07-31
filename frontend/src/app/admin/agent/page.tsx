@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { Animate } from '@/components/ui/Animate';
 import {
   Bot,
   Link2,
@@ -230,7 +231,7 @@ export default function AgentPage() {
         </div>
         <button
           onClick={refresh}
-          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-surface-elevated"
+          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-elevated active:scale-[0.98]"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
@@ -254,6 +255,7 @@ export default function AgentPage() {
       )}
 
       {/* ---- Connection ---- */}
+      <Animate variant="fadeUp">
       <section className="rounded-xl border border-border bg-surface p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -278,7 +280,7 @@ export default function AgentPage() {
             <button
               disabled={!!busy}
               onClick={() => act('connect', () => adminWhatsAppConnect(token))}
-              className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
             >
               {busy === 'connect' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
               Start
@@ -317,7 +319,10 @@ export default function AgentPage() {
         )}
       </section>
 
+      </Animate>
+
       {/* ---- Operators ---- */}
+      <Animate variant="fadeUp" delay={0.05}>
       <section className="rounded-xl border border-border bg-surface p-6">
         <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
           <Users className="h-5 w-5" /> Who can command the agent
@@ -328,10 +333,11 @@ export default function AgentPage() {
         </p>
 
         <div className="mt-4 space-y-2">
-          {operators.map((op) => (
+          {operators.map((op, i) => (
             <div
               key={op.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3"
+              style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+              className="row-rise flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-colors hover:border-border-hover"
             >
               <div>
                 <p className="font-medium text-text-primary">{op.name}</p>
@@ -433,19 +439,21 @@ export default function AgentPage() {
                 setNewOp({ phone: '', name: '', canWrite: true });
               })
             }
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             Add operator
           </button>
         </div>
       </section>
 
+      </Animate>
+
       {/* ---- Unrecognised senders ----
            The recovery path for WhatsApp LIDs: many DMs now carry a privacy
            identifier and no phone number, so the operator cannot be matched by
            number and would otherwise be ignored with no visible reason. */}
       {unknown.length > 0 && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-6">
+        <section className="panel-reveal rounded-xl border border-amber-200 bg-amber-50 p-6">
           <h2 className="flex items-center gap-2 text-lg font-medium text-amber-900">
             <Link2 className="h-5 w-5" /> Unrecognised senders
           </h2>
@@ -456,8 +464,12 @@ export default function AgentPage() {
           </p>
 
           <div className="mt-4 space-y-2">
-            {unknown.map((u) => (
-              <div key={u.id} className="rounded-lg border border-amber-200 bg-surface px-4 py-3">
+            {unknown.map((u, i) => (
+              <div
+                key={u.id}
+                style={{ animationDelay: `${Math.min(i * 40, 320)}ms` }}
+                className="row-rise rounded-lg border border-amber-200 bg-surface px-4 py-3 transition-shadow hover:shadow-sm"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium text-text-primary">
@@ -509,6 +521,7 @@ export default function AgentPage() {
       )}
 
       {/* ---- Groups ---- */}
+      <Animate variant="fadeUp" delay={0.1}>
       <section className="rounded-xl border border-border bg-surface p-6">
         <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
           <MessageSquare className="h-5 w-5" /> Groups
@@ -524,10 +537,11 @@ export default function AgentPage() {
           </p>
         ) : (
           <div className="mt-4 space-y-2">
-            {groups.map((g) => (
+            {groups.map((g, i) => (
               <div
                 key={g.jid}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3"
+                style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+                className="row-rise flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-colors hover:border-border-hover"
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium text-text-primary">{g.subject}</p>
@@ -584,7 +598,10 @@ export default function AgentPage() {
         )}
       </section>
 
+      </Animate>
+
       {/* ---- Activity ---- */}
+      <Animate variant="fadeUp" delay={0.15}>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-border bg-surface p-6">
           <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
@@ -592,8 +609,12 @@ export default function AgentPage() {
           </h2>
           <p className="mt-1 text-sm text-text-secondary">Every tool the agent ran, and whether it worked.</p>
           <div className="mt-4 max-h-96 space-y-1.5 overflow-y-auto">
-            {toolCalls.map((t) => (
-              <div key={t.id} className="flex items-start gap-2 rounded-lg bg-surface-elevated px-3 py-2 text-sm">
+            {toolCalls.map((t, i) => (
+              <div
+                key={t.id}
+                style={{ animationDelay: `${Math.min(i * 25, 300)}ms` }}
+                className="row-rise flex items-start gap-2 rounded-lg bg-surface-elevated px-3 py-2 text-sm transition-colors hover:bg-border/40"
+              >
                 {t.ok ? (
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 ) : (
@@ -625,13 +646,14 @@ export default function AgentPage() {
           </h2>
           <p className="mt-1 text-sm text-text-secondary">Click one to read the thread.</p>
           <div className="mt-4 max-h-96 space-y-1.5 overflow-y-auto">
-            {conversations.map((c) => (
+            {conversations.map((c, i) => (
               <button
                 key={c.id}
                 onClick={() => {
                   adminAgentConversation(token, c.id).then(setOpenConversation).catch(() => {});
                 }}
-                className="flex w-full items-center justify-between rounded-lg bg-surface-elevated px-3 py-2 text-left text-sm hover:bg-border"
+                style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
+                className="row-rise flex w-full items-center justify-between rounded-lg bg-surface-elevated px-3 py-2 text-left text-sm transition-colors hover:bg-border"
               >
                 <div className="min-w-0">
                   <p className="truncate text-text-primary">{c.title}</p>
@@ -648,14 +670,15 @@ export default function AgentPage() {
           </div>
         </section>
       </div>
+      </Animate>
 
       {openConversation && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => setOpenConversation(null)}
         >
           <div
-            className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-surface p-6"
+            className="dialog-panel max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-surface p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -665,10 +688,11 @@ export default function AgentPage() {
               </button>
             </div>
             <div className="space-y-3">
-              {openConversation.messages?.map((m) => (
+              {openConversation.messages?.map((m, i) => (
                 <div
                   key={m.id}
-                  className={`rounded-lg px-3 py-2 text-sm ${
+                  style={{ animationDelay: `${Math.min(i * 30, 400)}ms` }}
+                  className={`row-rise rounded-lg px-3 py-2 text-sm ${
                     m.role === 'assistant' ? 'bg-surface-elevated text-text-primary' : 'bg-surface-elevated text-text-primary'
                   }`}
                 >

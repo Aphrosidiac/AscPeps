@@ -62,7 +62,7 @@ export default function AdminSettingsPage() {
 
       <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
         {/* Announcement Bar */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Announcement Bar</h2>
           <div className="flex items-center gap-3">
             <input
@@ -87,7 +87,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Homepage Hardsell Section */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `45ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Homepage Hardsell Section</h2>
           <div className="flex items-center gap-3">
             <input
@@ -128,7 +128,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Homepage Hardsell Section — Slide 2 */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Homepage Hardsell Section — Slide 2</h2>
           <div className="flex items-center gap-3">
             <input
@@ -166,7 +166,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Online Payment */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `135ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Online Payment</h2>
           <div className="flex items-center gap-3">
             <input
@@ -196,7 +196,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Business Info */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `180ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Business Information</h2>
           <Input
             label="Business Name"
@@ -215,7 +215,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Receipt / Invoice */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `225ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Receipt / Invoice</h2>
           <p className="text-xs text-text-muted">These details appear on customer receipts and PDF invoices.</p>
           <Input
@@ -263,7 +263,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* WhatsApp */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `270ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">WhatsApp Configuration</h2>
           <Input
             label="WhatsApp Number"
@@ -279,7 +279,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Shipping */}
-        <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+        <div style={{ animationDelay: `300ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
           <h2 className="font-display font-semibold text-lg">Shipping & Payments</h2>
           <Input
             label="Shipping Fee (RM)"

@@ -149,7 +149,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
 
       {/* How the balance is built */}
       {balance && (
-        <div className="bg-surface border border-border rounded-xl p-5 mb-6">
+        <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface border border-border rounded-xl p-5 mb-6">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-3">Balance</p>
           <div className="max-w-md">
             <Row label="Earned from orders" value={formatPrice(balance.earned)} />
@@ -173,7 +173,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
       )}
 
       {/* Advances */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden mb-6">
+      <div style={{ animationDelay: `45ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden mb-6">
         <div className="px-5 py-3.5 border-b border-border">
           <h2 className="font-display font-semibold text-sm">Advances</h2>
           <p className="text-xs text-text-muted mt-0.5">Money in that the company owes back</p>
@@ -279,7 +279,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
       </div>
 
       {/* Contributions */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden mb-6">
+      <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden mb-6">
         <div className="px-5 py-3.5 border-b border-border">
           <h2 className="font-display font-semibold text-sm">Contributions</h2>
           <p className="text-xs text-text-muted mt-0.5">Capital in, never repaid</p>
@@ -313,7 +313,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
       </div>
 
       {/* Earnings */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden mb-6">
+      <div style={{ animationDelay: `135ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden mb-6">
         <div className="px-5 py-3.5 border-b border-border">
           <h2 className="font-display font-semibold text-sm">Earnings by order</h2>
         </div>
@@ -356,7 +356,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
       </div>
 
       {/* Payouts */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div style={{ animationDelay: `180ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-border">
           <h2 className="font-display font-semibold text-sm">Profit paid out</h2>
         </div>
