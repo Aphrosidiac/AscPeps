@@ -154,6 +154,10 @@ h1, h2, h3, h4, h5, h6 {
   .chart-bar-rise {
     animation: none;
   }
+
+  .slot-column {
+    animation: none;
+  }
 }
 
 /* Modal and inline-panel transitions for the finance screens.
@@ -197,6 +201,15 @@ h1, h2, h3, h4, h5, h6 {
 .panel-reveal.is-closing { animation: panel-reveal-out 0.15s ease-in both; }
 
 /* Rows arriving in sequence inside a freshly-opened panel. */
+/* Times column sliding in beside the calendar once a date is picked —
+   the Calendly move. Kept short: it appears next to where the eye already is. */
+@keyframes slot-column-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.slot-column { animation: slot-column-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 @keyframes row-rise-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
