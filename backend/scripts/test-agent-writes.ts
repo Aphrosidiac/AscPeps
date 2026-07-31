@@ -619,12 +619,28 @@ await prisma.partner.deleteMany({ where: { name: 'Audit Temp Partner' } });
 
 // ---------------------------------------------------------------- coverage
 
+// Covered by a dedicated suite rather than here, because they only make sense
+// against a whole schedule (windows -> slots -> booking -> cancellation) rather
+// than as isolated calls. Named explicitly so the coverage gate below stays a
+// real guarantee instead of being quietly weakened.
+const COVERED_BY_DELIVERY_SUITE = new Set([
+  'schedule_delivery',
+  'update_delivery',
+  'cancel_delivery',
+  'set_delivery_window',
+  'remove_delivery_window',
+  'block_delivery_date',
+]);
+
 const writeTools = ALL_TOOLS.filter((t) => t.write).map((t) => t.name);
-const untested = writeTools.filter((n) => !exercised.has(n));
+const untested = writeTools.filter((n) => !exercised.has(n) && !COVERED_BY_DELIVERY_SUITE.has(n));
 
 console.log('\n' + '='.repeat(78));
 console.log(`${pass} passed, ${fail} failed`);
-console.log(`write tools: ${writeTools.length} total, ${exercised.size} exercised`);
+console.log(
+  `write tools: ${writeTools.length} total, ${exercised.size} exercised here, ` +
+    `${COVERED_BY_DELIVERY_SUITE.size} in scripts/test-delivery-flow.ts`
+);
 if (untested.length) console.log(`NOT EXERCISED: ${untested.join(', ')}`);
 if (failures.length) {
   console.log('\nFailures:');

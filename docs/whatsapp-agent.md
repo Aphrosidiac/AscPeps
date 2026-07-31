@@ -310,6 +310,38 @@ Things worth knowing:
   confirms the money. `BILLPLZ` creates a **real bill at the gateway** and
   returns a payment link; it needs an email address.
 
+## Delivery scheduling
+
+Asywa's delivery diary — Calendly-shaped, but built in rather than integrated.
+She sets recurring weekly **windows**; the engine turns those into concrete
+**slots**; each slot can be assigned to an order. There is no public booking
+page — slots are assigned from `/admin/delivery` or by telling the agent.
+
+**Timezone is the sharp edge.** Windows are stored as a day-of-week plus
+minutes-from-midnight in Malaysia local time, and slot instants are computed
+against a fixed UTC+8 — deliberately **not** against the server's clock. That box
+currently runs `Asia/Shanghai`, which is the same offset as Malaysia by
+coincidence; a schedule that depended on it would shift by hours the day the
+server is rebuilt elsewhere. Malaysia has never observed daylight saving, so a
+fixed offset is exact, not an approximation. `scripts/test-delivery-slots.ts`
+asserts the answer is identical under four different host timezones.
+
+Rules worth knowing:
+
+- Only **whole** slots are offered — a 10:00–13:20 window at 60 minutes gives
+  three slots, not three and a stub.
+- **Capacity** is per slot, so Asywa can take two drops in the same hour.
+- A slot is re-validated at booking time against the live windows, blackouts and
+  remaining capacity. A time that is not genuinely available is refused rather
+  than saved — the list she read could be minutes old.
+- **Rescheduling moves the booking**, it never creates a second one, so an order
+  can never be out for delivery twice.
+- **Cancelling frees the slot** but keeps the row; blocking a date does **not**
+  move deliveries already booked on it, so the tool reports exactly which ones
+  need rescheduling.
+- Marking a delivery COMPLETED records the delivery only — it does not touch the
+  order's status or mark it paid. Those are separate facts.
+
 ## Adding a tool
 
 1. Add it to the right file in `src/modules/ai-agent/tools/`.
