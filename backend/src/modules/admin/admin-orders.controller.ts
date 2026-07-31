@@ -97,6 +97,10 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
         items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
         emails: EMAIL_STATUS_SELECT,
+        // Only the bps, not the whole row: the list needs to know whether a
+        // split exists and totals 100% so it can badge orders that still need
+        // costing or dividing. Names and amounts belong to the detail page.
+        profitShares: { select: { shareBps: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip,

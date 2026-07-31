@@ -16,6 +16,7 @@ import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
+import { orderProgress, type OrderCheckKey } from '@/lib/order-progress';
 import type { Order, OrderEmail, OrderProfitShareInput } from '@/types';
 
 // ASCEND's pipeline, not a copy of the source design's six purchasing stages —
@@ -1109,20 +1110,23 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
   );
 
   const shares = order.profitShares ?? [];
-  const sharesTotalBps = shares.reduce((sum, s) => sum + s.shareBps, 0);
   const amounts = netProfit === null ? [] : allocate(netProfit, shares.map((s) => s.shareBps));
 
   const cancelled = order.status === 'CANCELLED';
 
-  // Deliberately not the same thing as status === DELIVERED. An order isn't
-  // finished for our purposes until the money is in, it has physically arrived,
-  // and it's costed — otherwise it silently never shows up in what anyone is owed.
-  const checks = [
-    { label: 'Payment received', done: order.paymentStatus === 'PAID', fix: 'detail' as StepKey, todo: `Payment is ${order.paymentStatus.toLowerCase()}` },
-    { label: 'Delivered to customer', done: order.status === 'DELIVERED', fix: 'detail' as StepKey, todo: `Order is ${ORDER_STATUS_LABELS[order.status].toLowerCase()}` },
-    { label: 'All items costed', done: unpricedCount === 0, fix: 'profit' as StepKey, todo: `${unpricedCount} item${unpricedCount === 1 ? '' : 's'} still unpriced` },
-    { label: 'Profit split recorded', done: shares.length > 0 && sharesTotalBps === 10_000, fix: 'profit' as StepKey, todo: shares.length === 0 ? 'No split saved' : 'Split does not total 100%' },
-  ];
+  // Shared with the orders list badge so the two cannot disagree about what
+  // "done" means — see lib/order-progress.ts. Deliberately not the same thing
+  // as status === DELIVERED: an order isn't finished for our purposes until the
+  // money is in, it has physically arrived, and it's costed — otherwise it
+  // silently never shows up in what anyone is owed.
+  const progress = orderProgress(order);
+  const FIX_TAB: Record<OrderCheckKey, StepKey> = {
+    paid: 'detail',
+    delivered: 'detail',
+    costed: 'profit',
+    split: 'profit',
+  };
+  const checks = progress.checks.map((c) => ({ ...c, fix: FIX_TAB[c.key] }));
   const outstanding = checks.filter((c) => !c.done);
 
   return (

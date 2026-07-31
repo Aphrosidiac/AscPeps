@@ -10,6 +10,7 @@ import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
+import { orderProgress } from '@/lib/order-progress';
 import type { Order, OrderEmail } from '@/types';
 
 // "DELETED" is a pseudo-status (not a real OrderStatus value) — it's a
@@ -235,6 +236,7 @@ function AdminOrdersContent() {
           {orders.map((order, rowIndex) => {
             const isExpanded = expandedOrder === order.id;
             const isUpdating = updating === order.id;
+            const progress = orderProgress(order);
             // Only lock: an online-transfer payment that's already confirmed
             // Paid can't be changed further. Everything else (order status,
             // WhatsApp/manual-transfer payment status) is freely editable.
@@ -273,6 +275,12 @@ function AdminOrdersContent() {
                     <p className="font-display font-bold hidden sm:block">{formatPrice(order.total)}</p>
                     <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
                     <Badge className={`hidden sm:inline-flex ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
+                    {/* Whether the books are done with this order — separate
+                        from its delivery status, because an order can be
+                        delivered and still have no cost against it. */}
+                    {progress.state !== 'NONE' && (
+                      <Badge className={progress.className} title={progress.hint}>{progress.label}</Badge>
+                    )}
                     {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
                       <span className="hidden lg:inline-flex items-center gap-1 text-xs text-text-muted font-mono"><Truck className="w-3 h-3" />{order.trackingNumber}</span>
                     )}
