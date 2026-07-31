@@ -4,8 +4,8 @@ import { useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 /**
- * Month grid for picking a delivery date — the Calendly shape: see the whole
- * month at a glance, click a day, then choose a time.
+ * The month grid that drives the whole delivery page — the Calendly shape: see
+ * the month at a glance, click a day, work on that day.
  *
  * Every future day is selectable. There is no availability layer to grey days
  * out against (see the delivery models in schema.prisma); the only thing the
@@ -22,8 +22,8 @@ interface Props {
   /** First of the visible month, as "YYYY-MM". */
   month: string;
   onMonthChange: (month: string) => void;
-  selectedDate: string | null;
-  onSelectDate: (date: string | null) => void;
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
   /** Today's date key in Malaysia time — past days are not selectable. */
   today: string;
 }
@@ -75,31 +75,50 @@ export function DeliveryCalendar({
     return out;
   }, [year, monthNum]);
 
+  const monthTotal = useMemo(
+    () => Object.entries(bookingsByDate).reduce((n, [k, v]) => (k.startsWith(month) ? n + v : n), 0),
+    [bookingsByDate, month]
+  );
+
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => onMonthChange(shiftMonth(month, -1))}
-          className="rounded-lg border border-border p-1.5 text-text-secondary transition-colors hover:bg-surface-elevated active:scale-95"
-          aria-label="Previous month"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <p className="text-sm font-medium text-text-primary">
-          {MONTH_NAMES[monthNum - 1]} {year}
-        </p>
-        <button
-          type="button"
-          onClick={() => onMonthChange(shiftMonth(month, 1))}
-          className="rounded-lg border border-border p-1.5 text-text-secondary transition-colors hover:bg-surface-elevated active:scale-95"
-          aria-label="Next month"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-lg font-medium text-text-primary">
+            {MONTH_NAMES[monthNum - 1]} {year}
+          </p>
+          <p className="text-xs text-text-muted">
+            {monthTotal} {monthTotal === 1 ? 'delivery' : 'deliveries'} this month
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onMonthChange(shiftMonth(month, -1))}
+            className="rounded-lg border border-border p-2 text-text-secondary transition-all hover:bg-surface-elevated active:scale-95"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMonthChange(today.slice(0, 7))}
+            className="rounded-lg border border-border px-3 py-2 text-xs text-text-secondary transition-all hover:bg-surface-elevated active:scale-95"
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => onMonthChange(shiftMonth(month, 1))}
+            className="rounded-lg border border-border p-2 text-text-secondary transition-all hover:bg-surface-elevated active:scale-95"
+            aria-label="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="mb-1 grid grid-cols-7 gap-1">
+      <div className="mb-1.5 grid grid-cols-7 gap-1.5">
         {WEEKDAYS.map((d) => (
           <div key={d} className="py-1 text-center text-[11px] font-medium text-text-muted">
             {d}
@@ -107,7 +126,7 @@ export function DeliveryCalendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1.5">
         {cells.map((key, i) => {
           if (!key) return <div key={`blank-${i}`} />;
 
@@ -115,9 +134,9 @@ export function DeliveryCalendar({
           const isPast = key < today;
           const isToday = key === today;
           const isSelected = key === selectedDate;
-          // Any day from today onwards can be booked. Past days are excluded
-          // because scheduling a delivery into the past is always a mistake.
-          const selectable = !isPast;
+          // Any day from today onwards can be booked. Past days stay clickable
+          // so history is readable, but only if something happened on them.
+          const selectable = !isPast || bookings > 0;
           const dayNum = Number(key.slice(8));
 
           return (
@@ -125,32 +144,41 @@ export function DeliveryCalendar({
               key={key}
               type="button"
               disabled={!selectable}
-              onClick={() => onSelectDate(isSelected ? null : key)}
+              onClick={() => onSelectDate(key)}
               style={{ animationDelay: `${Math.min(i * 8, 200)}ms` }}
               title={
-                isPast
-                  ? 'In the past'
-                  : bookings
-                    ? `${bookings} delivery${bookings === 1 ? '' : 's'} already booked`
-                    : 'No deliveries booked'
+                bookings
+                  ? `${bookings} delivery${bookings === 1 ? '' : 's'} booked`
+                  : isPast
+                    ? 'In the past'
+                    : 'Nothing booked'
               }
               className={[
-                'row-rise relative flex aspect-square flex-col items-center justify-center rounded-lg border text-sm transition-all',
+                'row-rise relative flex min-h-[62px] min-w-0 flex-col items-start gap-1 overflow-hidden rounded-xl border p-1.5 text-left transition-all sm:min-h-[76px] sm:p-2',
                 isSelected
-                  ? 'border-accent bg-accent text-white shadow-sm'
+                  ? 'border-accent bg-accent text-white shadow-md'
                   : selectable
-                    ? 'border-border bg-surface text-text-primary hover:border-border-hover hover:bg-surface-elevated active:scale-95'
-                    : 'border-transparent bg-surface-elevated/40 text-text-muted cursor-not-allowed',
+                    ? 'border-border bg-surface text-text-primary hover:-translate-y-0.5 hover:border-border-hover hover:shadow-sm active:scale-[0.98]'
+                    : 'border-transparent bg-surface-elevated/40 text-text-muted',
                 isToday && !isSelected ? 'ring-1 ring-accent/40' : '',
               ].join(' ')}
             >
-              <span className={isPast && !isSelected ? 'opacity-50' : ''}>{dayNum}</span>
+              <span className={`text-sm font-medium ${isPast && !isSelected ? 'opacity-40' : ''}`}>
+                {dayNum}
+              </span>
 
-              {/* How busy the day already is — the only signal that helps
-                  when choosing where to put the next drop. */}
+              {/* How busy the day already is — the only signal that helps when
+                  choosing where to put the next drop. */}
               {bookings > 0 && (
-                <span className={`text-[9px] leading-none ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>
-                  {bookings} booked
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-none ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-accent/10 text-accent'
+                  }`}
+                >
+                  {bookings}
+                  {/* A narrow cell has no room for the word; the number alone
+                      still reads as "how busy is this day". */}
+                  <span className="hidden sm:inline"> {bookings === 1 ? 'drop' : 'drops'}</span>
                 </span>
               )}
             </button>
