@@ -17,8 +17,8 @@ import {
 
 // Finance tools move real money between real people, so every one of them
 // delegates to admin-finance.controller.ts — the balance maths ("owed = earned
-// − expense carried + advances outstanding − profit paid out") lives there and
-// must have exactly one implementation.
+// + capital fronted on orders + advances outstanding − profit paid out") lives
+// there and must have exactly one implementation.
 //
 // The distinction the tool descriptions work hardest to protect is
 // CONTRIBUTION vs ADVANCE. A contribution is capital that is never repaid and
@@ -53,7 +53,7 @@ export const financeTools: AgentTool[] = [
   {
     name: 'get_partner',
     description:
-      'One person\'s full finance record: what they have earned, expenses they carried, money they put in (contributions and advances), advances still outstanding, and profit paid out to them.',
+      'One person\'s full finance record: what they have earned, capital they fronted to cover order costs, money they put in (contributions and advances), advances still outstanding, and profit paid out to them.',
     input_schema: {
       type: 'object',
       properties: { partnerRef: { type: 'string', description: 'Partner name or id.' } },

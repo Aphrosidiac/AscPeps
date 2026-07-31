@@ -1,7 +1,7 @@
 /**
- * Lifetime finance maths: what each partner has earned, what the company's own
- * spending has taken off them, what they've put in, and what they're actually
- * owed.
+ * Lifetime finance maths: what each partner has earned, what they have put in
+ * — both as capital fronted on individual orders and as standing funding — and
+ * what they are actually owed once payouts are taken off.
  *
  * Everything derived here is computed on read — nothing is stored. Correcting
  * an old order's costs therefore corrects every downstream balance for free.
@@ -27,12 +27,11 @@ export interface FinancePartner {
 export interface FinanceOrder extends CostableOrder {
   id: string;
   /**
-   * `shareBps` governs profit only. `expenseAmount` is a flat figure this
-   * person absorbs on this order — entered by hand, not derived from anything,
-   * because how much of the running costs each person carries is a judgement
-   * per order rather than a formula.
+   * `shareBps` governs profit only. `capitalAmount` is how much of this order's
+   * COSTS this person paid for up front — money owed back to them on top of
+   * their profit cut, never a deduction.
    */
-  profitShares: { partnerId: string | null; shareBps: number; expenseAmount: number }[];
+  profitShares: { partnerId: string | null; shareBps: number; capitalAmount: number }[];
 }
 
 export interface FinanceExpense {
@@ -59,8 +58,8 @@ export interface PartnerBalance {
   active: boolean;
   /** Their cut of profit from every fully-costed, paid order. */
   earned: number;
-  /** Sum of the flat expense amounts set against them on each order. */
-  expenseShare: number;
+  /** Order costs they paid for out of pocket. Owed back to them. */
+  capitalFronted: number;
   /** Capital they never want back. Never counted in `owed`. */
   contributed: number;
   advancesTotal: number;
@@ -69,7 +68,7 @@ export interface PartnerBalance {
   advancesOutstanding: number;
   /** Earned profit already handed over. */
   paidOut: number;
-  /** earned − expenseShare + advancesOutstanding − paidOut */
+  /** earned + capitalFronted + advancesOutstanding − paidOut */
   owed: number;
 }
 
@@ -102,7 +101,7 @@ export function computeFinance(input: {
     name: p.name,
     active: p.active,
     earned: 0,
-    expenseShare: 0,
+    capitalFronted: 0,
     contributed: 0,
     advancesTotal: 0,
     advancesRepaid: 0,
@@ -138,22 +137,27 @@ export function computeFinance(input: {
     });
   }
 
-  /* ----- expense share: the flat amounts set per person, per order.
-     Counted from every paid order that has a split, whether or not that order
-     is costed — unlike profit, this figure isn't derived from anything, it was
-     typed in deliberately, so withholding it until the order is costed would
-     just hide a charge someone has already agreed to carry. */
+  /* ----- capital fronted: what each person paid out of pocket to cover an
+     order's costs. The company owes it straight back, so it is added to their
+     balance, not deducted — the money left their hands, it was never their
+     share of anything.
+
+     Counted from every paid order that has a split, whether or not the order is
+     costed. Unlike profit this isn't derived from anything, it was typed in
+     because it actually happened, and withholding it until costing is done
+     would understate what someone is owed for work already finished. */
   for (const order of orders) {
     for (const share of order.profitShares) {
-      if (!share.partnerId || share.expenseAmount === 0) continue;
+      if (!share.partnerId || share.capitalAmount === 0) continue;
       const balance = byId.get(share.partnerId);
-      if (balance) balance.expenseShare += share.expenseAmount;
+      if (balance) balance.capitalFronted += share.capitalAmount;
     }
   }
 
   /* ----- company spending: reduces company profit, and nothing else. It never
-     lands on a person as a cost. The only way an expense touches someone is if
-     they fronted the cash, which is recorded as funding, not as a charge. */
+     lands on a person as a charge — nothing in this file ever does. If someone
+     paid for it, that is money owed back to them, recorded either as the
+     capital on an order's split or as funding below. */
   const companySpend = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   /* ----- money in */
@@ -184,7 +188,7 @@ export function computeFinance(input: {
   for (const b of balances) {
     // Contributions are deliberately absent: that is the entire difference
     // between the two funding types.
-    b.owed = b.earned - b.expenseShare + b.advancesOutstanding - b.paidOut;
+    b.owed = b.earned + b.capitalFronted + b.advancesOutstanding - b.paidOut;
   }
 
   balances.sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));

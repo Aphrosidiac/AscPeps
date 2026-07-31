@@ -153,7 +153,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-3">Balance</p>
           <div className="max-w-md">
             <Row label="Earned from orders" value={formatPrice(balance.earned)} />
-            <Row label="Expenses carried on orders" value={`−${formatPrice(balance.expenseShare)}`} tone="bad" />
+            <Row label="Capital fronted on orders" value={formatPrice(balance.capitalFronted)} />
             <Row label="Advances outstanding" value={formatPrice(balance.advancesOutstanding)} />
             <Row label="Profit paid out" value={`−${formatPrice(balance.paidOut)}`} tone="muted" />
             <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2 mt-2">

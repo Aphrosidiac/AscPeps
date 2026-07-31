@@ -44,9 +44,9 @@ const profitSharesSchema = z.object({
         name: z.string().trim().min(1, 'Name is required').max(60),
         // Share of this order's PROFIT.
         shareBps: z.number().int().min(0).max(10_000),
-        // Flat cents of this order's running costs this person absorbs.
-        // Not a percentage and not derived — see the schema comment.
-        expenseAmount: z.number().int().min(0).max(100_000_000).optional(),
+        // Cents of this order's COSTS this person paid for up front. Owed
+        // back to them on top of their profit cut — see the schema comment.
+        capitalAmount: z.number().int().min(0).max(100_000_000).optional(),
       })
     )
     .max(10),
@@ -213,7 +213,7 @@ export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id:
               orderId: id,
               name: s.name,
               shareBps: s.shareBps,
-              expenseAmount: s.expenseAmount ?? 0,
+              capitalAmount: s.capitalAmount ?? 0,
               partnerId: partnerIdByName.get(s.name) ?? null,
             })),
           }),

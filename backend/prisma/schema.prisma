@@ -265,13 +265,23 @@ model OrderProfitShare {
   // the immediate reason (3333/3333/3334), and it matches the codebase's
   // existing "money and rates are integers, never floats" convention.
   //
-  // This governs PROFIT only. Expenses are not a percentage — see below.
+  // This governs PROFIT only. Capital is not a percentage — see below.
   shareBps      Int
-  // A flat amount, in cents, this person absorbs on this order. Deliberately
-  // NOT a percentage and not derived from anything: how much of the running
-  // costs each person carries is a judgement made per order, not a formula.
-  // Subtracted from their profit cut, so sum(cuts) != order profit by design.
-  expenseAmount Int     @default(0)
+  // How much of this order's COSTS this person paid for, in cents.
+  //
+  // An order's costs have to come out of somebody's pocket before the customer
+  // pays. This records whose. It is money OWED BACK to them, so it is ADDED to
+  // their cut, not taken off it: on a RM145 order costing RM60, whoever put up
+  // that RM60 gets it back plus their share of the RM85 profit.
+  //
+  // Deliberately not a percentage and not derived: who fronts an order is a
+  // fact about that order, not a formula. The sum across a split is expected to
+  // equal the order's total cost, but is not enforced — the company float can
+  // cover part of it, and a hard gate here would block real orders.
+  //
+  // Do NOT also record the same money as an ADVANCE in PartnerFunding. That
+  // would pay it back twice.
+  capitalAmount Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -455,9 +465,11 @@ model InsightFigure {
 //
 // Design notes live in docs/finance-section-plan.md. Two rules matter most:
 //
-//  1. Company spending reduces company profit, and nothing else. What each
-//     person carries is set per order, as a flat amount on their split row —
-//     never a percentage, never derived. See OrderProfitShare.expenseAmount.
+//  1. Company spending reduces company profit, and nothing else. It never lands
+//     on a person as a charge. Money a person put IN is recorded in one of two
+//     places: per order, as the capital they fronted for that order's costs
+//     (OrderProfitShare.capitalAmount), or as standing funding below. Both are
+//     owed back; neither is ever a deduction.
 //  2. Money a partner puts in is NOT one thing. A CONTRIBUTION is capital they
 //     never want back; an ADVANCE is a debt the company must return. Only the
 //     second belongs in "owed".

@@ -201,14 +201,14 @@ export interface OrderProfitShare {
   name: string;
   // Basis points — 5000 = 50%. Governs PROFIT only.
   shareBps: number;
-  // Flat cents of this order's running costs this person absorbs. Not a
-  // percentage and not derived — subtracted from their profit cut.
-  expenseAmount: number;
+  // Cents of this order's COSTS this person paid up front. Owed back to them,
+  // so it is ADDED to their profit cut, never subtracted.
+  capitalAmount: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export type OrderProfitShareInput = Pick<OrderProfitShare, 'name' | 'shareBps' | 'expenseAmount'>;
+export type OrderProfitShareInput = Pick<OrderProfitShare, 'name' | 'shareBps' | 'capitalAmount'>;
 
 export interface DiscountCode {
   id: string;
@@ -308,15 +308,15 @@ export interface PartnerBalance {
   name: string;
   active: boolean;
   earned: number;
-  /** Sum of the flat amounts set against them on each order. */
-  expenseShare: number;
+  /** Order costs they paid out of pocket. Owed back to them. */
+  capitalFronted: number;
   /** Capital they never want back — deliberately absent from `owed`. */
   contributed: number;
   advancesTotal: number;
   advancesRepaid: number;
   advancesOutstanding: number;
   paidOut: number;
-  /** earned − expenseShare + advancesOutstanding − paidOut */
+  /** earned + capitalFronted + advancesOutstanding − paidOut */
   owed: number;
 }
 

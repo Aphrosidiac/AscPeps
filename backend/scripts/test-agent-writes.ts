@@ -244,11 +244,11 @@ await check('set_order_profit_shares rejects != 100%', async () => {
 
 await check('set_order_profit_shares saves a valid split', async () => {
   const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null }, include: { profitShares: true } });
-  const before = o.profitShares.map((s) => ({ name: s.name, shareBps: s.shareBps, expenseAmount: s.expenseAmount }));
+  const before = o.profitShares.map((s) => ({ name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount }));
   await run('set_order_profit_shares', {
     orderRef: o.orderNumber,
     shares: [
-      { name: 'Fakhrul', percent: 33.33, expenseRm: 5 },
+      { name: 'Fakhrul', percent: 33.33, capitalRm: 5 },
       { name: 'Asyraf', percent: 33.33 },
       { name: 'Investors', percent: 33.34 },
     ],
@@ -257,7 +257,7 @@ await check('set_order_profit_shares saves a valid split', async () => {
   assert(saved.length === 3, `expected 3 shares, got ${saved.length}`);
   assert(saved.reduce((s, x) => s + x.shareBps, 0) === 10000, 'bps do not total 10000');
   const fakhrul = saved.find((s) => s.name === 'Fakhrul');
-  assert(fakhrul?.expenseAmount === 500, `expense ${fakhrul?.expenseAmount} != 500 cents`);
+  assert(fakhrul?.capitalAmount === 500, `capital ${fakhrul?.capitalAmount} != 500 cents`);
 
   await prisma.orderProfitShare.deleteMany({ where: { orderId: o.id } });
   if (before.length) {
