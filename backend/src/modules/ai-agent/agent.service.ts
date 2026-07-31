@@ -73,9 +73,20 @@ function toWhatsAppText(text: string): string {
       .replace(/~~(.+?)~~/gs, '~$1~')
       // Markdown links: keep the text and the URL, drop the syntax.
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1 ($2)')
-      // A table would be unreadable on a phone; strip the separator rows that
-      // make it obvious the model tried, leaving the content lines.
-      .replace(/^\s*\|?[\s:|-]{6,}\|?\s*$/gm, '')
+      // Tables. WhatsApp has no table rendering at all, so a markdown table
+      // arrives as a wall of pipe characters on a phone screen. Stripping only
+      // the |---|---| separator (the first attempt at this) was worse than
+      // useless: it left the pipe rows behind and added a blank line where the
+      // separator had been. Drop separators with their newline, then flatten
+      // each remaining row into a readable line.
+      .replace(/^[ \t]*\|?[\s:|-]{6,}\|?[ \t]*\r?\n/gm, '')
+      .replace(/^[ \t]*\|(.+)\|[ \t]*$/gm, (_m, row: string) =>
+        row
+          .split('|')
+          .map((cell) => cell.trim())
+          .filter(Boolean)
+          .join(' · ')
+      )
       // Collapse the runs of blank lines the substitutions can leave behind.
       .replace(/\n{3,}/g, '\n\n')
       .trim()
