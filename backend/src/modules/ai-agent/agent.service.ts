@@ -52,6 +52,36 @@ const CONFIRM_SUFFIX = 'Reply *yes* to go ahead, or *no* to cancel.';
 const CLAIMS_COMPLETION =
   /\b(has|have|had)\s+been\s+(deleted|removed|updated|changed|cancelled|canceled|restored|created|added|saved|paid|refunded|published)\b|\b(i(?:'ve| have)\s+(?:now\s+)?(?:deleted|removed|updated|changed|cancelled|canceled|restored|created|added|saved|published))\b|^\s*done[\s.!—-]/i;
 
+// Converts the markdown the model reaches for into WhatsApp's own formatting.
+//
+// WhatsApp uses *single* asterisks for bold; **double** renders as literal
+// asterisks around the word. Telling the model this in the prompt helps but
+// does not hold — it is trained on markdown and slips back constantly — and
+// every slip is visible in the operator's chat. Fixing it in code is
+// deterministic and costs nothing.
+//
+// Applied to the final reply only, never to tool arguments.
+function toWhatsAppText(text: string): string {
+  return (
+    text
+      // ### Heading -> *Heading* (WhatsApp has no headings at all)
+      .replace(/^\s{0,3}#{1,6}\s+(.+?)\s*$/gm, '*$1*')
+      // **bold** / __bold__ -> *bold*
+      .replace(/\*\*(.+?)\*\*/gs, '*$1*')
+      .replace(/__(.+?)__/gs, '*$1*')
+      // ~~strike~~ -> ~strike~
+      .replace(/~~(.+?)~~/gs, '~$1~')
+      // Markdown links: keep the text and the URL, drop the syntax.
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1 ($2)')
+      // A table would be unreadable on a phone; strip the separator rows that
+      // make it obvious the model tried, leaving the content lines.
+      .replace(/^\s*\|?[\s:|-]{6,}\|?\s*$/gm, '')
+      // Collapse the runs of blank lines the substitutions can leave behind.
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+}
+
 function confirmationPrompt(summary: string): string {
   return `About to ${summary}.\n\n${CONFIRM_SUFFIX}`;
 }
@@ -312,7 +342,8 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
     revalidate: (tags) => notifyRevalidate(tags),
   };
 
-  const reply = await produceReply(fastify, ctx, conversation.id, msg, text);
+  // One place every reply passes through, so nothing can bypass the formatter.
+  const reply = toWhatsAppText(await produceReply(fastify, ctx, conversation.id, msg, text));
 
   await fastify.prisma.agentMessage.create({
     data: { conversationId: conversation.id, role: 'assistant', content: reply },
