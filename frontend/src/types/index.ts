@@ -173,8 +173,12 @@ export interface Order {
   items: OrderItem[];
   // Only present on admin order responses.
   emails?: OrderEmail[];
-  // Only present on the admin single-order response, not the list.
+  // Full rows on the admin single-order response. List rows carry these too,
+  // but populated with `shareBps` only — enough for the progress badge to tell
+  // whether a split exists and totals 100%, without shipping every name and
+  // amount into a list of 24 orders.
   profitShares?: OrderProfitShare[];
+  // Only present on the admin single-order response, not the list.
   extraCosts?: OrderExtraCost[];
 }
 
