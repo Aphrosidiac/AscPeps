@@ -627,9 +627,6 @@ const COVERED_BY_DELIVERY_SUITE = new Set([
   'schedule_delivery',
   'update_delivery',
   'cancel_delivery',
-  'set_delivery_window',
-  'remove_delivery_window',
-  'block_delivery_date',
 ]);
 
 const writeTools = ALL_TOOLS.filter((t) => t.write).map((t) => t.name);

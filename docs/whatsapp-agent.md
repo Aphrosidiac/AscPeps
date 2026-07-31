@@ -14,7 +14,7 @@ explicit allowlist, and it ignores everyone else in silence.
 
 ```
 WhatsApp ──► ascend-wa (worker, PM2)            ascend-api (PM2)
-             • holds the baileys socket          • the agent + 53 tools
+             • holds the baileys socket          • the agent + 59 tools
              • QR / reconnect / dedup            • all admin business logic
              • NO business logic                 • Prisma, PostHog, email outbox
                     │                                     ▲
@@ -274,6 +274,8 @@ npx tsx scripts/smoke-agent-tools.ts      # every read tool against real data
 npx tsx scripts/test-agent-writes.ts      # every write tool, with rollback
 npx tsx scripts/test-agent-e2e.ts         # real conversations through the LLM
 npx tsx scripts/test-agent-security.ts    # injection, escalation, SQL escape
+npx tsx scripts/test-delivery-slots.ts    # Malaysia-time arithmetic (no db)
+npx tsx scripts/test-delivery-flow.ts     # booking rules against the database
 ```
 
 The e2e suite asserts on *what actually happened in the database*, not on how
@@ -308,39 +310,53 @@ Things worth knowing:
   minutes apart.
 - `WHATSAPP` (default) means manual transfer, order stays UNPAID until someone
   confirms the money. `BILLPLZ` creates a **real bill at the gateway** and
-  returns a payment link; it needs an email address.
+  returns a payment link; it needs an email address. `BILLPLZ` is a **legacy
+  enum name** — it means "paid online", and the live gateway is ToyyibPay. The
+  agent is told never to label anything "Billplz" to an operator, and the admin
+  UI renders the gateway's real name.
 
 ## Delivery scheduling
 
 Asywa's delivery diary — Calendly-shaped, but built in rather than integrated.
-She sets recurring weekly **windows**; the engine turns those into concrete
-**slots**; each slot can be assigned to an order. There is no public booking
-page — slots are assigned from `/admin/delivery` or by telling the agent.
+One booking per order, at whatever date and time she says. Bookings are made
+from `/admin/delivery` or by telling the agent; there is no public booking page.
 
-**Timezone is the sharp edge.** Windows are stored as a day-of-week plus
-minutes-from-midnight in Malaysia local time, and slot instants are computed
-against a fixed UTC+8 — deliberately **not** against the server's clock. That box
-currently runs `Asia/Shanghai`, which is the same offset as Malaysia by
-coincidence; a schedule that depended on it would shift by hours the day the
-server is rebuilt elsewhere. Malaysia has never observed daylight saving, so a
-fixed offset is exact, not an approximation. `scripts/test-delivery-slots.ts`
-asserts the answer is identical under four different host timezones.
+**There is deliberately no availability layer.** An earlier version had
+recurring weekly windows, blackout dates and per-slot capacity, and it was
+removed. Availability exists in Calendly because strangers book against your
+calendar without consulting you. Nobody books against Asywa's — she is the only
+person putting things in it. A rule about when bookings are allowed could
+therefore only ever have blocked *her*, while also being hers to maintain. Don't
+reintroduce it unless customers start booking their own slots.
+
+**Timezone is the sharp edge.** Times are converted against a fixed UTC+8 —
+deliberately **not** against the server's clock. That box currently runs
+`Asia/Shanghai`, which is the same offset as Malaysia by coincidence; a schedule
+that depended on it would shift by hours the day the server is rebuilt
+elsewhere. Malaysia has never observed daylight saving, so a fixed offset is
+exact, not an approximation. `scripts/test-delivery-slots.ts` asserts the answer
+is identical under four different host timezones.
 
 Rules worth knowing:
 
-- Only **whole** slots are offered — a 10:00–13:20 window at 60 minutes gives
-  three slots, not three and a stub.
-- **Capacity** is per slot, so Asywa can take two drops in the same hour.
-- A slot is re-validated at booking time against the live windows, blackouts and
-  remaining capacity. A time that is not genuinely available is refused rather
-  than saved — the list she read could be minutes old.
+- **Any time is bookable**, including 21:30 on a Sunday, and two deliveries can
+  share the same time — back-to-back drops in one area are normal.
+- The only date check is a **typo guard**: more than two years out is refused,
+  because a slipped year files the delivery somewhere nobody looks again and the
+  run sheet quietly loses it. An unreadable time ("after lunch") is refused
+  rather than guessed at.
 - **Rescheduling moves the booking**, it never creates a second one, so an order
-  can never be out for delivery twice.
-- **Cancelling frees the slot** but keeps the row; blocking a date does **not**
-  move deliveries already booked on it, so the tool reports exactly which ones
-  need rescheduling.
+  can never be out for delivery twice. Rescheduling a cancelled or failed
+  delivery makes it live again.
+- **FAILED is not cancelled.** Failed means the run happened and the drop did
+  not — nobody home, wrong address. It stays on the record; cancelling takes it
+  off the run sheet.
 - Marking a delivery COMPLETED records the delivery only — it does not touch the
   order's status or mark it paid. Those are separate facts.
+- A **cancelled order** cannot be scheduled, and cancelling a delivery never
+  touches the order.
+
+`scripts/test-delivery-flow.ts` covers all of the above against the database.
 
 ## Adding a tool
 

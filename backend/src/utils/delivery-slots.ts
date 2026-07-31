@@ -1,9 +1,13 @@
 /**
- * Delivery slot arithmetic.
+ * Malaysia-time helpers for the delivery diary.
  *
- * Pure functions with no database access, so the awkward part — turning
- * "Monday 10:00–13:00, hourly" into real instants, minus holidays, minus
- * what is already booked — can be tested directly.
+ * Pure functions with no database access, so the part most likely to be quietly
+ * wrong — converting between a wall-clock time someone typed and a real instant
+ * — can be tested directly.
+ *
+ * This file previously also generated bookable slots from recurring
+ * availability windows. That layer was removed: see the comment on the delivery
+ * models in schema.prisma for why.
  *
  * TIMEZONE
  * Windows are Malaysia local wall-clock. Every conversion here goes through a
@@ -15,36 +19,6 @@
  */
 
 export const MYT_OFFSET_MINUTES = 8 * 60;
-
-export interface WindowSpec {
-  id: string;
-  dayOfWeek: number;
-  startMinute: number;
-  endMinute: number;
-  slotMinutes: number;
-  capacity: number;
-}
-
-export interface BlackoutSpec {
-  /** Local Malaysia date; only the calendar day is significant. */
-  date: Date;
-  startMinute?: number | null;
-  endMinute?: number | null;
-  reason: string;
-}
-
-export interface Slot {
-  /** Slot start, as a real instant (UTC under the hood). */
-  startsAt: Date;
-  durationMinutes: number;
-  capacity: number;
-  booked: number;
-  windowId: string;
-  /** "2026-08-03" in Malaysia local time. */
-  localDate: string;
-  /** "10:00" in Malaysia local time. */
-  localTime: string;
-}
 
 /** The Malaysia-local calendar parts of an instant. */
 export function toMytParts(instant: Date) {
@@ -112,96 +86,6 @@ export function parseDayOfWeek(value: string | number): number {
   const index = DAY_NAMES.findIndex((d) => d.toLowerCase().startsWith(raw.slice(0, 3)));
   if (index === -1) throw new Error(`Could not read "${value}" as a day of the week.`);
   return index;
-}
-
-function blackoutCovers(blackout: BlackoutSpec, slotStartMinute: number, slotEndMinute: number): boolean {
-  // A whole-day blackout closes everything on that date.
-  if (blackout.startMinute == null || blackout.endMinute == null) return true;
-  // Otherwise close only slots that actually overlap the blocked span. A slot
-  // ending exactly when the blackout begins is still fine.
-  return slotStartMinute < blackout.endMinute && slotEndMinute > blackout.startMinute;
-}
-
-/**
- * Every slot between `from` and `to`, with how many bookings each already has.
- *
- * `bookedAt` is the list of instants already booked (one entry per booking), so
- * capacity is counted rather than assumed. Slots in the past are omitted:
- * offering a delivery window that has already elapsed is never useful, and it
- * is the kind of thing an operator only notices after promising it to someone.
- */
-export function generateSlots(opts: {
-  windows: WindowSpec[];
-  blackouts: BlackoutSpec[];
-  bookedAt: Date[];
-  from: Date;
-  to: Date;
-  now?: Date;
-}): Slot[] {
-  const { windows, blackouts, bookedAt, from, to } = opts;
-  const now = opts.now ?? new Date();
-  if (!windows.length) return [];
-
-  // Count bookings per exact start instant.
-  const bookedCount = new Map<number, number>();
-  for (const at of bookedAt) {
-    const key = at.getTime();
-    bookedCount.set(key, (bookedCount.get(key) ?? 0) + 1);
-  }
-
-  // Blackouts indexed by local date.
-  const blackoutsByDate = new Map<string, BlackoutSpec[]>();
-  for (const b of blackouts) {
-    const key = mytDateKey(b.date);
-    const list = blackoutsByDate.get(key) ?? [];
-    list.push(b);
-    blackoutsByDate.set(key, list);
-  }
-
-  const slots: Slot[] = [];
-  const startParts = toMytParts(from);
-
-  // Walk local calendar days, not 24-hour jumps from an instant — the latter
-  // drifts if the range crosses anything unexpected.
-  for (let dayOffset = 0; dayOffset < 400; dayOffset++) {
-    const dayStart = fromMytWallClock(startParts.year, startParts.month, startParts.day + dayOffset, 0);
-    if (dayStart.getTime() > to.getTime()) break;
-
-    const parts = toMytParts(dayStart);
-    const dateKey = mytDateKey(dayStart);
-    const dayBlackouts = blackoutsByDate.get(dateKey) ?? [];
-
-    for (const w of windows) {
-      if (w.dayOfWeek !== parts.dayOfWeek) continue;
-      if (w.slotMinutes <= 0) continue;
-
-      // Only whole slots are offered — a 10:00-13:20 window at 60 minutes
-      // gives three slots, not three and a stub.
-      for (let m = w.startMinute; m + w.slotMinutes <= w.endMinute; m += w.slotMinutes) {
-        const startsAt = fromMytWallClock(parts.year, parts.month, parts.day, m);
-        if (startsAt.getTime() < from.getTime() || startsAt.getTime() > to.getTime()) continue;
-        if (startsAt.getTime() < now.getTime()) continue;
-        if (dayBlackouts.some((b) => blackoutCovers(b, m, m + w.slotMinutes))) continue;
-
-        slots.push({
-          startsAt,
-          durationMinutes: w.slotMinutes,
-          capacity: w.capacity,
-          booked: bookedCount.get(startsAt.getTime()) ?? 0,
-          windowId: w.id,
-          localDate: dateKey,
-          localTime: formatMinute(m),
-        });
-      }
-    }
-  }
-
-  slots.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
-  return slots;
-}
-
-export function isSlotOpen(slot: Slot): boolean {
-  return slot.booked < slot.capacity;
 }
 
 /** Human label for a slot, e.g. "Mon 3 Aug, 10:00–11:00". */

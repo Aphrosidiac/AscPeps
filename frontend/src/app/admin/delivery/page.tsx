@@ -4,49 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Animate } from '@/components/ui/Animate';
 import { DeliveryCalendar } from './DeliveryCalendar';
-import { CalendarDays, CalendarOff, CheckCircle2, Clock, Loader2, MapPin, Plus, RefreshCw, Trash2, Truck, User, XCircle } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock, MapPin, RefreshCw, Trash2, Truck, User, XCircle } from 'lucide-react';
 import {
   adminCancelDelivery,
-  adminCreateDeliveryBlackout,
-  adminDeleteDeliveryBlackout,
-  adminDeleteDeliveryWindow,
   adminDeliveryBookings,
-  adminDeliverySlots,
-  adminDeliveryWindows,
-  adminSaveDeliveryWindow,
   adminScheduleDelivery,
   adminUnscheduledOrders,
   adminUpdateDeliveryStatus,
 } from '@/lib/api';
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-interface Window {
-  id: string;
-  dayOfWeek: number;
-  startMinute: number;
-  endMinute: number;
-  slotMinutes: number;
-  capacity: number;
-  active: boolean;
-  notes: string | null;
-}
-interface Blackout {
-  id: string;
-  date: string;
-  startMinute: number | null;
-  endMinute: number | null;
-  reason: string;
-}
-interface Slot {
-  startsAt: string;
-  localDate: string;
-  localTime: string;
-  label: string;
-  booked: number;
-  capacity: number;
-  open: boolean;
-}
 interface Booking {
   id: string;
   orderNumber: string;
@@ -85,52 +51,25 @@ const errorMessage = (e: unknown, fallback: string) => {
 // identical to the server's.
 const mytTodayKey = () => new Date(Date.now() + 8 * 60 * 60_000).toISOString().slice(0, 10);
 
-/** Add days to a "YYYY-MM-DD" key without touching the clock or local time. */
-const addDays = (key: string, days: number) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-};
-
-const fmtMinute = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const rm = (cents: number) => `RM ${(cents / 100).toFixed(2)}`;
 
 export default function DeliveryPage() {
   const { token } = useAuth();
-  const [windows, setWindows] = useState<Window[]>([]);
-  const [blackouts, setBlackouts] = useState<Blackout[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [slots, setSlots] = useState<Slot[]>([]);
   const [unscheduled, setUnscheduled] = useState<UnscheduledOrder[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const [newWindow, setNewWindow] = useState({ day: 1, from: '10:00', to: '13:00', slotMinutes: 60, capacity: 1 });
-  const [newBlackout, setNewBlackout] = useState({ date: '', reason: '' });
   const [assigning, setAssigning] = useState<UnscheduledOrder | null>(null);
+  const [pickedTime, setPickedTime] = useState('14:00');
   const [today] = useState(mytTodayKey);
   const [month, setMonth] = useState(() => mytTodayKey().slice(0, 7));
   const [pickedDate, setPickedDate] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (!token) return;
-    adminDeliveryWindows(token)
-      .then((d) => {
-        setWindows(d.windows ?? []);
-        setBlackouts(d.blackouts ?? []);
-      })
-      .catch(() => {});
     adminDeliveryBookings(token, { limit: '100' }).then(setBookings).catch(() => {});
-    // The calendar shows a month, so ask for a month — and include full slots
-    // so a booked-out day can say "full" rather than silently disappearing.
-    const [y, m] = month.split('-').map(Number);
-    adminDeliverySlots(token, {
-      from: `${month}-01T00:00:00+08:00`,
-      to: `${y}-${String(m).padStart(2, '0')}-${new Date(Date.UTC(y, m, 0)).getUTCDate()}T23:59:59+08:00`,
-      includeFull: 'true',
-    })
-      .then(setSlots)
-      .catch(() => {});
     adminUnscheduledOrders(token).then(setUnscheduled).catch(() => {});
-  }, [token, month]);
+  }, [token]);
 
   useEffect(() => {
     refresh();
@@ -146,22 +85,11 @@ export default function DeliveryPage() {
 
   if (!token) return <div className="p-8 text-text-secondary">Loading…</div>;
 
-  // Open the picker on the first month that actually has a free slot, the way
-  // Calendly does. Landing on an empty current month — which is exactly what
-  // happens on the last day of a month, or during a quiet week — reads as
-  // "nothing is available at all" rather than "look further ahead".
   const openPicker = (order: UnscheduledOrder) => {
     setPickedDate(null);
+    setPickedTime('14:00');
+    setMonth(today.slice(0, 7));
     setAssigning(order);
-    adminDeliverySlots(token, {
-      from: `${today}T00:00:00+08:00`,
-      to: `${addDays(today, 90)}T23:59:59+08:00`,
-    })
-      .then((upcoming: Slot[]) => {
-        const first = upcoming.find((s) => s.open);
-        setMonth(first ? first.localDate.slice(0, 7) : today.slice(0, 7));
-      })
-      .catch(() => setMonth(today.slice(0, 7)));
   };
 
 
@@ -184,8 +112,7 @@ export default function DeliveryPage() {
             <Truck className="h-6 w-6" /> Delivery Schedule
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Asywa&apos;s delivery diary. Set the windows she can deliver in, then book orders into the slots. All times
-            are Malaysia time.
+            Asywa&apos;s delivery diary. Pick any date and time for an order — all times are Malaysia time.
           </p>
         </div>
         <button
@@ -322,236 +249,6 @@ export default function DeliveryPage() {
 
       </Animate>
 
-      {/* ---- Weekly availability ---- */}
-      <Animate variant="fadeUp" delay={0.1}>
-      <section className="rounded-xl border border-border bg-surface p-6">
-        <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
-          <CalendarDays className="h-5 w-5" /> Weekly delivery windows
-        </h2>
-        <p className="mt-1 text-sm text-text-secondary">
-          When deliveries are possible. Slots are generated inside these — a 10:00–13:00 window with 60-minute slots
-          gives 10:00, 11:00 and 12:00.
-        </p>
-
-        <div className="mt-4 space-y-2">
-          {windows.map((w, i) => (
-            <div
-              key={w.id}
-              style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
-              className="row-rise flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-colors hover:border-border-hover"
-            >
-              <div>
-                <p className="font-medium text-text-primary">
-                  {DAYS[w.dayOfWeek]} · {fmtMinute(w.startMinute)}–{fmtMinute(w.endMinute)}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {w.slotMinutes}-minute slots · {w.capacity} {w.capacity === 1 ? 'delivery' : 'deliveries'} per slot ·{' '}
-                  {Math.floor((w.endMinute - w.startMinute) / w.slotMinutes) * w.capacity} per week
-                  {w.notes ? ` · ${w.notes}` : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-1 text-xs ${w.active ? 'bg-green-50 text-green-700' : 'bg-surface-elevated text-text-muted'}`}
-                >
-                  {w.active ? 'active' : 'paused'}
-                </span>
-                <button
-                  disabled={!!busy}
-                  onClick={() =>
-                    act(`w-${w.id}`, () =>
-                      adminSaveDeliveryWindow(
-                        token,
-                        {
-                          dayOfWeek: w.dayOfWeek,
-                          startMinute: w.startMinute,
-                          endMinute: w.endMinute,
-                          slotMinutes: w.slotMinutes,
-                          capacity: w.capacity,
-                          active: !w.active,
-                        },
-                        w.id
-                      )
-                    )
-                  }
-                  className="rounded border border-border px-2 py-1 text-xs text-text-secondary hover:bg-surface-elevated"
-                >
-                  {w.active ? 'Pause' : 'Resume'}
-                </button>
-                <button
-                  disabled={!!busy}
-                  onClick={() => {
-                    if (!confirm('Remove this window? Deliveries already booked keep their times.')) return;
-                    act(`w-${w.id}`, () => adminDeleteDeliveryWindow(token, w.id));
-                  }}
-                  className="rounded border border-border p-1.5 text-danger transition-colors hover:bg-red-50 active:scale-[0.95]"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-          {!windows.length && (
-            <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">
-              No windows yet — nothing can be booked until you add one.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
-          <div>
-            <label className="block text-xs text-text-muted">Day</label>
-            <select
-              value={newWindow.day}
-              onChange={(e) => setNewWindow({ ...newWindow, day: Number(e.target.value) })}
-              className="mt-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            >
-              {DAYS.map((d, i) => (
-                <option key={d} value={i}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted">From</label>
-            <input
-              type="time"
-              value={newWindow.from}
-              onChange={(e) => setNewWindow({ ...newWindow, from: e.target.value })}
-              className="mt-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted">To</label>
-            <input
-              type="time"
-              value={newWindow.to}
-              onChange={(e) => setNewWindow({ ...newWindow, to: e.target.value })}
-              className="mt-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted">Slot (min)</label>
-            <input
-              type="number"
-              min={15}
-              step={15}
-              value={newWindow.slotMinutes}
-              onChange={(e) => setNewWindow({ ...newWindow, slotMinutes: Number(e.target.value) })}
-              className="mt-1 w-24 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted">Per slot</label>
-            <input
-              type="number"
-              min={1}
-              value={newWindow.capacity}
-              onChange={(e) => setNewWindow({ ...newWindow, capacity: Number(e.target.value) })}
-              className="mt-1 w-20 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            />
-          </div>
-          <button
-            disabled={!!busy}
-            onClick={() => {
-              const [fh, fm] = newWindow.from.split(':').map(Number);
-              const [th, tm] = newWindow.to.split(':').map(Number);
-              act('add-window', () =>
-                adminSaveDeliveryWindow(token, {
-                  dayOfWeek: newWindow.day,
-                  startMinute: fh * 60 + fm,
-                  endMinute: th * 60 + tm,
-                  slotMinutes: newWindow.slotMinutes,
-                  capacity: newWindow.capacity,
-                  active: true,
-                })
-              );
-            }}
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
-          >
-            {busy === 'add-window' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
-            window
-          </button>
-        </div>
-      </section>
-
-      </Animate>
-
-      {/* ---- Blocked dates ---- */}
-      <Animate variant="fadeUp" delay={0.15}>
-      <section className="rounded-xl border border-border bg-surface p-6">
-        <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
-          <CalendarOff className="h-5 w-5" /> Blocked dates
-        </h2>
-        <p className="mt-1 text-sm text-text-secondary">
-          Holidays and days off. Nothing can be booked on these. Deliveries already booked are not moved automatically.
-        </p>
-
-        <div className="mt-4 space-y-2">
-          {blackouts.map((b, i) => (
-            <div
-              key={b.id}
-              style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
-              className="row-rise flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-2.5 transition-colors hover:border-border-hover"
-            >
-              <p className="text-sm text-text-primary">
-                {new Date(b.date).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })}
-                {b.startMinute != null && b.endMinute != null
-                  ? ` · ${fmtMinute(b.startMinute)}–${fmtMinute(b.endMinute)}`
-                  : ' · all day'}
-                <span className="ml-2 text-text-muted">{b.reason}</span>
-              </p>
-              <button
-                onClick={() => act(`b-${b.id}`, () => adminDeleteDeliveryBlackout(token, b.id))}
-                className="rounded border border-border p-1.5 text-danger transition-colors hover:bg-red-50 active:scale-[0.95]"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-          {!blackouts.length && <p className="text-sm text-text-muted">No blocked dates coming up.</p>}
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
-          <div>
-            <label className="block text-xs text-text-muted">Date</label>
-            <input
-              type="date"
-              value={newBlackout.date}
-              onChange={(e) => setNewBlackout({ ...newBlackout, date: e.target.value })}
-              className="mt-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="block text-xs text-text-muted">Reason</label>
-            <input
-              value={newBlackout.reason}
-              onChange={(e) => setNewBlackout({ ...newBlackout, reason: e.target.value })}
-              placeholder="Public holiday"
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
-            />
-          </div>
-          <button
-            disabled={!newBlackout.date || !newBlackout.reason || !!busy}
-            onClick={() =>
-              act('add-blackout', async () => {
-                await adminCreateDeliveryBlackout(token, {
-                  date: `${newBlackout.date}T00:00:00+08:00`,
-                  reason: newBlackout.reason,
-                });
-                setNewBlackout({ date: '', reason: '' });
-              })
-            }
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
-          >
-            Block date
-          </button>
-        </div>
-      </section>
-
-      </Animate>
-
       {/* ---- Slot picker — the Calendly layout: details on the left, month
            grid in the middle, that day's times sliding in beside it ---- */}
       {assigning && (
@@ -612,8 +309,6 @@ export default function DeliveryPage() {
               <div className="flex min-h-0 flex-1 gap-6 overflow-y-auto p-6">
                 <div className="min-w-0 flex-1">
                   <DeliveryCalendar
-                    slots={slots}
-                    blackouts={blackouts}
                     bookingsByDate={bookingsByDate}
                     month={month}
                     onMonthChange={(m) => {
@@ -626,8 +321,8 @@ export default function DeliveryPage() {
                   />
                 </div>
 
-                {/* Times for the chosen day. Slides in rather than appearing,
-                    and is keyed on the date so switching days re-runs it. */}
+                {/* Time for the chosen day. Free text plus a few common
+                    times — there are no fixed slots to choose from. */}
                 {pickedDate && (
                   <div key={pickedDate} className="slot-column w-44 shrink-0 border-l border-border pl-5">
                     <p className="mb-3 text-sm font-medium text-text-primary">
@@ -637,40 +332,56 @@ export default function DeliveryPage() {
                         month: 'short',
                       })}
                     </p>
-                    <div className="space-y-2">
-                      {slots
-                        .filter((s) => s.localDate === pickedDate && s.open)
-                        .map((s, i) => (
-                          <button
-                            key={s.startsAt}
-                            disabled={!!busy}
-                            style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }}
-                            onClick={() =>
-                              act('assign', async () => {
-                                await adminScheduleDelivery(token, {
-                                  orderId: assigning.id,
-                                  scheduledFor: s.startsAt,
-                                });
-                                setAssigning(null);
-                                setPickedDate(null);
-                              })
-                            }
-                            className="row-rise w-full rounded-lg border border-accent/40 py-2.5 text-center text-sm font-medium text-accent transition-all hover:bg-accent hover:text-white active:scale-[0.97] disabled:opacity-50"
-                          >
-                            {s.localTime}
-                          </button>
-                        ))}
-                      {!slots.filter((s) => s.localDate === pickedDate && s.open).length && (
-                        <p className="text-sm text-text-muted">No free slots left on this day.</p>
-                      )}
+
+                    <label className="block text-xs text-text-muted">Time</label>
+                    <input
+                      type="time"
+                      value={pickedTime}
+                      onChange={(e) => setPickedTime(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
+                    />
+
+                    <div className="mt-3 grid grid-cols-3 gap-1.5">
+                      {['10:00', '12:00', '14:00', '16:00', '18:00', '20:00'].map((t, i) => (
+                        <button
+                          key={t}
+                          type="button"
+                          style={{ animationDelay: `${i * 25}ms` }}
+                          onClick={() => setPickedTime(t)}
+                          className={`row-rise rounded-md border py-1.5 text-xs transition-all active:scale-95 ${
+                            pickedTime === t
+                              ? 'border-accent bg-accent text-white'
+                              : 'border-border text-text-secondary hover:bg-surface-elevated'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
+
+                    <button
+                      disabled={!!busy || !pickedTime}
+                      onClick={() =>
+                        act('assign', async () => {
+                          await adminScheduleDelivery(token, {
+                            orderId: assigning.id,
+                            scheduledFor: `${pickedDate}T${pickedTime}:00+08:00`,
+                          });
+                          setAssigning(null);
+                          setPickedDate(null);
+                        })
+                      }
+                      className="mt-4 w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+                    >
+                      {busy === 'assign' ? 'Booking…' : 'Book delivery'}
+                    </button>
                   </div>
                 )}
               </div>
 
               {!pickedDate && (
                 <p className="border-t border-border px-6 py-3 text-xs text-text-muted">
-                  Pick a day with free slots to see its times.
+                  Pick a day to set a delivery time.
                 </p>
               )}
             </div>

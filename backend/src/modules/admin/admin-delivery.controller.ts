@@ -1,40 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import {
-  describeSlot,
-  formatMinute,
-  fromMytWallClock,
-  generateSlots,
-  isSlotOpen,
-  mytDateKey,
-  toMytParts,
-  type Slot,
-} from '../../utils/delivery-slots.js';
+import { describeSlot, formatMinute, mytDateKey, toMytParts } from '../../utils/delivery-slots.js';
 
-// Asywa's delivery diary. Recurring windows define when deliveries are
-// possible; the slot engine turns those into concrete times; a booking pins one
-// slot to one order.
+// Asywa's delivery diary: one booking per order, at whatever time she says.
 //
-// All the awkward date arithmetic lives in utils/delivery-slots.ts and is unit
-// tested there — this file is the database and validation layer around it.
-
-const windowSchema = z.object({
-  dayOfWeek: z.number().int().min(0).max(6),
-  startMinute: z.number().int().min(0).max(24 * 60),
-  endMinute: z.number().int().min(0).max(24 * 60),
-  slotMinutes: z.number().int().min(15).max(8 * 60).default(60),
-  capacity: z.number().int().min(1).max(20).default(1),
-  active: z.boolean().default(true),
-  partnerId: z.string().nullable().optional(),
-  notes: z.string().max(300).nullable().optional(),
-});
-
-const blackoutSchema = z.object({
-  date: z.coerce.date(),
-  startMinute: z.number().int().min(0).max(24 * 60).nullable().optional(),
-  endMinute: z.number().int().min(0).max(24 * 60).nullable().optional(),
-  reason: z.string().trim().min(1).max(200),
-});
+// There is deliberately no availability layer — see the comment on the delivery
+// models in schema.prisma. She is the only person booking, so a rule about when
+// bookings are allowed would only ever have blocked her.
+//
+// The Malaysia-time arithmetic lives in utils/delivery-slots.ts and is unit
+// tested there; this file is the database and validation layer around it.
 
 const bookingSchema = z.object({
   orderId: z.string().min(1),
@@ -42,119 +17,6 @@ const bookingSchema = z.object({
   durationMinutes: z.number().int().min(15).max(8 * 60).optional(),
   notes: z.string().max(500).nullable().optional(),
 });
-
-function validateWindowBounds(w: { startMinute: number; endMinute: number; slotMinutes: number }) {
-  if (w.endMinute <= w.startMinute) {
-    throw { statusCode: 400, message: 'The window must end after it starts.' };
-  }
-  if (w.endMinute - w.startMinute < w.slotMinutes) {
-    throw {
-      statusCode: 400,
-      message: `A ${w.slotMinutes}-minute slot does not fit in a ${w.endMinute - w.startMinute}-minute window.`,
-    };
-  }
-}
-
-// ---------------------------------------------------------------- windows
-
-export async function listDeliveryWindows(fastify: FastifyInstance) {
-  const [windows, blackouts] = await Promise.all([
-    fastify.prisma.deliveryWindow.findMany({
-      orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }],
-      include: { partner: { select: { name: true } } },
-    }),
-    fastify.prisma.deliveryBlackout.findMany({
-      where: { date: { gte: startOfTodayMyt() } },
-      orderBy: { date: 'asc' },
-    }),
-  ]);
-  return { windows, blackouts };
-}
-
-export async function saveDeliveryWindow(fastify: FastifyInstance, id: string | null, body: unknown) {
-  const data = windowSchema.parse(body);
-  validateWindowBounds(data);
-  if (id) return fastify.prisma.deliveryWindow.update({ where: { id }, data });
-  return fastify.prisma.deliveryWindow.create({ data });
-}
-
-export async function deleteDeliveryWindow(fastify: FastifyInstance, id: string) {
-  // Bookings already made against this window keep their times — they are
-  // stored as instants, not as references to the window. Removing a window
-  // only stops NEW slots being offered.
-  await fastify.prisma.deliveryWindow.delete({ where: { id } });
-  return { deleted: true };
-}
-
-// ---------------------------------------------------------------- blackouts
-
-export async function createDeliveryBlackout(fastify: FastifyInstance, body: unknown) {
-  const data = blackoutSchema.parse(body);
-  if (data.startMinute != null && data.endMinute != null && data.endMinute <= data.startMinute) {
-    throw { statusCode: 400, message: 'The blocked period must end after it starts.' };
-  }
-  return fastify.prisma.deliveryBlackout.create({ data });
-}
-
-export async function deleteDeliveryBlackout(fastify: FastifyInstance, id: string) {
-  await fastify.prisma.deliveryBlackout.delete({ where: { id } });
-  return { deleted: true };
-}
-
-// ---------------------------------------------------------------- slots
-
-function startOfTodayMyt(): Date {
-  const p = toMytParts(new Date());
-  return fromMytWallClock(p.year, p.month, p.day, 0);
-}
-
-/**
- * Open slots between two instants. `from` defaults to now, so a slot that has
- * already started is never offered.
- */
-export async function getAvailableSlots(
-  fastify: FastifyInstance,
-  opts: { from?: Date; to?: Date; includeFull?: boolean } = {}
-) {
-  const from = opts.from ?? new Date();
-  const to = opts.to ?? new Date(from.getTime() + 14 * 24 * 60 * 60_000);
-
-  const [windows, blackouts, bookings] = await Promise.all([
-    fastify.prisma.deliveryWindow.findMany({ where: { active: true } }),
-    fastify.prisma.deliveryBlackout.findMany({
-      where: { date: { gte: new Date(from.getTime() - 24 * 60 * 60_000) } },
-    }),
-    // Only live bookings occupy a slot — a cancelled one frees it again.
-    fastify.prisma.deliveryBooking.findMany({
-      where: { scheduledFor: { gte: from, lte: to }, status: { in: ['SCHEDULED', 'COMPLETED'] } },
-      select: { scheduledFor: true },
-    }),
-  ]);
-
-  const slots = generateSlots({
-    windows,
-    blackouts,
-    bookedAt: bookings.map((b) => b.scheduledFor),
-    from,
-    to,
-  });
-
-  const visible = opts.includeFull ? slots : slots.filter(isSlotOpen);
-  return visible.map(presentSlot);
-}
-
-function presentSlot(s: Slot) {
-  return {
-    startsAt: s.startsAt,
-    localDate: s.localDate,
-    localTime: s.localTime,
-    durationMinutes: s.durationMinutes,
-    label: describeSlot(s.startsAt, s.durationMinutes),
-    booked: s.booked,
-    capacity: s.capacity,
-    open: isSlotOpen(s),
-  };
-}
 
 // ---------------------------------------------------------------- bookings
 
@@ -214,11 +76,12 @@ function presentBooking(b: any) {
 }
 
 /**
- * Book (or move) an order's delivery.
+ * Book (or move) an order's delivery to any date and time.
  *
- * The slot is re-validated against live availability every time rather than
- * trusted from the caller: windows change, holidays get added, and another
- * order may have taken the last space since the list was read.
+ * The only checks are the ones that protect against a mistake rather than
+ * against the operator: the order has to exist and be live, and the date has to
+ * be within a couple of years — enough to catch a mistyped year, not enough to
+ * argue with her about when she can drive somewhere.
  */
 export async function scheduleDelivery(fastify: FastifyInstance, body: unknown) {
   const data = bookingSchema.parse(body);
@@ -230,37 +93,24 @@ export async function scheduleDelivery(fastify: FastifyInstance, body: unknown) 
     throw { statusCode: 400, message: 'That order is cancelled — nothing to deliver.' };
   }
 
+  // Typo guard. A slipped year turns into a booking nobody sees again, and the
+  // run sheet quietly loses a delivery.
+  const twoYears = 2 * 365 * 24 * 60 * 60_000;
+  const drift = data.scheduledFor.getTime() - Date.now();
+  if (Math.abs(drift) > twoYears) {
+    throw {
+      statusCode: 400,
+      message: `${describeSlot(data.scheduledFor, data.durationMinutes ?? 60)} is more than two years away — check the date.`,
+    };
+  }
+
   const existing = await fastify.prisma.deliveryBooking.findUnique({ where: { orderId: data.orderId } });
-
-  // Ask the engine about this exact instant. `includeFull` so a slot that is
-  // full reports as full rather than silently vanishing into "unknown slot".
-  const windowSlots = await getAvailableSlots(fastify, {
-    from: new Date(data.scheduledFor.getTime() - 1),
-    to: new Date(data.scheduledFor.getTime() + 1),
-    includeFull: true,
-  });
-  const match = windowSlots.find((s) => s.startsAt.getTime() === data.scheduledFor.getTime());
-
-  if (!match) {
-    throw {
-      statusCode: 400,
-      message: `${describeSlot(data.scheduledFor, data.durationMinutes ?? 60)} is not an available delivery slot — it is outside the delivery windows, blocked, or in the past.`,
-    };
-  }
-  // Moving a booking within its own slot must not count itself as competition.
-  const selfOccupies = existing && existing.scheduledFor.getTime() === data.scheduledFor.getTime();
-  if (!match.open && !selfOccupies) {
-    throw {
-      statusCode: 400,
-      message: `${match.label} is already full (${match.booked}/${match.capacity}). Pick another slot.`,
-    };
-  }
 
   const payload = {
     scheduledFor: data.scheduledFor,
-    durationMinutes: data.durationMinutes ?? match.durationMinutes,
+    durationMinutes: data.durationMinutes ?? 60,
     notes: data.notes ?? null,
-    // Re-scheduling a cancelled or failed delivery makes it live again —
+    // Rescheduling a cancelled or failed delivery makes it live again —
     // otherwise it would keep its old status and vanish from the run sheet.
     status: 'SCHEDULED' as const,
     completedAt: null,
@@ -273,7 +123,10 @@ export async function scheduleDelivery(fastify: FastifyInstance, body: unknown) 
     include: { order: { select: { orderNumber: true, customerName: true, phone: true, address: true, city: true, state: true, postcode: true, total: true, status: true, paymentStatus: true } } },
   });
 
-  return { ...presentBooking(booking), rescheduledFrom: existing ? describeSlot(existing.scheduledFor, existing.durationMinutes) : null };
+  return {
+    ...presentBooking(booking),
+    rescheduledFrom: existing ? describeSlot(existing.scheduledFor, existing.durationMinutes) : null,
+  };
 }
 
 export async function updateDeliveryStatus(
@@ -297,8 +150,8 @@ export async function updateDeliveryStatus(
 }
 
 export async function cancelDelivery(fastify: FastifyInstance, id: string) {
-  // Cancelling keeps the row (so the history survives) but frees the slot,
-  // because getAvailableSlots only counts SCHEDULED and COMPLETED.
+  // Cancelling keeps the row so the history survives — the run sheet filters
+  // on status rather than deleting anything.
   const booking = await fastify.prisma.deliveryBooking.update({
     where: { id },
     data: { status: 'CANCELLED', completedAt: null },
