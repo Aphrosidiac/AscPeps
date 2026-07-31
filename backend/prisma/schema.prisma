@@ -177,6 +177,7 @@ model Order {
   updatedAt      DateTime      @updatedAt
 
   items        OrderItem[]
+  delivery     DeliveryBooking?
   discountCode DiscountCode?      @relation(fields: [discountCodeId], references: [id])
   emails       EmailOutbox[]
   profitShares OrderProfitShare[]
@@ -472,10 +473,11 @@ model Partner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profitShares OrderProfitShare[]
-  funding      PartnerFunding[]
-  payouts      ProfitPayout[]
-  expensesPaid CompanyExpense[]   @relation("ExpensePaidBy")
+  profitShares    OrderProfitShare[]
+  funding         PartnerFunding[]
+  payouts         ProfitPayout[]
+  expensesPaid    CompanyExpense[]   @relation("ExpensePaidBy")
+  deliveryWindows DeliveryWindow[]
 
   @@index([active])
   @@map("partners")
@@ -592,13 +594,13 @@ model ProfitPayout {
 // admin bot on the other end.
 
 model WhatsAppOperator {
-  id    String @id @default(cuid())
+  id       String  @id @default(cuid())
   // Normalized to digits-only international form (60123456789) by
   // utils/phone.ts before storage AND before every lookup — a number stored
   // as "+60 12-345 6789" would never match an inbound JID and would silently
   // lock the operator out.
-  phone String @unique
-  name  String
+  phone    String  @unique
+  name     String
   // WhatsApp's privacy identifier for this person, e.g. "67615754068059".
   //
   // Load-bearing, not a nicety. WhatsApp now delivers many direct messages
@@ -612,10 +614,10 @@ model WhatsAppOperator {
   // operator. Deliberately never inferred from `pushName`: that is a display
   // name the sender chooses, so matching on it would let anyone claim an
   // operator's identity by renaming themselves.
-  lid   String? @unique
+  lid      String? @unique
   // Revoked rather than deleted, so the tool-call audit trail below keeps
   // resolving to a real name after someone leaves.
-  active Boolean @default(true)
+  active   Boolean @default(true)
   // False = read-only operator: reports, lookups and summaries run, every
   // mutating tool is refused. Lets a partner query the business without
   // being able to change it.
@@ -639,13 +641,13 @@ model WhatsAppOperator {
 // doubles as a "who is messaging this number" view. The sender is still
 // ignored — nothing here grants access; it only makes the binding possible.
 model WhatsAppUnknownSender {
-  id  String  @id @default(cuid())
+  id           String   @id @default(cuid())
   // The `@lid` identifier, or a phone number for non-LID senders.
-  identifier String @unique
-  isLid      Boolean @default(false)
+  identifier   String   @unique
+  isLid        Boolean  @default(false)
   // Whatever display name the sender set. UNTRUSTED — shown to the admin only
   // as a hint when binding, never used to match automatically.
-  pushName   String?
+  pushName     String?
   // Kept so an admin can see what they were trying to do before deciding
   // whether this is a colleague or a stranger. Truncated.
   lastMessage  String?
@@ -662,10 +664,10 @@ model WhatsAppUnknownSender {
 // number sits in supplier and customer groups too, and the agent must never
 // act on chatter there.
 model WhatsAppGroup {
-  id       String @id @default(cuid())
-  groupJid String @unique
-  subject  String
-  active   Boolean @default(true)
+  id             String  @id @default(cuid())
+  groupJid       String  @unique
+  subject        String
+  active         Boolean @default(true)
   // When true (the default), the agent only responds in this group if the
   // message @-mentions it or replies to one of its own messages. Without
   // this a busy ops group turns every passing remark into an LLM call — and,
@@ -703,18 +705,18 @@ model AgentConversation {
 }
 
 model AgentMessage {
-  id             String @id @default(cuid())
+  id             String  @id @default(cuid())
   conversationId String
   // 'user' | 'assistant'. Tool traffic is NOT stored here — it lives in
   // AgentToolCall below. Replaying raw tool payloads back into the model on
   // every turn would blow the context window on a long-running ops thread,
   // and the tool results are stale by then anyway.
-  role    String
-  content String
+  role           String
+  content        String
   // Who actually spoke. Meaningful in groups, where one conversation carries
   // several operators; null on assistant rows.
-  senderPhone String?
-  senderName  String?
+  senderPhone    String?
+  senderName     String?
 
   createdAt DateTime @default(now())
 
@@ -734,12 +736,12 @@ model AgentToolCall {
   toolName       String
   // JSON. Truncated on write — a bulk tool's arguments can be large and this
   // table is an audit trail, not a backup.
-  input  String
-  ok     Boolean
-  result String
+  input          String
+  ok             Boolean
+  result         String
   // Whether this tool required an explicit confirmation before running.
-  destructive Boolean @default(false)
-  durationMs  Int     @default(0)
+  destructive    Boolean @default(false)
+  durationMs     Int     @default(0)
 
   createdAt DateTime @default(now())
 
@@ -754,7 +756,7 @@ model AgentToolCall {
 // "delete everything" the operator has since walked away from — and so the
 // pending action survives long enough to actually be answered.
 model AgentPendingAction {
-  id             String @id @default(cuid())
+  id             String   @id @default(cuid())
   conversationId String
   actorPhone     String
   toolName       String
@@ -762,8 +764,8 @@ model AgentPendingAction {
   // Human-readable description of exactly what will happen, echoed back to
   // the operator. This is what they are agreeing to, so it is generated from
   // the resolved arguments, never from the raw request text.
-  summary   String
-  expiresAt DateTime
+  summary        String
+  expiresAt      DateTime
 
   createdAt DateTime @default(now())
 
@@ -772,4 +774,103 @@ model AgentPendingAction {
   @@index([conversationId])
   @@index([expiresAt])
   @@map("agent_pending_actions")
+}
+
+// ------------------------------------------------- Delivery scheduling
+//
+// Asywa's delivery diary. She sets the windows she can deliver in, the system
+// works out the individual slots inside them, and each slot can be assigned to
+// an order. There is no public booking page: slots are assigned from the admin
+// or by telling the WhatsApp agent.
+//
+// TIMEZONE: every window here is Malaysia local wall-clock, stored as a
+// day-of-week plus minutes-from-midnight rather than a timestamp. The slot
+// instants are computed against a fixed UTC+8, NOT against the server's own
+// clock — this box is currently set to Asia/Shanghai, which happens to be the
+// same offset as Malaysia, and a schedule that silently depends on that
+// coincidence would shift by hours the day the box is rebuilt or moved.
+// Malaysia has no daylight saving, so a fixed offset is exactly right.
+
+model DeliveryWindow {
+  id          String  @id @default(cuid())
+  // 0 = Sunday ... 6 = Saturday, matching JavaScript's getDay().
+  dayOfWeek   Int
+  // Minutes from local midnight. 600 = 10:00, 780 = 13:00.
+  startMinute Int
+  endMinute   Int
+  // How long one delivery slot is. A 10:00-13:00 window at 60 gives 10:00,
+  // 11:00 and 12:00. A trailing part-slot is never offered.
+  slotMinutes Int     @default(60)
+  // How many deliveries can be booked into the same slot.
+  capacity    Int     @default(1)
+  // Turned off rather than deleted, so a window can be paused for a season
+  // without losing its shape or the bookings already made against it.
+  active      Boolean @default(true)
+  // Whose window this is. Nullable and pointing at the existing people table
+  // rather than inventing a second one — today every window is Asywa's, but
+  // naming the owner now costs nothing and avoids a migration the first time
+  // someone else does a run.
+  partnerId   String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  partner Partner? @relation(fields: [partnerId], references: [id])
+
+  @@index([dayOfWeek, active])
+  @@map("delivery_windows")
+}
+
+// A day (or part of one) that is closed regardless of the recurring windows —
+// a public holiday, leave, a van in the workshop.
+model DeliveryBlackout {
+  id          String   @id @default(cuid())
+  // Local Malaysia date, midnight-anchored. A whole-day closure leaves the
+  // minute bounds null; a partial closure sets them.
+  date        DateTime
+  startMinute Int?
+  endMinute   Int?
+  reason      String
+
+  createdAt DateTime @default(now())
+
+  @@index([date])
+  @@map("delivery_blackouts")
+}
+
+enum DeliveryStatus {
+  SCHEDULED
+  COMPLETED
+  // Called off before it happened — the slot is freed for someone else.
+  CANCELLED
+  // Went out but could not be delivered (nobody home, wrong address).
+  // Distinct from CANCELLED because the run still cost time and fuel.
+  FAILED
+}
+
+model DeliveryBooking {
+  id              String         @id @default(cuid())
+  // One delivery per order. Rescheduling moves this row rather than adding a
+  // second, so an order can never be out for delivery twice.
+  orderId         String         @unique
+  // The slot's start instant, stored UTC. Always derived from a window's local
+  // wall-clock time via the fixed Malaysia offset.
+  scheduledFor    DateTime
+  durationMinutes Int            @default(60)
+  status          DeliveryStatus @default(SCHEDULED)
+  // Free text for the driver: gate code, "call on arrival", landmark.
+  notes           String?
+  // Set when the run actually finished, so "booked for 2pm" and "delivered at
+  // 3:40pm" stay separately answerable.
+  completedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledFor])
+  @@index([status])
+  @@map("delivery_bookings")
 }

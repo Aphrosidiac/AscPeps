@@ -300,3 +300,41 @@ export const adminAgentDismissSender = (token: string, identifier: string) =>
   api
     .delete(`/api/v1/admin/whatsapp/unknown-senders/${encodeURIComponent(identifier)}`, auth(token))
     .then((r) => r.data);
+
+// ---- Delivery scheduling ----
+
+export const adminDeliveryWindows = (token: string) =>
+  api.get('/api/v1/admin/delivery/windows', auth(token)).then((r) => r.data);
+
+export const adminSaveDeliveryWindow = (token: string, data: Record<string, unknown>, id?: string) =>
+  (id
+    ? api.put(`/api/v1/admin/delivery/windows/${id}`, data, auth(token))
+    : api.post('/api/v1/admin/delivery/windows', data, auth(token))
+  ).then((r) => r.data);
+
+export const adminDeleteDeliveryWindow = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/delivery/windows/${id}`, auth(token)).then((r) => r.data);
+
+export const adminCreateDeliveryBlackout = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/delivery/blackouts', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteDeliveryBlackout = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/delivery/blackouts/${id}`, auth(token)).then((r) => r.data);
+
+export const adminDeliverySlots = (token: string, params?: Record<string, string>) =>
+  api.get('/api/v1/admin/delivery/slots', { ...auth(token), params }).then((r) => r.data);
+
+export const adminDeliveryBookings = (token: string, params?: Record<string, string>) =>
+  api.get('/api/v1/admin/delivery/bookings', { ...auth(token), params }).then((r) => r.data);
+
+export const adminScheduleDelivery = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/delivery/bookings', data, auth(token)).then((r) => r.data);
+
+export const adminUpdateDeliveryStatus = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch(`/api/v1/admin/delivery/bookings/${id}`, data, auth(token)).then((r) => r.data);
+
+export const adminCancelDelivery = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/delivery/bookings/${id}`, auth(token)).then((r) => r.data);
+
+export const adminUnscheduledOrders = (token: string) =>
+  api.get('/api/v1/admin/delivery/unscheduled', auth(token)).then((r) => r.data);

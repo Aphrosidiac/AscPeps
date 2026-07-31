@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/insights', label: 'Insights', icon: Newspaper },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { href: '/admin/delivery', label: 'Delivery', icon: Truck },
   { href: '/admin/emails', label: 'Emails', icon: Mail },
   { href: '/admin/discounts', label: 'Discounts', icon: Tag },
   { href: '/admin/agent', label: 'Agent', icon: Bot },
