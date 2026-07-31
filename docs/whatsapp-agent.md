@@ -68,6 +68,57 @@ Plus two things learned from testing:
 Everything the agent does is written to `agent_tool_calls` — tool, arguments,
 actor, success, duration — and shown on the admin page.
 
+### WhatsApp LIDs — why an operator can be ignored
+
+WhatsApp increasingly addresses people by a **LID** (privacy identifier) instead
+of a phone number. Verified on the wire, such a message carries *only* this:
+
+```
+key = { remoteJid: "67615754068059@lid", fromMe: false, id: "..." }
+pushName = "Fakhrul"
+```
+
+No phone number anywhere. baileys 6.17.16 exposes no LID→phone mapping and
+`onWhatsApp()` returns nothing for it, so these senders **cannot** be matched
+against an operator's phone number. This is why the agent appeared dead after
+first pairing: every message was correctly, silently ignored.
+
+The fix is an explicit binding. An unresolved sender is recorded, the Agent page
+shows it under **Unrecognised senders**, and an admin binds it to an operator
+once (`WhatsAppOperator.lid`). After that the person is resolved everywhere —
+DMs and groups both.
+
+The binding is **never** inferred from `pushName`. That is a display name the
+sender chooses, so matching on it would let anyone claim a colleague's identity
+by renaming themselves. It is shown as a hint when binding and nothing more.
+
+Two related places the LID form matters:
+
+- **Group mentions.** A mention in a LID-addressed group carries the bot's own
+  LID (`sock.user.lid`), not its phone JID. Both are matched, plus a text
+  trigger (`@ascend …`) that needs no identifier at all.
+- **Conversation identity.** Threads are keyed on the *resolved operator*, not
+  the raw sender, so reaching the agent by phone one day and by LID the next
+  does not split the history in two.
+
+### Groups are a restriction, not a bypass
+
+A group message must pass **both** gates: the group is allowlisted and active,
+*and* the sender resolves to an active operator. An unbound or unknown person in
+an allowlisted group is ignored exactly as they would be in a DM. Verified
+against the live deployment:
+
+| Situation | Result |
+|---|---|
+| Bound operator, group not allowlisted | ignored |
+| Unknown sender, group allowlisted | ignored |
+| Bound operator, allowlisted group, no mention | ignored |
+| Bound operator, allowlisted group, mentioned | acts |
+
+Unresolvable senders are recorded only *after* the group gate passes. Recording
+first meant every participant of every supplier and customer group the number
+sits in landed in the unknown-senders list, burying the one entry that mattered.
+
 ### Prompt injection
 
 The agent reads text customers type: names, addresses, order notes. That lands
