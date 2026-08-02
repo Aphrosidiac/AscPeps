@@ -94,10 +94,25 @@ check('"Abby" is recognised as a name for the bot', () => {
   eq(mentionsBot(msg, 'Abby, what time is my delivery?', []), true);
 });
 
+check('"Abby" is recognised even when it is not the first word', () => {
+  // The actual reported bug: "hey Abby, ..." was silently ignored because the
+  // trigger only matched at position 0.
+  const msg = { message: { extendedTextMessage: { text: 'hey Abby, what time is my delivery?', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'hey Abby, what time is my delivery?', []), true);
+});
+
 check('a name that merely contains "abby" does not false-trigger', () => {
   // Word-boundary guard: "Abbyson" or "abbygail" must not be read as the trigger.
   const msg = { message: { extendedTextMessage: { text: 'Abbygail called about her order', contextInfo: {} } } };
   eq(mentionsBot(msg, 'Abbygail called about her order', []), false);
+});
+
+check('"bot" still requires being the first word — not relaxed like "Abby"', () => {
+  // "bot" is common enough that matching it anywhere would false-trigger on
+  // ordinary chatter ("is this a bot", "trading bot"); "Abby" is distinctive
+  // enough that it doesn't have this problem.
+  const msg = { message: { extendedTextMessage: { text: 'is this a bot replying', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'is this a bot replying', []), false);
 });
 
 check('a mention of someone else is not detected as us', () => {
