@@ -96,7 +96,7 @@ Two related places the LID form matters:
 
 - **Group mentions.** A mention in a LID-addressed group carries the bot's own
   LID (`sock.user.lid`), not its phone JID. Both are matched, plus a text
-  trigger (`@ascend …`, `bot …`, or `Abby` — this last one anywhere in the
+  trigger (`@ascend …`, `bot …`, or `Abby`/`ab` — the last two anywhere in the
   message, not just as the first word, since "hey Abby, ..." is how it's
   actually said) that needs no identifier at all.
   Detection is a separate concern from what the model actually reads, though:
