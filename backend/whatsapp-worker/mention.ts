@@ -18,8 +18,9 @@ export function mentionsBot(msg: any, text: string, ids: string[]): boolean {
 
   // Text trigger. Deliberately kept as a fallback that needs no identifier at
   // all, so addressing the agent still works even if WhatsApp changes how
-  // mentions are encoded again.
-  return /^\s*(@?ascend|@?bot)\b/i.test(text)
+  // mentions are encoded again. "Abby" is the name the team actually calls it
+  // by in chat, alongside the generic "bot"/"ascend".
+  return /^\s*(@?ascend|@?bot|@?abby)\b/i.test(text)
 }
 
 // WhatsApp embeds a mention as the raw JID digits sitting in the text itself —

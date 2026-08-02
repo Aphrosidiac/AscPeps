@@ -96,7 +96,7 @@ Two related places the LID form matters:
 
 - **Group mentions.** A mention in a LID-addressed group carries the bot's own
   LID (`sock.user.lid`), not its phone JID. Both are matched, plus a text
-  trigger (`@ascend …`) that needs no identifier at all.
+  trigger (`@ascend …`, `bot …`, or `Abby …`) that needs no identifier at all.
   Detection is a separate concern from what the model actually reads, though:
   WhatsApp embeds a mention as the raw JID digits sitting inline in the message
   text — "@Lewix Bot" on screen is literally "@80943691858039" in the payload.
