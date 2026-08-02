@@ -97,6 +97,14 @@ Two related places the LID form matters:
 - **Group mentions.** A mention in a LID-addressed group carries the bot's own
   LID (`sock.user.lid`), not its phone JID. Both are matched, plus a text
   trigger (`@ascend …`) that needs no identifier at all.
+  Detection is a separate concern from what the model actually reads, though:
+  WhatsApp embeds a mention as the raw JID digits sitting inline in the message
+  text — "@Lewix Bot" on screen is literally "@80943691858039" in the payload.
+  Left in, the model has no signal that the number is its own identifier rather
+  than something to look up, and can misread it either way on an otherwise
+  identical message. `whatsapp-worker/mention.ts`'s `stripSelfMentions()`
+  removes our own ids from the text before it ever reaches the model, so there
+  is nothing left to misread — see `scripts/test-mention-parsing.ts`.
 - **Conversation identity.** Threads are keyed on the *resolved operator*, not
   the raw sender, so reaching the agent by phone one day and by LID the next
   does not split the history in two.
@@ -276,6 +284,7 @@ npx tsx scripts/test-agent-e2e.ts         # real conversations through the LLM
 npx tsx scripts/test-agent-security.ts    # injection, escalation, SQL escape
 npx tsx scripts/test-delivery-slots.ts    # Malaysia-time arithmetic (no db)
 npx tsx scripts/test-delivery-flow.ts     # booking rules against the database
+npx tsx scripts/test-mention-parsing.ts   # @-mention detection, no db or socket
 ```
 
 The e2e suite asserts on *what actually happened in the database*, not on how
