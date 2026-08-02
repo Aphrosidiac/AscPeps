@@ -89,6 +89,17 @@ check('the text trigger works with no identifiers at all', () => {
   eq(mentionsBot(msg, 'bot, any orders today?', []), true);
 });
 
+check('"Abby" is recognised as a name for the bot', () => {
+  const msg = { message: { extendedTextMessage: { text: 'Abby, what time is my delivery?', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'Abby, what time is my delivery?', []), true);
+});
+
+check('a name that merely contains "abby" does not false-trigger', () => {
+  // Word-boundary guard: "Abbyson" or "abbygail" must not be read as the trigger.
+  const msg = { message: { extendedTextMessage: { text: 'Abbygail called about her order', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'Abbygail called about her order', []), false);
+});
+
 check('a mention of someone else is not detected as us', () => {
   const msg = {
     message: {
