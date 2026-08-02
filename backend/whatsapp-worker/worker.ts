@@ -29,6 +29,7 @@ import * as QRCode from 'qrcode'
 import path from 'path'
 import fs from 'fs'
 import { config as loadEnv } from 'dotenv'
+import { mentionsBot, stripSelfMentions } from './mention.js'
 
 loadEnv()
 
@@ -422,25 +423,6 @@ function extractText(msg: any): string {
   )
 }
 
-// Did this message address the bot? Three ways count: an explicit @-mention of
-// the connected number, a reply to one of the bot's own messages, or the text
-// opening with the trigger word. Groups with requireMention set act on nothing else.
-function mentionsBot(msg: any, text: string): boolean {
-  const ids = selfIds()
-
-  const ctx = msg.message?.extendedTextMessage?.contextInfo
-  const mentioned: string[] = ctx?.mentionedJid ?? []
-  if (ids.length && mentioned.some((jid) => ids.some((id) => jid.startsWith(id)))) return true
-
-  // A reply to one of our own messages.
-  if (ids.length && ctx?.participant && ids.some((id) => ctx.participant.startsWith(id))) return true
-
-  // Text trigger. Deliberately kept as a fallback that needs no identifier at
-  // all, so addressing the agent still works even if WhatsApp changes how
-  // mentions are encoded again.
-  return /^\s*(@?ascend|@?bot)\b/i.test(text)
-}
-
 async function handleInbound(msg: any) {
   const remoteJid: string = msg.key.remoteJid || ''
   if (!remoteJid) return
@@ -481,6 +463,15 @@ async function handleInbound(msg: any) {
   }
   if (!text.trim()) return
 
+  // Computed on the RAW text — mentionsBot's JID matching doesn't touch the
+  // body text at all, and its text-trigger fallback only looks for a leading
+  // "ascend"/"bot" word, never a numeric id, so stripping first vs after makes
+  // no difference here. Order matters for `text` itself, though: it must be
+  // cleaned before it reaches the payload, not before this check.
+  const ids = selfIds()
+  const mentionedBot = isGroup ? mentionsBot(msg, text, ids) : true
+  text = stripSelfMentions(text, ids)
+
   const payload = {
     kind: isGroup ? 'group' : 'dm',
     senderPhone,
@@ -489,7 +480,7 @@ async function handleInbound(msg: any) {
     text,
     groupJid: isGroup ? remoteJid : undefined,
     groupSubject: isGroup ? (await groupSubject(remoteJid)) : undefined,
-    mentionsBot: isGroup ? mentionsBot(msg, text) : true,
+    mentionsBot: mentionedBot,
   }
 
   if (!AGENT_ENABLED) {
