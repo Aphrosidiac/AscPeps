@@ -25,13 +25,12 @@ export function mentionsBot(msg: any, text: string, ids: string[]): boolean {
   // ordinary chatter ("is this a bot", "trading bot").
   if (/^\s*(@?ascend|@?bot)\b/i.test(text)) return true
 
-  // "Abby" is the name the team actually calls it by, and real usage is "hey
-  // Abby, ..." or "can you check, Abby?" as often as "Abby, ..." — anchoring
-  // this one to the start the same way silently missed all of those, which
-  // was the actual bug behind "I said Abby and it didn't work". It is
-  // distinctive enough that matching it anywhere in the message is safe. \b
-  // keeps "Abbygail" from false-triggering on a name that merely contains it.
-  return /@?\babby\b/i.test(text)
+  // "Abby"/"AB" — the name and its short form — same reasoning as above:
+  // matched anywhere, not anchored, since real usage is "hey Abby, ..." or
+  // "ab, check this" as often as leading with it. Both are distinctive enough
+  // as whole words that this is safe. \b keeps "Abbygail" from matching on
+  // the name, and keeps "ab" from matching inside "grab", "cab", "lab".
+  return /@?\b(abby|ab)\b/i.test(text)
 }
 
 // WhatsApp embeds a mention as the raw JID digits sitting in the text itself —

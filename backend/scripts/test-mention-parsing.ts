@@ -107,6 +107,22 @@ check('a name that merely contains "abby" does not false-trigger', () => {
   eq(mentionsBot(msg, 'Abbygail called about her order', []), false);
 });
 
+check('"AB" — the short form — is recognised as a name for the bot', () => {
+  const msg = { message: { extendedTextMessage: { text: 'ab, what time is my delivery?', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'ab, what time is my delivery?', []), true);
+});
+
+check('"AB" is recognised even when it is not the first word', () => {
+  const msg = { message: { extendedTextMessage: { text: 'yo AB check this', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'yo AB check this', []), true);
+});
+
+check('"ab" inside an ordinary word does not false-trigger', () => {
+  // Word-boundary guard: "grab"/"cab"/"lab" must not read as the trigger.
+  const msg = { message: { extendedTextMessage: { text: 'can you grab the parcel from the cab', contextInfo: {} } } };
+  eq(mentionsBot(msg, 'can you grab the parcel from the cab', []), false);
+});
+
 check('"bot" still requires being the first word — not relaxed like "Abby"', () => {
   // "bot" is common enough that matching it anywhere would false-trigger on
   // ordinary chatter ("is this a bot", "trading bot"); "Abby" is distinctive
