@@ -40,6 +40,14 @@ const fastify = Fastify({
   // client-supplied X-Forwarded-For chain, letting anyone spoof req.ip and
   // reset their rate-limit bucket per request.
   trustProxy: 1,
+  // Fastify defaults this to 100 CHARACTERS PER ROUTE PARAM, and a param
+  // that overflows it fails to match the route at all — the request falls
+  // through to the generic "Route GET:... not found" 404, which reads like a
+  // missing record rather than a router limit. Insight slugs are derived from
+  // full article titles and routinely run past 100 (the retatrutide
+  // split-dosing piece is 116), so every long-titled article 404'd on its own
+  // detail page while still appearing in the list.
+  maxParamLength: 500,
   // pino-pretty is a devDependency — hardcoding the transport crashes a
   // production `npm ci --omit=dev` deploy at boot. Plain JSON logs in prod.
   logger: process.env.NODE_ENV !== 'production'
