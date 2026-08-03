@@ -47,7 +47,9 @@ const fastify = Fastify({
   // full article titles and routinely run past 100 (the retatrutide
   // split-dosing piece is 116), so every long-titled article 404'd on its own
   // detail page while still appearing in the list.
-  maxParamLength: 500,
+  // Nested under routerOptions, not top-level: the flat form still works in
+  // Fastify 5 but logs FSTDEP022 on every boot and is removed in Fastify 6.
+  routerOptions: { maxParamLength: 500 },
   // pino-pretty is a devDependency — hardcoding the transport crashes a
   // production `npm ci --omit=dev` deploy at boot. Plain JSON logs in prod.
   logger: process.env.NODE_ENV !== 'production'
