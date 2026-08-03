@@ -39,8 +39,16 @@ const emptyForm: InsightFormData = {
   relatedProductIds: [], figures: [], published: false,
 };
 
+// Capped at 80 chars on a word boundary. Article titles here run long, and an
+// untruncated slug produced 116-char URLs that are bad for SEO and used to
+// overflow Fastify's route-param limit outright. Trimming to the last hyphen
+// keeps the slug readable rather than cutting mid-word.
 function slugify(text: string) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const full = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  if (full.length <= 80) return full;
+  const cut = full.slice(0, 80);
+  const lastHyphen = cut.lastIndexOf('-');
+  return (lastHyphen > 40 ? cut.slice(0, lastHyphen) : cut).replace(/-$/, '');
 }
 
 function FormSection({
