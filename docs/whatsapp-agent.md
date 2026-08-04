@@ -14,7 +14,7 @@ explicit allowlist, and it ignores everyone else in silence.
 
 ```
 WhatsApp ──► ascend-wa (worker, PM2)            ascend-api (PM2)
-             • holds the baileys socket          • the agent + 59 tools
+             • holds the baileys socket          • the agent + 62 tools
              • QR / reconnect / dedup            • all admin business logic
              • NO business logic                 • Prisma, PostHog, email outbox
                     │                                     ▲
@@ -287,6 +287,8 @@ npx tsx scripts/test-agent-security.ts    # injection, escalation, SQL escape
 npx tsx scripts/test-delivery-slots.ts    # Malaysia-time arithmetic (no db)
 npx tsx scripts/test-delivery-flow.ts     # booking rules against the database
 npx tsx scripts/test-mention-parsing.ts   # @-mention detection, no db or socket
+npx tsx scripts/test-reminder-time.ts     # "tomorrow 3pm" -> an instant (no db)
+npx tsx scripts/test-reminder-flow.ts     # reminder lifecycle + routing
 ```
 
 The e2e suite asserts on *what actually happened in the database*, not on how
@@ -368,6 +370,49 @@ Rules worth knowing:
   touches the order.
 
 `scripts/test-delivery-flow.ts` covers all of the above against the database.
+
+## Reminders
+
+"Remind me in 2 hours to chase the transfer." Three tools — `set_reminder`,
+`list_reminders`, `cancel_reminder` — plus a sweep in `utils/reminder-sweep.ts`
+fired from the interval in `server.ts`.
+
+**A reminder is a row, not a cron entry.** Each one could have been a real
+crontab line; none of them is. A row can be listed, cancelled and recovered,
+survives a redeploy, and needs no shell access from the API process. It is the
+same shape the transactional email outbox already uses, for the same reasons.
+The practical payoff is that nothing is lost to downtime: a reminder that came
+due while WhatsApp was disconnected is still PENDING when the worker returns
+and goes out late, which is what someone who asked to be reminded wants.
+
+Lifecycle: `PENDING` → `SENT`, or `CANCELLED` if called off, or `FAILED` after
+six failed sends (1/2/4/8/16/30-minute backoff) or if it goes more than 24h
+past due. A FAILED reminder is kept, never deleted — one that never reached
+anyone should be visible rather than silently gone.
+
+**Where it goes** is the part worth understanding:
+
+- Default is the conversation it was set in. The target is stored as
+  `AgentConversation.chatKey` verbatim (`dm:<phone>` / `group:<jid>`), so
+  "send it back here" is a copy of the key rather than a second addressing
+  scheme that can drift out of step with the first. A group key becomes a
+  `jid` at send time; a DM key becomes a `phone`.
+- `"me"` means the requester's own DM even when asked from a group.
+- An operator can be named or numbered.
+- **Anyone else is refused.** The agent's standing guarantee is that nothing it
+  does reaches a customer except a transactional email. A tool that put
+  arbitrary text on a schedule to an arbitrary number would quietly delete that
+  guarantee and make the business number a spam vector, so a target must
+  resolve to an allowlisted operator or to the current chat. If reminding a
+  customer is ever genuinely wanted, that should be a deliberate separate
+  decision rather than a side effect of this tool.
+
+Times are Malaysia local and go through the same fixed +08:00 as the delivery
+diary. Anything unparseable is refused rather than guessed at — "sometime next
+week" has no defensible instant behind it, and picking one would leave an
+operator believing they were covered. The confirmation string is 12-hour with
+an explicit AM/PM because the model was observed reading a 24-hour "06:26" back
+as "6:26 PM".
 
 ## Adding a tool
 

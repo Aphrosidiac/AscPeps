@@ -10,6 +10,15 @@ export interface AgentActor {
   canWrite: boolean;
 }
 
+/** Where a conversation is happening — see ToolContext.origin. */
+export interface ChatOrigin {
+  kind: 'dm' | 'group';
+  /** AgentConversation.chatKey: "dm:0123456789" or "group:120…@g.us". */
+  chatKey: string;
+  /** How it reads to a human: "this group — Ops" / "your DM". */
+  label: string;
+}
+
 export interface ToolContext {
   // The live API instance. Order and finance tools call the existing admin
   // controllers through this rather than writing rows themselves — those
@@ -24,6 +33,13 @@ export interface ToolContext {
   fastify: FastifyInstance;
   prisma: PrismaClient;
   actor: AgentActor;
+  // Where this conversation is happening, so a tool can address something back
+  // to it later. Carries AgentConversation.chatKey verbatim ("dm:0123456789" /
+  // "group:120…@g.us") rather than a second addressing scheme, so "send it
+  // where we are talking" cannot drift out of step with where the thread
+  // actually lives. Optional so the write-tool tests can build a context
+  // without inventing a conversation.
+  origin?: ChatOrigin;
   // Storefront cache invalidation. Writing product/content rows straight to
   // the DB (as these tools do) bypasses the admin HTTP API and therefore never
   // fires the revalidate ping the frontend relies on — without this an agent

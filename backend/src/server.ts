@@ -34,6 +34,7 @@ import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 import { processEmailOutbox } from './utils/email-worker.js';
+import { processDueReminders } from './utils/reminder-sweep.js';
 
 const fastify = Fastify({
   // Trust exactly one hop (the nginx in front) — `true` would trust the
@@ -178,6 +179,18 @@ try {
     );
   }, EMAIL_INTERVAL_MS);
   emailTimer.unref();
+
+  // Fire reminders set through the WhatsApp agent. 30s means a reminder is at
+  // most half a minute late, which nobody notices, while keeping the query
+  // (one indexed lookup that usually returns nothing) cheap enough to run
+  // forever.
+  const REMINDER_INTERVAL_MS = 30 * 1000;
+  const reminderTimer = setInterval(() => {
+    processDueReminders(fastify).catch((err) =>
+      fastify.log.error({ err }, 'reminder sweep failed')
+    );
+  }, REMINDER_INTERVAL_MS);
+  reminderTimer.unref();
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

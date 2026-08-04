@@ -620,23 +620,29 @@ await prisma.partner.deleteMany({ where: { name: 'Audit Temp Partner' } });
 // ---------------------------------------------------------------- coverage
 
 // Covered by a dedicated suite rather than here, because they only make sense
-// against a whole schedule (windows -> slots -> booking -> cancellation) rather
-// than as isolated calls. Named explicitly so the coverage gate below stays a
-// real guarantee instead of being quietly weakened.
-const COVERED_BY_DELIVERY_SUITE = new Set([
-  'schedule_delivery',
-  'update_delivery',
-  'cancel_delivery',
-]);
+// as a whole lifecycle rather than as isolated calls. Named explicitly, per
+// suite, so the coverage gate below stays a real guarantee instead of being
+// quietly weakened by a catch-all.
+const COVERED_ELSEWHERE: Record<string, string> = {
+  // scripts/test-delivery-flow.ts — booking only means something against a
+  // whole schedule (book -> move -> complete -> cancel).
+  schedule_delivery: 'test-delivery-flow.ts',
+  update_delivery: 'test-delivery-flow.ts',
+  cancel_delivery: 'test-delivery-flow.ts',
+  // scripts/test-reminder-flow.ts — a reminder is only meaningful across
+  // set -> due -> swept -> settled, including where it was routed.
+  set_reminder: 'test-reminder-flow.ts',
+  cancel_reminder: 'test-reminder-flow.ts',
+};
 
 const writeTools = ALL_TOOLS.filter((t) => t.write).map((t) => t.name);
-const untested = writeTools.filter((n) => !exercised.has(n) && !COVERED_BY_DELIVERY_SUITE.has(n));
+const untested = writeTools.filter((n) => !exercised.has(n) && !(n in COVERED_ELSEWHERE));
 
 console.log('\n' + '='.repeat(78));
 console.log(`${pass} passed, ${fail} failed`);
 console.log(
   `write tools: ${writeTools.length} total, ${exercised.size} exercised here, ` +
-    `${COVERED_BY_DELIVERY_SUITE.size} in scripts/test-delivery-flow.ts`
+    `${Object.keys(COVERED_ELSEWHERE).length} in dedicated suites`
 );
 if (untested.length) console.log(`NOT EXERCISED: ${untested.join(', ')}`);
 if (failures.length) {

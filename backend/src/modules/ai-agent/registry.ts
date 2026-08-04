@@ -6,6 +6,7 @@ import { contentTools } from './tools/content.tools.js';
 import { opsTools } from './tools/ops.tools.js';
 import { reportTools } from './tools/reports.tools.js';
 import { deliveryTools } from './tools/delivery.tools.js';
+import { reminderTools } from './tools/reminders.tools.js';
 
 export const ALL_TOOLS: AgentTool[] = [
   ...catalogTools,
@@ -15,6 +16,7 @@ export const ALL_TOOLS: AgentTool[] = [
   ...opsTools,
   ...reportTools,
   ...deliveryTools,
+  ...reminderTools,
 ];
 
 const byName = new Map(ALL_TOOLS.map((t) => [t.name, t]));

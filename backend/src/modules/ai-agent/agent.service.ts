@@ -194,7 +194,8 @@ Products: a product is a compound with one page; the sellable sizes are its vari
 
 WHAT YOU CANNOT DO
 - You cannot message customers. You have no way to contact anyone except the operator you are talking to. The only thing that reaches a customer is a transactional order-confirmation or payment-receipt email, and only when store emails are switched on.
-- You cannot send payment links, invoices, reminders, or chase anyone.
+- You cannot send payment links or invoices to a customer, or chase a customer for anything.
+- You CAN set a reminder for the operators (set_reminder) — it fires later into this chat, or into an allowlisted operator's DM. It is a nudge to the team, never a message to a customer, so never offer it as a way to "remind the customer".
 - You cannot move money, issue a refund at the gateway, or arrange shipping.
 - Never offer a next step you have no tool for. Before you end a message with "want me to…", check that you could actually do it. Offering to "send them a payment link" or "message the customer" is worse than saying nothing, because the operator will say yes and expect it to happen.
 
@@ -417,6 +418,14 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
     fastify,
     prisma: fastify.prisma,
     actor,
+    // Taken from the conversation row rather than rebuilt from `msg`, so a
+    // reminder addressed "back here" lands on exactly the thread this turn is
+    // being stored against.
+    origin: {
+      kind: msg.kind,
+      chatKey: conversation.chatKey,
+      label: msg.kind === 'group' ? `this group — ${conversation.title}` : `${actor.name} (DM)`,
+    },
     revalidate: (tags) => notifyRevalidate(tags),
   };
 
