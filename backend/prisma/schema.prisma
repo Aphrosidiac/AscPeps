@@ -182,6 +182,7 @@ model Order {
   emails       EmailOutbox[]
   profitShares OrderProfitShare[]
   extraCosts   OrderExtraCost[]
+  reminders    AgentReminder[]
 
   @@index([phone])
   @@index([status])
@@ -785,6 +786,78 @@ model AgentPendingAction {
   @@index([conversationId])
   @@index([expiresAt])
   @@map("agent_pending_actions")
+}
+
+// A "remind me about X at Y" set through the agent.
+//
+// Scheduled as a ROW plus a sweep (utils/reminder-sweep.ts, fired from the
+// interval in server.ts), deliberately not as an OS cron entry per reminder.
+// A crontab line cannot be listed or cancelled from the dashboard, does not
+// survive a redeploy of a container it lives in, and would need shell access
+// from the API process. A row is queryable, cancellable, and recoverable — the
+// same shape the transactional email outbox already uses, for the same reasons.
+//
+// Because it is a row, a reminder is never lost to downtime: one that came due
+// while WhatsApp was disconnected is still PENDING when the worker returns and
+// goes out late, which is what someone who asked to be reminded actually wants.
+model AgentReminder {
+  id String @id @default(cuid())
+
+  // What to say when it fires. Stored as the finished sentence rather than a
+  // template, so the reminder reads the same however the model later phrases
+  // things — and so an operator can see, now, the exact words they will get.
+  message String
+
+  // Optional subject the reminder hangs off. Free text ("restock BPC-157")
+  // rather than an enum: the request was "a specific order or any specific
+  // thing", and most reminders are not about an order at all.
+  topic   String?
+  orderId String?
+
+  dueAt DateTime
+
+  // WHERE it goes, in the same "dm:<phone>" / "group:<jid>" form as
+  // AgentConversation.chatKey, so "send it back to this conversation" is a
+  // straight copy of the key rather than a second addressing scheme that can
+  // disagree with the first.
+  targetChatKey String
+  // How that target reads to a human ("this group — Ops", "Fakhrul"). Frozen
+  // at creation so the confirmation the operator saw is what gets shown back,
+  // even if the group is later renamed.
+  targetLabel   String
+
+  status        ReminderStatus @default(PENDING)
+  attempts      Int            @default(0)
+  nextAttemptAt DateTime       @default(now())
+  lastError     String?
+  sentAt        DateTime?
+
+  // Who set it and where from — an audit trail, and what "my reminders" filters
+  // on when an operator asks what they have pending.
+  createdByPhone   String
+  createdByName    String
+  createdInChatKey String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // The sweep's only query: due, still pending, ready to retry.
+  @@index([status, nextAttemptAt])
+  @@index([createdByPhone, status])
+  @@index([orderId])
+  @@map("agent_reminders")
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  // Called off by an operator before it fired.
+  CANCELLED
+  // Gave up after repeated send failures — kept, never deleted, so a reminder
+  // that never reached anyone is visible rather than silently gone.
+  FAILED
 }
 
 // ------------------------------------------------- Delivery scheduling

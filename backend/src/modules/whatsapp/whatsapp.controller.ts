@@ -1,26 +1,14 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { env } from '../../config/env.js';
-
 // Thin proxy from the admin dashboard to the worker's localhost control plane.
 // The worker binds to 127.0.0.1 only, so this is the sole path to it — which is
 // the point: pairing, stopping and logging out are admin-authenticated here,
 // and unreachable from outside the box.
-async function workerRequest(path: string, body?: any) {
-  const url = `http://127.0.0.1:${env.WORKER_HTTP_PORT}${path}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    return await fetch(url, {
-      method: body ? 'POST' : 'GET',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.WORKER_HTTP_TOKEN}` },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+//
+// The request helper itself lives in utils/whatsapp-send.ts so the reminder
+// sweep can send without a FastifyReply to answer — one path to the worker,
+// not two that can drift apart.
+import { workerRequest } from '../../utils/whatsapp-send.js';
 
 // A dead worker must render as "worker unreachable" in the UI, not as a broken
 // page. PM2 can report the process online while the socket inside it is gone,
