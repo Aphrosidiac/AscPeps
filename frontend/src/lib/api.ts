@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense } from '@/types';
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -395,3 +395,55 @@ export const adminSendTestCampaign = (token: string, id: string, email: string) 
 
 export const adminSendCampaign = (token: string, id: string) =>
   api.post<{ ok: true; recipientCount: number }>(`/api/v1/admin/campaigns/${id}/send`, {}, auth(token)).then((r) => r.data);
+
+// ---- Member accounts & Insight comments ----
+//
+// Member calls pass their token explicitly, the same convention the admin
+// calls above use. Note the axios 401 interceptor at the top of this file
+// only redirects when the request is on an /admin path, so an expired member
+// token surfaces as a normal error for the component to handle rather than
+// yanking a reader off the article they were reading.
+
+export const memberRegister = (data: { email: string; password: string; displayName: string }) =>
+  api.post<{ success: boolean; message: string }>('/api/v1/members/register', data).then((r) => r.data);
+
+export const memberLogin = (data: { email: string; password: string }) =>
+  api.post<{ token: string; member: Member }>('/api/v1/members/login', data).then((r) => r.data);
+
+export const memberMe = (token: string) =>
+  api.get<Member>('/api/v1/members/me', auth(token)).then((r) => r.data);
+
+export const memberVerifyEmail = (token: string) =>
+  api
+    .get<{ success: boolean }>('/api/v1/members/verify', { params: { token } })
+    .then((r) => r.data);
+
+export const memberResendVerification = (email: string) =>
+  api
+    .post<{ success: boolean; message: string }>('/api/v1/members/resend-verification', { email })
+    .then((r) => r.data);
+
+export const getInsightComments = (slug: string) =>
+  api.get<{ data: InsightComment[] }>(`/api/v1/insights/${encodeURIComponent(slug)}/comments`).then((r) => r.data);
+
+export const postInsightComment = (token: string, slug: string, body: string) =>
+  api
+    .post<InsightComment>(`/api/v1/insights/${encodeURIComponent(slug)}/comments`, { body }, auth(token))
+    .then((r) => r.data);
+
+export const deleteInsightComment = (token: string, id: string) =>
+  api.delete(`/api/v1/insights/comments/${id}`, auth(token)).then((r) => r.data);
+
+// ---- Admin comment moderation ----
+
+export const adminListComments = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<AdminComment>>('/api/v1/admin/comments', { ...auth(token), params }).then((r) => r.data);
+
+export const adminSetCommentHidden = (token: string, id: string, hidden: boolean) =>
+  api.patch(`/api/v1/admin/comments/${id}`, { hidden }, auth(token)).then((r) => r.data);
+
+export const adminDeleteComment = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/comments/${id}`, auth(token)).then((r) => r.data);
+
+export const adminSetMemberBanned = (token: string, memberId: string, banned: boolean) =>
+  api.patch(`/api/v1/admin/comments/members/${memberId}`, { banned }, auth(token)).then((r) => r.data);

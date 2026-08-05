@@ -1,4 +1,4 @@
-import type { Category, PaginatedResponse, Product, Insight } from '@/types';
+import type { Category, PaginatedResponse, Product, Insight, InsightComment } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
@@ -57,3 +57,15 @@ export const getInsightsServer = (params?: { category?: string; limit?: number }
 
 export const getInsightServer = (slug: string) =>
   getJson<Insight | null>(`/api/v1/insights/${encodeURIComponent(slug)}`, null, ['insights']);
+
+// Fetched server-side (rather than in the browser after hydration) so the
+// comments are in the HTML crawlers receive — reader discussion is exactly the
+// long-tail content this section exists to accumulate. Shares the 'insights'
+// tag, so posting a comment revalidates the article page it lives on; see the
+// notifyRevalidate call in the backend's comments controller.
+export const getInsightCommentsServer = (slug: string) =>
+  getJson<{ data: InsightComment[] }>(
+    `/api/v1/insights/${encodeURIComponent(slug)}/comments`,
+    { data: [] },
+    ['insights']
+  );

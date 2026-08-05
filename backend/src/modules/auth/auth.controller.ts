@@ -31,7 +31,9 @@ export async function login(fastify: FastifyInstance, body: unknown) {
     throw { statusCode: 401, message: 'Invalid email or password' };
   }
 
-  const token = fastify.jwt.sign({ id: admin.id, email: admin.email });
+  // `kind` separates this from a storefront member token signed with the same
+  // secret — see plugins/auth.ts.
+  const token = fastify.jwt.sign({ id: admin.id, email: admin.email, kind: 'admin' });
   return { token, user: { id: admin.id, email: admin.email, name: admin.name } };
 }
 
