@@ -16,6 +16,7 @@ import categoryRoutes from './modules/categories/categories.routes.js';
 import productRoutes from './modules/products/products.routes.js';
 import orderRoutes from './modules/orders/orders.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import memberRoutes from './modules/members/members.routes.js';
 import adminProductRoutes from './modules/admin/admin-products.routes.js';
 import adminOrderRoutes from './modules/admin/admin-orders.routes.js';
 import adminEmailRoutes from './modules/admin/admin-emails.routes.js';
@@ -31,6 +32,7 @@ import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
+import adminCommentRoutes from './modules/admin/admin-comments.routes.js';
 import adminDeliveryRoutes from './modules/admin/admin-delivery.routes.js';
 import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
 import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
@@ -118,6 +120,9 @@ await fastify.register(categoryRoutes, { prefix: '/api/v1/categories' });
 await fastify.register(productRoutes, { prefix: '/api/v1/products' });
 await fastify.register(orderRoutes, { prefix: '/api/v1/orders' });
 await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
+// Storefront reader accounts — distinct population from the admin above, and
+// the only thing an account currently unlocks is commenting on Insights.
+await fastify.register(memberRoutes, { prefix: '/api/v1/members' });
 await fastify.register(publicSettingsRoutes, { prefix: '/api/v1/settings' });
 // Newsletter signup and unsubscribe. Public and unauthenticated by
 // necessity — the unsubscribe endpoint is reached by a mail client with no
@@ -136,6 +141,7 @@ await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' 
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
 await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
+await fastify.register(adminCommentRoutes, { prefix: '/api/v1/admin/comments' });
 await fastify.register(adminDeliveryRoutes, { prefix: '/api/v1/admin/delivery' });
 // Public — Resend's servers call this directly (see the route file for why
 // it needs its own scoped raw-body content-type parser). The global rate

@@ -5,8 +5,9 @@ import { notFound } from 'next/navigation';
 import { ExternalLink, FileText } from 'lucide-react';
 import { InsightCard } from '@/components/insights/InsightCard';
 import { InsightFigures } from '@/components/insights/InsightFigures';
+import { InsightComments } from '@/components/insights/InsightComments';
 import { JsonLd } from '@/components/JsonLd';
-import { getInsightServer, getInsightsServer } from '@/lib/server-api';
+import { getInsightServer, getInsightsServer, getInsightCommentsServer } from '@/lib/server-api';
 import { absoluteImageUrl, formatShortDate } from '@/lib/utils';
 
 const BASE_URL = 'https://ascendpeptides.my';
@@ -39,7 +40,13 @@ export async function generateMetadata({ params }: InsightPageProps): Promise<Me
   };
 }
 
-function ArticleJsonLd({ insight }: { insight: NonNullable<Awaited<ReturnType<typeof getInsightServer>>> }) {
+function ArticleJsonLd({
+  insight,
+  commentCount,
+}: {
+  insight: NonNullable<Awaited<ReturnType<typeof getInsightServer>>>;
+  commentCount: number;
+}) {
   // Cover first, then every figure. Google reads `image` as an array and the
   // figures genuinely are this article's images — leaving them out meant a
   // figure-heavy piece advertised a single stock cover. Relative upload paths
@@ -59,6 +66,9 @@ function ArticleJsonLd({ insight }: { insight: NonNullable<Awaited<ReturnType<ty
     author: { '@type': 'Person', name: insight.authorName, jobTitle: insight.authorRole },
     publisher: { '@type': 'Organization', name: 'ASCEND' },
     ...(images.length > 0 && { image: images }),
+    // Omitted rather than emitted as 0 — declaring "this article has no
+    // discussion" is a weaker signal than saying nothing about it.
+    ...(commentCount > 0 && { commentCount }),
   };
 
   return <JsonLd data={data} />;
@@ -69,7 +79,10 @@ export default async function InsightPage({ params }: InsightPageProps) {
   const insight = await getInsightServer(slug);
   if (!insight) notFound();
 
-  const { data: allInsights } = await getInsightsServer({ limit: 100 });
+  const [{ data: allInsights }, { data: comments }] = await Promise.all([
+    getInsightsServer({ limit: 100 }),
+    getInsightCommentsServer(slug),
+  ]);
   const more = allInsights
     .filter((i) => i.id !== insight.id)
     // Same-category articles first; ties keep their original order (sort is
@@ -81,7 +94,7 @@ export default async function InsightPage({ params }: InsightPageProps) {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <ArticleJsonLd insight={insight} />
+      <ArticleJsonLd insight={insight} commentCount={comments.length} />
 
       <p className="text-sm text-text-muted mb-4">
         <Link href="/insights" className="hover:text-text-primary transition-colors">Insights</Link>
@@ -154,6 +167,8 @@ export default async function InsightPage({ params }: InsightPageProps) {
           </div>
         </div>
       )}
+
+      <InsightComments slug={insight.slug} initialComments={comments} />
 
       {more.length > 0 && (
         <div className="mt-12 pt-8 border-t border-border">

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShoppingCart, Menu, X, Search } from 'lucide-react';
+import { ShoppingCart, Menu, X, Search, User } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 
@@ -141,6 +141,17 @@ export function Navbar() {
                 <Search className="w-5 h-5" />
               </button>
             )}
+
+            {/* Accounts exist only for commenting on Insights, so this stays a
+                quiet icon rather than a "Sign in" call to action competing
+                with the cart. */}
+            <Link
+              href="/account"
+              className="p-3 hover:bg-surface-elevated rounded-lg transition-colors"
+              aria-label="Your account"
+            >
+              <User className="w-5 h-5" />
+            </Link>
 
             <Link href="/cart" className="relative p-3 hover:bg-surface-elevated rounded-lg transition-colors">
               <ShoppingCart className="w-5 h-5" />

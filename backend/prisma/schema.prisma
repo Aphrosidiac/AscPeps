@@ -421,7 +421,8 @@ model Insight {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  figures InsightFigure[]
+  figures  InsightFigure[]
+  comments InsightComment[]
 
   @@index([published])
   @@index([category])
@@ -464,6 +465,76 @@ model InsightFigure {
   @@unique([insightId, order])
   @@index([insightId])
   @@map("insight_figures")
+}
+
+// ---------------------------------------------------------------- Members
+//
+// Storefront accounts, kept deliberately separate from AdminUser above. The
+// two are different populations with different trust levels, and collapsing
+// them into one table with a role column would mean one bad query away from a
+// commenter holding admin rights. The JWTs are separated too — see the `kind`
+// claim in plugins/auth.ts.
+//
+// Today an account does exactly one thing: it lets you comment on an Insight.
+// Orders remain guest checkout and are NOT linked here.
+model Member {
+  id           String  @id @default(cuid())
+  // Stored lowercased (normalised at the controller) so "A@x.com" and
+  // "a@x.com" can't become two accounts that look identical in the UI.
+  email        String  @unique
+  passwordHash String
+  // What other readers see on a comment. Email is never exposed publicly.
+  displayName  String
+
+  // Unverified accounts can sign in but cannot post — see authenticateMember.
+  // That ordering is deliberate: a signed-in-but-unverified user gets a "check
+  // your inbox" prompt in place of the composer, rather than a login form that
+  // appears to have silently failed.
+  emailVerified Boolean @default(false)
+  // Only the SHA-256 of the emailed token is stored. A leaked DB snapshot then
+  // can't be replayed to verify (and thereby take over) a pending address —
+  // same reasoning as not storing raw passwords.
+  verifyTokenHash      String?
+  verifyTokenExpiresAt DateTime?
+
+  // Moderation of last resort. Banned members keep their rows (so their past
+  // comments stay attributable) but can neither sign in nor post.
+  banned Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments InsightComment[]
+
+  @@index([verifyTokenHash])
+  @@map("members")
+}
+
+// A reader's comment on an article. Flat — no parent/reply threading, no
+// votes: this is a comment section, not a forum, and adding either later is a
+// migration rather than a rewrite.
+model InsightComment {
+  id        String @id @default(cuid())
+  insightId String
+  memberId  String
+  body      String
+
+  // Soft moderation. Hidden comments stay in the table (so the admin can
+  // review a decision, and so a spammer can't tell whether their post was
+  // removed or simply ignored) but are filtered out of every public read.
+  hidden Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  insight Insight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  // Covers the public thread read: one article's visible comments, newest
+  // first. `hidden` is in the index because every public query filters on it.
+  @@index([insightId, hidden, createdAt])
+  @@index([memberId])
+  @@map("insight_comments")
 }
 
 // ---------------------------------------------------------------- Finance

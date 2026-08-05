@@ -272,6 +272,38 @@ export interface Insight {
   figures?: InsightFigure[];
 }
 
+// A reader's comment on an article. `memberId` is present so the signed-in
+// reader's own comments can offer a delete control without a second request;
+// it identifies the author to the client only, never an email address.
+export interface InsightComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  memberId: string;
+  member: { displayName: string };
+}
+
+// The storefront account. Distinct from the admin user — see the `kind` claim
+// note in backend/src/plugins/auth.ts.
+export interface Member {
+  id: string;
+  email: string;
+  displayName: string;
+  emailVerified: boolean;
+}
+
+// The moderation-queue view of a comment: carries the hidden flag, the article
+// it belongs to, and the author's email/ban state — none of which appear in
+// the public InsightComment above.
+export interface AdminComment {
+  id: string;
+  body: string;
+  hidden: boolean;
+  createdAt: string;
+  insight: { id: string; title: string; slug: string };
+  member: { id: string; displayName: string; email: string; banned: boolean };
+}
+
 export interface InsightFigure {
   id: string;
   insightId: string;
