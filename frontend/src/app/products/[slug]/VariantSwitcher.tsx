@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Check, ShieldCheck, Truck } from 'lucide-react';
 import posthog from 'posthog-js';
@@ -8,12 +8,87 @@ import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
 import { SkuBadge } from '@/components/products/SkuBadge';
-import type { Product } from '@/types';
+import type { Product, ProductVariant } from '@/types';
 
 interface Props {
   product: Product;
   benefits: string[];
   shippingFee: string;
+}
+
+/**
+ * Size picker. Previously three cards each carrying a thumbnail of the same
+ * vial photo — the thumbnails distinguished nothing and cost a row of height
+ * each, and the picker sat in the left column, far from the price it changes.
+ * Now a segmented control directly under the price, so the number that moves
+ * is next to the control that moves it.
+ *
+ * Semantics matter here: this is single-select, so it's a radiogroup with
+ * roving tabindex and arrow-key navigation, not a row of aria-pressed
+ * buttons. One Tab stop for the whole group, arrows to change size.
+ */
+function SizeSelector({
+  variants,
+  selectedId,
+  onSelect,
+}: {
+  variants: ProductVariant[];
+  selectedId: string;
+  onSelect: (v: ProductVariant) => void;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const index = variants.findIndex((v) => v.id === selectedId);
+
+  const step = (delta: number) => {
+    const next = (index + delta + variants.length) % variants.length;
+    onSelect(variants[next]);
+    refs.current[next]?.focus();
+  };
+
+  return (
+    <div role="radiogroup" aria-label="Choose a size" className="flex flex-wrap gap-2">
+      {variants.map((v, i) => {
+        const selected = v.id === selectedId;
+        const soldOut = v.stock === 0;
+        return (
+          <button
+            key={v.id}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                step(1);
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                step(-1);
+              }
+            }}
+            onClick={() => onSelect(v)}
+            className={`min-w-[104px] rounded-lg border px-4 py-2.5 text-left transition-colors cursor-pointer ${
+              selected
+                ? 'border-primary bg-primary text-white'
+                : 'border-border bg-surface hover:border-border-hover'
+            } ${soldOut && !selected ? 'opacity-55' : ''}`}
+          >
+            <span className="block text-sm font-semibold leading-tight">{v.size ?? v.code}</span>
+            <span
+              className={`block text-xs mt-0.5 leading-tight ${
+                selected ? 'text-white/70' : 'text-text-muted'
+              }`}
+            >
+              {soldOut ? 'Sold out' : formatPrice(getEffectivePrice(v))}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // The whole variant-reactive hero: photo + size picker + price + stock +
@@ -47,73 +122,44 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
 
   return (
     <>
-      <div className="grid md:grid-cols-2 gap-6 md:gap-8">
+      {/* No `items-start` on the grid on purpose: the left cell has to stretch
+          to the full row height for the sticky child inside it to have any
+          distance to travel. Previously the photo column ended around 700px
+          while the details column ran past 1400px, leaving half the page as
+          dead white space on the left. */}
+      <div className="grid md:grid-cols-2 gap-8 md:gap-12">
         <div>
-          <Animate variant="fade" duration={0.6}>
-            <div
-              className="relative aspect-square max-w-[280px] mx-auto md:max-w-none md:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden transition-opacity duration-300 ease-out"
-              style={{ opacity: imgVisible ? 1 : 0 }}
-            >
-              {variant.imageUrl ? (
-                <Image
-                  key={variant.id}
-                  src={variant.imageUrl}
-                  alt={`${getVariantDisplayName(product, variant)} — research peptide available in Malaysia`}
-                  fill
-                  sizes="(min-width: 768px) 50vw, 280px"
-                  priority
-                  className="object-cover"
-                />
-              ) : (
-                <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{variant.code}</span>
-              )}
-            </div>
-          </Animate>
-
-          {activeVariants.length > 1 && (
-            <div
-              className="flex gap-2 overflow-x-auto pb-1 mt-4 max-w-[280px] mx-auto md:max-w-none md:mx-0"
-              role="group"
-              aria-label="Choose a size"
-            >
-              {activeVariants.map((v) => {
-                const selected = v.id === variant.id;
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => {
-                      if (v.id !== variant.id) {
-                        posthog.capture('product_variant_selected', {
-                          product_name: product.name,
-                          variant_code: v.code,
-                          variant_size: v.size,
-                        });
-                      }
-                      setSelectedId(v.id);
-                    }}
-                    aria-pressed={selected}
-                    className={`shrink-0 flex flex-col items-center gap-1.5 rounded-lg border px-3 py-2 min-w-[76px] transition-colors cursor-pointer ${
-                      selected ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
-                    }`}
-                  >
-                    <div className="relative w-10 h-10 rounded bg-surface-elevated overflow-hidden flex items-center justify-center">
-                      {v.imageUrl ? (
-                        <Image src={v.imageUrl} alt={v.size ?? v.code} fill sizes="40px" className="object-cover" />
-                      ) : (
-                        <span className="text-[9px] font-bold text-text-muted">{v.code}</span>
-                      )}
-                    </div>
-                    <span className="text-xs font-medium whitespace-nowrap">{v.size ?? v.code}</span>
-                    <span className="text-[11px] text-text-muted whitespace-nowrap">{formatPrice(getEffectivePrice(v))}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* top-24 clears the sticky navbar (top-0, ~72px) plus breathing room. */}
+          <div className="md:sticky md:top-24">
+            <Animate variant="fade" duration={0.6}>
+              <div
+                className="relative aspect-square max-w-[320px] mx-auto md:max-w-none md:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden transition-opacity duration-300 ease-out"
+                style={{ opacity: imgVisible ? 1 : 0 }}
+              >
+                {variant.imageUrl ? (
+                  <Image
+                    key={variant.id}
+                    src={variant.imageUrl}
+                    alt={`${getVariantDisplayName(product, variant)} research peptide available in Malaysia`}
+                    fill
+                    sizes="(min-width: 768px) 50vw, 320px"
+                    priority
+                    className="object-cover"
+                  />
+                ) : (
+                  <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{variant.code}</span>
+                )}
+              </div>
+            </Animate>
+          </div>
         </div>
 
         <Animate variant="fadeUp" delay={0.15} duration={0.6}>
+          {/* Ordered so the purchase decision comes first: identity, price,
+              size, add-ons, then the button. Description and benefits are
+              supporting reading and sit below the CTA rather than pushing it
+              off the screen. space-y-6 because AddToCartPanel brings its own
+              pt-4/pt-3 leading gaps and was written against that rhythm. */}
           <div className="space-y-6">
             <div>
               <p className="text-sm text-text-muted font-medium uppercase tracking-wider mb-1">{product.category.name}</p>
@@ -129,20 +175,26 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
               {onSale && <p className="text-lg text-text-muted line-through">{formatPrice(variant.price)}</p>}
             </div>
 
-            {product.description && <p className="text-text-secondary leading-relaxed">{product.description}</p>}
+            {activeVariants.length > 1 && (
+              <SizeSelector
+                variants={activeVariants}
+                selectedId={variant.id}
+                onSelect={(v) => {
+                  if (v.id !== variant.id) {
+                    posthog.capture('product_variant_selected', {
+                      product_name: product.name,
+                      variant_code: v.code,
+                      variant_size: v.size,
+                    });
+                  }
+                  setSelectedId(v.id);
+                }}
+              />
+            )}
 
-            {benefits.length > 0 && (
-              <div>
-                <h2 className="font-display font-semibold mb-3 text-base">Benefits</h2>
-                <ul className="space-y-2">
-                  {benefits.map((b, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
-                      <Check className="w-4 h-4 text-success mt-0.5 shrink-0" />
-                      {b}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {variant.stock === 0 && <p className="text-danger text-sm font-medium">Out of stock</p>}
+            {variant.stock > 0 && variant.stock <= 5 && (
+              <p className="text-warning text-sm">Only {variant.stock} left in stock</p>
             )}
 
             <AddToCartPanel
@@ -158,17 +210,12 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
               addOnReminder={product.addOnReminder}
             />
 
-            {variant.stock === 0 && <p className="text-danger font-medium">Out of stock</p>}
-            {variant.stock > 0 && variant.stock <= 5 && <p className="text-warning text-sm">Only {variant.stock} left in stock</p>}
-
-            <p className="text-xs text-text-muted italic">For research and laboratory use only.</p>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-2 gap-3">
               <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
                 <ShieldCheck className="w-4 h-4 text-text-muted shrink-0" />
                 <div>
                   <p className="text-xs font-semibold">3rd Party Verified</p>
-                  <p className="text-[11px] text-text-muted">Identity & purity tested</p>
+                  <p className="text-[11px] text-text-muted">Identity &amp; purity tested</p>
                 </div>
               </div>
               <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
@@ -183,6 +230,30 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
                 </div>
               </div>
             </div>
+
+            <p className="text-xs text-text-muted italic">For research and laboratory use only.</p>
+
+            {(product.description || benefits.length > 0) && (
+              <div className="pt-1 space-y-5 border-t border-border">
+                {product.description && (
+                  <p className="text-text-secondary leading-relaxed pt-5">{product.description}</p>
+                )}
+
+                {benefits.length > 0 && (
+                  <div>
+                    <h2 className="font-display font-semibold mb-3 text-base">Benefits</h2>
+                    <ul className="space-y-2">
+                      {benefits.map((b, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
+                          <Check className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                          {b}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </Animate>
       </div>
