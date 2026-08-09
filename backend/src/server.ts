@@ -25,6 +25,9 @@ import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
 import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
+import subscriberRoutes from './modules/subscribers/subscribers.routes.js';
+import adminSubscriberRoutes from './modules/admin/admin-subscribers.routes.js';
+import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
@@ -34,6 +37,8 @@ import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 import { processEmailOutbox } from './utils/email-worker.js';
+import { processWelcomeEmails, processCampaigns } from './utils/marketing-worker.js';
+import { sweepAbandonedCheckouts } from './utils/abandoned-checkout.js';
 import { processDueReminders } from './utils/reminder-sweep.js';
 
 const fastify = Fastify({
@@ -114,6 +119,10 @@ await fastify.register(productRoutes, { prefix: '/api/v1/products' });
 await fastify.register(orderRoutes, { prefix: '/api/v1/orders' });
 await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
 await fastify.register(publicSettingsRoutes, { prefix: '/api/v1/settings' });
+// Newsletter signup and unsubscribe. Public and unauthenticated by
+// necessity — the unsubscribe endpoint is reached by a mail client with no
+// session at all, which is the whole point of RFC 8058 one-click.
+await fastify.register(subscriberRoutes, { prefix: '/api/v1/subscribers' });
 await fastify.register(adminProductRoutes, { prefix: '/api/v1/admin/products' });
 await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
 await fastify.register(adminEmailRoutes, { prefix: '/api/v1/admin/emails' });
@@ -122,6 +131,8 @@ await fastify.register(adminFinanceRoutes, { prefix: '/api/v1/admin/finance' });
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' });
+await fastify.register(adminSubscriberRoutes, { prefix: '/api/v1/admin/subscribers' });
+await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
 await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
@@ -171,6 +182,13 @@ try {
     reconcileStaleOrders(fastify).catch((err) =>
       fastify.log.error({ err }, 'payment reconcile sweep failed')
     );
+    // Same cadence and the same rows, read for the opposite purpose: this
+    // decides which unpaid orders are still worth a nudge, while the sweep
+    // above decides when to give up on them. Kept as a separate call so a
+    // failure in one can't skip the other.
+    sweepAbandonedCheckouts(fastify).catch((err) =>
+      fastify.log.error({ err }, 'abandoned-checkout sweep failed')
+    );
   }, RECONCILE_INTERVAL_MS);
   timer.unref();
 
@@ -188,6 +206,23 @@ try {
   // most half a minute late, which nobody notices, while keeping the query
   // (one indexed lookup that usually returns nothing) cheap enough to run
   // forever.
+  // Marketing mail: the welcome sweep (people who joined the list and haven't
+  // been welcomed) and the campaign drain. Both no-op until
+  // marketing_emails_enabled is set, and both pace their own sends internally
+  // to stay under Resend's rate limit. Deliberately on a slower interval than
+  // the transactional outbox — nothing here is time-critical, and a welcome
+  // arriving a minute later than it could have costs nothing.
+  const MARKETING_INTERVAL_MS = 60 * 1000;
+  const marketingTimer = setInterval(() => {
+    processWelcomeEmails(fastify).catch((err) =>
+      fastify.log.error({ err }, 'welcome email sweep failed')
+    );
+    processCampaigns(fastify).catch((err) =>
+      fastify.log.error({ err }, 'campaign send sweep failed')
+    );
+  }, MARKETING_INTERVAL_MS);
+  marketingTimer.unref();
+
   const REMINDER_INTERVAL_MS = 30 * 1000;
   const reminderTimer = setInterval(() => {
     processDueReminders(fastify).catch((err) =>

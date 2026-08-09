@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 
 export function Footer() {
   return (
@@ -55,6 +56,24 @@ export function Footer() {
                 <a href="https://wa.me/601161092723" target="_blank" rel="noopener noreferrer" className="block text-sm text-neutral-300 hover:text-white transition-colors">WhatsApp &rarr;</a>
               </div>
             </div>
+          </div>
+
+          {/* The always-available capture point. The popup can be switched
+              off, dismissed for a month, or blocked outright — this is the one
+              a returning visitor can still find on purpose. */}
+          <div
+            id="newsletter"
+            className="border-t border-neutral-800 mt-8 pt-8 grid gap-4 md:grid-cols-2 md:items-center scroll-mt-24"
+          >
+            <div>
+              <h4 className="font-semibold text-sm uppercase tracking-wider text-neutral-400">
+                Restock &amp; research updates
+              </h4>
+              <p className="mt-1 text-sm text-neutral-400 max-w-sm">
+                New batch COAs, restocks, and the occasional piece worth reading. No spam.
+              </p>
+            </div>
+            <NewsletterForm source="FOOTER" ctaLabel="Subscribe" tone="dark" />
           </div>
 
           <div className="border-t border-neutral-800 mt-8 pt-8 text-center text-sm text-neutral-500">

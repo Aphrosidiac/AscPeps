@@ -298,6 +298,11 @@ model OrderProfitShare {
 enum EmailType {
   ORDER_CONFIRMATION
   PAYMENT_RECEIPT
+  // Sent once to a gateway order that was created but never paid, while its
+  // bill is still open. Rides the same outbox as the two above precisely
+  // because the (orderId, type) unique key is what makes "once" true — the
+  // sweep that enqueues it runs every 10 minutes and would otherwise nag.
+  ABANDONED_CHECKOUT
 }
 
 enum EmailStatus {
@@ -363,6 +368,10 @@ model DiscountCode {
   updatedAt      DateTime     @updatedAt
 
   orders Order[]
+  // Set only on the single-use codes minted for newsletter welcome emails, so
+  // an admin deleting a subscriber can't orphan a code that a real order may
+  // already reference (the relation is optional in both directions).
+  subscriber Subscriber?
 
   @@map("discount_codes")
 }
@@ -913,4 +922,170 @@ model DeliveryBooking {
   @@index([scheduledFor])
   @@index([status])
   @@map("delivery_bookings")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing email — list, campaigns, per-recipient delivery
+// ---------------------------------------------------------------------------
+
+// A marketing-email address. Deliberately NOT folded into Member: a Member is
+// a login (password, verification, ban state) that exists to comment on
+// Insights, whereas most of this list will be people who bought once and
+// never made an account, or who only ever typed an address into the footer.
+// The two populations barely overlap and their lifecycles share nothing.
+model Subscriber {
+  id     String           @id @default(cuid())
+  // Stored lowercased at the controller, same normalisation as Member.email —
+  // otherwise "A@x.com" and "a@x.com" become two rows that both get mailed.
+  email  String           @unique
+  status SubscriberStatus @default(SUBSCRIBED)
+  source SubscriberSource
+
+  // Single opt-in, no confirmation step: the two capture points are a footer
+  // form and a checkout tickbox, and the checkout one is already an
+  // established customer relationship. The deliverability protection that
+  // matters here is instead (a) one-click unsubscribe on every send, (b) the
+  // Resend bounce/complaint webhook flipping rows to UNSUBSCRIBED, and (c)
+  // never mailing a row that isn't SUBSCRIBED.
+  //
+  // The token is stored raw, unlike Member.verifyTokenHash. That asymmetry is
+  // deliberate: a leaked verify token lets an attacker take over a pending
+  // address, while a leaked unsubscribe token only lets them remove someone
+  // from a mailing list — the failure is in the direction the recipient can
+  // already choose. It has to survive in plaintext to be embeddable in the
+  // List-Unsubscribe header of every future send.
+  unsubscribeToken  String    @unique
+  unsubscribedAt    DateTime?
+  // Why the row left the list, when it wasn't the person clicking: "bounced"
+  // or "complained" from the Resend webhook. Null for a self-unsubscribe.
+  unsubscribeReason String?
+
+  // The welcome email is queued by these three columns rather than by a row in
+  // EmailOutbox, whose orderId is a required FK — a signup has no order. A
+  // nullable "welcome not sent yet" marker on the subscriber itself is a queue
+  // with no extra table, is naturally exactly-once (the sweep only ever selects
+  // welcomeSentAt = null), and survives a restart mid-send. It also degrades
+  // the right way when marketing mail is switched off at signup time: the row
+  // simply waits, and a welcome that arrives late is still a welcome — unlike
+  // an order confirmation, which is why enqueueEmail() deliberately drops
+  // those instead of queuing them.
+  welcomeSentAt   DateTime?
+  welcomeAttempts Int       @default(0)
+  welcomeError    String?
+  // The first-order code minted for this specific person, single-use. Per
+  // subscriber rather than one shared WELCOME10 because a shared code in this
+  // niche ends up on a deals forum within a week and then discounts every
+  // order the site takes. Nullable: welcome discounts can be switched off
+  // entirely (welcome_discount_percent = 0), and rows created before the
+  // welcome is sent have not been issued one yet.
+  welcomeDiscountCodeId String?       @unique
+  welcomeDiscountCode   DiscountCode? @relation(fields: [welcomeDiscountCodeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaignRecipients CampaignRecipient[]
+
+  @@index([status])
+  // Drives the welcome sweep's only query.
+  @@index([welcomeSentAt])
+  @@map("subscribers")
+}
+
+enum SubscriberStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+}
+
+// Where the address came from. Worth keeping as an enum rather than free text
+// because it is the only way to tell whether the footer form is earning its
+// place, and campaign audiences may eventually want to segment on it.
+enum SubscriberSource {
+  FOOTER
+  CHECKOUT
+  ADMIN
+}
+
+// One marketing send. Content is a plain-text body plus an optional single
+// CTA — the same constraint Insight.content lives under (no markdown library
+// in this project), and for an email it is the right constraint anyway:
+// bulletproof table-based HTML is generated from it by emails/campaign.ts,
+// so an admin can never paste markup that breaks in Outlook.
+model Campaign {
+  id        String  @id @default(cuid())
+  // Internal label for the list screen. Not shown to recipients.
+  name      String
+  subject   String
+  // The line the inbox shows next to the subject. Optional; falls back to the
+  // opening of the body.
+  preheader String?
+  body      String
+  ctaLabel  String?
+  ctaUrl    String?
+
+  audience CampaignAudience @default(ALL)
+  status   CampaignStatus   @default(DRAFT)
+
+  // Frozen at send time, not computed on read: the audience keeps moving
+  // (people subscribe, people leave), so a live count would silently rewrite
+  // the history of what a past campaign actually went to.
+  recipientCount Int       @default(0)
+  sentAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recipients CampaignRecipient[]
+
+  @@index([status])
+  @@map("campaigns")
+}
+
+enum CampaignAudience {
+  ALL
+  // Subscribers whose address is on at least one PAID order.
+  BUYERS
+  // Subscribers with no paid order — the "you signed up but never bought" cut.
+  NON_BUYERS
+}
+
+enum CampaignStatus {
+  DRAFT
+  // Recipient rows exist and the worker is draining them. A campaign is only
+  // ever moved into this state once; there is no re-send, because the
+  // (campaignId, subscriberId) unique key is what guarantees nobody gets the
+  // same campaign twice.
+  SENDING
+  SENT
+}
+
+// One row per (campaign, subscriber), mirroring EmailOutbox's retry/backoff
+// shape rather than reusing that table — EmailOutbox.orderId is a required FK
+// and a campaign has no order. Materialising the audience into rows at send
+// time (instead of iterating subscribers live) is what makes the send
+// resumable across a restart and exactly-once per person.
+model CampaignRecipient {
+  id           String @id @default(cuid())
+  campaignId   String
+  subscriberId String
+  // Snapshotted so a later email change (or a deleted subscriber) can't make
+  // the delivery record lie about where the message actually went.
+  toEmail      String
+
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  lastError     String?
+  resendId      String?
+  sentAt        DateTime?
+
+  createdAt DateTime @default(now())
+
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, subscriberId])
+  @@index([status, nextAttemptAt])
+  @@index([resendId])
+  @@map("campaign_recipients")
 }

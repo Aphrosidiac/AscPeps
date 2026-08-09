@@ -46,6 +46,8 @@ export const createOrder = (data: {
   postcode: string;
   paymentMethod: 'WHATSAPP' | 'BILLPLZ';
   notes?: string;
+  /** Checkout's newsletter tickbox — only honoured when `email` is present. */
+  subscribe?: boolean;
   items: { variantId: string; quantity: number }[];
   discountCode?: string;
   idempotencyKey?: string;
@@ -323,3 +325,73 @@ export const adminCancelDelivery = (token: string, id: string) =>
 
 export const adminUnscheduledOrders = (token: string) =>
   api.get('/api/v1/admin/delivery/unscheduled', auth(token)).then((r) => r.data);
+
+// --- Newsletter (public) ---------------------------------------------------
+
+// `website` is the honeypot. Always sent, always empty from a real form —
+// the server drops the submission when it isn't.
+export const subscribeToNewsletter = (data: { email: string; source: 'FOOTER' | 'CHECKOUT'; website?: string }) =>
+  api.post<{ ok: true }>('/api/v1/subscribers', data).then((r) => r.data);
+
+export const unsubscribeNewsletter = (token: string) =>
+  api.get<{ ok: true; email?: string }>('/api/v1/subscribers/unsubscribe', { params: { token } }).then((r) => r.data);
+
+// --- Newsletter (admin) ----------------------------------------------------
+
+export const adminGetSubscribers = (token: string, params?: Record<string, string>) =>
+  api.get('/api/v1/admin/subscribers', { ...auth(token), params }).then((r) => r.data);
+
+export const adminSubscriberStats = (token: string) =>
+  api.get('/api/v1/admin/subscribers/stats', auth(token)).then((r) => r.data);
+
+export const adminAddSubscriber = (token: string, email: string) =>
+  api.post('/api/v1/admin/subscribers', { email }, auth(token)).then((r) => r.data);
+
+export const adminUnsubscribeSubscriber = (token: string, id: string) =>
+  api.post(`/api/v1/admin/subscribers/${id}/unsubscribe`, {}, auth(token)).then((r) => r.data);
+
+export const adminRetryWelcomeEmail = (token: string, id: string) =>
+  api.post(`/api/v1/admin/subscribers/${id}/retry-welcome`, {}, auth(token)).then((r) => r.data);
+
+export const adminDeleteSubscriber = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/subscribers/${id}`, auth(token)).then((r) => r.data);
+
+// Fetched with the auth header and saved via an object URL, same pattern as
+// adminOpenReceiptPdf — a `?token=` download link would leak the admin JWT
+// into browser history and the server access log.
+export const adminExportSubscribers = (token: string, params?: Record<string, string>) =>
+  api.get<Blob>('/api/v1/admin/subscribers/export', { ...auth(token), params, responseType: 'blob' }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ascend-subscribers.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
+
+export const adminGetCampaigns = (token: string, params?: Record<string, string>) =>
+  api.get('/api/v1/admin/campaigns', { ...auth(token), params }).then((r) => r.data);
+
+export const adminGetCampaign = (token: string, id: string) =>
+  api.get(`/api/v1/admin/campaigns/${id}`, auth(token)).then((r) => r.data);
+
+export const adminAudienceCount = (token: string, audience: string) =>
+  api.get<{ audience: string; count: number }>('/api/v1/admin/campaigns/audience-count', {
+    ...auth(token),
+    params: { audience },
+  }).then((r) => r.data);
+
+export const adminCreateCampaign = (token: string, data: Record<string, unknown>) =>
+  api.post('/api/v1/admin/campaigns', data, auth(token)).then((r) => r.data);
+
+export const adminUpdateCampaign = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch(`/api/v1/admin/campaigns/${id}`, data, auth(token)).then((r) => r.data);
+
+export const adminDeleteCampaign = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/campaigns/${id}`, auth(token)).then((r) => r.data);
+
+export const adminSendTestCampaign = (token: string, id: string, email: string) =>
+  api.post(`/api/v1/admin/campaigns/${id}/test`, { email }, auth(token)).then((r) => r.data);
+
+export const adminSendCampaign = (token: string, id: string) =>
+  api.post<{ ok: true; recipientCount: number }>(`/api/v1/admin/campaigns/${id}/send`, {}, auth(token)).then((r) => r.data);
