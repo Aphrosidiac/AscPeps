@@ -186,7 +186,12 @@ export default function CheckoutPage() {
       posthog.alias(`order_${result.order.orderNumber}`);
 
       if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
-        clearCart();
+        // Cart is deliberately NOT cleared here — the customer hasn't paid
+        // yet, they've only been handed off to the gateway. Clearing now meant
+        // anyone who bailed at the bank page came back to an empty cart and had
+        // to rebuild the whole order, which reserves a second lot of stock and
+        // can hard-block them on a low-stock variant. The success page clears
+        // it once the payment is actually confirmed.
         redirectTo(result.paymentUrl);
         return;
       }

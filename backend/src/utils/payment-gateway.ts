@@ -33,9 +33,18 @@ export interface PaymentGateway {
   createBill(params: CreateBillParams): Promise<BillResult>;
   verifyCallback(body: Record<string, string>): boolean;
   parseCallback(body: Record<string, string>): CallbackResult;
-  buildRedirectUrl(query: Record<string, string>): string;
+  /**
+   * Which page the returning customer lands on. `verifiedPaid` is what a
+   * server-side re-query of the bill just said, so the page can't contradict
+   * the order state we already committed.
+   */
+  buildRedirectUrl(query: Record<string, string>, verifiedPaid?: boolean): string;
   /** Re-query the gateway for the authoritative paid state of a bill. */
   verifyPaid(billId: string): Promise<{ paid: boolean; amount?: number }>;
+  /** Best-effort: stop a bill being payable after we've released its stock. */
+  deactivateBill?(billId: string): Promise<boolean>;
+  /** Where to send a customer to finish paying an existing, still-open bill. */
+  billUrl(billId: string): string;
 }
 
 function getBackendUrl(): string {
@@ -46,6 +55,17 @@ function getBackendUrl(): string {
 
 function getFrontendUrl(): string {
   return env.FRONTEND_URL;
+}
+
+/**
+ * The failure page carries the still-open bill so the customer can resume the
+ * payment they just abandoned, instead of rebuilding the whole order (which
+ * reserves a second lot of stock and can hard-block them on a low-stock
+ * variant). The frontend re-validates the host before rendering it as a link.
+ */
+function failedUrl(frontendUrl: string, retryUrl?: string | false): string {
+  const base = `${frontendUrl}/checkout/failed`;
+  return retryUrl ? `${base}?retry=${encodeURIComponent(retryUrl)}` : base;
 }
 
 const billplzGateway: PaymentGateway = {
@@ -80,17 +100,21 @@ const billplzGateway: PaymentGateway = {
       orderRef: body.id,
     };
   },
-  buildRedirectUrl(query) {
+  buildRedirectUrl(query, verifiedPaid) {
     const valid = billplz.verifyRedirectSignature(query);
-    const paid = query['billplz[paid]'] === 'true';
+    const paid = verifiedPaid || (valid && query['billplz[paid]'] === 'true');
     const frontendUrl = getFrontendUrl();
-    return valid && paid
+    return paid
       ? `${frontendUrl}/checkout/success`
-      : `${frontendUrl}/checkout/failed`;
+      : failedUrl(frontendUrl, query['billplz[id]'] && this.billUrl(query['billplz[id]']));
   },
   async verifyPaid(billId) {
     const bill = await billplz.getBill(billId);
     return { paid: bill.paid, amount: bill.paid_amount };
+  },
+  billUrl(billId) {
+    const host = env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com' : 'https://www.billplz.com';
+    return `${host}/bills/${billId}`;
   },
 };
 
@@ -110,8 +134,7 @@ const toyyibpayGateway: PaymentGateway = {
       callbackUrl: `${backendUrl}/api/v1/payments/callback`,
       returnUrl: `${backendUrl}/api/v1/payments/redirect`,
     });
-    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
-    return { billId: billCode, paymentUrl: `${host}/${billCode}`, gateway: 'toyyibpay' };
+    return { billId: billCode, paymentUrl: this.billUrl(billCode), gateway: 'toyyibpay' };
   },
   verifyCallback(body) {
     return toyyibpay.verifyCallbackHash(body, env.TOYYIBPAY_SECRET_KEY!);
@@ -130,26 +153,50 @@ const toyyibpayGateway: PaymentGateway = {
     const amount = Number.isFinite(parsedAmount) ? parsedAmount : undefined;
     return { billId: body.billcode, status, amount, orderRef: body.order_id };
   },
-  buildRedirectUrl(query) {
-    const paid = query.status_id === '1' && !!query.billcode;
+  buildRedirectUrl(query, verifiedPaid) {
+    // Either signal is enough to show success. The re-query is authoritative
+    // when it says paid, but it can legitimately lag the bank's redirect by a
+    // few seconds — so a bare status_id=1 must still land on the success page
+    // rather than telling a paying customer their payment failed. Neither of
+    // these marks the order paid; only applyPaid() does, from verifyPaid().
+    const paid = verifiedPaid || query.status_id === '1';
     const frontendUrl = getFrontendUrl();
     return paid
       ? `${frontendUrl}/checkout/success`
-      : `${frontendUrl}/checkout/failed`;
+      : failedUrl(frontendUrl, query.billcode && this.billUrl(query.billcode));
   },
   async verifyPaid(billId) {
     return toyyibpay.getBillTransactions(billId, env.TOYYIBPAY_SECRET_KEY!);
+  },
+  async deactivateBill(billId) {
+    return toyyibpay.inactiveBill(billId, env.TOYYIBPAY_SECRET_KEY!);
+  },
+  billUrl(billId) {
+    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
+    return `${host}/${billId}`;
   },
 };
 
 export function getActiveGateway(gatewayName?: string): PaymentGateway | null {
   const name = gatewayName || 'billplz';
+  // A gateway left in sandbox mode takes no real money while cheerfully
+  // reporting success, so in production it must not be selectable at all —
+  // the `payment_gateway` setting is a dropdown in admin, and flipping it to a
+  // gateway whose *_SANDBOX flag was never turned off would silently start
+  // shipping orders against fake payments. Refusing here surfaces as "online
+  // payment unavailable", which is loud and safe.
+  //
+  // NODE_ENV is deliberately not the signal here: it is unset on the live PM2
+  // process, so a NODE_ENV check would silently never fire — exactly the class
+  // of bug this guard exists to prevent. Reuse getBackendUrl's convention
+  // instead: a non-localhost FRONTEND_URL means this is a real deployment.
+  const isProd = !env.FRONTEND_URL.startsWith('http://localhost');
 
   if (name === 'billplz' && env.BILLPLZ_API_KEY && env.BILLPLZ_COLLECTION_ID) {
-    return billplzGateway;
+    return isProd && env.BILLPLZ_SANDBOX ? null : billplzGateway;
   }
   if (name === 'toyyibpay' && env.TOYYIBPAY_SECRET_KEY && env.TOYYIBPAY_CATEGORY_CODE) {
-    return toyyibpayGateway;
+    return isProd && env.TOYYIBPAY_SANDBOX ? null : toyyibpayGateway;
   }
   return null;
 }

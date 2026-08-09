@@ -287,7 +287,20 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     const gatewayName = settings.find(s => s.key === 'payment_gateway')?.value || 'billplz';
     const gateway = getActiveGateway(gatewayName);
 
-    if (gateway) {
+    // No configured gateway used to fall through silently: the order was
+    // created, stock was reserved, and the customer landed on a confirmation
+    // screen for an order they were never given any way to pay for. Fail loud
+    // instead — the order rolls forward as UNPAID and the reconcile sweep
+    // releases its stock, same as any other abandoned attempt.
+    if (!gateway) {
+      fastify.log.error({ gatewayName, orderNumber: order.orderNumber }, 'No active payment gateway');
+      throw {
+        statusCode: 503,
+        message: 'Online payment is temporarily unavailable. Please use WhatsApp checkout.',
+      };
+    }
+
+    {
       const bill = await gateway.createBill({
         name: order.customerName,
         email: order.email || undefined,

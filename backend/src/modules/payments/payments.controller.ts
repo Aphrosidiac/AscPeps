@@ -75,11 +75,15 @@ export async function handlePaymentRedirect(
   const gateway = getGatewayByBillId(billId, gatewayName);
   if (!gateway) return `${env.FRONTEND_URL}/checkout/failed`;
 
-  // Belt-and-suspenders: when the customer returns from the gateway, verify the
-  // payment server-side and confirm the order even if the callback was missed.
+  // Not belt-and-suspenders any more — this IS the primary confirmation path.
+  // ToyyibPay's server-to-server callback has never once been delivered to
+  // this origin, so every online payment is confirmed either here or by the
+  // reconcile sweep. Verify server-side and confirm the order.
+  let verifiedPaid = false;
   if (billId) {
     try {
       const { paid } = await gateway.verifyPaid(billId);
+      verifiedPaid = paid;
       if (paid) {
         const order = await fastify.prisma.order.findFirst({ where: { paymentRef: billId } });
         if (order) await applyPaid(fastify, order);
@@ -89,5 +93,7 @@ export async function handlePaymentRedirect(
     }
   }
 
-  return gateway.buildRedirectUrl(query);
+  // Pass the verified state through so the page the customer sees can never
+  // contradict the order state we just committed.
+  return gateway.buildRedirectUrl(query, verifiedPaid);
 }

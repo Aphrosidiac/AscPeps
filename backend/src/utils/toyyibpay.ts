@@ -18,22 +18,51 @@ interface CreateBillParams {
   returnUrl: string;
 }
 
+/**
+ * ToyyibPay only accepts alphanumerics, spaces and underscores in `billName`
+ * and `billDescription`, and its hosted bill page renders the payer name into
+ * a READONLY input guarded by `pattern="[a-zA-Z0-9\s]+"`. Anything outside
+ * that set is a real failure, not a cosmetic one:
+ *  - our order numbers carry a "/" (ASC2608/0013), which is out of spec for
+ *    the two bill text fields;
+ *  - a name like "Dr. Chong" produces a form the browser refuses to submit
+ *    and the customer cannot correct, because the field is readonly — an
+ *    unrecoverable dead end at the last step of checkout.
+ * Substitute rather than strip so "ASC2608/0013" stays readable as
+ * "ASC2608 0013" on the customer's bill.
+ */
+function toyyibSafeText(value: string, fallback: string): string {
+  const cleaned = value.replace(/[^a-zA-Z0-9 _]/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned || fallback;
+}
+
 export async function createBill(params: CreateBillParams): Promise<string> {
+  const safeDescription = toyyibSafeText(params.description, 'Order');
   const formData = new URLSearchParams();
   formData.append('userSecretKey', params.secretKey);
   formData.append('categoryCode', params.categoryCode);
-  formData.append('billName', params.description.slice(0, 30));
-  formData.append('billDescription', params.description.slice(0, 100));
+  formData.append('billName', safeDescription.slice(0, 30).trim());
+  formData.append('billDescription', safeDescription.slice(0, 100).trim());
   formData.append('billPriceSetting', '1');
   formData.append('billPayorInfo', '1');
   formData.append('billAmount', String(params.amount));
   formData.append('billReturnUrl', params.returnUrl);
   formData.append('billCallbackUrl', params.callbackUrl);
   formData.append('billExternalReferenceNo', params.orderNumber);
-  formData.append('billTo', params.name);
+  formData.append('billTo', toyyibSafeText(params.name, 'Customer').slice(0, 100).trim());
   formData.append('billEmail', params.email);
   formData.append('billPhone', params.phone.replace(/[^0-9]/g, ''));
   formData.append('billPaymentChannel', '2');
+  // FPX on its own leaves the customer exactly one way to pay, and the account
+  // is not approved for cards — so a bank-selection page they can't use is a
+  // dead end. DuitNow QR IS activated on this account (verified via
+  // checkDuitNowQRStatus), and covers e-wallets plus every DuitNow bank.
+  // chargeDuitNowQR=0 keeps the fee on us, matching how FPX is already set up,
+  // so the customer is never asked for more than the total we quoted.
+  if (env.TOYYIBPAY_DUITNOW_QR) {
+    formData.append('enableDuitNowQR', '1');
+    formData.append('chargeDuitNowQR', '0');
+  }
   // Expire the bill after 1 day so an abandoned link can't be paid long after
   // we've already released the reserved stock (which would take money with no
   // confirmable order).
@@ -108,4 +137,31 @@ export async function getBillTransactions(
   }
 
   return { paid: false };
+}
+
+/**
+ * Take a bill out of service. Called when we release an abandoned order's
+ * stock: `billExpiryDays: 1` leaves the bill payable for a full day, but the
+ * stock behind it goes back on sale after two hours — so without this there is
+ * a ~22h window where a customer can pay a bill whose order we already
+ * cancelled and restocked, and nothing will ever reconcile it (the sweep only
+ * looks at UNPAID orders, never FAILED ones). Money in, no order.
+ *
+ * Note the field is `secretKey` here, NOT `userSecretKey` as on every other
+ * endpoint. Best-effort: "Bill has pending transaction process" is a legitimate
+ * refusal from ToyyibPay, not an error on our side.
+ */
+export async function inactiveBill(billCode: string, secretKey: string): Promise<boolean> {
+  const formData = new URLSearchParams();
+  formData.append('secretKey', secretKey);
+  formData.append('billCode', billCode);
+
+  const { data } = await axios.post(
+    `${getBaseUrl()}/index.php/api/inactiveBill`,
+    formData.toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000 }
+  );
+
+  const result = Array.isArray(data) ? data[0] : data;
+  return result?.status === 'success';
 }
