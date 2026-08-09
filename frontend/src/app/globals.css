@@ -216,6 +216,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 .row-rise { animation: row-rise-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Newsletter capture — a bottom sheet on phones, a centred dialog from sm up.
+   One keyframe serves both: a short upward travel reads as "slid up from the
+   edge" on a sheet and as "landed on the page" on a dialog. */
+@keyframes sheet-rise-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sheet-rise { animation: sheet-rise-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
   .dialog-backdrop,
   .dialog-backdrop.is-closing,
@@ -223,7 +232,8 @@ h1, h2, h3, h4, h5, h6 {
   .dialog-panel.is-closing,
   .panel-reveal,
   .panel-reveal.is-closing,
-  .row-rise {
+  .row-rise,
+  .sheet-rise {
     animation: none;
   }
 }

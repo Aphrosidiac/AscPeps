@@ -9,6 +9,7 @@ import { env } from '../../config/env.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
+import { newUnsubscribeToken } from '../../utils/marketing.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -23,6 +24,11 @@ const createOrderSchema = z.object({
   paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ']),
   discountCode: z.string().optional(),
   notes: z.string().optional(),
+  // Checkout's newsletter tickbox. Defaults to false and is never inferred
+  // from the presence of an email address — buying something is not consent
+  // to be marketed to, and treating it as such is what makes a list worth
+  // nothing and a sending domain worth less.
+  subscribe: z.boolean().optional(),
   idempotencyKey: z.string().min(8).max(100).optional(),
   items: z.array(
     z.object({
@@ -250,6 +256,27 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       }
       if (code === 'P2002' && attempt < MAX_ATTEMPTS && isOrderNumberConflict(err)) continue;
       throw err;
+    }
+  }
+
+  // Newsletter opt-in, outside the order transaction on purpose: a failure
+  // here must never roll back a real order (and with it the reserved stock and
+  // the discount-code usage). Idempotent via the email unique key, and it
+  // deliberately does not resurrect someone who has already unsubscribed —
+  // ticking a box on a later order is not a fresh opt-in from a person who
+  // has explicitly opted out.
+  if (data.subscribe && order.email) {
+    try {
+      await fastify.prisma.subscriber.createMany({
+        data: {
+          email: order.email.trim().toLowerCase(),
+          source: 'CHECKOUT',
+          unsubscribeToken: newUnsubscribeToken(),
+        },
+        skipDuplicates: true,
+      });
+    } catch (err) {
+      fastify.log.warn({ err, orderId: order.id }, 'checkout newsletter opt-in failed');
     }
   }
 

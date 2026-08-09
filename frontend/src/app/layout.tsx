@@ -139,7 +139,16 @@ gtag('config', 'G-4PHY1Z9BHD');`}
             remote config — see the component. Renders nothing. */}
         <PostHogPageView />
         <CartProvider>
-          <SiteChrome announcementEnabled={announcementEnabled} announcementText={settings.announcement_text || ''}>
+          <SiteChrome
+            announcementEnabled={announcementEnabled}
+            announcementText={settings.announcement_text || ''}
+            newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
+            newsletterPopupHeading={settings.newsletter_popup_heading || 'Reconstitution reference, free'}
+            newsletterPopupBody={
+              settings.newsletter_popup_body ||
+              'Dosing calculator, storage and handling guide, and batch COAs — plus a note when something is back in stock.'
+            }
+          >
             {children}
           </SiteChrome>
         </CartProvider>

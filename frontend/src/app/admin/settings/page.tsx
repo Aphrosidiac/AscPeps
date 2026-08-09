@@ -307,6 +307,105 @@ export default function AdminSettingsPage() {
           />
         </div>
 
+        {/* Marketing email */}
+        <div style={{ animationDelay: `345ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Marketing Email</h2>
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="marketing_emails_enabled"
+              checked={settings.marketing_emails_enabled === 'true'}
+              onChange={(e) => updateSetting('marketing_emails_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded mt-0.5"
+            />
+            <label htmlFor="marketing_emails_enabled" className="text-sm font-medium text-text-secondary">
+              Send welcome emails and campaigns
+              <span className="block text-xs font-normal text-text-muted mt-0.5">
+                Separate from order emails on purpose — turning this off pauses all newsletters while
+                confirmations and receipts keep going out. Needs the Emails switch on as well.
+              </span>
+            </label>
+          </div>
+          <Input
+            label="Welcome discount (%)"
+            id="welcome_discount_percent"
+            type="number"
+            min="0"
+            max="100"
+            value={settings.welcome_discount_percent || ''}
+            onChange={(e) => updateSetting('welcome_discount_percent', e.target.value)}
+            placeholder="0 to send the welcome email without a code"
+          />
+          <Input
+            label="Welcome discount valid for (days)"
+            id="welcome_discount_days"
+            type="number"
+            min="1"
+            value={settings.welcome_discount_days || ''}
+            onChange={(e) => updateSetting('welcome_discount_days', e.target.value)}
+            placeholder="30"
+          />
+          <p className="text-xs text-text-muted">
+            Each subscriber gets their own single-use code, so one leaking can only ever discount one order.
+          </p>
+
+          <div className="flex items-start gap-3 pt-2 border-t border-border">
+            <input
+              type="checkbox"
+              id="abandoned_checkout_enabled"
+              checked={settings.abandoned_checkout_enabled === 'true'}
+              onChange={(e) => updateSetting('abandoned_checkout_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded mt-0.5"
+            />
+            <label htmlFor="abandoned_checkout_enabled" className="text-sm font-medium text-text-secondary">
+              Remind customers who didn&apos;t finish paying
+              <span className="block text-xs font-normal text-text-muted mt-0.5">
+                One email, ~45 minutes after an unpaid order, with a link back to the still-open payment page.
+                Never sent twice, and never after the order is paid or cancelled.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* Newsletter popup */}
+        <div style={{ animationDelay: `390ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Newsletter Popup</h2>
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="newsletter_popup_enabled"
+              checked={settings.newsletter_popup_enabled === 'true'}
+              onChange={(e) => updateSetting('newsletter_popup_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded mt-0.5"
+            />
+            <label htmlFor="newsletter_popup_enabled" className="text-sm font-medium text-text-secondary">
+              Show the signup popup on the storefront
+              <span className="block text-xs font-normal text-text-muted mt-0.5">
+                Exit intent on desktop, half-page scroll or 15 seconds on mobile. Never on cart, checkout or
+                order pages, never twice in a session, and silent for 30 days after someone closes it.
+              </span>
+            </label>
+          </div>
+          <Input
+            label="Popup heading"
+            id="newsletter_popup_heading"
+            value={settings.newsletter_popup_heading || ''}
+            onChange={(e) => updateSetting('newsletter_popup_heading', e.target.value)}
+            placeholder="Reconstitution reference, free"
+          />
+          <Input
+            label="Popup body"
+            id="newsletter_popup_body"
+            value={settings.newsletter_popup_body || ''}
+            onChange={(e) => updateSetting('newsletter_popup_body', e.target.value)}
+            placeholder="Dosing calculator, storage and handling guide, and batch COAs."
+          />
+          <p className="text-xs text-text-muted">
+            The discount is deliberately not mentioned here — it arrives in the welcome email, so the storefront
+            never trains people to wait for a code.
+          </p>
+        </div>
+
         {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex items-center gap-3">

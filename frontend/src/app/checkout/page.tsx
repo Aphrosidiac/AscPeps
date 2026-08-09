@@ -45,6 +45,10 @@ export default function CheckoutPage() {
   const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
   const [shippingFee, setShippingFee] = useState('');
   const [paymentGateway, setPaymentGateway] = useState<'billplz' | 'toyyibpay'>('billplz');
+  // Kept out of `form` because `form` is spread straight into createOrder and
+  // this is a separate consent flag, not an order field. Unticked by default:
+  // a pre-ticked box is not an opt-in.
+  const [subscribe, setSubscribe] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
   const [discountLoading, setDiscountLoading] = useState(false);
   const [discountError, setDiscountError] = useState('');
@@ -156,6 +160,10 @@ export default function CheckoutPage() {
         // Blank optional email must be omitted — the API rejects "" as an
         // invalid email address.
         email: form.email.trim() || undefined,
+        // Only meaningful with an address to attach it to; the server ignores
+        // it otherwise, and sending it anyway would be a consent flag with
+        // nowhere to land.
+        subscribe: subscribe && !!form.email.trim(),
         paymentMethod,
         items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
         idempotencyKey: idempotencyKeyRef.current,
@@ -411,6 +419,24 @@ export default function CheckoutPage() {
               className="w-full px-3 py-2.5 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               placeholder="Any special instructions..."
             />
+
+            {/* Sits under Notes rather than beside the email field: the email
+                input is a required-for-payment field and stapling a marketing
+                consent to it invites people to tick it without reading. Only
+                offered once there's an address to attach it to. */}
+            {form.email.trim() !== '' && (
+              <label className="mt-4 flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={subscribe}
+                  onChange={(e) => setSubscribe(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 shrink-0 rounded border-border text-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
+                />
+                <span className="text-sm text-text-secondary leading-relaxed">
+                  Email me restock alerts and new batch COAs. No spam, unsubscribe any time.
+                </span>
+              </label>
+            )}
           </div>
           </Animate>
 

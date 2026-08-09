@@ -6,7 +6,7 @@
 // site's globals.css) used only for status, and a small rounded-full status
 // badge in place of the OG image's trust-badge motif.
 
-const SITE_URL = 'https://ascendpeptides.my';
+export const SITE_URL = 'https://ascendpeptides.my';
 
 // Bump this when either logo asset changes. The early test sends referenced
 // this exact URL while the asset was still 404ing (pre-deploy) — some
@@ -19,14 +19,14 @@ const ASSET_VERSION = 2;
 // One token per role, used everywhere — the "vibe-coded" tell is usually 3
 // near-identical grays and 2 near-identical border colors sprinkled at
 // random. Pick one of each and stick to it.
-const INK = '#0A0A0A'; // headlines, strong values — not pure #000
-const BODY = '#54565b'; // paragraph text
-const MUTED = '#9a9a9e'; // labels, captions, footer
-const BORDER = '#ececec';
-const ACCENT = '#22C55E'; // matches --color-success in the site's globals.css
+export const INK = '#0A0A0A'; // headlines, strong values — not pure #000
+export const BODY = '#54565b'; // paragraph text
+export const MUTED = '#9a9a9e'; // labels, captions, footer
+export const BORDER = '#ececec';
+export const ACCENT = '#22C55E'; // matches --color-success in the site's globals.css
 
-const FONT = "Helvetica, Arial, sans-serif";
-const MONO = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
+export const FONT = "Helvetica, Arial, sans-serif";
+export const MONO = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
 
 export function escapeHtml(value: string): string {
   return value
@@ -188,7 +188,29 @@ function renderPreheader(text: string): string {
   </div>`;
 }
 
-export function renderLayout(bodyHtml: string, preheader: string, settings: Record<string, string>): string {
+/**
+ * The visible unsubscribe line. Marketing mail only — transactional mail must
+ * NOT carry one, because an order confirmation is not something a customer
+ * can opt out of and offering it there just invites people to unsubscribe
+ * from their own receipts.
+ *
+ * Deliberately plain text, underlined, in the footer's own muted colour: an
+ * unsubscribe link that has been styled to hide is the thing that earns a
+ * spam complaint instead of a quiet opt-out, and a complaint costs far more.
+ */
+function renderUnsubscribe(url: string): string {
+  return `<p style="margin:12px 0 0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">
+              You're receiving this because you signed up for ASCEND updates.<br>
+              <a href="${escapeHtml(url)}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>
+            </p>`;
+}
+
+export function renderLayout(
+  bodyHtml: string,
+  preheader: string,
+  settings: Record<string, string>,
+  unsubscribeUrl?: string
+): string {
   const disclaimer = escapeHtml(settings.receipt_footer_note || DEFAULT_DISCLAIMER);
   return `<!DOCTYPE html>
 <html lang="en">
@@ -230,7 +252,7 @@ ${bodyHtml}
             <p style="margin:0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">
               ${disclaimer}<br>
               <a href="${SITE_URL}" style="color:${MUTED};text-decoration:underline;">ascendpeptides.my</a>
-            </p>
+            </p>${unsubscribeUrl ? renderUnsubscribe(unsubscribeUrl) : ''}
           </td>
         </tr>
       </table>

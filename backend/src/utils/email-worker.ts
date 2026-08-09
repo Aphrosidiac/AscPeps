@@ -5,6 +5,7 @@ import { isEmailEnabled, sendEmail } from './email.js';
 import { generateReceiptPdf } from './receipt-pdf.js';
 import { renderOrderConfirmation } from '../emails/order-confirmation.js';
 import { renderPaymentReceipt } from '../emails/payment-receipt.js';
+import { renderAbandonedCheckout } from '../emails/abandoned-checkout.js';
 
 const BATCH_SIZE = 10;
 // Retry backoff by attempt count; after the last slot the row goes FAILED
@@ -47,10 +48,18 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
   // before we sent it — pointless (or confusing) to email now. Receipts are
   // exempt from the cancel check: a PAID order stays paid through later
   // status changes and the customer is owed the receipt regardless.
+  //
+  // The abandoned-checkout reminder has the strictest test of the three, and
+  // it is re-checked HERE rather than only at enqueue time because the whole
+  // point of the reminder is that the customer might pay at any moment. A row
+  // queued at minute 45 and sent at minute 46 must not tell someone who paid
+  // in between that they never finished checking out.
   const ineligible =
     !order ||
     order.deletedAt !== null ||
-    (row.type === 'ORDER_CONFIRMATION' && order.status === 'CANCELLED');
+    (row.type === 'ORDER_CONFIRMATION' && order.status === 'CANCELLED') ||
+    (row.type === 'ABANDONED_CHECKOUT' &&
+      (order.status === 'CANCELLED' || order.paymentStatus !== 'UNPAID'));
   if (ineligible) {
     await fastify.prisma.emailOutbox.update({
       where: { id: row.id },
@@ -74,6 +83,8 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
       ({ subject, html } = renderPaymentReceipt(order, order.updatedAt, settings));
       const pdf = await generateReceiptPdf(order, settings);
       attachments = [{ filename: `receipt-${order.orderNumber}.pdf`, content: pdf }];
+    } else if (row.type === 'ABANDONED_CHECKOUT') {
+      ({ subject, html } = renderAbandonedCheckout(order, reconstructPaymentUrl(order), settings));
     } else {
       const paymentUrl =
         order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
