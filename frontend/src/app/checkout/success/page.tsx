@@ -1,11 +1,35 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { CheckCircle } from 'lucide-react';
+import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
 
 export default function CheckoutSuccessPage() {
+  const { clearCart, hydrated } = useCart();
+  const cleared = useRef(false);
+
+  // Checkout hands the customer to the gateway without clearing the cart, so
+  // that abandoning payment leaves it intact to retry. This is the point where
+  // the payment actually went through, so this is where the cart empties.
+  //
+  // Must wait for `hydrated`. CartProvider loads localStorage in its own
+  // effect, and child effects run before parent ones — clearing on mount is
+  // immediately undone when the provider's LOAD lands a moment later, leaving
+  // a paid-for cart sitting in the header.
+  //
+  // The ref + `hydrated`-only dep list are also deliberate: CartProvider builds
+  // its context value inline, so `clearCart` has a fresh identity every render
+  // and depending on it would re-run this effect after its own dispatch.
+  useEffect(() => {
+    if (!hydrated || cleared.current) return;
+    cleared.current = true;
+    clearCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
   return (
     <div className="max-w-lg mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
       <Animate variant="scale" duration={0.5}>

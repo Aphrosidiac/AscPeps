@@ -35,6 +35,12 @@ const envSchema = z.object({
   TOYYIBPAY_SECRET_KEY: z.string().optional(),
   TOYYIBPAY_CATEGORY_CODE: z.string().optional(),
   TOYYIBPAY_SANDBOX: envBool(true),
+  // Offers DuitNow QR alongside FPX on the hosted bill page. On by default
+  // because the account is approved for it and FPX-only is a dead end for
+  // anyone without Malaysian online banking. Set to false to fall back to
+  // FPX-only without a code change if the account ever loses approval —
+  // createBill rejects enableDuitNowQR on a non-approved account.
+  TOYYIBPAY_DUITNOW_QR: envBool(true),
   // Server-side analytics. This is the SAME project token the frontend uses
   // (PostHog project tokens are write-only, not a secret in the credential
   // sense) — but it lives here unprefixed because it must never be inlined

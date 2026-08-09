@@ -6,7 +6,15 @@ import { capturePurchase } from './posthog.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
-const STALE_AFTER_MS = 15 * 60 * 1000; // 15 min — re-query gateway
+//
+// This used to be a 15-minute backstop behind the gateway callback. It isn't a
+// backstop any more: ToyyibPay's server-to-server callback has never been
+// delivered to this origin, so an order whose customer doesn't come back
+// through the return URL is confirmed HERE or not at all. Three minutes keeps
+// the worst-case confirmation lag at roughly one sweep interval instead of the
+// ~25 minutes observed in production, at the cost of one cheap
+// getBillTransactions call per open order per sweep.
+const STALE_AFTER_MS = 3 * 60 * 1000; // 3 min — re-query gateway
 const RELEASE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 h — give up and restock
 // WhatsApp checkouts have no gateway to verify against — an order the admin
 // never confirmed just holds its reserved stock forever. Generous window
@@ -62,6 +70,14 @@ export async function applyPaid(
 /**
  * Mark an order FAILED and restore the stock + discount usage it reserved at
  * creation. Idempotent on the UNPAID -> FAILED transition.
+ *
+ * Also cancels the order and kills the gateway bill. Both matter:
+ *  - status stayed PENDING, so a dead order kept showing up in admin as if it
+ *    were still worth fulfilling;
+ *  - the bill stays payable for `billExpiryDays` (a full day) while the stock
+ *    behind it goes back on sale here, at two hours. Without deactivation a
+ *    customer can pay into an order that no longer exists, and nothing
+ *    reconciles it — the sweep only ever looks at UNPAID orders.
  */
 export async function applyFailed(
   fastify: FastifyInstance,
@@ -69,7 +85,7 @@ export async function applyFailed(
 ): Promise<boolean> {
   const { count } = await fastify.prisma.order.updateMany({
     where: { id: orderId, paymentStatus: 'UNPAID' },
-    data: { paymentStatus: 'FAILED' },
+    data: { paymentStatus: 'FAILED', status: 'CANCELLED' },
   });
   if (count === 0) return false;
 
@@ -77,6 +93,24 @@ export async function applyFailed(
   // this order FAILED at the same time.
   await restoreOrderInventory(fastify, orderId);
   fastify.log.info(`Order ${orderId} marked FAILED — stock & discount restored`);
+
+  // Best-effort and deliberately after the transition: a gateway hiccup here
+  // must not leave the order half-released. Runs exactly once per order
+  // because the transition above is guarded.
+  const order = await fastify.prisma.order.findUnique({
+    where: { id: orderId },
+    select: { paymentRef: true, paymentGateway: true },
+  });
+  if (order?.paymentRef) {
+    const gateway = getGatewayByBillId(order.paymentRef, order.paymentGateway ?? undefined);
+    if (gateway?.deactivateBill) {
+      try {
+        await gateway.deactivateBill(order.paymentRef);
+      } catch (err) {
+        fastify.log.warn({ err, orderId, billId: order.paymentRef }, 'failed to deactivate bill');
+      }
+    }
+  }
   return true;
 }
 

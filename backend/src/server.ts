@@ -162,7 +162,11 @@ try {
   // app, reintroduce a guard then — using something that actually
   // identifies "am I cluster worker 0 of THIS app" (e.g. Node's own
   // `cluster.isPrimary`), not a raw pm_id/NODE_APP_INSTANCE comparison.
-  const RECONCILE_INTERVAL_MS = 10 * 60 * 1000;
+  // 2 min, not 10: with the ToyyibPay callback never arriving, this sweep is
+  // the only thing that confirms a payment for a customer who doesn't return
+  // through the gateway's redirect (8 of 10 recent orders). At current volume
+  // it costs a couple of gateway calls per sweep.
+  const RECONCILE_INTERVAL_MS = 2 * 60 * 1000;
   const timer = setInterval(() => {
     reconcileStaleOrders(fastify).catch((err) =>
       fastify.log.error({ err }, 'payment reconcile sweep failed')
