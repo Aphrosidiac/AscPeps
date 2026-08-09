@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ShieldCheck, ExternalLink } from 'lucide-react';
+import { ShieldCheck, ExternalLink } from 'lucide-react';
 import { getProductServer, getProductsServer, getSettingsServer } from '@/lib/server-api';
 import { getDefaultVariant } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
@@ -39,11 +39,28 @@ export default async function ProductDetailPage({ params }: Props) {
 
   const defaultVariant = getDefaultVariant(product);
 
+  // max-w-6xl below, not 4xl: at 4xl each column of the hero grid was ~400px,
+  // which both capped the product photo at 392px and made the details column
+  // taller than it needed to be by forcing everything to wrap early. Long-form
+  // prose further down is capped separately so it keeps a readable measure.
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Link href="/products" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-8 transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Back to Products
-      </Link>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Mirrors the BreadcrumbList JSON-LD in layout.tsx exactly. If one gains a
+          level (a category, say) the other has to gain it too, or the markup and
+          the visible trail disagree. */}
+      <nav aria-label="Breadcrumb" className="mb-8">
+        <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-text-secondary">
+          <li>
+            <Link href="/" className="hover:text-text-primary transition-colors">Home</Link>
+          </li>
+          <li aria-hidden="true" className="text-text-muted">/</li>
+          <li>
+            <Link href="/products" className="hover:text-text-primary transition-colors">Products</Link>
+          </li>
+          <li aria-hidden="true" className="text-text-muted">/</li>
+          <li className="text-text-primary font-medium" aria-current="page">{product.name}</li>
+        </ol>
+      </nav>
 
       <VariantSwitcher product={product} benefits={benefits} shippingFee={shippingFee} />
 
@@ -52,7 +69,9 @@ export default async function ProductDetailPage({ params }: Props) {
         <Animate variant="fadeUp" delay={0.2}>
           <div className="mt-10 bg-surface rounded-xl border border-border p-6">
             <h2 className="font-display font-semibold text-lg mb-2">Research &amp; Reconstitution Information</h2>
-            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">{product.dosageInfo}</p>
+            {/* Capped measure: the container is now 1152px, and prose set that
+                wide runs past 130 characters a line, which is unreadable. */}
+            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line max-w-[72ch]">{product.dosageInfo}</p>
           </div>
         </Animate>
       )}
@@ -62,7 +81,7 @@ export default async function ProductDetailPage({ params }: Props) {
         <Animate variant="fadeUp" delay={0.25}>
           <div className="mt-6 bg-surface rounded-xl border border-border p-6">
             <h2 className="font-display font-semibold text-lg mb-2">Certificate of Analysis</h2>
-            <p className="text-sm text-text-secondary mb-4">
+            <p className="text-sm text-text-secondary mb-4 max-w-[72ch]">
               All products are independently tested by accredited third-party laboratories. Results confirm identity, purity, and potency.
             </p>
             <a

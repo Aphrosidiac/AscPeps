@@ -17,6 +17,39 @@ interface Props {
 }
 
 /**
+ * Price per mg (or mL, or whatever unit the sizes are written in), so the
+ * bigger vial can argue for itself: 10mg is RM13.50/mg where 30mg is RM10.33.
+ *
+ * Returns null unless every active variant parses to a number plus the SAME
+ * unit. Sizes are free text and the catalog mixes "10mg" with "3mL" and the
+ * occasional null, so a per-unit figure is only meaningful when they all agree,
+ * and a wrong one on a purchase page is worse than none.
+ */
+function getUnitPricing(variants: ProductVariant[]) {
+  if (variants.length < 2) return null;
+  const parsed = variants.map((v) => {
+    const m = /^\s*([\d.]+)\s*(mg|ml|mcg|g|iu)\s*$/i.exec(v.size ?? '');
+    if (!m) return null;
+    const amount = parseFloat(m[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    return { id: v.id, unit: m[2], perUnit: getEffectivePrice(v) / amount };
+  });
+  if (parsed.some((x) => x === null)) return null;
+  const rows = parsed as { id: string; unit: string; perUnit: number }[];
+  const unit = rows[0].unit;
+  if (rows.some((r) => r.unit.toLowerCase() !== unit.toLowerCase())) return null;
+
+  const best = rows.reduce((a, b) => (b.perUnit < a.perUnit ? b : a));
+  return {
+    unit,
+    byId: new Map(rows.map((r) => [r.id, r.perUnit])),
+    bestId: best.id,
+    // A "best value" nudge is pointless if every size costs the same per unit.
+    hasSpread: rows.some((r) => Math.round(r.perUnit) !== Math.round(best.perUnit)),
+  };
+}
+
+/**
  * Size picker. Previously three cards each carrying a thumbnail of the same
  * vial photo — the thumbnails distinguished nothing and cost a row of height
  * each, and the picker sat in the left column, far from the price it changes.
@@ -38,6 +71,8 @@ function SizeSelector({
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const index = variants.findIndex((v) => v.id === selectedId);
+  const pricing = getUnitPricing(variants);
+  const best = pricing?.bestId ? variants.find((v) => v.id === pricing.bestId) : undefined;
 
   const step = (delta: number) => {
     const next = (index + delta + variants.length) % variants.length;
@@ -46,10 +81,12 @@ function SizeSelector({
   };
 
   return (
+    <div>
     <div role="radiogroup" aria-label="Choose a size" className="flex flex-wrap gap-2">
       {variants.map((v, i) => {
         const selected = v.id === selectedId;
         const soldOut = v.stock === 0;
+        const perUnit = pricing?.byId.get(v.id);
         return (
           <button
             key={v.id}
@@ -84,9 +121,27 @@ function SizeSelector({
             >
               {soldOut ? 'Sold out' : formatPrice(getEffectivePrice(v))}
             </span>
+            {!soldOut && perUnit != null && (
+              <span
+                className={`block text-[11px] mt-0.5 leading-tight ${
+                  selected ? 'text-white/55' : 'text-text-muted'
+                }`}
+              >
+                {formatPrice(Math.round(perUnit))}/{pricing!.unit}
+              </span>
+            )}
           </button>
         );
       })}
+    </div>
+      {/* Only nudge when there is something to nudge toward: a real spread in
+          per-unit price, and the customer is not already on the best one. */}
+      {pricing?.hasSpread && best && best.id !== selectedId && best.stock > 0 && (
+        <p className="mt-2 text-xs text-text-secondary">
+          Best value: <span className="font-medium text-text-primary">{best.size}</span> at{' '}
+          {formatPrice(Math.round(pricing.byId.get(best.id)!))}/{pricing.unit}
+        </p>
+      )}
     </div>
   );
 }
@@ -210,6 +265,14 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
               addOnReminder={product.addOnReminder}
             />
 
+            {/* This badge deliberately does NOT link to product.coaUrl, even
+                though every product has one. 48 of the 50 populated coaUrl
+                values are the same shared Janoshik "Blind_GLP" certificate, so
+                for almost every product that link resolves to a test for a
+                different substance. Down in the COA section that inaccuracy is
+                pre-existing and known; promoting it to a trust badge beside Add
+                to Cart would be actively misleading at the moment of purchase.
+                Wire this up once COAs are per-product. */}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
                 <ShieldCheck className="w-4 h-4 text-text-muted shrink-0" />
