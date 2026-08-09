@@ -115,9 +115,14 @@ export default async function RootLayout({
       ? `RM${Math.min(...prices) / 100} - RM${Math.max(...prices) / 100}`
       : undefined;
 
+  // overflow-x-CLIP below, not hidden. `overflow: hidden` on either the html
+  // or body element makes it a scroll container, which silently disables
+  // `position: sticky` for every descendant on every page (it was why the
+  // product page's photo column would not stick). `clip` suppresses the same
+  // horizontal overflow without creating a scroll container.
   return (
-    <html lang="en-MY" className={`${inter.variable} ${outfit.variable} h-full antialiased overflow-x-hidden`}>
-      <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-hidden">
+    <html lang="en-MY" className={`${inter.variable} ${outfit.variable} h-full antialiased overflow-x-clip`}>
+      <body className="min-h-full flex flex-col bg-background text-text-primary font-body overflow-x-clip">
         <OrganizationJsonLd priceRange={priceRange} />
         <WebSiteJsonLd />
         {/* Preconnect to GA4's origins — cuts DNS+TCP+TLS handshake time off
