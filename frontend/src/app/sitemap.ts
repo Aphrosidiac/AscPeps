@@ -37,6 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: lastModifiedFromGit('src/app/terms/page.tsx'), changeFrequency: 'yearly', priority: 0.2 },
     { url: `${BASE_URL}/privacy`, lastModified: lastModifiedFromGit('src/app/privacy/page.tsx'), changeFrequency: 'yearly', priority: 0.2 },
     { url: `${BASE_URL}/disclaimer`, lastModified: lastModifiedFromGit('src/app/disclaimer/page.tsx'), changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${BASE_URL}/return-policy`, lastModified: lastModifiedFromGit('src/app/return-policy/page.tsx'), changeFrequency: 'yearly', priority: 0.3 },
     // /track is intentionally noindex — excluded from sitemap to avoid conflicting signals.
   ];
 
