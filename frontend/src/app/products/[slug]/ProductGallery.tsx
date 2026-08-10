@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Product, ProductVariant } from '@/types';
@@ -71,6 +71,9 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
   // arrow press would snap back to the variant's own slide.
   const [syncedVariant, setSyncedVariant] = useState(selectedVariantId);
 
+  // Start point of an in-progress drag; null when no pointer is down.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+
   const count = slides.length;
   const goTo = (next: number) => setPos((s) => (next === s.current ? s : { current: next, previous: s.current }));
 
@@ -89,7 +92,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
 
   if (count === 0) {
     return (
-      <div className="relative aspect-square max-w-[320px] mx-auto md:max-w-none md:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
+      <div className="relative aspect-square bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden">
         {fallback}
       </div>
     );
@@ -98,13 +101,31 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
   const go = (delta: number) => goTo((safeIndex + delta + count) % count);
 
   return (
-    <div className="max-w-[320px] mx-auto md:max-w-none md:mx-0">
+    <div>
       <div
-        className="relative aspect-square bg-surface-elevated rounded-xl border border-border overflow-hidden group"
+        className="relative aspect-square bg-surface-elevated rounded-xl border border-border overflow-hidden group touch-pan-y select-none"
         role="group"
         aria-roledescription="carousel"
         aria-label={`${productName} images`}
         tabIndex={0}
+        onPointerDown={(e) => {
+          swipe.current = { x: e.clientX, y: e.clientY };
+        }}
+        onPointerUp={(e) => {
+          const start = swipe.current;
+          swipe.current = null;
+          if (!start || count < 2) return;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          // Only act on a clearly horizontal drag, so a vertical scroll that
+          // happens to begin on the photo is never stolen. Taps (dx ~ 0) fall
+          // through, which leaves the arrow buttons working normally.
+          if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+          go(dx < 0 ? 1 : -1);
+        }}
+        onPointerCancel={() => {
+          swipe.current = null;
+        }}
         onKeyDown={(e) => {
           if (count < 2) return;
           if (e.key === 'ArrowRight') {
@@ -155,7 +176,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
                 src={s.url}
                 alt={isActive ? altFor(s, i) : ''}
                 fill
-                sizes="(min-width: 768px) 50vw, 320px"
+                sizes="(min-width: 768px) 50vw, 100vw"
                 priority={i === 0}
                 className="object-cover"
               />
@@ -169,7 +190,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
               type="button"
               onClick={() => go(-1)}
               aria-label="Previous image"
-              className="absolute z-10 left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
+              className="absolute z-10 left-2 top-1/2 -translate-y-1/2 w-11 h-11 md:w-9 md:h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -177,7 +198,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
               type="button"
               onClick={() => go(1)}
               aria-label="Next image"
-              className="absolute z-10 right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
+              className="absolute z-10 right-2 top-1/2 -translate-y-1/2 w-11 h-11 md:w-9 md:h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
