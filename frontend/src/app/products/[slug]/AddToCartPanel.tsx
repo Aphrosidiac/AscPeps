@@ -178,7 +178,10 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       {mounted && !inlineButtonVisible && stock > 0 &&
         createPortal(
           <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-surface border-t border-border p-3 flex items-center gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-            <span className="font-display font-bold text-base shrink-0">{formatPrice(price)}</span>
+            {/* text-lg, not text-base: the button is flex-1 and takes ~72% of
+                the bar, so at 16px the price read as a caption next to it
+                rather than as the number the customer is deciding on. */}
+            <span className="font-display font-bold text-lg shrink-0">{formatPrice(price)}</span>
             <Button onClick={handleAddToCart} size="lg" className="flex-1">
               {added ? (
                 <><Check className="w-4 h-4" /> Added</>
