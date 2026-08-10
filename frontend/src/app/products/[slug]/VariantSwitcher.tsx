@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+import { useMemo, useRef, useState } from 'react';
 import { Check, ShieldCheck, Truck } from 'lucide-react';
 import posthog from 'posthog-js';
 import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import { AddToCartPanel } from './AddToCartPanel';
+import { ProductGallery, buildSlides } from './ProductGallery';
 import { SkuBadge } from '@/components/products/SkuBadge';
 import type { Product, ProductVariant } from '@/types';
 
@@ -152,21 +152,17 @@ function SizeSelector({
 // below this (dosage info, COA, related-product rails) is static per parent
 // and stays server-rendered in page.tsx.
 export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
-  const activeVariants = product.variants.filter((v) => v.active);
+  // Memoised so `slides` below is genuinely stable: a fresh filter() array
+  // every render would defeat its useMemo and re-run the gallery's effect.
+  const activeVariants = useMemo(() => product.variants.filter((v) => v.active), [product.variants]);
   const defaultVariant = getDefaultVariant(product);
   const [selectedId, setSelectedId] = useState(defaultVariant?.id ?? '');
   const variant = activeVariants.find((v) => v.id === selectedId) ?? defaultVariant;
 
-  // Crossfades the hero photo on every size switch instead of the new
-  // <Image key={variant.id}> just popping in — the src swap alone gives a
-  // hard flash since the remounted <img> starts blank. Fading the (stable,
-  // never-remounted) wrapper's opacity out then back in smooths that over.
-  const [imgVisible, setImgVisible] = useState(true);
-  useEffect(() => {
-    setImgVisible(false);
-    const t = setTimeout(() => setImgVisible(true), 180);
-    return () => clearTimeout(t);
-  }, [variant?.id]);
+  // Slide list is derived, not state: it only depends on the product and its
+  // active variants, and useMemo keeps its identity stable so the gallery's
+  // variant-follow effect doesn't re-run on every render.
+  const slides = useMemo(() => buildSlides(product, activeVariants), [product, activeVariants]);
 
   if (!variant) {
     return <p className="text-danger font-medium py-8">This product is currently unavailable.</p>;
@@ -187,24 +183,22 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
           {/* top-24 clears the sticky navbar (top-0, ~72px) plus breathing room. */}
           <div className="md:sticky md:top-24">
             <Animate variant="fade" duration={0.6}>
-              <div
-                className="relative aspect-square max-w-[320px] mx-auto md:max-w-none md:mx-0 bg-surface-elevated rounded-xl border border-border flex items-center justify-center overflow-hidden transition-opacity duration-300 ease-out"
-                style={{ opacity: imgVisible ? 1 : 0 }}
-              >
-                {variant.imageUrl ? (
-                  <Image
-                    key={variant.id}
-                    src={variant.imageUrl}
-                    alt={`${getVariantDisplayName(product, variant)} research peptide available in Malaysia`}
-                    fill
-                    sizes="(min-width: 768px) 50vw, 320px"
-                    priority
-                    className="object-cover"
-                  />
-                ) : (
+              <ProductGallery
+                slides={slides}
+                selectedVariantId={variant.id}
+                productName={product.name}
+                altFor={(slide, i) =>
+                  // A slide that belongs to a size names that size; gallery
+                  // shots fall back to the product with a position, so alt
+                  // text never repeats verbatim across the strip.
+                  slide.variantIds.length > 0
+                    ? `${getVariantDisplayName(product, activeVariants.find((v) => slide.variantIds.includes(v.id)) ?? variant)} research peptide available in Malaysia`
+                    : `${product.name} research peptide, image ${i + 1}`
+                }
+                fallback={
                   <span className="text-6xl font-display font-bold text-text-muted/20 select-none">{variant.code}</span>
-                )}
-              </div>
+                }
+              />
             </Animate>
           </div>
         </div>

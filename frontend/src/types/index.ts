@@ -54,6 +54,16 @@ export interface Product {
   // Present on the public product-detail response; absent from list/admin
   // responses that don't include it.
   addOns?: AddOnVariant[];
+  // Product-level gallery, already ordered by sortOrder. Returned by the
+  // product-detail and admin endpoints; absent from the public list response,
+  // which only needs one thumbnail per card.
+  images?: ProductImage[];
+}
+
+export interface ProductImage {
+  id: string;
+  url: string;
+  sortOrder: number;
 }
 
 // An add-on as attached to a parent product's page: the specific sellable

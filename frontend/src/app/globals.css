@@ -245,3 +245,18 @@ h1, h2, h3, h4, h5, h6 {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Product gallery crossfade. A CSS animation keyed off the slide URL rather
+   than a React state timer: the element remounts on every slide change, so the
+   animation replays without any effect setting state on a timeout.
+   Deliberately NOT named with an `animate-` prefix — a custom class called
+   `animate-*` collides with Tailwind v4's animate namespace and silently
+   computes to `animation: none`. */
+@keyframes gallery-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.gallery-slide { animation: gallery-fade-in 0.28s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .gallery-slide { animation: none; }
+}
