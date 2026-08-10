@@ -53,6 +53,7 @@ export function Footer() {
                 <Link href="/terms" className="block text-sm text-neutral-300 hover:text-white transition-colors">Terms & Conditions</Link>
                 <Link href="/privacy" className="block text-sm text-neutral-300 hover:text-white transition-colors">Privacy Policy</Link>
                 <Link href="/disclaimer" className="block text-sm text-neutral-300 hover:text-white transition-colors">Disclaimer</Link>
+                <Link href="/return-policy" className="block text-sm text-neutral-300 hover:text-white transition-colors">Return Policy</Link>
                 <a href="https://wa.me/601161092723" target="_blank" rel="noopener noreferrer" className="block text-sm text-neutral-300 hover:text-white transition-colors">WhatsApp &rarr;</a>
               </div>
             </div>

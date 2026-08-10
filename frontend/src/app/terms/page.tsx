@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { RETURN_POLICY_STATEMENT } from '@/data/return-policy';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
@@ -50,7 +51,7 @@ export default function TermsPage() {
 
         <h2>7. Returns and Refunds</h2>
         <p>
-          Due to the nature of our products, we do not accept returns or provide refunds once a product has been shipped, unless the product is damaged during transit or the wrong product was delivered. Claims must be made within 48 hours of receiving the order with photographic evidence.
+          {RETURN_POLICY_STATEMENT} See our <Link href="/return-policy" className="underline">Return Policy</Link> for how to raise a claim.
         </p>
 
         <h2>8. Limitation of Liability</h2>
