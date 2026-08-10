@@ -80,6 +80,11 @@ const productObjectSchema = z.object({
   // variant already referenced by an order can't be hard-deleted (see
   // ProductVariant's Restrict FK on OrderItem).
   variants: z.array(variantObjectSchema).optional(),
+  // Full replacement set of product-level gallery images, as URLs in display
+  // order. Undefined leaves the gallery untouched (partial update); [] clears
+  // it. Replace-and-recreate is safe here in a way it is not for variants:
+  // nothing references a ProductImage row, so there are no orders to protect.
+  images: z.array(z.string().trim().min(1).max(500)).max(12).optional(),
 });
 
 // Sale dates now live entirely on ProductVariant (see variantObjectSchema's
@@ -107,6 +112,7 @@ export async function adminListProducts(fastify: FastifyInstance, query: Record<
         // Admins manage inactive (discontinued) variants too, unlike the
         // public storefront which only ever shows active ones.
         variants: { orderBy: { price: 'asc' } },
+        images: { orderBy: { sortOrder: 'asc' } },
         addOns: { include: ADDON_INCLUDE },
       },
       orderBy: { createdAt: 'desc' },
@@ -130,6 +136,7 @@ export async function adminGetProduct(fastify: FastifyInstance, id: string) {
     include: {
       category: { select: { name: true, slug: true } },
       variants: { orderBy: { price: 'asc' } },
+      images: { orderBy: { sortOrder: 'asc' } },
       addOns: { include: ADDON_INCLUDE },
     },
   });
@@ -165,10 +172,16 @@ function toVariantData(v: z.infer<typeof variantObjectSchema>) {
 }
 
 export async function adminCreateProduct(fastify: FastifyInstance, body: unknown) {
-  const { addOns, variants, ...data } = createProductSchema.parse(body);
+  const { addOns, variants, images, ...data } = createProductSchema.parse(body);
 
   const product = await fastify.prisma.$transaction(async (tx) => {
     const created = await tx.product.create({ data });
+
+    if (images && images.length > 0) {
+      await tx.productImage.createMany({
+        data: images.map((url, i) => ({ productId: created.id, url, sortOrder: i })),
+      });
+    }
 
     if (variants && variants.length > 0) {
       await tx.productVariant.createMany({
@@ -191,7 +204,7 @@ export async function adminCreateProduct(fastify: FastifyInstance, body: unknown
 }
 
 export async function adminUpdateProduct(fastify: FastifyInstance, id: string, body: unknown) {
-  const { addOns, variants, ...data } = updateProductSchema.parse(body);
+  const { addOns, variants, images, ...data } = updateProductSchema.parse(body);
 
   const { updated, removedIds } = await fastify.prisma.$transaction(async (tx) => {
     // Row-lock this product for the transaction so a concurrent update to
@@ -216,6 +229,18 @@ export async function adminUpdateProduct(fastify: FastifyInstance, id: string, b
     }
 
     const updated = await tx.product.update({ where: { id }, data });
+
+    // Gallery is a straight replace: delete the old rows, recreate in the
+    // submitted order. Nothing points at a ProductImage, so unlike variants
+    // there is no order history to preserve and no need to soft-remove.
+    if (images !== undefined) {
+      await tx.productImage.deleteMany({ where: { productId: id } });
+      if (images.length > 0) {
+        await tx.productImage.createMany({
+          data: images.map((url, i) => ({ productId: id, url, sortOrder: i })),
+        });
+      }
+    }
 
     let removedIds: string[] = [];
     if (variants !== undefined) {

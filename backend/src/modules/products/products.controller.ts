@@ -51,6 +51,9 @@ export async function getProduct(fastify: FastifyInstance, slug: string) {
     include: {
       category: { select: { name: true, slug: true } },
       variants: { where: { active: true }, orderBy: { price: 'asc' } },
+      // Product-level gallery shots. Detail page only: the listing renders one
+      // thumbnail per card and has no use for the rest.
+      images: { orderBy: { sortOrder: 'asc' } },
       // An add-on's own parent product must also be active — otherwise a
       // soft-deleted product could still be shown (and added to cart) as
       // someone else's add-on, only to fail the whole order at checkout.

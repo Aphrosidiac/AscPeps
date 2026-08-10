@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Trash2, Upload, ImageIcon, ChevronDown,
-  Info, Layers, PackagePlus, FileText, Check, AlertCircle,
+  Info, Layers, PackagePlus, FileText, Check, AlertCircle, X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminGetProduct, adminCreateProduct, adminUpdateProduct, adminUploadImage, getCategories } from '@/lib/api';
@@ -55,6 +55,10 @@ interface ProductFormData {
   addOnConfig: Record<string, { required: boolean; quantity: string }>;
   addOnReminder: string;
   variants: VariantFormData[];
+  // Product-level gallery image URLs, in display order. Separate from the
+  // per-variant imageUrl above: these are shots that belong to the product
+  // line rather than to any one size.
+  images: string[];
 }
 
 const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRFFNYY';
@@ -66,12 +70,115 @@ function newVariant(): VariantFormData {
   };
 }
 
+// Shared key for the gallery uploader's progress state. Variant uploads key by
+// variant row; the gallery is a single control, so it needs one reserved key
+// that can never collide with a crypto.randomUUID() variant key.
+const GALLERY_UPLOAD_KEY = '__gallery__';
+const MAX_GALLERY_IMAGES = 12;
+
+function GalleryEditor({
+  images,
+  uploadState,
+  onUpload,
+  onRemove,
+  onMove,
+}: {
+  images: string[];
+  uploadState?: UploadState;
+  onUpload: (files: File[]) => void;
+  onRemove: (index: number) => void;
+  onMove: (index: number, delta: number) => void;
+}) {
+  const uploading = uploadState?.status === 'uploading';
+  const full = images.length >= MAX_GALLERY_IMAGES;
+
+  return (
+    <div className="space-y-3">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          {images.map((url, i) => (
+            <div key={`${url}-${i}`} className="relative w-24 group">
+              <div className="w-24 h-24 rounded-lg border border-border overflow-hidden bg-surface">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-1">
+                <button
+                  type="button"
+                  onClick={() => onMove(i, -1)}
+                  disabled={i === 0}
+                  aria-label="Move image earlier"
+                  className="px-1.5 py-0.5 text-xs rounded border border-border text-text-secondary hover:text-text-primary disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  &larr;
+                </button>
+                <span className="text-[11px] text-text-muted tabular-nums">{i + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => onMove(i, 1)}
+                  disabled={i === images.length - 1}
+                  aria-label="Move image later"
+                  className="px-1.5 py-0.5 text-xs rounded border border-border text-text-secondary hover:text-text-primary disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  &rarr;
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label="Remove image"
+                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <label
+        className={`inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm transition-colors ${
+          full || uploading ? 'opacity-55 cursor-not-allowed' : 'hover:border-border-hover cursor-pointer'
+        }`}
+      >
+        {uploading ? (
+          <>
+            <Upload className="w-4 h-4" /> Uploading {uploadState.progress}%
+          </>
+        ) : (
+          <>
+            <Plus className="w-4 h-4" /> Add images
+          </>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={full || uploading}
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) onUpload(files);
+            // Reset so re-picking the same file still fires a change event.
+            e.target.value = '';
+          }}
+        />
+      </label>
+      <p className="text-xs text-text-muted">
+        {images.length}/{MAX_GALLERY_IMAGES} images. The first one shows after the variant photos on the product page.
+      </p>
+      {uploadState?.status === 'error' && (
+        <p className="text-xs text-danger">Upload failed. Please try again.</p>
+      )}
+    </div>
+  );
+}
+
 const emptyForm: ProductFormData = {
   name: '', slug: '', categoryId: '',
   description: '', benefits: '', dosageInfo: '', coaUrl: DEFAULT_COA,
   featured: false, active: true, addOnOnly: false,
   addOnIds: [], addOnConfig: {}, addOnReminder: '',
-  variants: [newVariant()],
+  variants: [newVariant()], images: [],
 };
 
 function slugify(text: string) {
@@ -307,6 +414,7 @@ export function ProductForm({ productId }: { productId?: string }) {
             imageUrl: v.imageUrl || '',
             active: v.active,
           })),
+          images: (found.images ?? []).map((img) => img.url),
         });
       })
       .catch(() => setNotFound(true))
@@ -325,7 +433,8 @@ export function ProductForm({ productId }: { productId?: string }) {
       })));
   }, [allProducts, productId]);
 
-  const updateField = (field: keyof ProductFormData, value: string | boolean) => {
+  // string[] included for the gallery's ordered URL list.
+  const updateField = (field: keyof ProductFormData, value: string | boolean | string[]) => {
     setForm((f) => {
       const updated = { ...f, [field]: value };
       if (field === 'name' && !isEdit) {
@@ -341,6 +450,34 @@ export function ProductForm({ productId }: { productId?: string }) {
 
   const addVariantRow = () => setForm((f) => ({ ...f, variants: [...f.variants, newVariant()] }));
   const removeVariantRow = (key: string) => setForm((f) => ({ ...f, variants: f.variants.filter((v) => v.key !== key) }));
+
+  // Uploads sequentially rather than in parallel: the endpoint re-encodes with
+  // sharp, and firing eight at once on a 2GB box is a good way to make the API
+  // fall over. Each success appends immediately, so a mid-batch failure keeps
+  // whatever already landed.
+  const uploadGalleryImages = async (files: File[]) => {
+    if (!token) return;
+    const room = MAX_GALLERY_IMAGES - form.images.length;
+    const batch = files.slice(0, Math.max(0, room));
+    if (batch.length === 0) return;
+
+    for (let i = 0; i < batch.length; i++) {
+      setUploadStatus((s) => ({ ...s, [GALLERY_UPLOAD_KEY]: { status: 'uploading', progress: 0 } }));
+      try {
+        const { url } = await adminUploadImage(token, batch[i], (progress) => {
+          setUploadStatus((s) => ({ ...s, [GALLERY_UPLOAD_KEY]: { status: 'uploading', progress } }));
+        });
+        setForm((f) => ({ ...f, images: [...f.images, url] }));
+      } catch {
+        setUploadStatus((s) => ({ ...s, [GALLERY_UPLOAD_KEY]: { status: 'error', progress: 0 } }));
+        return;
+      }
+    }
+    setUploadStatus((s) => {
+      const { [GALLERY_UPLOAD_KEY]: _removed, ...rest } = s;
+      return rest;
+    });
+  };
 
   const uploadVariantImage = async (key: string, file: File) => {
     if (!token) return;
@@ -436,6 +573,7 @@ export function ProductForm({ productId }: { productId?: string }) {
       }),
       addOnReminder: form.addOnReminder.trim() || null,
       variants: variantsPayload,
+      images: form.images,
     };
 
     try {
@@ -538,6 +676,27 @@ export function ProductForm({ productId }: { productId?: string }) {
                 />
               ))}
             </div>
+          </FormSection>
+
+          <FormSection
+            title="Product Gallery"
+            description="Extra shots shared by every size — packaging, the vial in use, a reconstitution step. Variant photos above stay tied to their size; these do not."
+            icon={ImageIcon}
+            delay={0.075}
+          >
+            <GalleryEditor
+              images={form.images}
+              uploadState={uploadStatus[GALLERY_UPLOAD_KEY]}
+              onUpload={uploadGalleryImages}
+              onRemove={(i) => updateField('images', form.images.filter((_, idx) => idx !== i))}
+              onMove={(i, delta) => {
+                const next = [...form.images];
+                const target = i + delta;
+                if (target < 0 || target >= next.length) return;
+                [next[i], next[target]] = [next[target], next[i]];
+                updateField('images', next);
+              }}
+            />
           </FormSection>
 
           <FormSection
