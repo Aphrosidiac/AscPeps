@@ -71,8 +71,8 @@ function SizeSelector({
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const index = variants.findIndex((v) => v.id === selectedId);
+  const selectedVariant = index >= 0 ? variants[index] : undefined;
   const pricing = getUnitPricing(variants);
-  const best = pricing?.bestId ? variants.find((v) => v.id === pricing.bestId) : undefined;
 
   const step = (delta: number) => {
     const next = (index + delta + variants.length) % variants.length;
@@ -82,66 +82,93 @@ function SizeSelector({
 
   return (
     <div>
-    <div role="radiogroup" aria-label="Choose a size" className="flex flex-wrap gap-2">
-      {variants.map((v, i) => {
-        const selected = v.id === selectedId;
-        const soldOut = v.stock === 0;
-        const perUnit = pricing?.byId.get(v.id);
-        return (
-          <button
-            key={v.id}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            tabIndex={selected ? 0 : -1}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                step(1);
-              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                step(-1);
-              }
-            }}
-            onClick={() => onSelect(v)}
-            className={`min-w-[104px] rounded-lg border px-4 py-2.5 text-left transition-colors cursor-pointer ${
-              selected
-                ? 'border-primary bg-primary text-white'
-                : 'border-border bg-surface hover:border-border-hover'
-            } ${soldOut && !selected ? 'opacity-55' : ''}`}
-          >
-            <span className="block text-sm font-semibold leading-tight">{v.size ?? v.code}</span>
-            <span
-              className={`block text-xs mt-0.5 leading-tight ${
-                selected ? 'text-white/70' : 'text-text-muted'
-              }`}
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="text-sm font-medium">Size</p>
+        <p className="text-sm text-text-secondary">{selectedVariant?.size ?? ''}</p>
+      </div>
+
+      {/* A grid of cards rather than a row of small pills. The details column
+          is ~550px wide and the pills were using a third of it, while the
+          information that actually decides the purchase (unit price, which
+          size is best value) was squeezed into 11px text or exiled to a line
+          underneath. pt-2.5 reserves room for the badge that overhangs the
+          top edge of the best-value card. */}
+      <div
+        role="radiogroup"
+        aria-label="Choose a size"
+        className="grid grid-cols-3 gap-2.5 pt-2.5"
+      >
+        {variants.map((v, i) => {
+          const selected = v.id === selectedId;
+          const soldOut = v.stock === 0;
+          const perUnit = pricing?.byId.get(v.id);
+          const isBest = pricing?.hasSpread && v.id === pricing.bestId && !soldOut;
+          return (
+            <button
+              key={v.id}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  step(1);
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  step(-1);
+                }
+              }}
+              onClick={() => onSelect(v)}
+              // border-2 on every state, not just the selected one: switching
+              // between 1px and 2px would shift every neighbouring card by a
+              // pixel on each selection.
+              className={`relative rounded-xl border-2 px-3.5 py-3 text-left cursor-pointer transition-[border-color,background-color,box-shadow] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
+                selected
+                  ? 'border-primary bg-surface shadow-sm'
+                  : 'border-border bg-surface hover:border-border-hover'
+              } ${soldOut ? 'opacity-60' : ''}`}
             >
-              {soldOut ? 'Sold out' : formatPrice(getEffectivePrice(v))}
-            </span>
-            {!soldOut && perUnit != null && (
+              {isBest && (
+                // Top-left, not centred: centred it runs into the check circle
+                // in the top-right corner on a card this narrow.
+                <span className="absolute -top-2.5 left-2.5 whitespace-nowrap rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  Best value
+                </span>
+              )}
+
+              {/* Decorative: aria-checked on the button already conveys state. */}
               <span
-                className={`block text-[11px] mt-0.5 leading-tight ${
-                  selected ? 'text-white/55' : 'text-text-muted'
+                aria-hidden="true"
+                className={`absolute top-2.5 right-2.5 w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                  selected ? 'border-primary bg-primary' : 'border-border'
                 }`}
               >
-                {formatPrice(Math.round(perUnit))}/{pricing!.unit}
+                {selected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
               </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-      {/* Only nudge when there is something to nudge toward: a real spread in
-          per-unit price, and the customer is not already on the best one. */}
-      {pricing?.hasSpread && best && best.id !== selectedId && best.stock > 0 && (
-        <p className="mt-2 text-xs text-text-secondary">
-          Best value: <span className="font-medium text-text-primary">{best.size}</span> at{' '}
-          {formatPrice(Math.round(pricing.byId.get(best.id)!))}/{pricing.unit}
-        </p>
-      )}
+
+              <span className="block text-[17px] font-semibold leading-snug pr-5">
+                {v.size ?? v.code}
+              </span>
+              <span className="block text-sm mt-1.5 leading-tight">
+                {soldOut ? (
+                  <span className="text-text-muted">Sold out</span>
+                ) : (
+                  formatPrice(getEffectivePrice(v))
+                )}
+              </span>
+              {!soldOut && perUnit != null && (
+                <span className="block text-xs mt-0.5 leading-tight text-text-muted">
+                  {formatPrice(Math.round(perUnit))}/{pricing!.unit}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
