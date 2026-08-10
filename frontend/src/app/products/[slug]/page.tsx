@@ -39,12 +39,17 @@ export default async function ProductDetailPage({ params }: Props) {
 
   const defaultVariant = getDefaultVariant(product);
 
+  // pb-28 below sm: the mobile sticky Add to Cart bar is ~73px of fixed
+  // overlay, and with no reserved space it permanently covered the last chunk
+  // of the page (the tail of the add-on list, on Retatrutide). That bar is
+  // sm:hidden, so the extra padding is too.
+  //
   // max-w-6xl below, not 4xl: at 4xl each column of the hero grid was ~400px,
   // which both capped the product photo at 392px and made the details column
   // taller than it needed to be by forcing everything to wrap early. Long-form
   // prose further down is capped separately so it keeps a readable measure.
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-28 sm:pb-8">
       {/* Mirrors the BreadcrumbList JSON-LD in layout.tsx exactly. If one gains a
           level (a category, say) the other has to gain it too, or the markup and
           the visible trail disagree. */}
