@@ -61,7 +61,10 @@ interface Props {
 }
 
 export function ProductGallery({ slides, selectedVariantId, productName, altFor, fallback }: Props) {
-  const [index, setIndex] = useState(0);
+  // `previous` is carried alongside `current` because the outgoing image has to
+  // stay on screen, fully opaque, underneath the incoming one for the whole
+  // transition. See the layer comment in the render for why.
+  const [pos, setPos] = useState({ current: 0, previous: 0 });
   // Tracks which variant the index was last synced to, so "the variant
   // changed" can be told apart from "the customer is browsing". Without that
   // distinction, following the variant would fight the customer and every
@@ -69,6 +72,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
   const [syncedVariant, setSyncedVariant] = useState(selectedVariantId);
 
   const count = slides.length;
+  const goTo = (next: number) => setPos((s) => (next === s.current ? s : { current: next, previous: s.current }));
 
   // Follow the size picker: selecting a size moves the gallery to that size's
   // photo, which is what the picker implies. Done during render rather than in
@@ -77,10 +81,11 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
   if (syncedVariant !== selectedVariantId) {
     setSyncedVariant(selectedVariantId);
     const target = slides.findIndex((s) => s.variantIds.includes(selectedVariantId));
-    if (target >= 0 && target !== index) setIndex(target);
+    if (target >= 0) goTo(target);
   }
 
-  const safeIndex = count > 0 ? Math.min(index, count - 1) : 0;
+  const safeIndex = count > 0 ? Math.min(pos.current, count - 1) : 0;
+  const prevIndex = count > 0 ? Math.min(pos.previous, count - 1) : 0;
 
   if (count === 0) {
     return (
@@ -90,7 +95,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
     );
   }
 
-  const go = (delta: number) => setIndex((i) => (i + delta + count) % count);
+  const go = (delta: number) => goTo((safeIndex + delta + count) % count);
 
   return (
     <div className="max-w-[320px] mx-auto md:max-w-none md:mx-0">
@@ -111,18 +116,52 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
           }
         }}
       >
-        {/* Keyed on the URL so the element remounts per slide and the CSS
-            animation replays. No state, no timer. */}
-        <div key={slides[safeIndex].url} className="gallery-slide absolute inset-0">
-          <Image
-            src={slides[safeIndex].url}
-            alt={altFor(slides[safeIndex], safeIndex)}
-            fill
-            sizes="(min-width: 768px) 50vw, 320px"
-            priority={safeIndex === 0}
-            className="object-cover"
-          />
-        </div>
+        {/* Every slide is a stacked layer that stays mounted. Only the incoming
+            one animates: it fades 0 -> 1 on top of the outgoing one, which is
+            held at full opacity underneath until it is completely covered.
+            Two things this gets right that the previous version did not:
+
+            The old approach remounted a single <img> on a changed key, so the
+            outgoing image vanished instantly and the panel's grey background
+            was visible for the whole fade. That read as a flash to white, and
+            it happened on every change regardless of caching.
+
+            Cross-fading both layers at once does not fix it either: at the
+            midpoint a 0.5-opacity image over another 0.5-opacity image lets
+            roughly a quarter of the backdrop through. Only the incoming layer
+            may animate; the outgoing one must stay opaque.
+
+            Keeping every layer mounted also means each image decodes once, so
+            revisiting a slide is instant. */}
+        {slides.map((s, i) => {
+          const isActive = i === safeIndex;
+          const isOutgoing = i === prevIndex && !isActive;
+          return (
+            <div
+              key={s.url}
+              aria-hidden={!isActive}
+              className={`absolute inset-0 ${
+                isActive ? 'transition-opacity duration-300 ease-out motion-reduce:transition-none' : ''
+              }`}
+              style={{
+                opacity: isActive || isOutgoing ? 1 : 0,
+                // The incoming layer must paint above the one it is covering.
+                // DOM order alone would put slide 1 under slide 3 when going
+                // backwards.
+                zIndex: isActive ? 2 : isOutgoing ? 1 : 0,
+              }}
+            >
+              <Image
+                src={s.url}
+                alt={isActive ? altFor(s, i) : ''}
+                fill
+                sizes="(min-width: 768px) 50vw, 320px"
+                priority={i === 0}
+                className="object-cover"
+              />
+            </div>
+          );
+        })}
 
         {count > 1 && (
           <>
@@ -130,7 +169,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
               type="button"
               onClick={() => go(-1)}
               aria-label="Previous image"
-              className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
+              className="absolute z-10 left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -138,13 +177,13 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
               type="button"
               onClick={() => go(1)}
               aria-label="Next image"
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
+              className="absolute z-10 right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-surface/90 border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface transition-[color,background-color,opacity] cursor-pointer shadow-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
             {/* Position readout, mainly for screen readers and small screens
                 where the arrows sit over the photo. */}
-            <p className="absolute bottom-2 right-2 text-[11px] px-2 py-0.5 rounded-full bg-surface/85 text-text-secondary border border-border">
+            <p className="absolute z-10 bottom-2 right-2 text-[11px] px-2 py-0.5 rounded-full bg-surface/85 text-text-secondary border border-border">
               <span className="sr-only">Image </span>
               {safeIndex + 1} / {count}
             </p>
@@ -170,7 +209,7 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
                   role="tab"
                   aria-selected={active}
                   aria-label={`Show image ${i + 1} of ${count}`}
-                  onClick={() => setIndex(i)}
+                  onClick={() => goTo(i)}
                   className={`relative w-16 h-16 shrink-0 rounded-lg overflow-hidden border transition-colors cursor-pointer ${
                     active ? 'border-primary' : 'border-border hover:border-border-hover'
                   }`}
