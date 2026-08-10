@@ -37,6 +37,14 @@ const nextConfig: NextConfig = {
     // those products go live, send their old URLs to the products listing
     // instead: a 301 to a live listing beats a 301 into a 404. Repoint back
     // to `/products/<slug>` if any of these are ever published.
+    //
+    // TRAP: a redirect SOURCE here must never equal a live product slug.
+    // Redirects run before routing, so such an entry makes that product's page
+    // permanently unreachable — it 308s away and no one, customer or crawler,
+    // can ever see it. This bit `ghk-cu-100mg`: the migration retired it as a
+    // per-size URL, then it was later recreated as its own product, and the
+    // stale entry silently swallowed it. Before adding a product whose slug
+    // resembles an old per-size URL, check it is not a key below.
     const unpublishedTargets = new Set([
       "humanin",
       "human-placenta-extract",
