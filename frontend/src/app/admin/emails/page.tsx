@@ -524,11 +524,32 @@ function EmailContentSettings({ token, onSaved }: { token: string | null; onSave
   );
 }
 
+/**
+ * Force the previewed email into one colour scheme.
+ *
+ * The templates theme themselves with `@media (prefers-color-scheme: dark)`,
+ * which follows the machine you happen to be sitting at — so the preview could
+ * only ever show you one of the two, and the one it showed depended on your OS
+ * setting rather than on what you wanted to check. Rewriting the media
+ * condition is enough to pin it: `all` always matches, a zero max-width never
+ * does. Nothing else in the HTML is touched, so what renders is still the real
+ * template rather than a re-styled copy of it.
+ */
+function forceScheme(html: string, scheme: 'light' | 'dark'): string {
+  return html.replace(
+    /@media \(prefers-color-scheme: dark\)/g,
+    scheme === 'dark' ? '@media all' : '@media (prefers-color-scheme: dark) and (max-width:0px)'
+  );
+}
+
 // Read-only rendering of the actual email templates, straight from the same
 // server code the outbox worker uses — adjustable by type and sample order.
 function TemplatePreview({ token, refreshKey }: { token: string | null; refreshKey: number }) {
   const [type, setType] = useState<'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT'>('ORDER_CONFIRMATION');
   const [orderId, setOrderId] = useState(''); // '' = latest order
+  // Defaults to light: it is what most inboxes still render, so it is the more
+  // useful first look. Dark is one click away and is where the subtler bugs are.
+  const [scheme, setScheme] = useState<'light' | 'dark'>('light');
   const [orders, setOrders] = useState<{ id: string; orderNumber: string; customerName: string }[]>([]);
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [previewError, setPreviewError] = useState(false);
@@ -600,6 +621,19 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
             <option key={o.id} value={o.id}>{o.orderNumber} — {o.customerName}</option>
           ))}
         </select>
+        <div className="flex gap-1 p-1 rounded-full bg-surface-elevated">
+          {(['light', 'dark'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setScheme(s)}
+              className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition-colors cursor-pointer ${
+                scheme === s ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2 sm:ml-auto">
           <input
             type="email"
@@ -636,10 +670,15 @@ function TemplatePreview({ token, refreshKey }: { token: string | null; refreshK
             <span className="font-medium">{preview.subject}</span>
           </div>
           <iframe
+            key={scheme}
             title="Email template preview"
             sandbox=""
-            srcDoc={preview.html}
-            className="w-full h-[620px] bg-white"
+            srcDoc={forceScheme(preview.html, scheme)}
+            // The page background the email sits on is part of what is being
+            // judged, so the iframe carries the scheme's own backdrop rather
+            // than a fixed white one that would flash on every dark render.
+            className="w-full h-[620px]"
+            style={{ backgroundColor: scheme === 'dark' ? '#0a0a0a' : '#f4f4f4' }}
           />
         </div>
       )}

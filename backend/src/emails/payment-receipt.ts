@@ -45,7 +45,9 @@ ${renderOrderSummary(order)}
           <p class="body-text" style="margin:26px 0 0;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
             <strong class="ink" style="color:${INK};">Your receipt is attached as a PDF.</strong> We&#39;ll let you know as soon as your order ships.
           </p>`,
-    preheader: `Receipt for order ${order.orderNumber} — payment confirmed.`,
+    // Not a restatement of the subject: says what changed (paid), what we are
+    // doing about it (packing), and what is attached.
+    preheader: "Paid in full — we're packing it now. Your receipt is attached.",
     settings,
   });
 

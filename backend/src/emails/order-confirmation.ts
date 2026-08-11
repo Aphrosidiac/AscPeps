@@ -5,6 +5,7 @@ import {
   renderButton,
   renderSubject,
   escapeHtml,
+  formatRM,
   SITE_URL,
   FONT,
   INK,
@@ -74,8 +75,22 @@ export function renderOrderConfirmation(
 ): { subject: string; html: string } {
   const buttonLabel = escapeHtml(settings.email_button_label || DEFAULT_BUTTON_LABEL);
 
+  const whatsappHref = `https://wa.me/${env.WHATSAPP_NUMBER}?text=${encodeURIComponent(
+    `Hi, about order #${order.orderNumber}`
+  )}`;
+
   let paymentBlock: string;
-  if (order.paymentMethod === 'WHATSAPP') {
+  if (order.paymentStatus === 'PAID') {
+    // Already settled. Telling a customer who has paid that they may not have
+    // paid is the single most alarming thing this email could say, so the
+    // branch exists to make sure it never does — the WhatsApp door stays open,
+    // it just asks about the order rather than about the money.
+    paymentBlock = `
+          <p class="body-text" style="margin:26px 0 14px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
+            <strong class="ink" style="color:${INK};">Payment:</strong> Received in full via ${escapeHtml(order.paymentGateway || 'our payment gateway')} — nothing further to do. If anything about this order doesn&#39;t look right, message us and we&#39;ll sort it out.
+          </p>
+          ${renderButton('MESSAGE US ON WHATSAPP', whatsappHref)}`;
+  } else if (order.paymentMethod === 'WHATSAPP') {
     const instructions = escapeHtml(settings.email_whatsapp_instructions || DEFAULT_WHATSAPP_INSTRUCTIONS);
     paymentBlock = `
           <p class="body-text" style="margin:26px 0 0;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
@@ -88,13 +103,10 @@ export function renderOrderConfirmation(
           </p>
           ${renderButton(buttonLabel, paymentUrl)}`;
   } else {
-    // The bill URL isn't persisted (see reconstructPaymentUrl in
+    // Unpaid and the bill URL isn't persisted (see reconstructPaymentUrl in
     // email-worker.ts), so there's nothing to link back to — send the customer
     // to WhatsApp for a fresh link instead of the old dead-end copy ("please do
     // so via the secure payment page from checkout") with no actual link.
-    const whatsappHref = `https://wa.me/${env.WHATSAPP_NUMBER}?text=${encodeURIComponent(
-      `Hi, I would like to complete payment for order #${order.orderNumber}`
-    )}`;
     paymentBlock = `
           <p class="body-text" style="margin:26px 0 14px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
             <strong class="ink" style="color:${INK};">Payment:</strong> Online (${escapeHtml(order.paymentGateway || 'Billplz')}). If you haven&#39;t completed payment yet, message us on WhatsApp and we&#39;ll send you a fresh payment link.
@@ -112,7 +124,19 @@ export function renderOrderConfirmation(
       meta: renderMetaLine(order),
     },
     body: `${renderOrderSummary(order)}${paymentBlock}${renderNextSteps()}`,
-    preheader: `Order ${order.orderNumber} received — here's your summary.`,
+    // The preheader is the line the inbox shows NEXT TO the subject, so
+    // repeating the subject in it — which this used to do — spends the only
+    // extra line you get saying nothing. It carries the two things the subject
+    // cannot: what it came to, and what happens next.
+    preheader: `${formatRM(order.total)} · ${order.items.length} item${order.items.length === 1 ? '' : 's'} · ${
+      order.paymentMethod === 'WHATSAPP'
+        ? "we'll confirm the moment your transfer lands."
+        : order.paymentStatus === 'PAID'
+          ? "paid — we'll let you know the moment it ships."
+          : paymentUrl
+            ? 'finish payment and we start packing.'
+            : "we'll let you know the moment it ships."
+    }`,
     settings,
   });
 
