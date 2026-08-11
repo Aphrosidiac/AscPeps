@@ -200,14 +200,56 @@ const totalRow = (label: string, value: string, bold = false) => `
               <td align="right" class="${bold ? 'ink' : 'body-text'}" style="padding:4px 0;font-family:${FONT};font-size:13px;color:${bold ? INK : BODY};${bold ? 'font-weight:700;font-size:16px;padding-top:12px;' : ''}">${value}</td>
             </tr>`;
 
-/** 56px thumbnail, or a neutral tile of the same footprint so rows stay aligned
- *  whether or not a variant has a photo. */
+/**
+ * 56px thumbnail, or a neutral tile of the same footprint so rows stay aligned
+ * whether or not a variant has a photo.
+ *
+ * The <img> is nested inside that same tile rather than standing alone, because
+ * "no photo" is not the only way this ends up empty: Outlook desktop blocks
+ * remote images by default, plenty of readers never load them, and an
+ * undeployed asset 404s. In all of those the browser draws its own broken-image
+ * glyph on whatever sits behind it — which, on a bare <img>, was a hardcoded
+ * light square sitting in an otherwise dark-mode email.
+ *
+ * Nesting it means every one of those cases degrades to exactly the placeholder
+ * tile, in the right colour for the reader's theme. alt is deliberately empty:
+ * the product name is already the next cell, and alt text inside a 56px box
+ * just overflows into the row.
+ */
+/**
+ * Which line-art glyph stands in for a product with no photograph.
+ *
+ * Matched on the product name rather than on its category, because the
+ * categories do not carry this distinction: everything here is filed under
+ * "Supplies", but a syringe, a foil swab and a bottle of bacteriostatic water
+ * are three different objects and one shared icon for them would be noise.
+ * Every peptide, whatever its category, ships as a vial — so that is the
+ * default rather than a special case.
+ *
+ * This matters more than it looks: 53 of the last 80 order lines had no photo,
+ * because accessories ride along on nearly every order.
+ */
+const FALLBACK_ICONS: [RegExp, string][] = [
+  [/syringe/i, 'syringe'],
+  [/swab|wipe/i, 'swab'],
+  [/water|solvent|bacteriostatic/i, 'droplet'],
+];
+
+function fallbackIcon(productName: string): string {
+  const hit = FALLBACK_ICONS.find(([re]) => re.test(productName));
+  return `${SITE_URL}/images/email-icons/${hit ? hit[1] : 'vial'}.png?v=${ASSET_VERSION}`;
+}
+
 function renderThumb(item: EmailOrderItem): string {
   const src = emailThumbUrl(item.variant.imageUrl);
-  if (!src) {
-    return `<table role="presentation" width="56" height="56" cellpadding="0" cellspacing="0"><tr><td width="56" height="56" bgcolor="#f4f4f4" class="thumb-empty" style="width:56px;height:56px;background-color:#f4f4f4;border-radius:8px;font-size:0;line-height:56px;">&nbsp;</td></tr></table>`;
-  }
-  return `<img src="${escapeHtml(src)}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;border-radius:8px;background-color:#f4f4f4;">`;
+  const inner = src
+    ? `<img src="${escapeHtml(src)}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;border-radius:8px;">`
+    : // Drawn in a single midtone grey so ONE asset reads on the #f4f4f4 tile
+      // and the #262626 dark one — no display:none image swapping, which
+      // Outlook does not honour. With images off it simply vanishes and the
+      // row falls back to the empty tile, which is the same place we were.
+      `<img src="${fallbackIcon(item.variant.product.name)}" width="28" height="28" alt="" style="display:block;width:28px;height:28px;margin:14px auto;">`;
+  return `<table role="presentation" width="56" height="56" cellpadding="0" cellspacing="0"><tr><td width="56" height="56" bgcolor="#f4f4f4" class="thumb-empty" style="width:56px;height:56px;background-color:#f4f4f4;border-radius:8px;font-size:0;line-height:0;">${inner}</td></tr></table>`;
 }
 
 export function renderOrderSummary(order: EmailOrder): string {
