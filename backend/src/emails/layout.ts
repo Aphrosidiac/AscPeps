@@ -46,12 +46,21 @@ const ASSET_VERSION = 3;
 // it. Values measured from og-image.png where they have an equivalent there.
 export const INK = '#0A0A0A'; // headlines, strong values — not pure #000
 export const BODY = '#54565b'; // paragraph text
-export const MUTED = '#9a9a9e'; // labels, captions, footer
+// Labels, captions, footer. #9a9a9e was the original and measures 2.80:1 on
+// white — well under WCAG AA's 4.5:1 for text this small, and these are not
+// decoration: "30mg . Qty 1" is the variant the customer actually bought.
+// #72727a measures 4.77:1. The dark theme keeps its own lighter value, which is
+// judged against #141414 rather than against white.
+export const MUTED = '#72727a';
 export const BORDER = '#ececec';
 export const ACCENT = '#22C55E'; // matches --color-success in the site's globals.css
 export const HERO_BG = '#0A0A0A'; // the OG image's field colour, exactly
 export const HERO_SUB = '#8a8a90'; // the OG headline's second-clause grey
 export const HERO_CHIP = '#1c1c1c'; // badge chip on the dark field
+// The hero's meta line is grey on near-black, the opposite problem to MUTED, so
+// it gets its own value: darkening it to MUTED's would take it from 7.06:1 down
+// to 4.15:1 and fail in the other direction.
+export const HERO_META = '#9a9a9e';
 
 export const FONT = "'Outfit', Helvetica, Arial, sans-serif";
 export const MONO = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
@@ -181,18 +190,18 @@ function renderHero(hero: HeroOptions): string {
   // broken one, so the VML is deliberately not worth its weight here.
   return `
         <tr>
-          <td class="hero" background="${bg}" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;background-image:url('${bg}');background-position:top right;background-size:600px 210px;background-repeat:no-repeat;padding:26px 36px 32px;">
+          <td class="hero pad" background="${bg}" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;background-image:url('${bg}');background-position:top right;background-size:600px 210px;background-repeat:no-repeat;padding:26px 36px 32px;">
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
               <tr>
                 <td width="26" style="width:26px;padding-right:9px;"><img src="${ASSETS}/images/pill-badge-dark.png?v=${ASSET_VERSION}" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
                 <td style="font-family:${FONT};font-size:17px;font-weight:700;letter-spacing:-0.01em;color:#ffffff !important;">Ascend MY</td>
               </tr>
             </table>${hero.badge ? `\n            ${renderBadge(hero.badge.label, hero.badge.tone)}` : ''}
-            <p style="margin:${hero.badge ? '14px' : '0'} 0 0;font-family:${FONT};font-size:29px;line-height:1.22;font-weight:700;letter-spacing:-0.025em;color:#ffffff !important;">
+            <p class="h1" style="margin:${hero.badge ? '14px' : '0'} 0 0;font-family:${FONT};font-size:29px;line-height:1.22;font-weight:700;letter-spacing:-0.025em;color:#ffffff !important;word-break:break-word;">
               ${hero.headline}${hero.subhead ? `<br><span style="color:${HERO_SUB} !important;">${hero.subhead}</span>` : ''}
             </p>${
               hero.meta
-                ? `\n            <p style="margin:12px 0 0;font-family:${FONT};font-size:13px;line-height:1.6;color:${MUTED} !important;">${hero.meta}</p>`
+                ? `\n            <p style="margin:12px 0 0;font-family:${FONT};font-size:13px;line-height:1.6;color:${HERO_META} !important;">${hero.meta}</p>`
                 : ''
             }
           </td>
@@ -206,7 +215,7 @@ function renderHero(hero: HeroOptions): string {
 const totalRow = (label: string, value: string, bold = false) => `
             <tr>
               <td class="${bold ? 'ink' : 'body-text'}" style="padding:4px 0;font-family:${FONT};font-size:13px;color:${bold ? INK : BODY};${bold ? 'font-weight:700;font-size:16px;padding-top:12px;' : ''}">${label}</td>
-              <td align="right" class="${bold ? 'ink' : 'body-text'}" style="padding:4px 0;font-family:${FONT};font-size:13px;color:${bold ? INK : BODY};${bold ? 'font-weight:700;font-size:16px;padding-top:12px;' : ''}">${value}</td>
+              <td align="right" class="${bold ? 'ink' : 'body-text'}" style="white-space:nowrap;padding:4px 0;font-family:${FONT};font-size:13px;color:${bold ? INK : BODY};${bold ? 'font-weight:700;font-size:16px;padding-top:12px;' : ''}">${value}</td>
             </tr>`;
 
 /**
@@ -267,11 +276,11 @@ export function renderOrderSummary(order: EmailOrder): string {
       const size = item.variant.size ? `${escapeHtml(item.variant.size)} &middot; ` : '';
       return `
             <tr>
-              <td width="70" class="border-b" style="width:70px;padding:14px 14px 14px 0;border-bottom:1px solid ${BORDER};">${renderThumb(item)}</td>
-              <td class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;color:${INK};">
+              <td width="68" valign="top" class="border-b" style="width:68px;padding:14px 12px 14px 0;border-bottom:1px solid ${BORDER};">${renderThumb(item)}</td>
+              <td valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;color:${INK};">
                 <span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span><br><span class="muted" style="font-size:12px;color:${MUTED};">${size}Qty ${item.quantity}</span>
               </td>
-              <td align="right" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;font-weight:600;color:${INK};">${formatRM(item.unitPrice * item.quantity)}</td>
+              <td align="right" valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;font-weight:600;color:${INK};white-space:nowrap;">${formatRM(item.unitPrice * item.quantity)}</td>
             </tr>`;
     })
     .join('');
@@ -315,16 +324,16 @@ const TRUST_BADGES = ['99%+ Purity', 'Third-Party Tested', 'Fast Shipping'];
 
 function renderTrustStrip(): string {
   const cells = TRUST_BADGES.map(
-    (label) => `<td style="padding:0 11px;">
+    (label) => `<td style="padding:0 8px;">
                       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
                         <td width="6" style="width:6px;padding-right:6px;"><table role="presentation" width="6" height="6" cellpadding="0" cellspacing="0"><tr><td width="6" height="6" bgcolor="${ACCENT}" style="width:6px;height:6px;line-height:6px;font-size:0;background-color:${ACCENT} !important;border-radius:50%;">&nbsp;</td></tr></table></td>
-                        <td style="font-family:${FONT};font-size:11px;font-weight:700;color:#ffffff !important;white-space:nowrap;">${label}</td>
+                        <td style="font-family:${FONT};font-size:11px;font-weight:700;color:#ffffff !important;">${label}</td>
                       </tr></table>
                     </td>`
   ).join('');
   return `
         <tr>
-          <td class="card" style="padding:32px 36px 0;">
+          <td class="card pad" style="padding:32px 36px 0;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;border-radius:11px;">
               <tr>
                 <td align="center" style="padding:15px 12px;">
@@ -385,8 +394,30 @@ export function renderLayout(o: LayoutOptions): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
 <meta name="supported-color-schemes" content="light dark">
+<!-- The webfont lives in a <style> block of its OWN, and this is not tidiness.
+     Gmail discards an ENTIRE style block the moment it finds anything in it it
+     objects to, and @import is high on that list. Kept separate, a Gmail
+     rejection costs the webfont — which Gmail was never going to load anyway —
+     instead of taking the dark theme and the responsive rules down with it. -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap');
+</style>
+<style>
+/* Client resets. text-size-adjust stops iOS Mail and the Gmail app inflating
+   small text on their own; the mso-table rules stop Word inserting a gap
+   around every nested table, which is what makes an Outlook render drift a few
+   pixels wider than every other client. */
+body, table, td, p, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+table { border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt; }
+img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
+
+/* Link colour has to be stated per scheme rather than inline. Inline is where
+   it used to live, with !important to beat the blue some clients force on every
+   <a> — but an inline !important cannot be overridden by a stylesheet, so dark
+   mode could never repaint it and the two links in the welcome email came out
+   near-black on near-black. Note a.ink (0,1,1) outranks .ink (0,1,0): the dark
+   block below needs its own a.ink or this rule wins there too. */
+a.ink { color:#0A0A0A !important; }
 
 /* Apple Mail, iOS Mail, Outlook.com. The hero is intentionally absent from
    every rule here: it is already dark and must stay exactly as it is.
@@ -401,9 +432,12 @@ export function renderLayout(o: LayoutOptions): string {
    the Outlook fallback instead. */
 @media (prefers-color-scheme: dark) {
   .page-bg    { background-color:#0a0a0a !important; }
-  .card       { background-color:#141414 !important; }
+  /* colour as well as background: text that inherits from the card instead of
+     carrying its own class would otherwise stay near-black on near-black. */
+  .card       { background-color:#141414 !important; color:#f5f5f5 !important; }
   .card-outer { background-color:#141414 !important; border-color:#262626 !important; }
   .ink        { color:#f5f5f5 !important; }
+  a.ink       { color:#f5f5f5 !important; }
   .body-text  { color:#b8b8bd !important; }
   .muted      { color:#8a8a90 !important; }
   .border-b   { border-bottom-color:#262626 !important; }
@@ -417,19 +451,28 @@ export function renderLayout(o: LayoutOptions): string {
 /* Outlook.com and Outlook for Android rewrite the document and prefix it with
    these attributes instead of honouring the media query above. */
 [data-ogsc] .page-bg    { background-color:#0a0a0a !important; }
-[data-ogsc] .card       { background-color:#141414 !important; }
+[data-ogsc] .card       { background-color:#141414 !important; color:#f5f5f5 !important; }
 [data-ogsc] .card-outer { background-color:#141414 !important; border-color:#262626 !important; }
 [data-ogsc] .ink        { color:#f5f5f5 !important; }
+[data-ogsc] a.ink       { color:#f5f5f5 !important; }
 [data-ogsc] .body-text  { color:#b8b8bd !important; }
 [data-ogsc] .muted      { color:#8a8a90 !important; }
 [data-ogsc] .border-b   { border-bottom-color:#262626 !important; }
 [data-ogsc] .border-t   { border-top-color:#262626 !important; }
 [data-ogsc] .btn        { background-color:#f5f5f5 !important; }
 [data-ogsc] .btn-a      { color:#0A0A0A !important; }
+[data-ogsc] .eyebrow    { border-bottom-color:#f5f5f5 !important; }
+[data-ogsc] .code-box   { border-color:#f5f5f5 !important; }
+[data-ogsc] .thumb-empty{ background-color:#262626 !important; }
 
+/* Refinement only — never the thing standing between the layout and a phone.
+   The Gmail app renders mail from non-Google accounts with <style> stripped
+   entirely, so no rule in this file reaches a sizeable share of readers. The
+   base layout has to survive a 320px screen on its own; these just buy back
+   some breathing room where they do run. */
 @media only screen and (max-width:620px) {
-  .pad   { padding-left:22px !important; padding-right:22px !important; }
-  .h1    { font-size:25px !important; }
+  .pad { padding-left:20px !important; padding-right:20px !important; }
+  .h1  { font-size:25px !important; }
 }
 </style>
 <!--[if mso]>

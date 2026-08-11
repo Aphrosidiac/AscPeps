@@ -36,7 +36,7 @@ function renderResources(): string {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;">
             <tr>
               <td class="border-b" style="padding:0 0 14px;border-bottom:1px solid ${BORDER};">
-                <a href="${SITE_URL}${r.path}" class="ink" style="font-family:${FONT};font-size:14px;font-weight:600;color:${INK} !important;text-decoration:none;">${r.label} &rarr;</a>
+                <a href="${SITE_URL}${r.path}" class="ink" style="font-family:${FONT};font-size:14px;font-weight:600;color:${INK};text-decoration:none;">${r.label} &rarr;</a>
                 <p class="body-text" style="margin:4px 0 0;font-family:${FONT};font-size:13px;line-height:1.6;color:${BODY};">${r.blurb}</p>
               </td>
             </tr>
