@@ -3,8 +3,8 @@ import { Suspense } from 'react';
 import { LoginClient } from './LoginClient';
 
 export const metadata: Metadata = {
-  title: 'Sign in | ASCEND',
-  description: 'Sign in to your ASCEND account to comment on Insights articles.',
+  title: 'Sign in | Ascend MY',
+  description: 'Sign in to your Ascend MY account to comment on Insights articles.',
   // Account screens carry no content worth indexing and would only dilute the
   // catalog's crawl budget.
   robots: { index: false, follow: true },

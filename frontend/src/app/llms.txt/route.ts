@@ -36,19 +36,19 @@ export async function GET() {
   });
 
   const body = [
-    '# ASCEND — Research Peptides Malaysia',
+    '# Ascend MY — Research Peptides Malaysia',
     '',
-    `> ASCEND is Malaysia's premium research-peptide supplier. All compounds are lab-grade, manufactured to 99%+ purity and independently third-party tested (Certificate of Analysis available). Prices are in Malaysian Ringgit (MYR) with ${shippingSummaryClause}. No account required. All products are sold strictly for laboratory and research purposes only.`,
+    `> Ascend MY is Malaysia's premium research-peptide supplier. All compounds are lab-grade, manufactured to 99%+ purity and independently third-party tested (Certificate of Analysis available). Prices are in Malaysian Ringgit (MYR) with ${shippingSummaryClause}. No account required. All products are sold strictly for laboratory and research purposes only.`,
     '',
     '## Key pages',
     `- [Shop all peptides](${BASE_URL}/products): Full catalog with live MYR pricing and stock`,
-    `- [Insights](${BASE_URL}/insights): Peptide research commentary and product updates, written by Asywa, Founder & CEO of ASCEND`,
+    `- [Insights](${BASE_URL}/insights): Peptide research commentary and product updates, written by Asywa, Founder & CEO of Ascend MY`,
     `- [Reconstitution dose calculator](${BASE_URL}/calculator): Interactive BAC water / concentration calculator`,
     `- [Peptide guide](${BASE_URL}/guide): Reconstitution, storage and handling`,
     `- [Certificates of Analysis](${BASE_URL}/coa): Third-party testing methodology and how to request a batch COA`,
     `- [FAQ](${BASE_URL}/faq): Purity, COA, shipping, ordering and payment questions`,
     `- [Shipping policy](${BASE_URL}/shipping): Delivery times and coverage across Peninsular Malaysia`,
-    `- [About ASCEND](${BASE_URL}/about): Who we are`,
+    `- [About Ascend MY](${BASE_URL}/about): Who we are`,
     `- [Terms & Conditions](${BASE_URL}/terms): Ordering, payment, and returns terms`,
     `- [Disclaimer](${BASE_URL}/disclaimer): Research-use-only compliance statement`,
     `- [Privacy Policy](${BASE_URL}/privacy): Data handling and privacy practices`,

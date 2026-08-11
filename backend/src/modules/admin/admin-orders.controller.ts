@@ -11,6 +11,7 @@ const updateOrderSchema = z.object({
   paymentStatus: z.enum(['UNPAID', 'PAID', 'FAILED', 'REFUNDED']).optional(),
   trackingNumber: z.string().max(50).optional(),
   notes: z.string().optional(),
+  profitShared: z.boolean().optional(),
 });
 
 // Cents. Capped well above any plausible order so a mistyped figure can't

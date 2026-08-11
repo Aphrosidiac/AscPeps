@@ -4,7 +4,7 @@
 // therapy", ...) or are simply missing the site's research-use-only framing.
 //
 // WHY: every other product on the site already reads as research supply —
-// "<compound> is a <class> studied for <area> research ... supplied by ASCEND in
+// "<compound> is a <class> studied for <area> research ... supplied by Ascend MY in
 // Malaysia for laboratory research use only". These 25 were the holdouts, and on a
 // regulated-substance catalogue an outcome claim is the part that turns a listing
 // into an advertisement for human use. This normalises all of them onto the house
@@ -27,7 +27,7 @@ const prisma = new PrismaClient({ adapter });
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
-const RUO = 'supplied by ASCEND in Malaysia for laboratory research use only.';
+const RUO = 'supplied by Ascend MY in Malaysia for laboratory research use only.';
 
 // Keyed by slug. Sizes referenced here were read off product_variants in
 // production — keep them in sync if a variant is added or renamed.

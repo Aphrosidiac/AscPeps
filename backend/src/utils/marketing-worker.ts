@@ -123,7 +123,7 @@ async function processWelcome(
 
     await fastify.prisma.subscriber.update({
       where: { id: subscriber.id },
-      data: { welcomeSentAt: new Date(), welcomeError: null },
+      data: { welcomeSentAt: new Date(), welcomeError: null, welcomeResendId: resendId, welcomeStatus: 'SENT' },
     });
     fastify.log.info({ resendId }, 'welcome email sent');
   } catch (err) {

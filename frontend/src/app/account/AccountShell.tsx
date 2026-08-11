@@ -29,7 +29,7 @@ export function AccountShell({
       {footer && <div className="mt-5 text-sm text-text-muted text-center">{footer}</div>}
 
       <p className="mt-8 text-xs text-text-muted leading-relaxed text-center">
-        An ASCEND account is only used to post comments on{' '}
+        An Ascend MY account is only used to post comments on{' '}
         <Link href="/insights" className="underline hover:text-text-secondary transition-colors">
           Insights
         </Link>

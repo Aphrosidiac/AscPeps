@@ -26,8 +26,8 @@ export function OrganizationJsonLd({ priceRange }: OrganizationJsonLdProps = {})
     '@context': 'https://schema.org',
     '@type': ['Organization', 'OnlineStore'],
     '@id': 'https://ascendpeptides.my/#organization',
-    name: 'ASCEND',
-    alternateName: 'ASCEND Peptides Malaysia',
+    name: 'Ascend MY',
+    alternateName: 'Ascend Peptides Malaysia',
     url: 'https://ascendpeptides.my',
     logo: 'https://ascendpeptides.my/images/pill-icon-512.png',
     image: 'https://ascendpeptides.my/images/pill-icon-512.png',
@@ -63,7 +63,7 @@ export function WebSiteJsonLd() {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     '@id': 'https://ascendpeptides.my/#website',
-    name: 'ASCEND Peptides Malaysia',
+    name: 'Ascend Peptides Malaysia',
     url: 'https://ascendpeptides.my',
     inLanguage: 'en-MY',
     publisher: { '@id': 'https://ascendpeptides.my/#organization' },
@@ -186,7 +186,7 @@ export function ProductGroupJsonLd({
         availability: v.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
         url,
         areaServed: { '@type': 'Country', name: 'Malaysia' },
-        seller: { '@type': 'Organization', name: 'ASCEND' },
+        seller: { '@type': 'Organization', name: 'Ascend MY' },
         // Matches Terms & Conditions §7: no returns/refunds once shipped,
         // except transit damage or wrong item — that's a fulfillment-error
         // guarantee, not a general buyer's-remorse return window, so
@@ -252,7 +252,7 @@ export function ProductGroupJsonLd({
     dateModified: updatedAt,
     brand: {
       '@type': 'Brand',
-      name: 'ASCEND',
+      name: 'Ascend MY',
     },
     additionalProperty: [
       { '@type': 'PropertyValue', name: 'Intended Use', value: 'Laboratory and research use only' },

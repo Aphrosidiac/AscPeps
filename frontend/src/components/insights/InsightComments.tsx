@@ -100,7 +100,7 @@ export function InsightComments({
         {comments.length > 0 && <span className="text-text-muted font-normal"> ({comments.length})</span>}
       </h2>
       <p className="text-xs text-text-muted leading-relaxed mb-6">
-        Comments are from readers and do not represent ASCEND. Nothing posted here is medical advice — all
+        Comments are from readers and do not represent Ascend MY. Nothing posted here is medical advice — all
         products are supplied for laboratory research use only.
       </p>
 

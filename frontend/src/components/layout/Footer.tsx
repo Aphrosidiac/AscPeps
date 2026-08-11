@@ -8,7 +8,7 @@ export function Footer() {
       <div className="bg-neutral-900 border-t border-neutral-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <p className="text-xs text-neutral-500 text-center leading-relaxed">
-            All products sold by ASCEND are intended strictly for <strong className="text-neutral-400">laboratory and research purposes only</strong>. By purchasing from ASCEND, you agree to our{' '}
+            All products sold by Ascend MY are intended strictly for <strong className="text-neutral-400">laboratory and research purposes only</strong>. By purchasing from Ascend MY, you agree to our{' '}
             <Link href="/terms" className="underline hover:text-neutral-300">Terms</Link>,{' '}
             <Link href="/disclaimer" className="underline hover:text-neutral-300">Disclaimer</Link>, and{' '}
             <Link href="/privacy" className="underline hover:text-neutral-300">Privacy Policy</Link>.
@@ -21,7 +21,7 @@ export function Footer() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             <div className="col-span-2 md:col-span-1">
-              <h3 className="font-display font-bold text-lg mb-3">ASCEND</h3>
+              <h3 className="font-display font-bold text-lg mb-3">Ascend MY</h3>
               <p className="text-sm text-neutral-400 max-w-xs">
                 Malaysia&apos;s trusted source for premium research peptides. 99%+ purity, third-party tested.
               </p>
@@ -78,7 +78,7 @@ export function Footer() {
           </div>
 
           <div className="border-t border-neutral-800 mt-8 pt-8 text-center text-sm text-neutral-500">
-            &copy; {new Date().getFullYear()} ASCEND. All rights reserved.
+            &copy; {new Date().getFullYear()} Ascend MY. All rights reserved.
           </div>
         </div>
       </div>

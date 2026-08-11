@@ -4,7 +4,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 // Deliberately read straight from process.env (dotenv is loaded by
 // config/env.ts) rather than the zod schema there: email is fully optional
 // infrastructure, and a missing/blank key must never fail server boot.
-const FROM_DEFAULT = 'ASCEND Peptides <orders@ascendpeptides.my>';
+const FROM_DEFAULT = 'Ascend Peptides <orders@ascendpeptides.my>';
 // Marketing sender. A separate mailbox from orders@ on purpose: mailbox
 // providers score reputation per from-address, so a newsletter that picks up
 // complaints must not be able to push order confirmations and payment
@@ -19,7 +19,7 @@ const FROM_DEFAULT = 'ASCEND Peptides <orders@ascendpeptides.my>';
 // whatever domain transactional mail already leaves from, which is by
 // definition verified.
 const MARKETING_LOCAL_PART = 'news';
-const MARKETING_FROM_DEFAULT = `ASCEND Peptides <${MARKETING_LOCAL_PART}@ascendpeptides.my>`;
+const MARKETING_FROM_DEFAULT = `Ascend Peptides <${MARKETING_LOCAL_PART}@ascendpeptides.my>`;
 
 export function marketingFrom(): string {
   if (process.env.EMAIL_FROM_MARKETING) return process.env.EMAIL_FROM_MARKETING;

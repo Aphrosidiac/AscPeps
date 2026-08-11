@@ -11,7 +11,7 @@ import {
 export const metadata: Metadata = {
   title: 'Return Policy',
   description:
-    'ASCEND return and refund policy for research peptides in Malaysia. What can be claimed, the 48-hour claim window, and how to raise a claim.',
+    'Ascend MY return and refund policy for research peptides in Malaysia. What can be claimed, the 48-hour claim window, and how to raise a claim.',
   keywords: ['peptide return policy malaysia', 'ascend refund policy', 'research peptide returns'],
   alternates: { canonical: 'https://ascendpeptides.my/return-policy' },
 };
