@@ -6,7 +6,7 @@ import {
   Wallet, TrendingUp, Coins, Users, AlertTriangle, Plus, ArrowRight, Receipt,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminGetFinanceOverview } from '@/lib/api';
+import { adminDeletePartner, adminGetFinanceOverview } from '@/lib/api';
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 import { RecordMoneyDialog } from './RecordMoneyDialog';
@@ -29,6 +29,7 @@ function StatCard({
   icon: React.ComponentType<{ className?: string }>;
   tone?: 'good' | 'bad';
 }) {
+
   return (
     <div className="bg-surface rounded-xl border border-border p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3">
@@ -52,6 +53,8 @@ export default function AdminFinancePage() {
   const [data, setData] = useState<FinanceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [removingPartner, setRemovingPartner] = useState<string | null>(null);
+  const [partnerError, setPartnerError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -66,7 +69,8 @@ export default function AdminFinancePage() {
   useEffect(() => { load(); }, [load]);
 
   if (error) {
-    return (
+  
+  return (
       <div className="text-center py-16">
         <Wallet className="w-10 h-10 text-text-muted mx-auto mb-3" />
         <p className="text-text-muted mb-4">Failed to load finance data.</p>
@@ -86,6 +90,28 @@ export default function AdminFinancePage() {
       </div>
     );
   }
+
+  // Confirmed rather than instant: the row is a person's name, and although the
+  // server refuses when anything references them, an accidental click on the
+  // wrong row is still a name silently vanishing from a finance page.
+  const handleRemovePartner = async (id: string, name: string) => {
+    if (!token) return;
+    if (!window.confirm(`Remove ${name}? They have nothing recorded against them. This cannot be undone.`)) return;
+    setRemovingPartner(id);
+    setPartnerError(null);
+    try {
+      await adminDeletePartner(token, id);
+      await load();
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : undefined;
+      setPartnerError(message || `Could not remove ${name}.`);
+    } finally {
+      setRemovingPartner(null);
+    }
+  };
 
   return (
     <div>
@@ -190,6 +216,20 @@ export default function AdminFinancePage() {
                         {p.name}
                       </Link>
                       {!p.active && <span className="ml-2 text-xs text-text-muted">inactive</span>}
+                      {/* Partners are created implicitly by typing a name into an
+                          order's split, so a typo or a removed split leaves one
+                          behind forever. Only offered when the server says
+                          nothing references them. */}
+                      {p.removable && (
+                        <button
+                          onClick={() => handleRemovePartner(p.partnerId, p.name)}
+                          disabled={removingPartner === p.partnerId}
+                          title={`Remove ${p.name} — nothing is recorded against them`}
+                          className="ml-2 text-xs text-text-muted hover:text-danger transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {removingPartner === p.partnerId ? 'removing…' : 'remove'}
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">{formatPrice(p.earned)}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{formatPrice(p.capitalFronted)}</td>
