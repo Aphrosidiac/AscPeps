@@ -28,6 +28,11 @@ const RESOURCES: { label: string; blurb: string; path: string }[] = [
     blurb: 'Storage, handling and half-life reference for every compound we carry.',
     path: '/guide',
   },
+  {
+    label: 'Insights',
+    blurb: 'Research write-ups and product updates, citing the papers behind them.',
+    path: '/insights',
+  },
 ];
 
 function renderResources(): string {

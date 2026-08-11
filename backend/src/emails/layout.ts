@@ -132,6 +132,12 @@ export interface EmailOrder {
   total: number;
   paymentMethod: string;
   paymentGateway: string | null;
+  // Whether the money has actually arrived. The confirmation email is queued
+  // inside the order-creation transaction, before the gateway bill even exists,
+  // so at send time this is normally UNPAID — but a resend from the admin, or a
+  // customer who paid before the worker's next tick, lands on a PAID order. The
+  // template branches on this rather than assuming.
+  paymentStatus?: string;
   discountCode?: { code: string } | null;
   items: EmailOrderItem[];
 }

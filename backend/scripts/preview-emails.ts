@@ -114,8 +114,9 @@ async function main() {
   };
 
   const pages: [string, { subject: string; html: string }][] = [
-    ['order-confirmation', renderOrderConfirmation(order, 'https://example.test/pay', settings)],
+    ['order-confirmation', renderOrderConfirmation({ ...order, paymentStatus: 'UNPAID' }, 'https://example.test/pay', settings)],
     ['order-confirmation-whatsapp', renderOrderConfirmation({ ...order, paymentMethod: 'WHATSAPP' }, undefined, settings)],
+    ['order-confirmation-paid', renderOrderConfirmation({ ...order, paymentStatus: 'PAID' }, undefined, settings)],
     ['payment-receipt', renderPaymentReceipt(order, order.updatedAt, settings)],
     ['abandoned-checkout', renderAbandonedCheckout(order, 'https://example.test/pay', settings)],
     ['welcome', renderWelcome(discount, 'https://example.test/unsub', settings)],

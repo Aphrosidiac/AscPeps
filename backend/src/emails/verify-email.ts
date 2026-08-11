@@ -30,7 +30,7 @@ ${renderButton('CONFIRM EMAIL', verifyUrl)}
     html: renderLayout({
       hero: { headline: `Hi ${name},`, subhead: 'confirm your email.' },
       body,
-      preheader: 'Confirm your email to finish setting up your Ascend MY account.',
+      preheader: "One click and you're in — the link expires in 24 hours.",
       settings,
       // Purity and shipping claims have no business on an account-confirmation
       // mail — nothing has been bought.
