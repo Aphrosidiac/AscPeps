@@ -59,7 +59,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       {catalog && <CollectionJsonLd products={catalog.data} />}
       <h1 className="font-display text-3xl font-bold mb-3">Buy Research Peptides in Malaysia</h1>
       <p className="text-text-secondary mb-8 max-w-2xl leading-relaxed">
-        Browse ASCEND&apos;s full range of premium research peptides — including Retatrutide, GHK-Cu,
+        Browse Ascend MY&apos;s full range of premium research peptides — including Retatrutide, GHK-Cu,
         BPC-157, Tesamorelin, MOTS-c and AOD9604. Every compound is lab-grade, tested to 99%+ purity,
         priced in Malaysian Ringgit, and shipped free across Peninsular Malaysia.
       </p>

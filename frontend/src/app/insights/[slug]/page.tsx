@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: InsightPageProps): Promise<Me
   const image = absoluteImageUrl(insight.coverImageUrl);
 
   return {
-    title: `${insight.title} | ASCEND Insights`,
+    title: `${insight.title} | Ascend MY Insights`,
     description: insight.excerpt,
     alternates: { canonical: url },
     openGraph: {
@@ -57,7 +57,7 @@ function ArticleJsonLd({ insight }: { insight: NonNullable<Awaited<ReturnType<ty
     datePublished: insight.publishedAt ?? insight.createdAt,
     dateModified: insight.updatedAt,
     author: { '@type': 'Person', name: insight.authorName, jobTitle: insight.authorRole },
-    publisher: { '@type': 'Organization', name: 'ASCEND' },
+    publisher: { '@type': 'Organization', name: 'Ascend MY' },
     ...(images.length > 0 && { image: images }),
   };
 

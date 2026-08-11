@@ -31,7 +31,7 @@ export function buildWhatsAppUrl(data: WhatsAppOrderData): string {
   if (data.discountAmount > 0) breakdown += `\n*Discount: -RM${(data.discountAmount / 100).toFixed(2)}*`;
   breakdown += `\n*Total: RM${(data.total / 100).toFixed(2)}*`;
 
-  const message = `*ASCEND Order #${data.orderNumber}*
+  const message = `*Ascend MY Order #${data.orderNumber}*
 
 *Items:*
 ${itemLines}

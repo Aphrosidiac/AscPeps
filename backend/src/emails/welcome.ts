@@ -1,7 +1,7 @@
 import { renderLayout, renderButton, escapeHtml, formatDate, SITE_URL, FONT, MONO, INK, BODY, MUTED, BORDER } from './layout.js';
 
-const SUBJECT_WITH_CODE = 'Welcome to ASCEND — your reference links and first-order code';
-const SUBJECT_PLAIN = 'Welcome to ASCEND — your reference links';
+const SUBJECT_WITH_CODE = 'Welcome to Ascend MY — your reference links and first-order code';
+const SUBJECT_PLAIN = 'Welcome to Ascend MY — your reference links';
 
 export interface WelcomeDiscount {
   code: string;

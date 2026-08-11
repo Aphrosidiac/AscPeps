@@ -439,7 +439,7 @@ function EmailListTab({
 // generic Settings GET/PUT (adminGetSettings/adminUpdateSettings) the
 // automated-sending toggle above already uses — no dedicated endpoint.
 const EMAIL_CONTENT_FIELDS: { key: string; label: string; placeholder: string }[] = [
-  { key: 'email_subject_confirmation', label: 'Confirmation email subject', placeholder: 'Order {orderNumber} received — ASCEND Peptides' },
+  { key: 'email_subject_confirmation', label: 'Confirmation email subject', placeholder: 'Order {orderNumber} received — Ascend Peptides' },
   { key: 'email_subject_receipt', label: 'Receipt email subject', placeholder: 'Receipt for order {orderNumber}' },
   { key: 'email_badge_confirmation', label: 'Confirmation badge label', placeholder: 'ORDER CONFIRMED' },
   { key: 'email_badge_receipt', label: 'Receipt badge label', placeholder: 'PAYMENT RECEIVED' },

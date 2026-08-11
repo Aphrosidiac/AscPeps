@@ -1,7 +1,7 @@
 {
   "name": "ascend-api",
   "version": "1.0.0",
-  "description": "ASCEND Peptides E-Commerce API",
+  "description": "Ascend Peptides E-Commerce API",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
