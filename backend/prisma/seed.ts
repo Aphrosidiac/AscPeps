@@ -160,7 +160,7 @@ async function main() {
   // Default settings
   const settings = [
     { key: 'whatsapp_number', value: '601161092723' },
-    { key: 'business_name', value: 'ASCEND' },
+    { key: 'business_name', value: 'Ascend MY' },
     { key: 'business_tagline', value: 'Premium Peptides Malaysia' },
   ];
 

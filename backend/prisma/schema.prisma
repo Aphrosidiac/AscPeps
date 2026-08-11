@@ -242,7 +242,7 @@ model OrderExtraCost {
   @@map("order_extra_costs")
 }
 
-// How one order's profit is split between the people behind ASCEND. Stored per
+// How one order's profit is split between the people behind Ascend MY. Stored per
 // order rather than as one global rule because the split genuinely can differ
 // order to order (a partner who sourced a particular batch, a one-off referral
 // cut), and because backfilling a changed global rule onto historical orders
@@ -402,7 +402,7 @@ model Insight {
   content           String
   coverImageUrl     String?
   authorName        String    @default("Asywa")
-  authorRole        String    @default("Founder & CEO, ASCEND")
+  authorRole        String    @default("Founder & CEO, Ascend MY")
   citationTitle     String?
   citationSource    String?
   citationUrl       String?

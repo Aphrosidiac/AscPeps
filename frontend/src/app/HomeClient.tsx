@@ -72,8 +72,8 @@ export function HomeClient({
             <div className="flex-1 min-w-0">
               <Animate variant="fade" duration={0.8}>
                 <div className="flex items-center gap-3 mb-6">
-                  <Image src="/images/pill-icon.png" alt="ASCEND" width={48} height={48} className="invert" />
-                  <span className="font-display text-2xl font-bold tracking-tight">ASCEND</span>
+                  <Image src="/images/pill-icon.png" alt="Ascend MY" width={48} height={48} className="invert" />
+                  <span className="font-display text-2xl font-bold tracking-tight">Ascend MY</span>
                 </div>
               </Animate>
               <Animate variant="fadeUp" delay={0.15} duration={0.7}>
@@ -99,7 +99,7 @@ export function HomeClient({
             <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex flex-col items-center gap-6">
               <Image
                 src="/images/hero-vials.webp"
-                alt="ASCEND peptide vials"
+                alt="Ascend MY peptide vials"
                 width={300}
                 height={300}
                 className="w-[220px] h-auto drop-shadow-2xl hero-vials"
@@ -116,7 +116,7 @@ export function HomeClient({
             <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
               <Image
                 src="/images/hero-vials.webp"
-                alt="ASCEND peptide vials"
+                alt="Ascend MY peptide vials"
                 width={480}
                 height={480}
                 className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
@@ -247,7 +247,7 @@ export function HomeClient({
             <h2 className="font-display text-2xl md:text-3xl font-bold mb-6">Buy Research Peptides in Malaysia</h2>
             <div className="space-y-4 text-text-secondary leading-relaxed">
               <p>
-                ASCEND is Malaysia&apos;s trusted source for premium research peptides. We supply lab-grade
+                Ascend MY is Malaysia&apos;s trusted source for premium research peptides. We supply lab-grade
                 compounds including{' '}
                 <Link href="/products" className="text-primary-light hover:underline">Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and AOD9604</Link>,
                 all manufactured to 99%+ purity with third-party Certificates of Analysis available on request.

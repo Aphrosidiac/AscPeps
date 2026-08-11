@@ -9,8 +9,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: 'Shipping Policy',
     description: freeShipping
-      ? 'ASCEND shipping policy for research peptides in Malaysia. Free shipping, delivery times, packaging details, and tracking information.'
-      : 'ASCEND shipping policy for research peptides in Malaysia. Delivery times, shipping fees, packaging details, and tracking information.',
+      ? 'Ascend MY shipping policy for research peptides in Malaysia. Free shipping, delivery times, packaging details, and tracking information.'
+      : 'Ascend MY shipping policy for research peptides in Malaysia. Delivery times, shipping fees, packaging details, and tracking information.',
     keywords: freeShipping
       ? ['peptide shipping malaysia', 'free shipping peptides', 'peptide delivery malaysia']
       : ['peptide shipping malaysia', 'peptide delivery malaysia'],
@@ -31,7 +31,7 @@ export default async function ShippingPage() {
       <div className="prose-custom">
         <h2>Shipping Coverage</h2>
         <p>
-          ASCEND ships across Peninsular Malaysia. We currently ship domestically within Malaysia only, and do not yet deliver to Sabah or Sarawak.
+          Ascend MY ships across Peninsular Malaysia. We currently ship domestically within Malaysia only, and do not yet deliver to Sabah or Sarawak.
         </p>
 
         <h2>Shipping Fees</h2>

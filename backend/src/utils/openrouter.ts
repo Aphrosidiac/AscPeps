@@ -13,7 +13,7 @@ export const openrouter = env.OPENROUTER_API_KEY
         // attribution, not for auth — safe to hardcode rather than making
         // them configurable.
         'HTTP-Referer': 'https://ascendpeptides.my',
-        'X-Title': 'ASCEND Admin Agent',
+        'X-Title': 'Ascend MY Admin Agent',
       },
     })
   : null;
