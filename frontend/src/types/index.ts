@@ -157,6 +157,8 @@ export interface AdminEmailsResponse extends PaginatedResponse<AdminEmailRow> {
 }
 
 export interface Order {
+  /** Manually ticked once the profit for this order has actually been paid out. */
+  profitShared?: boolean;
   id: string;
   orderNumber: string;
   customerName: string;
