@@ -22,7 +22,16 @@
 //      WebP is missing from older Outlook desktop builds and renders as a
 //      broken-image icon. See scripts/generate-email-thumbs.mjs.
 
+import { env } from '../config/env.js';
+
 export const SITE_URL = 'https://ascendpeptides.my';
+
+// Where images are fetched FROM. Always SITE_URL in production; overridable in
+// local development so the admin's Template Preview does not fetch every asset
+// from the live site (see EMAIL_ASSET_BASE_URL in config/env.ts). Link hrefs
+// deliberately keep SITE_URL — a link in a preview should still point at the
+// real site, only the images need to be local.
+const ASSETS = env.EMAIL_ASSET_BASE_URL?.replace(/\/$/, '') || SITE_URL;
 
 // Bump this when any email asset changes. The early test sends referenced these
 // exact URLs while the assets were still 404ing (pre-deploy) — some clients'
@@ -87,7 +96,7 @@ export function formatDate(d: Date | string): string {
 export function emailThumbUrl(imageUrl?: string | null): string | null {
   if (!imageUrl) return null;
   const jpg = imageUrl.replace(/\.[^./]+$/, '') + '.email.jpg';
-  const abs = jpg.startsWith('http') ? jpg : `${SITE_URL}${jpg.startsWith('/') ? '' : '/'}${jpg}`;
+  const abs = jpg.startsWith('http') ? jpg : `${ASSETS}${jpg.startsWith('/') ? '' : '/'}${jpg}`;
   return `${abs}?v=${ASSET_VERSION}`;
 }
 
@@ -165,7 +174,7 @@ export function renderMetaLine(order: EmailOrder): string {
 }
 
 function renderHero(hero: HeroOptions): string {
-  const bg = `${SITE_URL}/images/email-constellation.png?v=${ASSET_VERSION}`;
+  const bg = `${ASSETS}/images/email-constellation.png?v=${ASSET_VERSION}`;
   // `background=` attribute + inline background-image covers everything that
   // supports background images at all. Outlook Windows supports neither without
   // VML; it gets the flat HERO_BG, which is a clean degradation rather than a
@@ -175,7 +184,7 @@ function renderHero(hero: HeroOptions): string {
           <td class="hero" background="${bg}" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;background-image:url('${bg}');background-position:top right;background-size:600px 210px;background-repeat:no-repeat;padding:26px 36px 32px;">
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
               <tr>
-                <td width="26" style="width:26px;padding-right:9px;"><img src="${SITE_URL}/images/pill-badge-dark.png?v=${ASSET_VERSION}" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
+                <td width="26" style="width:26px;padding-right:9px;"><img src="${ASSETS}/images/pill-badge-dark.png?v=${ASSET_VERSION}" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
                 <td style="font-family:${FONT};font-size:17px;font-weight:700;letter-spacing:-0.01em;color:#ffffff !important;">Ascend MY</td>
               </tr>
             </table>${hero.badge ? `\n            ${renderBadge(hero.badge.label, hero.badge.tone)}` : ''}
@@ -237,7 +246,7 @@ const FALLBACK_ICONS: [RegExp, string][] = [
 
 function fallbackIcon(productName: string): string {
   const hit = FALLBACK_ICONS.find(([re]) => re.test(productName));
-  return `${SITE_URL}/images/email-icons/${hit ? hit[1] : 'vial'}.png?v=${ASSET_VERSION}`;
+  return `${ASSETS}/images/email-icons/${hit ? hit[1] : 'vial'}.png?v=${ASSET_VERSION}`;
 }
 
 function renderThumb(item: EmailOrderItem): string {

@@ -10,8 +10,10 @@
  *
  *   cd backend && set -a && source .env && set +a && npx tsx scripts/preview-emails.ts [outDir]
  *
- * Asset URLs are rewritten to localhost so the preview picks up images that are
- * not deployed yet — see ASSET_REWRITES. Preview-only; nothing here ships.
+ * Set EMAIL_ASSET_BASE_URL in backend/.env (see config/env.ts) to render
+ * against local assets rather than the live site — the same switch the admin's
+ * Template Preview uses, so this script and that page cannot disagree about
+ * what the customer would see.
  */
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
@@ -28,14 +30,6 @@ import { renderCampaign } from '../src/emails/campaign.js';
 // implicit datasource, so a bare `new PrismaClient()` throws here.
 const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL!) });
 const outDir = path.resolve(process.argv[2] || 'email-preview');
-
-// The frontend dev server serves /images; the backend serves /uploads.
-const ASSET_REWRITES: [RegExp, string][] = [
-  [/https:\/\/ascendpeptides\.my\/images\//g, 'http://localhost:3099/images/'],
-  [/https:\/\/ascendpeptides\.my\/uploads\//g, 'http://localhost:3105/uploads/'],
-];
-const localise = (html: string) =>
-  ASSET_REWRITES.reduce((acc, [re, to]) => acc.replace(re, to), html);
 
 const ORDER_INCLUDE = {
   items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
@@ -102,7 +96,7 @@ async function main() {
     // footer, the unsubscribe link and often the tracking pixel.
     const flag = bytes > 102_000 ? '  ** OVER GMAIL CLIP LIMIT **' : '';
     console.log(`${name.padEnd(30)} ${(bytes / 1024).toFixed(1).padStart(6)}KB   ${subject}${flag}`);
-    await writeFile(path.join(outDir, `${name}.html`), localise(html));
+    await writeFile(path.join(outDir, `${name}.html`), html);
     index.push(
       `<li><a href="${name}.html">${name}</a> <span>${(bytes / 1024).toFixed(1)}KB</span><br><em>${subject}</em></li>`
     );
