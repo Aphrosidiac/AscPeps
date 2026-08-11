@@ -185,7 +185,27 @@ export async function getFinanceOverview(fastify: FastifyInstance) {
   const input = await loadFinanceInput(fastify);
   const summary = computeFinance(input);
 
-  return { ...summary, recentActivity: await loadRecentActivity(fastify) };
+  // Which partners can be removed outright. Computed here rather than inferred
+  // in the UI from "all their numbers are zero": a partner can legitimately
+  // show zeroes while still being attached to an order split, and deleting
+  // that would take the split's name with it.
+  const counts = await fastify.prisma.partner.findMany({
+    select: {
+      id: true,
+      _count: { select: { profitShares: true, funding: true, payouts: true, expensesPaid: true } },
+    },
+  });
+  const removable = new Set(
+    counts
+      .filter((c) => !c._count.profitShares && !c._count.funding && !c._count.payouts && !c._count.expensesPaid)
+      .map((c) => c.id)
+  );
+
+  return {
+    ...summary,
+    partners: summary.partners.map((p) => ({ ...p, removable: removable.has(p.partnerId) })),
+    recentActivity: await loadRecentActivity(fastify),
+  };
 }
 
 /** One partner's full history — the "show me why" behind their balance. */
@@ -401,4 +421,51 @@ export async function deletePayout(fastify: FastifyInstance, id: string) {
   if (!payout) throw { statusCode: 404, message: 'Payout not found' };
   await fastify.prisma.profitPayout.delete({ where: { id } });
   return { success: true };
+}
+
+/**
+ * Delete a partner that nothing references.
+ *
+ * Partners are created implicitly: typing a name into an order's Profit Sharing
+ * split upserts one. That is the right behaviour — you should not have to
+ * register someone before splitting an order with them — but it means a typo,
+ * or a split that was written and then removed, leaves a partner behind
+ * forever. The Finance page showed four of those, all zeroes, with no way to
+ * clear them.
+ *
+ * Refused when anything still points at the partner, and the refusal says what.
+ * Deactivating instead would be wrong here: `active` already means "not
+ * currently working with us", which is a real state a partner with history can
+ * be in. A typo has no history and should leave no trace.
+ */
+export async function deletePartner(fastify: FastifyInstance, id: string) {
+  const partner = await fastify.prisma.partner.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      _count: {
+        select: { profitShares: true, funding: true, payouts: true, expensesPaid: true },
+      },
+    },
+  });
+  if (!partner) throw { statusCode: 404, message: 'Partner not found' };
+
+  const { profitShares, funding, payouts, expensesPaid } = partner._count;
+  const blocking = [
+    profitShares && `${profitShares} order split${profitShares === 1 ? '' : 's'}`,
+    funding && `${funding} funding record${funding === 1 ? '' : 's'}`,
+    payouts && `${payouts} payout${payouts === 1 ? '' : 's'}`,
+    expensesPaid && `${expensesPaid} expense${expensesPaid === 1 ? '' : 's'} they fronted`,
+  ].filter(Boolean) as string[];
+
+  if (blocking.length) {
+    throw {
+      statusCode: 400,
+      message: `${partner.name} still has ${blocking.join(', ')}. Remove those first, or leave the partner marked inactive.`,
+    };
+  }
+
+  await fastify.prisma.partner.delete({ where: { id } });
+  return { deleted: true, name: partner.name };
 }

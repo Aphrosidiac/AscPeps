@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  deletePartner,
   getFinanceOverview,
   getPartnerDetail,
   saveFinancePartners,
@@ -18,6 +19,10 @@ export default async function adminFinanceRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   fastify.get('/overview', async () => getFinanceOverview(fastify));
+
+  fastify.delete<{ Params: { id: string } }>('/partners/:id', async (request) =>
+    deletePartner(fastify, request.params.id)
+  );
 
   fastify.get<{ Params: { id: string } }>('/partners/:id', async (request) =>
     getPartnerDetail(fastify, request.params.id)

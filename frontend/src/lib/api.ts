@@ -205,6 +205,9 @@ export const adminDeleteInsight = (token: string, id: string) =>
 
 const auth = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
 
+export const adminDeletePartner = (token: string, id: string) =>
+  api.delete<{ deleted: boolean; name: string }>(`/api/v1/admin/finance/partners/${id}`, auth(token)).then((r) => r.data);
+
 export const adminGetFinanceOverview = (token: string) =>
   api.get<FinanceOverview>('/api/v1/admin/finance/overview', auth(token)).then((r) => r.data);
 
