@@ -31,6 +31,54 @@ import { renderCampaign } from '../src/emails/campaign.js';
 const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL!) });
 const outDir = path.resolve(process.argv[2] || 'email-preview');
 
+/**
+ * The dark-mode trap, as a check rather than as a comment.
+ *
+ * An inline declaration marked !important outranks a stylesheet declaration
+ * marked !important — no selector wins — so any element carrying a themeable
+ * class AND an inline !important on the property that class re-colours simply
+ * cannot be themed. It renders correctly in light mode and silently wrong in
+ * dark, which is exactly the kind of bug that survives review: it shipped once
+ * on the card background and again on the welcome email's two links, where the
+ * result was near-black text on a near-black card.
+ *
+ * Keys are the classes the dark block in emails/layout.ts re-colours; values
+ * are the property each one sets. Keep them in step.
+ */
+const THEMED_PROPERTY: Record<string, string> = {
+  ink: 'color',
+  'body-text': 'color',
+  muted: 'color',
+  card: 'background-color',
+  'card-outer': 'background-color',
+  'page-bg': 'background-color',
+  'border-b': 'border-bottom-color',
+  eyebrow: 'border-bottom-color',
+  btn: 'background-color',
+  'btn-a': 'color',
+  'code-box': 'border-color',
+  'thumb-empty': 'background-color',
+};
+
+function darkModeBlockers(html: string): string[] {
+  const found = new Set<string>();
+  for (const m of html.matchAll(/<(\w+)([^>]*class="([^"]+)"[^>]*)>/g)) {
+    const style = /style="([^"]*)"/.exec(m[2])?.[1];
+    if (!style) continue;
+    for (const cls of m[3].split(/\s+/)) {
+      const prop = THEMED_PROPERTY[cls];
+      if (!prop) continue;
+      for (const decl of style.split(';')) {
+        const d = decl.trim();
+        if (d.startsWith(prop) && d.includes('!important')) {
+          found.add(`<${m[1]} class="${cls}"> has inline "${d}" — dark mode can never override it`);
+        }
+      }
+    }
+  }
+  return [...found];
+}
+
 const ORDER_INCLUDE = {
   items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
   discountCode: { select: { code: true } },
@@ -90,12 +138,18 @@ async function main() {
   ];
 
   const index: string[] = [];
+  let problems = 0;
   for (const [name, { subject, html }] of pages) {
     const bytes = Buffer.byteLength(html, 'utf8');
     // Gmail clips the HTML source at ~102KB; anything past that loses the
     // footer, the unsubscribe link and often the tracking pixel.
     const flag = bytes > 102_000 ? '  ** OVER GMAIL CLIP LIMIT **' : '';
     console.log(`${name.padEnd(30)} ${(bytes / 1024).toFixed(1).padStart(6)}KB   ${subject}${flag}`);
+    if (bytes > 102_000) problems++;
+    for (const bad of darkModeBlockers(html)) {
+      console.log(`  !! ${bad}`);
+      problems++;
+    }
     await writeFile(path.join(outDir, `${name}.html`), html);
     index.push(
       `<li><a href="${name}.html">${name}</a> <span>${(bytes / 1024).toFixed(1)}KB</span><br><em>${subject}</em></li>`
@@ -108,6 +162,12 @@ async function main() {
      <h1>Email previews</h1><ul>${index.join('')}</ul>`
   );
   console.log(`\nwrote ${pages.length + 1} files to ${outDir}`);
+  if (problems) {
+    console.log(`\n${problems} problem(s) found — see the !! lines above.`);
+    process.exitCode = 1;
+  } else {
+    console.log('no dark-mode blockers, nothing over the Gmail clip limit.');
+  }
 }
 
 main()

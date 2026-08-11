@@ -44,13 +44,13 @@ export function renderAbandonedCheckout(
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0;">
             <tr><td>${renderButton('COMPLETE PAYMENT', paymentUrl)}</td></tr>
           </table>
-          <p style="margin:16px 0 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">
+          <p class="muted" style="margin:16px 0 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">
             The items above are held for you until this payment link expires. After that the stock goes back to general availability and you'd need to order again.
           </p>`
     : // No reconstructable link — the bill reference was never stored, or the
       // gateway changed. Sending them to the catalog is a dead end, so point
       // at the humans instead of pretending there's a button.
-      `<p style="margin:4px 0 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">
+      `<p class="body-text" style="margin:4px 0 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">
             Reply to this email or message us on WhatsApp and we'll send you a fresh payment link.
           </p>`;
 
