@@ -353,6 +353,9 @@ export const adminUnsubscribeSubscriber = (token: string, id: string) =>
 export const adminRetryWelcomeEmail = (token: string, id: string) =>
   api.post(`/api/v1/admin/subscribers/${id}/retry-welcome`, {}, auth(token)).then((r) => r.data);
 
+export const adminPreviewWelcomeEmail = (token: string, params?: { subscriberId?: string }) =>
+  api.get<{ subject: string; html: string }>('/api/v1/admin/subscribers/preview-welcome', { ...auth(token), params }).then((r) => r.data);
+
 export const adminDeleteSubscriber = (token: string, id: string) =>
   api.delete(`/api/v1/admin/subscribers/${id}`, auth(token)).then((r) => r.data);
 
