@@ -13,7 +13,7 @@ import {
   MUTED,
 } from './layout.js';
 
-const DEFAULT_SUBJECT = 'Your ASCEND order {orderNumber} is still waiting for payment';
+const DEFAULT_SUBJECT = 'Your Ascend MY order {orderNumber} is still waiting for payment';
 
 /**
  * One reminder for an order that was created but never paid, while its bill is

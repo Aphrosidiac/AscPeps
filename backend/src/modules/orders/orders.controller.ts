@@ -333,7 +333,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         email: order.email || undefined,
         phone: order.phone,
         amount: order.total,
-        description: `ASCEND Order ${order.orderNumber}`,
+        description: `Ascend MY Order ${order.orderNumber}`,
         orderNumber: order.orderNumber,
         orderId: order.id,
       });

@@ -48,7 +48,7 @@ export default function AdminLoginPage() {
           <div className="flex flex-col items-center gap-3 mb-8">
             <Image src="/images/pill-icon.png" alt="" width={40} height={40} className="invert" />
             <div className="text-center">
-              <h1 className="font-display text-2xl font-bold text-white tracking-tight">ASCEND</h1>
+              <h1 className="font-display text-2xl font-bold text-white tracking-tight">Ascend MY</h1>
               <p className="text-sm text-white/50 mt-0.5">Admin</p>
             </div>
           </div>

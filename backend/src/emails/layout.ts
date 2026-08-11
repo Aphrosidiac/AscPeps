@@ -200,7 +200,7 @@ function renderPreheader(text: string): string {
  */
 function renderUnsubscribe(url: string): string {
   return `<p style="margin:12px 0 0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">
-              You're receiving this because you signed up for ASCEND updates.<br>
+              You're receiving this because you signed up for Ascend MY updates.<br>
               <a href="${escapeHtml(url)}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>
             </p>`;
 }
@@ -231,7 +231,7 @@ ${renderPreheader(preheader)}
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 <td width="34" style="padding-right:8px;"><img src="${SITE_URL}/images/pill-badge-dark.png?v=${ASSET_VERSION}" width="34" height="34" alt="" style="display:block;width:34px;height:34px;"></td>
-                <td style="font-family:${FONT};font-size:19px;font-weight:700;letter-spacing:4px;color:#ffffff !important;">ASCEND</td>
+                <td style="font-family:${FONT};font-size:19px;font-weight:700;letter-spacing:4px;color:#ffffff !important;">Ascend MY</td>
               </tr>
             </table>
           </td>
@@ -246,7 +246,7 @@ ${bodyHtml}
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 14px;">
               <tr>
                 <td width="18" style="padding-right:6px;"><img src="${SITE_URL}/images/pill-badge-light.png?v=${ASSET_VERSION}" width="18" height="18" alt="" style="display:block;width:18px;height:18px;"></td>
-                <td style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:2px;color:${MUTED};">ASCEND</td>
+                <td style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:2px;color:${MUTED};">Ascend MY</td>
               </tr>
             </table>
             <p style="margin:0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">

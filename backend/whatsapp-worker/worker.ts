@@ -1,5 +1,5 @@
 /**
- * ASCEND — WhatsApp worker
+ * Ascend MY — WhatsApp worker
  *
  * Runs as a separate PM2 process (fork mode). Listens on 127.0.0.1:WORKER_HTTP_PORT.
  * Keeps a baileys connection alive and hands inbound messages to the API's agent.
@@ -12,10 +12,10 @@
  * part, and every one of them was written after something broke.
  *
  * What is NOT ported: HarvestGrow's own agents (DM agent, group order parsing,
- * the hold-back buffer). ASCEND's agent is a different thing entirely and lives
+ * the hold-back buffer). Ascend MY's agent is a different thing entirely and lives
  * in the API process (src/modules/ai-agent) — this file only moves bytes.
  *
- * Why the agent lives in the API and not here: ASCEND's admin logic is Fastify-
+ * Why the agent lives in the API and not here: Ascend MY's admin logic is Fastify-
  * and Prisma-coupled (stock restoration, refunds, PostHog revenue capture, the
  * transactional email outbox). Reimplementing any of it in a second process
  * would guarantee drift. So this worker holds the socket, the API holds the
@@ -119,7 +119,7 @@ async function emitAlert(level: 'DOWN' | 'RECOVERED', text: string) {
       await fetch(`https://api.telegram.org/bot${ALERT_TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: ALERT_TELEGRAM_CHAT_ID, text: `ASCEND WhatsApp — ${level}\n\n${text}` }),
+        body: JSON.stringify({ chat_id: ALERT_TELEGRAM_CHAT_ID, text: `Ascend MY WhatsApp — ${level}\n\n${text}` }),
         signal: AbortSignal.timeout(10_000),
       })
     } catch (err: any) {

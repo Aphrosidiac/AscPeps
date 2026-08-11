@@ -60,7 +60,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       {/* Mobile top bar */}
       <div className="fixed top-0 left-0 right-0 z-40 lg:hidden bg-surface border-b border-border px-4 h-14 flex items-center justify-between">
-        <h2 className="font-display font-bold text-lg">ASCEND Admin</h2>
+        <h2 className="font-display font-bold text-lg">Ascend MY Admin</h2>
         <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-surface-elevated rounded-lg cursor-pointer">
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
@@ -86,7 +86,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         <div className="mb-8 pt-1">
-          <h2 className="font-display font-bold text-lg">ASCEND Admin</h2>
+          <h2 className="font-display font-bold text-lg">Ascend MY Admin</h2>
         </div>
         <nav className="space-y-1 flex-1">
           {navItems.map((item, i) => (

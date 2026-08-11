@@ -1,6 +1,6 @@
 import { renderLayout, renderButton, escapeHtml } from './layout.js';
 
-const SUBJECT = 'Confirm your email — ASCEND Peptides';
+const SUBJECT = 'Confirm your email — Ascend Peptides';
 
 /**
  * One-off account-confirmation email. Unlike the order mails this is NOT
@@ -21,15 +21,15 @@ export function renderVerifyEmail(
             Hi ${name},
           </p>
           <p style="margin:0 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#54565b;">
-            Confirm this address to finish setting up your ASCEND account. Once confirmed you'll be able to comment on Insights articles.
+            Confirm this address to finish setting up your Ascend MY account. Once confirmed you'll be able to comment on Insights articles.
           </p>
 ${renderButton('CONFIRM EMAIL', verifyUrl)}
           <p style="margin:26px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#9a9a9e;">
-            This link expires in 24 hours. If you didn't create an ASCEND account, you can ignore this email — nothing will happen.
+            This link expires in 24 hours. If you didn't create an Ascend MY account, you can ignore this email — nothing will happen.
           </p>`;
 
   return {
     subject: SUBJECT,
-    html: renderLayout(body, 'Confirm your email to finish setting up your ASCEND account.', settings),
+    html: renderLayout(body, 'Confirm your email to finish setting up your Ascend MY account.', settings),
   };
 }

@@ -5,7 +5,7 @@ import { getSettingsServer } from '@/lib/server-api';
 
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions About Peptides',
-  description: 'Frequently asked questions about buying research peptides in Malaysia. Purity, storage, shipping, ordering, and more. ASCEND peptides FAQ.',
+  description: 'Frequently asked questions about buying research peptides in Malaysia. Purity, storage, shipping, ordering, and more. Ascend MY peptides FAQ.',
   keywords: ['peptides FAQ', 'peptides questions malaysia', 'how to buy peptides malaysia', 'peptide storage', 'peptide purity'],
   alternates: { canonical: 'https://ascendpeptides.my/faq' },
 };
@@ -21,11 +21,11 @@ function buildFaqs(freeShipping: boolean, shippingFee: string) {
       items: [
         {
           q: 'What are research peptides?',
-          a: 'Research peptides are short chains of amino acids used in scientific and laboratory research. They are synthesized to study biological processes, protein interactions, and potential therapeutic targets. All products sold by ASCEND are strictly for research purposes only.',
+          a: 'Research peptides are short chains of amino acids used in scientific and laboratory research. They are synthesized to study biological processes, protein interactions, and potential therapeutic targets. All products sold by Ascend MY are strictly for research purposes only.',
         },
         {
           q: 'What is the purity of your peptides?',
-          a: 'All ASCEND peptides are manufactured to 99%+ purity standards. Every batch undergoes third-party testing and is research-grade certified. Certificates of Analysis (COA) are available upon request.',
+          a: 'All Ascend MY peptides are manufactured to 99%+ purity standards. Every batch undergoes third-party testing and is research-grade certified. Certificates of Analysis (COA) are available upon request.',
         },
         {
           q: 'Are your peptides third-party tested?',
@@ -50,7 +50,7 @@ function buildFaqs(freeShipping: boolean, shippingFee: string) {
         },
         {
           q: 'Do I need to create an account?',
-          a: 'No. ASCEND does not require account registration. You can place orders and track them using just your phone number.',
+          a: 'No. Ascend MY does not require account registration. You can place orders and track them using just your phone number.',
         },
         {
           q: 'Can I cancel or modify my order?',
@@ -120,7 +120,7 @@ export default async function FaqPage() {
       <FaqJsonLd items={faqs.flatMap((s) => s.items)} />
       <Animate variant="fadeUp">
         <h1 className="font-display text-3xl font-bold mb-2">Frequently Asked Questions</h1>
-        <p className="text-text-secondary mb-10">Everything you need to know about ordering research peptides from ASCEND.</p>
+        <p className="text-text-secondary mb-10">Everything you need to know about ordering research peptides from Ascend MY.</p>
       </Animate>
 
       <div className="space-y-10">

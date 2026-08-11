@@ -4,12 +4,12 @@ import { FlaskConical, Shield, Truck, Clock, CheckCircle, Award, ArrowRight } fr
 import { Animate, Stagger } from '@/components/ui/Animate';
 
 export const metadata: Metadata = {
-  title: 'About ASCEND — Malaysia\'s Trusted Peptides Provider',
-  description: 'ASCEND is Malaysia\'s trusted source for premium lab-grade research peptides. Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia, and responsive WhatsApp support.',
-  keywords: ['about ASCEND', 'peptides provider malaysia', 'trusted peptides malaysia', 'lab grade peptides'],
+  title: 'About Ascend MY — Malaysia\'s Trusted Peptides Provider',
+  description: 'Ascend MY is Malaysia\'s trusted source for premium lab-grade research peptides. Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia, and responsive WhatsApp support.',
+  keywords: ['about Ascend MY', 'peptides provider malaysia', 'trusted peptides malaysia', 'lab grade peptides'],
   alternates: { canonical: 'https://ascendpeptides.my/about' },
   openGraph: {
-    title: 'About ASCEND — Malaysia\'s Trusted Peptides Provider',
+    title: 'About Ascend MY — Malaysia\'s Trusted Peptides Provider',
     description: 'Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia. Malaysia\'s trusted peptides source.',
     url: 'https://ascendpeptides.my/about',
   },
@@ -57,12 +57,12 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Why ASCEND */}
+      {/* Why Ascend MY */}
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <Animate variant="fadeUp">
-          <h2 className="font-display text-2xl md:text-3xl font-bold text-center mb-4">Why ASCEND</h2>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-center mb-4">Why Ascend MY</h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12">
-            We built ASCEND because researchers in Malaysia deserve access to high-quality peptides without the guesswork.
+            We built Ascend MY because researchers in Malaysia deserve access to high-quality peptides without the guesswork.
           </p>
         </Animate>
 

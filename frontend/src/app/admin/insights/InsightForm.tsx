@@ -34,7 +34,7 @@ interface InsightFormData {
 
 const emptyForm: InsightFormData = {
   title: '', slug: '', category: '', excerpt: '', content: '', coverImageUrl: '',
-  authorName: 'Asywa', authorRole: 'Founder & CEO, ASCEND',
+  authorName: 'Asywa', authorRole: 'Founder & CEO, Ascend MY',
   citationTitle: '', citationSource: '', citationUrl: '',
   relatedProductIds: [], figures: [], published: false,
 };

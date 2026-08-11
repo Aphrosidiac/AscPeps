@@ -1,7 +1,7 @@
 import { renderLayout, renderOrderSummary, renderBadge, renderMetaLine, renderButton, renderSubject, escapeHtml, type EmailOrder } from './layout.js';
 import { env } from '../config/env.js';
 
-const DEFAULT_SUBJECT = 'Order {orderNumber} received — ASCEND Peptides';
+const DEFAULT_SUBJECT = 'Order {orderNumber} received — Ascend Peptides';
 const DEFAULT_BADGE = 'ORDER CONFIRMED';
 const DEFAULT_BUTTON_LABEL = 'COMPLETE PAYMENT';
 const DEFAULT_WHATSAPP_INSTRUCTIONS =

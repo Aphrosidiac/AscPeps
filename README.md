@@ -1,6 +1,6 @@
 <div align="center">
 
-# ASCEND — Research Peptides Malaysia
+# Ascend MY — Research Peptides Malaysia
 
 **Full-stack e-commerce platform for research-grade peptides**, built on Next.js 16 + Fastify 5 + Prisma 7 + PostgreSQL, with a two-gateway payment layer, a research-literature-backed product catalog, and an SEO/GEO posture built for both search engines and AI answer engines.
 
@@ -37,7 +37,7 @@
 
 ## Overview
 
-ASCEND is a Malaysian e-commerce storefront for laboratory research peptides — every product is sold strictly for research and laboratory use, with compliance-conscious copy throughout (no medical claims, honest disclosure of mixed/negative trial results, explicit "for research use only" framing on every page). The catalog spans 54 active SKUs across 10 categories, backed by real PubMed/PMC-cited research content for the large majority of products.
+Ascend MY is a Malaysian e-commerce storefront for laboratory research peptides — every product is sold strictly for research and laboratory use, with compliance-conscious copy throughout (no medical claims, honest disclosure of mixed/negative trial results, explicit "for research use only" framing on every page). The catalog spans 54 active SKUs across 10 categories, backed by real PubMed/PMC-cited research content for the large majority of products.
 
 The site is built to be legible to three audiences at once: human shoppers (fast, mobile-first, WhatsApp-native checkout), search engines (fully server-rendered, rich Schema.org structured data, a clean sitemap), and AI answer engines (a maintained `llms.txt`, IndexNow pings on every catalog change, citation-dense product copy).
 
