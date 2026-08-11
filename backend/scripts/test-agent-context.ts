@@ -16,6 +16,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { routeDomains } from '../src/modules/ai-agent/domains.js';
 import { toolsFor } from '../src/modules/ai-agent/registry.js';
+import { ensureTestOperators } from './_agent-fixtures.js';
 
 const API = `http://127.0.0.1:${process.env.PORT || 3105}`;
 const TOKEN = process.env.WORKER_HTTP_TOKEN || 'local-dev-worker-token';
@@ -101,6 +102,9 @@ async function seedLongThread(turns: number) {
 }
 
 async function main() {
+  // Sending as an operator that does not exist means the agent never runs at
+  // all, and every assertion below fails for a reason none of them describe.
+  await ensureTestOperators(prisma);
   console.log('\n=== agent context management ===\n');
 
   // ---------------------------------------------------------------- routing

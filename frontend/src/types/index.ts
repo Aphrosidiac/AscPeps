@@ -355,6 +355,9 @@ export interface PartnerBalance {
   partnerId: string;
   name: string;
   active: boolean;
+  /** Nothing references them, so they can be deleted outright rather than only
+   *  deactivated. Computed server-side — zero balances do not imply this. */
+  removable?: boolean;
   earned: number;
   /** Order costs they paid out of pocket. Owed back to them. */
   capitalFronted: number;

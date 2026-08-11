@@ -270,8 +270,12 @@ function AdminOrdersContent() {
                   className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
                   onClick={() => { setExpandedOrder(isExpanded ? null : order.id); setTrackingError(null); }}
                 >
-                  <div className="flex items-center gap-4 sm:gap-6 min-w-0">
-                    <div className="min-w-0">
+                  <div className="flex items-center gap-4 sm:gap-6 min-w-0 flex-1">
+                    {/* Fixed width, not min-w-0: order numbers differ in length
+                        ("ASC2607/020" vs "ASC2608/0022") and letting the column
+                        size to its content pushed every customer name to a
+                        different x. */}
+                    <div className="w-[9.5rem] shrink-0">
                       {/* The order number is the way into the full detail page;
                           the rest of the row still toggles the inline expand,
                           so stop the click here from doing both. */}
@@ -284,21 +288,36 @@ function AdminOrdersContent() {
                       </Link>
                       <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
                     </div>
-                    <div className="hidden sm:block min-w-0">
+                    <div className="hidden sm:block min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{order.customerName}</p>
                       <p className="text-xs text-text-muted">{order.phone}</p>
                     </div>
+                    {/* Left, not right: this is the one value with no bounded
+                        width — "COD" or a 12-digit consignment number — so on
+                        the right it dragged the badge column a different
+                        distance on every row. */}
+                    {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
+                      <span className="hidden lg:inline-flex items-center gap-1 text-xs text-text-muted font-mono truncate max-w-[10rem]">
+                        <Truck className="w-3 h-3 shrink-0" />{order.trackingNumber}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                     <p className="font-display font-bold hidden sm:block">{formatPrice(order.total)}</p>
-                    <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
-                    <Badge className={`hidden sm:inline-flex ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
+                    <Badge className={`w-24 justify-center ${ORDER_STATUS_COLORS[order.status]}`}>{ORDER_STATUS_LABELS[order.status]}</Badge>
+                    <Badge className={`hidden sm:inline-flex w-20 justify-center ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
                     {/* Whether the books are done with this order — separate
                         from its delivery status, because an order can be
                         delivered and still have no cost against it. */}
-                    {progress.state !== 'NONE' && (
-                      <Badge className={progress.className} title={progress.hint}>{progress.label}</Badge>
-                    )}
+                    {/* Always rendered, invisible when there is nothing to
+                        say, so the Profit Shared control after it does not
+                        shift left on rows without a costing state. */}
+                    <Badge
+                      className={`w-28 justify-center ${progress.state === 'NONE' ? 'invisible' : progress.className}`}
+                      title={progress.hint}
+                    >
+                      {progress.label || '—'}
+                    </Badge>
                     {/* Manual: the money actually left the account. The system
                         cannot observe that, so someone asserts it. stopPropagation
                         because this sits inside the row's expand toggle. */}
@@ -316,9 +335,6 @@ function AdminOrdersContent() {
                       />
                       Profit Shared
                     </label>
-                    {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
-                      <span className="hidden lg:inline-flex items-center gap-1 text-xs text-text-muted font-mono"><Truck className="w-3 h-3" />{order.trackingNumber}</span>
-                    )}
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-text-muted shrink-0" /> : <ChevronDown className="w-4 h-4 text-text-muted shrink-0" />}
                   </div>
                 </div>
