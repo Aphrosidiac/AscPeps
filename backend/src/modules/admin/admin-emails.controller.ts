@@ -74,7 +74,7 @@ export async function adminPreviewEmail(fastify: FastifyInstance, query: Record<
     where: parsed.orderId ? { id: parsed.orderId } : { deletedAt: null },
     ...(parsed.orderId ? {} : { orderBy: { createdAt: 'desc' as const } }),
     include: {
-      items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
+      items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });
@@ -112,7 +112,7 @@ export async function adminSendTestEmail(fastify: FastifyInstance, body: unknown
     where: parsed.orderId ? { id: parsed.orderId } : { deletedAt: null },
     ...(parsed.orderId ? {} : { orderBy: { createdAt: 'desc' as const } }),
     include: {
-      items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
+      items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });

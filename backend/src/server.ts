@@ -107,6 +107,20 @@ await fastify.register(fastifyStatic, {
   setHeaders: (res) => {
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Helmet's global default is Cross-Origin-Resource-Policy: same-origin,
+    // which tells browsers to refuse this file to any other origin. That is
+    // right for an API response and wrong for a public product photo: an email
+    // client rendering our order confirmation is a different (often opaque)
+    // origin, so every product thumbnail in every email is blocked before it is
+    // even requested — which is exactly how this was found, with the thumbnails
+    // failing to load in an off-origin preview.
+    //
+    // Deliberate, narrow loosening: it applies only to /uploads, which is
+    // already world-readable public imagery, so same-origin was buying no
+    // confidentiality. The CSP + nosniff above are what actually defend this
+    // route (they stop a file whose bytes are HTML/SVG from executing), and
+    // they are untouched.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   },
 });
 

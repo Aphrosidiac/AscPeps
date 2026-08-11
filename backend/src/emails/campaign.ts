@@ -1,4 +1,4 @@
-import { renderLayout, renderButton, escapeHtml, FONT, INK, BODY } from './layout.js';
+import { renderLayout, renderButton, escapeHtml, FONT, BODY } from './layout.js';
 
 export interface CampaignContent {
   subject: string;
@@ -24,7 +24,7 @@ function renderBody(text: string): string {
     .filter(Boolean)
     .map(
       (para) =>
-        `<p style="margin:0 0 18px;font-family:${FONT};font-size:14px;line-height:1.65;color:${BODY};">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
+        `<p class="body-text" style="margin:0 0 18px;font-family:${FONT};font-size:14px;line-height:1.65;color:${BODY};">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
     )
     .join('');
 }
@@ -55,19 +55,21 @@ export function renderCampaign(
           </table>`
       : '';
 
-  const body = `
-          <p style="margin:0 0 20px;font-family:${FONT};font-size:20px;font-weight:700;line-height:1.3;color:${INK};">
-            ${escapeHtml(campaign.subject)}
-          </p>
-${renderBody(campaign.body)}${cta}`;
+  // The subject already carries the headline, and the hero now renders it — a
+  // second copy as the first body paragraph read as a duplicated title.
+  const body = `${renderBody(campaign.body)}${cta}`;
 
   return {
     subject: campaign.subject,
-    html: renderLayout(
+    html: renderLayout({
+      hero: { headline: escapeHtml(campaign.subject) },
       body,
-      campaign.preheader?.trim() || derivePreheader(campaign.body),
+      preheader: campaign.preheader?.trim() || derivePreheader(campaign.body),
       settings,
-      unsubscribeUrl
-    ),
+      unsubscribeUrl,
+      // A broadcast is the one place the trust strip would read as a sales
+      // pitch bolted onto the end rather than reassurance about an order.
+      trust: false,
+    }),
   };
 }
