@@ -6,6 +6,7 @@ import { normalizePhone } from '../../utils/phone.js';
 import { getTool, toolsFor } from './registry.js';
 import { DOMAINS, domainMenu, playbooksFor, routeDomains, type Domain } from './domains.js';
 import { loadConversationContext, summaryBlock } from './context.js';
+import { loadMemoryBlocks, renderMemoryBlocks } from './memory.js';
 import type { AgentActor, ToolContext } from './tool-kit.js';
 import { truncate } from './tool-kit.js';
 
@@ -535,8 +536,13 @@ async function produceReply(
   const activeDomains = new Set<Domain>(routeDomains(routingText));
 
   const store = await loadStoreState(fastify);
+  // Own system message rather than appended to the main prompt: the blocks
+  // change between turns while the prompt above does not, and keeping them
+  // apart makes it obvious in a transcript what the agent knew at the time.
+  const memoryBlocks = await loadMemoryBlocks(fastify.prisma);
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt(ctx.actor, msg.kind, new Date(), store) },
+    { role: 'system', content: renderMemoryBlocks(memoryBlocks) },
     { role: 'system', content: contextBlock(activeDomains) },
     ...(summary ? [{ role: 'system' as const, content: summaryBlock(summary) }] : []),
     ...history.map((m) => ({

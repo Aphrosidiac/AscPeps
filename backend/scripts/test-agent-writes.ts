@@ -633,6 +633,11 @@ const COVERED_ELSEWHERE: Record<string, string> = {
   // set -> due -> swept -> settled, including where it was routed.
   set_reminder: 'test-reminder-flow.ts',
   cancel_reminder: 'test-reminder-flow.ts',
+  // scripts/test-agent-memory.ts — the block store's behaviour (caps, dedupe,
+  // eviction, provenance, prompt rendering) is what has to be right; calling
+  // the tools in isolation would only prove they forward their arguments.
+  memory_block_append: 'test-agent-memory.ts',
+  memory_block_replace: 'test-agent-memory.ts',
 };
 
 const writeTools = ALL_TOOLS.filter((t) => t.write).map((t) => t.name);
