@@ -246,3 +246,28 @@ h1, h2, h3, h4, h5, h6 {
   display: none;
 }
 
+/* Announcement bar marquee.
+   NOT named animate-* — a custom class with that prefix collides with
+   Tailwind v4's animate namespace and silently computes to `animation: none`.
+   Translating exactly -50% works because the track holds two identical
+   copies, so the loop point lands where the second copy sits. */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  animation-name: marquee-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Every other animation here is switched off under reduced motion; a banner
+   that scrolls indefinitely is the one that matters most. Stopped, the text
+   is still the first copy at its natural width, clipped by the viewport —
+   readable up to the clip and never a moving target. */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
