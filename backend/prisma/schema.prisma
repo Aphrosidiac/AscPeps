@@ -193,6 +193,12 @@ model Order {
   trackingNumber String?
   idempotencyKey String?       @unique
   stockRestored  Boolean       @default(false)
+  // Operational tick-box: the profit for this order has actually been paid out
+  // to the people in its split. Deliberately manual and separate from whether a
+  // split has been RECORDED (order_profit_shares rows) or whether the order is
+  // fully costed — money leaving the account is a real-world event the system
+  // cannot observe, so someone has to assert it.
+  profitShared   Boolean       @default(false)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
   deletedAt      DateTime?

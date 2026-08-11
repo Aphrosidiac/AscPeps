@@ -52,6 +52,7 @@ function AdminOrdersContent() {
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [resendingEmail, setResendingEmail] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
   const getTrackingValue = (order: Order) =>
     trackingInputs[order.id] ?? order.trackingNumber ?? '';
@@ -111,6 +112,23 @@ function AdminOrdersContent() {
       if (message) setTrackingError(message);
     } finally {
       setUpdating(null);
+    }
+  };
+
+  // Optimistic: the tick is a bookkeeping note, so waiting on a round trip to
+  // show it makes the list feel broken when several are ticked in a row. On
+  // failure the value is put back and the error surfaces.
+  const handleProfitShared = async (orderId: string, profitShared: boolean) => {
+    if (!token) return;
+    setSharingId(orderId);
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, profitShared } : o)));
+    try {
+      await adminUpdateOrder(token, orderId, { profitShared });
+    } catch {
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, profitShared: !profitShared } : o)));
+      setTrackingError('Could not update Profit Shared — try again.');
+    } finally {
+      setSharingId(null);
     }
   };
 
@@ -281,6 +299,23 @@ function AdminOrdersContent() {
                     {progress.state !== 'NONE' && (
                       <Badge className={progress.className} title={progress.hint}>{progress.label}</Badge>
                     )}
+                    {/* Manual: the money actually left the account. The system
+                        cannot observe that, so someone asserts it. stopPropagation
+                        because this sits inside the row's expand toggle. */}
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      title={order.profitShared ? 'Profit has been shared' : 'Mark profit as shared'}
+                      className="hidden sm:inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!order.profitShared}
+                        disabled={sharingId === order.id}
+                        onChange={(e) => handleProfitShared(order.id, e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer disabled:opacity-50"
+                      />
+                      Profit Shared
+                    </label>
                     {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
                       <span className="hidden lg:inline-flex items-center gap-1 text-xs text-text-muted font-mono"><Truck className="w-3 h-3" />{order.trackingNumber}</span>
                     )}
