@@ -1,7 +1,6 @@
 import {
   renderLayout,
   renderButton,
-  renderBadge,
   renderOrderSummary,
   renderMetaLine,
   escapeHtml,
@@ -56,24 +55,25 @@ export function renderAbandonedCheckout(
           </p>`;
 
   const body = `
-${renderBadge('AWAITING PAYMENT')}
-          <p style="margin:20px 0 8px;font-family:${FONT};font-size:20px;font-weight:700;line-height:1.3;color:${INK};">
-            You didn't finish checking out.
-          </p>
-${renderMetaLine(order)}
-          <p style="margin:0 0 24px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">
-            Hi ${escapeHtml(order.customerName)}, your order came through but the payment didn't complete. Nothing has been charged. If it was a bank timeout or you changed your mind mid-way, you can pick it back up below.
+          <p class="body-text" style="margin:0 0 24px;font-family:${FONT};font-size:14px;line-height:1.65;color:${BODY};">
+            Hi ${escapeHtml(order.customerName.split(' ')[0])}, your order came through but the payment didn't complete. <strong class="ink" style="color:${INK};">Nothing has been charged.</strong> If it was a bank timeout or you changed your mind mid-way, you can pick it back up below.
           </p>
 ${action}
-          <p style="margin:32px 0 6px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.08em;color:${MUTED};">WHAT YOU ORDERED</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:32px;line-height:32px;font-size:0;">&nbsp;</td></tr></table>
 ${renderOrderSummary(order)}`;
 
   return {
     subject,
-    html: renderLayout(
+    html: renderLayout({
+      hero: {
+        badge: { label: 'AWAITING PAYMENT' },
+        headline: "You didn't finish",
+        subhead: 'checking out.',
+        meta: renderMetaLine(order),
+      },
       body,
-      `${formatRM(order.total)} — your order is held until the payment link expires.`,
-      settings
-    ),
+      preheader: `${formatRM(order.total)} — your order is held until the payment link expires.`,
+      settings,
+    }),
   };
 }
