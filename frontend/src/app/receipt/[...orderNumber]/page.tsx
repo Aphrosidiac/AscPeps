@@ -114,8 +114,8 @@ export default function ReceiptPage() {
           {/* Header */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <Image src="/images/pill-icon.png" alt="ASCEND" width={36} height={36} className="invert dark:invert-0" />
-              <span className="font-display text-xl font-bold">ASCEND</span>
+              <Image src="/images/pill-icon.png" alt="Ascend MY" width={36} height={36} className="invert dark:invert-0" />
+              <span className="font-display text-xl font-bold">Ascend MY</span>
             </div>
             <div className="text-right">
               <p className="font-display text-lg font-bold text-text-muted">RECEIPT</p>

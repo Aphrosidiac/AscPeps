@@ -157,7 +157,7 @@ await fastify.register(internalAgentRoutes, { prefix: '/api/v1/internal/agent' }
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });
-  fastify.log.info(`ASCEND API running on http://${env.HOST}:${env.PORT}`);
+  fastify.log.info(`Ascend MY API running on http://${env.HOST}:${env.PORT}`);
 
   // Reconcile stale online-payment orders: confirm any whose callback was
   // missed, and release stock held by abandoned/never-paid orders.

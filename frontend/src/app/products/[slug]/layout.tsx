@@ -38,7 +38,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // Build a rich description (target ~120-160 chars). Use the product's own copy as the
   // lead when it's substantial; otherwise compose one with name + locale + price + shipping.
   const lead = product.description?.trim();
-  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${fullName} in Malaysia from ASCEND — lab-grade 99%+ purity, ${priceMyr}, ${shippingClause}.`;
+  const composed = `${lead && lead.length < 110 ? lead + ' ' : ''}Buy ${fullName} in Malaysia from Ascend MY — lab-grade 99%+ purity, ${priceMyr}, ${shippingClause}.`;
   const full = lead && lead.length >= 110 ? lead : composed;
   const description = full.length > 160 ? full.slice(0, 157).trimEnd() + '…' : full;
 
@@ -61,7 +61,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ],
     alternates: { canonical: `${BASE_URL}/products/${slug}` },
     openGraph: {
-      title: `${fullName} | ASCEND Peptides Malaysia`,
+      title: `${fullName} | Ascend Peptides Malaysia`,
       description,
       url: `${BASE_URL}/products/${slug}`,
       images: [{ url: socialImage, alt: product.name }],
@@ -69,7 +69,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     twitter: {
       card: 'summary',
-      title: `${fullName} | ASCEND`,
+      title: `${fullName} | Ascend MY`,
       description,
       images: [socialImage],
     },
@@ -88,7 +88,7 @@ export default async function ProductLayout({ params, children }: Props) {
         <>
           <ProductGroupJsonLd
             name={product.name}
-            description={product.description || `Premium ${product.name} research peptide from ASCEND Malaysia.`}
+            description={product.description || `Premium ${product.name} research peptide from Ascend MY.`}
             slug={product.slug}
             category={product.category?.name || 'Research Peptides'}
             updatedAt={product.updatedAt}
