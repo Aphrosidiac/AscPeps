@@ -10,9 +10,13 @@ export interface WelcomeDiscount {
   minOrderAmount: number | null;
 }
 
-// The three things a new researcher actually needs, in the order they need
-// them. Deliberately not a product pitch: the popup promised a reference, so
-// the email opens with the reference. The shop link is the CTA at the end.
+// What a new researcher actually needs, in the order they need it.
+// Deliberately not a product pitch: the popup promised a reference, so the
+// email opens with the reference. The shop link is the CTA at the end.
+//
+// Certificates of analysis were here and were removed at Fakhrul's direction —
+// don't add them back as an "obvious" third link. The COA page is still linked
+// from the site footer for anyone who wants it.
 const RESOURCES: { label: string; blurb: string; path: string }[] = [
   {
     label: 'Reconstitution calculator',
@@ -23,11 +27,6 @@ const RESOURCES: { label: string; blurb: string; path: string }[] = [
     label: 'Peptide guide',
     blurb: 'Storage, handling and half-life reference for every compound we carry.',
     path: '/guide',
-  },
-  {
-    label: 'Certificates of analysis',
-    blurb: 'Third-party HPLC and MS results, published per batch.',
-    path: '/coa',
   },
 ];
 
@@ -104,9 +103,11 @@ ${renderResources()}${discount ? renderCodeBlock(discount) : ''}
         subhead: discount ? 'Here’s where to start.' : 'Here’s the reference material.',
       },
       body,
+      // Describes what is actually in this email — it used to promise batch
+      // COAs, which is no longer one of the links.
       preheader: discount
-        ? `Your reconstitution reference, batch COAs, and ${discount.percent}% off your first order.`
-        : 'Your reconstitution reference, the peptide guide, and batch COAs.',
+        ? `Your reconstitution reference, the peptide guide, and ${discount.percent}% off your first order.`
+        : 'Your reconstitution reference and the peptide guide.',
       settings,
       unsubscribeUrl,
     }),
