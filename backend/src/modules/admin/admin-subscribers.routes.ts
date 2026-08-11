@@ -7,6 +7,7 @@ import {
   adminRetryWelcome,
   adminDeleteSubscriber,
   adminExportSubscribers,
+  adminPreviewWelcome,
 } from './admin-subscribers.controller.js';
 
 export default async function adminSubscriberRoutes(fastify: FastifyInstance) {
@@ -17,6 +18,10 @@ export default async function adminSubscriberRoutes(fastify: FastifyInstance) {
   );
 
   fastify.get('/stats', async () => adminSubscriberStats(fastify));
+
+  fastify.get('/preview-welcome', async (request) =>
+    adminPreviewWelcome(fastify, request.query as Record<string, string>)
+  );
 
   fastify.get('/export', async (request, reply) => {
     const csv = await adminExportSubscribers(fastify, request.query as Record<string, string>);
