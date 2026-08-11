@@ -4,7 +4,7 @@ import { RETURN_POLICY_STATEMENT } from '@/data/return-policy';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
-  description: 'Terms and conditions for purchasing research peptides from ASCEND Malaysia. Read before placing an order.',
+  description: 'Terms and conditions for purchasing research peptides from Ascend MY. Read before placing an order.',
   alternates: { canonical: 'https://ascendpeptides.my/terms' },
 };
 
@@ -16,17 +16,17 @@ export default function TermsPage() {
 
       <div className="prose-custom">
         <p>
-          By accessing and using the ASCEND website (ascendpeptides.my) and purchasing products from us, you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our website or purchase our products.
+          By accessing and using the Ascend MY website (ascendpeptides.my) and purchasing products from us, you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our website or purchase our products.
         </p>
 
         <h2>1. Research Use Only</h2>
         <p>
-          All products sold by ASCEND are intended strictly for <strong>laboratory and research purposes only</strong>. By purchasing, you confirm that you understand and agree to this condition.
+          All products sold by Ascend MY are intended strictly for <strong>laboratory and research purposes only</strong>. By purchasing, you confirm that you understand and agree to this condition.
         </p>
 
         <h2>2. Age Requirement</h2>
         <p>
-          You must be at least 18 years of age to purchase products from ASCEND. By placing an order, you represent and warrant that you are at least 18 years old.
+          You must be at least 18 years of age to purchase products from Ascend MY. By placing an order, you represent and warrant that you are at least 18 years old.
         </p>
 
         <h2>3. Product Information</h2>
@@ -46,7 +46,7 @@ export default function TermsPage() {
 
         <h2>6. Shipping and Delivery</h2>
         <p>
-          We ship across Peninsular Malaysia. We do not currently ship to Sabah or Sarawak. Delivery times may vary depending on your location. Please refer to our <Link href="/shipping" className="underline">Shipping Policy</Link> for full details. ASCEND is not responsible for delays caused by courier services or circumstances beyond our control.
+          We ship across Peninsular Malaysia. We do not currently ship to Sabah or Sarawak. Delivery times may vary depending on your location. Please refer to our <Link href="/shipping" className="underline">Shipping Policy</Link> for full details. Ascend MY is not responsible for delays caused by courier services or circumstances beyond our control.
         </p>
 
         <h2>7. Returns and Refunds</h2>
@@ -56,12 +56,12 @@ export default function TermsPage() {
 
         <h2>8. Limitation of Liability</h2>
         <p>
-          ASCEND shall not be held liable for any damages, injuries, or adverse effects arising from the misuse of our products. All products are sold for research use only. Please refer to our <Link href="/disclaimer" className="underline">Disclaimer & Waiver</Link> for full details.
+          Ascend MY shall not be held liable for any damages, injuries, or adverse effects arising from the misuse of our products. All products are sold for research use only. Please refer to our <Link href="/disclaimer" className="underline">Disclaimer & Waiver</Link> for full details.
         </p>
 
         <h2>9. Intellectual Property</h2>
         <p>
-          All content on this website, including text, graphics, logos, and images, is the property of ASCEND and is protected by applicable intellectual property laws. Unauthorized use or reproduction is prohibited.
+          All content on this website, including text, graphics, logos, and images, is the property of Ascend MY and is protected by applicable intellectual property laws. Unauthorized use or reproduction is prohibited.
         </p>
 
         <h2>10. Privacy</h2>
@@ -71,7 +71,7 @@ export default function TermsPage() {
 
         <h2>11. Amendments</h2>
         <p>
-          ASCEND reserves the right to update or modify these Terms & Conditions at any time. Changes will be effective immediately upon posting on this page. Continued use of the website constitutes acceptance of the updated terms.
+          Ascend MY reserves the right to update or modify these Terms & Conditions at any time. Changes will be effective immediately upon posting on this page. Continued use of the website constitutes acceptance of the updated terms.
         </p>
 
         <h2>12. Governing Law</h2>

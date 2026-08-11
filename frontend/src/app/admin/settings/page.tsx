@@ -203,7 +203,7 @@ export default function AdminSettingsPage() {
             id="business_name"
             value={settings.business_name || ''}
             onChange={(e) => updateSetting('business_name', e.target.value)}
-            placeholder="ASCEND"
+            placeholder="Ascend MY"
           />
           <Input
             label="Tagline"
@@ -223,7 +223,7 @@ export default function AdminSettingsPage() {
             id="receipt_company_name"
             value={settings.receipt_company_name || ''}
             onChange={(e) => updateSetting('receipt_company_name', e.target.value)}
-            placeholder="ASCEND PEPTIDES"
+            placeholder="Ascend Peptides"
           />
           <Input
             label="Registration Number (optional)"

@@ -3,8 +3,8 @@ import { Suspense } from 'react';
 import { RegisterClient } from './RegisterClient';
 
 export const metadata: Metadata = {
-  title: 'Create an account | ASCEND',
-  description: 'Create an ASCEND account to comment on Insights articles.',
+  title: 'Create an account | Ascend MY',
+  description: 'Create an Ascend MY account to comment on Insights articles.',
   robots: { index: false, follow: true },
 };
 

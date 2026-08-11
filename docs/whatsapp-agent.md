@@ -1,6 +1,6 @@
 # WhatsApp AI agent
 
-An admin assistant that runs ASCEND over WhatsApp. Anything you can do in the
+An admin assistant that runs Ascend MY over WhatsApp. Anything you can do in the
 dashboard, you can ask it to do in a chat — look up an order, restock a variant,
 put a size on sale, record a payout, write an article, or pull a report that no
 screen in the dashboard offers.
@@ -27,7 +27,7 @@ layer, which has been hardened through real outages — the reconnect strategy,
 the paired-session distinction, the Redis dedup and the downtime alerting are
 all preserved deliberately, comments included. The agent itself is entirely new.
 
-**Why the agent lives in the API and not the worker.** ASCEND's admin logic is
+**Why the agent lives in the API and not the worker.** Ascend MY's admin logic is
 Fastify- and Prisma-coupled: cancelling an order restores stock, refunding calls
 the Billplz API, marking paid queues the receipt email *inside the same
 transaction* and records revenue to PostHog. The agent's order and finance tools

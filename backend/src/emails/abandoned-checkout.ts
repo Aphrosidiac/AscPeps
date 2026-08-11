@@ -1,7 +1,6 @@
 import {
   renderLayout,
   renderButton,
-  renderBadge,
   renderOrderSummary,
   renderMetaLine,
   escapeHtml,
@@ -13,7 +12,7 @@ import {
   MUTED,
 } from './layout.js';
 
-const DEFAULT_SUBJECT = 'Your ASCEND order {orderNumber} is still waiting for payment';
+const DEFAULT_SUBJECT = 'Your Ascend MY order {orderNumber} is still waiting for payment';
 
 /**
  * One reminder for an order that was created but never paid, while its bill is
@@ -45,35 +44,36 @@ export function renderAbandonedCheckout(
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0;">
             <tr><td>${renderButton('COMPLETE PAYMENT', paymentUrl)}</td></tr>
           </table>
-          <p style="margin:16px 0 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">
+          <p class="muted" style="margin:16px 0 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">
             The items above are held for you until this payment link expires. After that the stock goes back to general availability and you'd need to order again.
           </p>`
     : // No reconstructable link — the bill reference was never stored, or the
       // gateway changed. Sending them to the catalog is a dead end, so point
       // at the humans instead of pretending there's a button.
-      `<p style="margin:4px 0 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">
+      `<p class="body-text" style="margin:4px 0 0;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">
             Reply to this email or message us on WhatsApp and we'll send you a fresh payment link.
           </p>`;
 
   const body = `
-${renderBadge('AWAITING PAYMENT')}
-          <p style="margin:20px 0 8px;font-family:${FONT};font-size:20px;font-weight:700;line-height:1.3;color:${INK};">
-            You didn't finish checking out.
-          </p>
-${renderMetaLine(order)}
-          <p style="margin:0 0 24px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BODY};">
-            Hi ${escapeHtml(order.customerName)}, your order came through but the payment didn't complete. Nothing has been charged. If it was a bank timeout or you changed your mind mid-way, you can pick it back up below.
+          <p class="body-text" style="margin:0 0 24px;font-family:${FONT};font-size:14px;line-height:1.65;color:${BODY};">
+            Hi ${escapeHtml(order.customerName.split(' ')[0])}, your order came through but the payment didn't complete. <strong class="ink" style="color:${INK};">Nothing has been charged.</strong> If it was a bank timeout or you changed your mind mid-way, you can pick it back up below.
           </p>
 ${action}
-          <p style="margin:32px 0 6px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.08em;color:${MUTED};">WHAT YOU ORDERED</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:32px;line-height:32px;font-size:0;">&nbsp;</td></tr></table>
 ${renderOrderSummary(order)}`;
 
   return {
     subject,
-    html: renderLayout(
+    html: renderLayout({
+      hero: {
+        badge: { label: 'AWAITING PAYMENT' },
+        headline: "You didn't finish",
+        subhead: 'checking out.',
+        meta: renderMetaLine(order),
+      },
       body,
-      `${formatRM(order.total)} — your order is held until the payment link expires.`,
-      settings
-    ),
+      preheader: `${formatRM(order.total)} — your order is held until the payment link expires.`,
+      settings,
+    }),
   };
 }

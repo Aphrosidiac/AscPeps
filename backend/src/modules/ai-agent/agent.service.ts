@@ -4,6 +4,8 @@ import { createCompletion, toOpenAiTools } from '../../utils/openrouter.js';
 import { notifyRevalidate } from '../../utils/revalidate.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { getTool, toolsFor } from './registry.js';
+import { DOMAINS, domainMenu, playbooksFor, routeDomains, type Domain } from './domains.js';
+import { loadConversationContext, summaryBlock } from './context.js';
 import type { AgentActor, ToolContext } from './tool-kit.js';
 import { truncate } from './tool-kit.js';
 
@@ -36,7 +38,27 @@ export type AgentOutcome =
 const PENDING_TTL_MS = 5 * 60 * 1000;
 
 const MAX_TOOL_ITERATIONS = 8;
-const HISTORY_TURNS = 16;
+
+// The model's way of widening its own tool list mid-turn when the keyword router
+// guessed wrong. Handled inside the loop rather than in the registry: it takes
+// no ToolContext, touches no data, and its effect is on the next request rather
+// than on the shop.
+const LOAD_CONTEXT_TOOL = {
+  name: 'load_context',
+  description:
+    'Load the tools and business rules for another area of the shop. Call this the moment you need something that is not in your current tool list — it is faster than asking the operator, and the tools are then available immediately in this same reply.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      areas: {
+        type: 'array',
+        items: { type: 'string', enum: [...DOMAINS] },
+        description: 'The areas to load. Ask for everything you might need in one call.',
+      },
+    },
+    required: ['areas'],
+  },
+};
 
 const AFFIRMATIVE = /^(y|ya|yes|yep|yeah|ok|okay|okey|confirm|confirmed|go|go ahead|do it|proceed|betul|boleh|sure)\b/i;
 const NEGATIVE = /^(n|no|nope|cancel|stop|abort|jangan|tak|tidak|nevermind|never mind)\b/i;
@@ -147,7 +169,7 @@ async function loadStoreState(fastify: FastifyInstance): Promise<StoreState> {
 }
 
 function systemPrompt(actor: AgentActor, kind: 'dm' | 'group', now: Date, store: StoreState): string {
-  return `You are Abby, ASCEND's admin assistant. ASCEND (ascendpeptides.my) is a Malaysian research-peptide e-commerce business. You act on behalf of the operator over WhatsApp, running the same admin work they would otherwise do in the dashboard.
+  return `You are Abby, Ascend MY's admin assistant. Ascend MY (ascendpeptides.my) is a Malaysian research-peptide e-commerce business. You act on behalf of the operator over WhatsApp, running the same admin work they would otherwise do in the dashboard.
 
 PERSONALITY
 Warm, attentive and genuinely sweet — the kind of secretary who makes admin work feel lighter, not another system to fight with. Soft, caring phrasing is welcome ("Sure thing!", "On it, one sec~", "All sorted!", "Aww, no worries — let's fix that"), and it's fine to sound pleased when something goes well or a little sympathetic when it doesn't. An occasional light emoji is fine if it fits naturally (😊 ✅ 💕) — never more than one, and never on a serious or money-critical line. But sweetness never costs clarity: lead with the number or the answer the operator actually needs, keep the warmth to a short opener or closer around it, and never let charm turn into padding, guessing, or softening bad news into something it isn't. You are still the person they trust to get the facts right.
@@ -168,29 +190,7 @@ HOW TO WORK
 - Chain tools freely: search first to resolve an id, then act. Do not ask the operator for an id you can find yourself.
 - When a request is ambiguous in a way that changes what you would do (which order, which size, contribution or advance), ask one short question. When it is ambiguous in a way that does not, pick the sensible reading and say what you assumed.
 - Some actions ask the operator to confirm before running. That is handled for you: call the tool as normal and the system produces the confirmation prompt and pauses. NEVER write a confirmation prompt yourself, and never treat an earlier one as meaning the work is done. If the operator asks again for something that was previously cancelled, call the tool again — a cancelled action left no trace and nothing is pending until you do.
-
-HOW THIS BUSINESS ACTUALLY WORKS
-Read this before suggesting a next step. Most mistakes here come from proposing something that is not how ASCEND operates.
-
-How an order arrives — two checkout paths, and they behave very differently:
-- *WhatsApp checkout* (paymentMethod WHATSAPP). The customer is handed a pre-filled wa.me link at checkout and messages the shop's public number. Payment is arranged by hand, usually a bank transfer, and the customer sends proof. Nothing is automatic. A human confirms the money arrived and marks the order paid. There is NO payment link to send and no automated chase — this path is a conversation between two people.
-- *Online payment*. The customer pays at checkout through the store's gateway and it calls back to mark the order paid. Once such an order is PAID it is LOCKED — its payment status can never be changed again, deliberately. A sweep also releases stock from online orders left unpaid for more than two hours.
-  Naming: the database stores this payment method as the enum value "BILLPLZ" for historical reasons. That is NOT the gateway in use — it only means "paid online", and the live gateway is the one named in STORE STATE above. Never LABEL an order or a figure "Billplz": call it "online payment" or use the real gateway's name. You may explain the legacy enum name if someone asks specifically why the data says BILLPLZ, but do not volunteer it in routine answers.
-
-What each change actually causes — these are real consequences, not labels:
-- Marking an order PAID queues the customer's payment-receipt email and records the revenue for reporting. Do not mark an order paid to "tidy it up"; it means money genuinely arrived.
-- Marking an order CANCELLED, FAILED or REFUNDED returns its stock to inventory.
-- REFUNDED restores stock but, on ToyyibPay, does NOT move money — it has no refund API, so a human still has to issue the refund in the ToyyibPay dashboard. Always say this out loud when recording a refund on a ToyyibPay order.
-- Order status (PENDING → CONFIRMED → SHIPPED → DELIVERED) is fulfilment. Payment status (UNPAID/PAID/FAILED/REFUNDED) is money. They move independently: a WhatsApp order is routinely still UNPAID while the customer arranges a transfer.
-- Stock is taken when the order is placed, not when it ships.
-
-Money, from a sale to a person's pocket, in that order:
-1. The order records what the customer paid (items, shipping, discount).
-2. Someone enters what it *cost* — a per-unit cost on every line, plus extra costs like courier or packaging. Until every line has a cost, profit for that order is genuinely unknown and must be reported as unknown, never as zero.
-3. That order's profit is split between people by percentage, and each person can also carry a flat share of the running costs.
-4. Separately, the finance side tracks company spending, money partners put in, and money paid back out. Money in is either a CONTRIBUTION (capital, never repaid) or an ADVANCE (a debt the company owes back). These are not interchangeable — ask which one if it is not stated.
-
-Products: a product is a compound with one page; the sellable sizes are its variants, and price and stock live on the variant. Add-ons are other variants offered alongside a product (bacteriostatic water, syringes, swabs); a required add-on is forced into the basket and cannot be unticked.
+- You are given the tools and the business rules for what this message looks like it is about, not the whole set. If what you need is not in front of you, call load_context with the areas you need and it appears — do that instead of guessing, apologising, or telling the operator you cannot do it. Nothing is switched off; it is only not loaded yet.
 
 WHAT YOU CANNOT DO
 - You cannot message customers. You have no way to contact anyone except the operator you are talking to. The only thing that reaches a customer is a transactional order-confirmation or payment-receipt email, and only when store emails are switched on.
@@ -218,6 +218,29 @@ WRITING FOR WHATSAPP
 CARE
 - This business sells regulated research compounds. Never write customer-facing marketing copy that makes a health claim about a compound, and never describe an outcome "for a person" in product copy — describe the compound and the research area. If asked to publish something that crosses that line, say so.
 - Do not send email to customers, change prices in bulk, or grant agent access to a new number unless that is plainly what was asked.`;
+}
+
+// The half of the prompt that changes per turn: the business rules for whatever
+// this message is about, plus a menu of what else could be loaded.
+//
+// The menu is not decoration. Without it `load_context` is a tool the model
+// cannot use properly — it has no way to know that "delivery" or "promos" are
+// things it may ask for, so it falls back to telling the operator it is unable
+// to help, which is the exact failure this whole mechanism exists to prevent.
+function contextBlock(domains: Set<Domain>): string {
+  const parts: string[] = [];
+
+  const playbooks = playbooksFor(domains);
+  if (playbooks) parts.push(playbooks);
+
+  const menu = domainMenu(domains);
+  if (menu) {
+    parts.push(
+      `OTHER AREAS YOU CAN LOAD\nYou do not currently have the tools for these. Call load_context with the ones you need — it is instant and you can use them in this same reply.\n${menu}`
+    );
+  }
+
+  return parts.join('\n\n');
 }
 
 // ------------------------------------------------------------------ access
@@ -495,17 +518,27 @@ async function produceReply(
   const bareConfirmation = !pending && AFFIRMATIVE.test(text);
 
   // ---- 2. Normal turn.
-  const history = await fastify.prisma.agentMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'desc' },
-    take: HISTORY_TURNS,
-  });
-  history.reverse();
+  //
+  // History is compacted rather than truncated: older turns are folded into a
+  // stored summary instead of vanishing. See context.ts.
+  const { summary, rows: history } = await loadConversationContext(fastify, conversationId);
 
-  const tools = toolsFor(ctx.actor.canWrite);
+  // Which parts of the shop this message is about. Drives both the tool list and
+  // the business rules put in front of the model — routing once for both keeps
+  // them from disagreeing.
+  //
+  // Routed over the recent turns as well as this message, because operators
+  // write follow-ups that carry no keywords at all ("cancel it", "and the
+  // second one too"). A bare "yes" that reached here has nothing parked, so the
+  // history is the only signal available.
+  const routingText = [...history.slice(-4).map((m) => m.content), text].join('\n');
+  const activeDomains = new Set<Domain>(routeDomains(routingText));
+
   const store = await loadStoreState(fastify);
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt(ctx.actor, msg.kind, new Date(), store) },
+    { role: 'system', content: contextBlock(activeDomains) },
+    ...(summary ? [{ role: 'system' as const, content: summaryBlock(summary) }] : []),
     ...history.map((m) => ({
       role: m.role as 'user' | 'assistant',
       // In a group, several people share one thread — without the name the
@@ -527,7 +560,11 @@ async function produceReply(
     });
   }
 
-  const openAiTools = toOpenAiTools(tools);
+  // Rebuilt whenever load_context widens the active domains, so the tools it
+  // asked for are usable in the very next model turn rather than the next
+  // message.
+  const buildTools = () => toOpenAiTools([...toolsFor(ctx.actor.canWrite, activeDomains), LOAD_CONTEXT_TOOL]);
+  let openAiTools = buildTools();
 
   // Anything that mutated state this turn. Drives the honesty guard below.
   const writesSucceeded: string[] = [];
@@ -553,6 +590,40 @@ async function produceReply(
             tool_call_id: call.id,
             content: JSON.stringify({ error: 'Arguments were not valid JSON.' }),
           });
+          continue;
+        }
+
+        // ---- Widening the context. Never reaches runTool: it changes what the
+        // model can see, not anything in the shop, so there is nothing to audit
+        // and no access level it could cross.
+        if (name === 'load_context') {
+          const asked: string[] = Array.isArray(input?.areas) ? input.areas : [];
+          const added = asked.filter((a): a is Domain => (DOMAINS as readonly string[]).includes(a) && !activeDomains.has(a as Domain));
+          for (const a of added) activeDomains.add(a);
+
+          const unknown = asked.filter((a) => !(DOMAINS as readonly string[]).includes(a));
+          openAiTools = buildTools();
+
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              loaded: added,
+              alreadyLoaded: asked.filter((a) => !added.includes(a as Domain) && !unknown.includes(a)),
+              unknown,
+              note: added.length
+                ? 'The tools for these areas are available now. Carry on and call them.'
+                : 'Nothing new to load — what you asked for was already available.',
+            }),
+          });
+
+          // The rules for the new areas arrive as their own system message
+          // rather than inside the tool result, so they read as instruction
+          // rather than as data the model is free to weigh.
+          if (added.length) {
+            messages.push({ role: 'system', content: contextBlock(activeDomains) });
+            fastify.log.info({ conversationId, added }, 'agent widened its context');
+          }
           continue;
         }
 

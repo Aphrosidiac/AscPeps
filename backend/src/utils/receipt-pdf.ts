@@ -58,7 +58,7 @@ export async function generateReceiptPdf(
   order: ReceiptOrder,
   settings: ReceiptSettings,
 ): Promise<Buffer> {
-  const companyName = settings.receipt_company_name || settings.business_name || 'ASCEND';
+  const companyName = settings.receipt_company_name || settings.business_name || 'Ascend MY';
   const companyReg = settings.receipt_company_reg || '';
   const companyAddress = settings.receipt_address || '';
   const companyPhone = settings.receipt_phone || '';

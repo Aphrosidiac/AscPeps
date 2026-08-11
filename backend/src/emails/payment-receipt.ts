@@ -1,4 +1,15 @@
-import { renderLayout, renderOrderSummary, renderBadge, renderMetaLine, renderSubject, escapeHtml, formatDate, type EmailOrder } from './layout.js';
+import {
+  renderLayout,
+  renderOrderSummary,
+  renderMetaLine,
+  renderSubject,
+  escapeHtml,
+  formatDate,
+  FONT,
+  BODY,
+  INK,
+  type EmailOrder,
+} from './layout.js';
 
 const DEFAULT_SUBJECT = 'Receipt for order {orderNumber}';
 const DEFAULT_BADGE = 'PAYMENT RECEIVED';
@@ -17,23 +28,28 @@ export function renderPaymentReceipt(
       ? 'Manual Transfer (WhatsApp)'
       : `Online (${escapeHtml(order.paymentGateway || 'Billplz')})`;
 
-  const badge = escapeHtml(settings.email_badge_receipt || DEFAULT_BADGE);
-
-  const html = renderLayout(
-    `
-          ${renderBadge(badge, 'success')}
-          <h1 style="margin:16px 0 10px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;color:#0A0A0A;">Your payment is confirmed</h1>
-${renderMetaLine(order)}
-          <p style="margin:-8px 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
+  const html = renderLayout({
+    hero: {
+      // The one email in the set that earns the green dot: it is the only one
+      // reporting a completed state rather than a pending one.
+      badge: { label: settings.email_badge_receipt || DEFAULT_BADGE, tone: 'success' },
+      headline: 'Payment confirmed.',
+      subhead: "We're packing it now.",
+      meta: renderMetaLine(order),
+    },
+    body: `
+          <p class="body-text" style="margin:0 0 26px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
             Received on ${formatDate(paidAt)} via ${payMethod}.
           </p>
 ${renderOrderSummary(order)}
-          <p style="margin:28px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#54565b;">
-            Your official receipt is attached as a PDF. We&#39;ll notify you once your order ships.
+          <p class="body-text" style="margin:26px 0 0;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
+            <strong class="ink" style="color:${INK};">Your receipt is attached as a PDF.</strong> We&#39;ll let you know as soon as your order ships.
           </p>`,
-    `Receipt for order ${order.orderNumber} — payment confirmed.`,
-    settings
-  );
+    // Not a restatement of the subject: says what changed (paid), what we are
+    // doing about it (packing), and what is attached.
+    preheader: "Paid in full — we're packing it now. Your receipt is attached.",
+    settings,
+  });
 
   return { subject: renderSubject(settings.email_subject_receipt || DEFAULT_SUBJECT, order.orderNumber), html };
 }

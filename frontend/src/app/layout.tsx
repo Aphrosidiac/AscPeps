@@ -21,8 +21,8 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   metadataBase: new URL('https://ascendpeptides.my'),
   title: {
-    default: 'ASCEND — #1 Premium Peptides Malaysia | Retatrutide, GHK-Cu, BPC-157',
-    template: '%s | ASCEND Peptides Malaysia',
+    default: 'Ascend MY — #1 Premium Peptides Malaysia | Retatrutide, GHK-Cu, BPC-157',
+    template: '%s | Ascend Peptides Malaysia',
   },
   description: 'Malaysia\'s trusted source for premium research peptides. Buy Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and more. Lab-grade quality, fast shipping across Peninsular Malaysia. Number 1 peptides provider in Malaysia.',
   keywords: [
@@ -47,9 +47,9 @@ export const metadata: Metadata = {
     'HGH peptides malaysia',
     'IGF-1 malaysia',
   ],
-  authors: [{ name: 'ASCEND' }],
-  creator: 'ASCEND',
-  publisher: 'ASCEND',
+  authors: [{ name: 'Ascend MY' }],
+  creator: 'Ascend MY',
+  publisher: 'Ascend MY',
   robots: {
     index: true,
     follow: true,
@@ -65,21 +65,21 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_MY',
     url: 'https://ascendpeptides.my',
-    siteName: 'ASCEND',
-    title: 'ASCEND — #1 Premium Peptides Malaysia',
+    siteName: 'Ascend MY',
+    title: 'Ascend MY — #1 Premium Peptides Malaysia',
     description: 'Malaysia\'s trusted source for premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Lab-grade quality with fast shipping across Peninsular Malaysia.',
     images: [
       {
         url: '/images/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'ASCEND — Premium Research Peptides in Malaysia',
+        alt: 'Ascend MY — Premium Research Peptides in Malaysia',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ASCEND — #1 Premium Peptides Malaysia',
+    title: 'Ascend MY — #1 Premium Peptides Malaysia',
     description: 'Malaysia\'s trusted source for premium research peptides. Lab-grade quality with fast shipping across Peninsular Malaysia.',
     images: ['/images/og-image.png'],
   },

@@ -193,6 +193,12 @@ model Order {
   trackingNumber String?
   idempotencyKey String?       @unique
   stockRestored  Boolean       @default(false)
+  // Operational tick-box: the profit for this order has actually been paid out
+  // to the people in its split. Deliberately manual and separate from whether a
+  // split has been RECORDED (order_profit_shares rows) or whether the order is
+  // fully costed — money leaving the account is a real-world event the system
+  // cannot observe, so someone has to assert it.
+  profitShared   Boolean       @default(false)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
   deletedAt      DateTime?
@@ -265,7 +271,7 @@ model OrderExtraCost {
   @@map("order_extra_costs")
 }
 
-// How one order's profit is split between the people behind ASCEND. Stored per
+// How one order's profit is split between the people behind Ascend MY. Stored per
 // order rather than as one global rule because the split genuinely can differ
 // order to order (a partner who sourced a particular batch, a one-off referral
 // cut), and because backfilling a changed global rule onto historical orders
@@ -425,7 +431,7 @@ model Insight {
   content           String
   coverImageUrl     String?
   authorName        String    @default("Asywa")
-  authorRole        String    @default("Founder & CEO, ASCEND")
+  authorRole        String    @default("Founder & CEO, Ascend MY")
   citationTitle     String?
   citationSource    String?
   citationUrl       String?
@@ -809,6 +815,18 @@ model AgentConversation {
   lastMessageAt DateTime @default(now())
   messageCount  Int      @default(0)
 
+  // Rolling compaction of the thread. `summary` is a prose recap of the oldest
+  // `summarizedCount` messages, which are then no longer sent to the model; the
+  // newest turns are still sent verbatim. See context.ts.
+  //
+  // `summarizedCount` is a count rather than a timestamp watermark on purpose:
+  // the user and assistant rows of one turn are written milliseconds apart and
+  // can share a createdAt, so a `createdAt >` filter can silently drop or
+  // double-count a message at the boundary. A count paired with a deterministic
+  // (createdAt, id) ordering cannot.
+  summary         String?
+  summarizedCount Int     @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1066,6 +1084,14 @@ model Subscriber {
   welcomeSentAt   DateTime?
   welcomeAttempts Int       @default(0)
   welcomeError    String?
+  // Resend's id for the successful send, and where that message's lifecycle
+  // landed — same enum and same webhook (modules/webhooks/resend-webhook.controller.ts)
+  // as EmailOutbox, so a welcome email gets the exact DELIVERED/BOUNCED/COMPLAINED
+  // tracking order emails already have. welcomeStatusAt is the last time the
+  // webhook moved this row past SENT — the "delivered at" / "bounced at" instant.
+  welcomeResendId String?
+  welcomeStatus   EmailStatus @default(PENDING)
+  welcomeStatusAt DateTime?
   // The first-order code minted for this specific person, single-use. Per
   // subscriber rather than one shared WELCOME10 because a shared code in this
   // niche ends up on a deals forum within a week and then discounts every
@@ -1083,6 +1109,8 @@ model Subscriber {
   @@index([status])
   // Drives the welcome sweep's only query.
   @@index([welcomeSentAt])
+  // Drives the webhook's status update lookup, same as EmailOutbox.resendId.
+  @@index([welcomeResendId])
   @@map("subscribers")
 }
 

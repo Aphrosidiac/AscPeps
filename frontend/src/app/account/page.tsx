@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { AccountClient } from './AccountClient';
 
 export const metadata: Metadata = {
-  title: 'Your account | ASCEND',
+  title: 'Your account | Ascend MY',
   robots: { index: false, follow: true },
 };
 

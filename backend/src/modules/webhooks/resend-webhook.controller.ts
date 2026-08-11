@@ -68,25 +68,32 @@ export async function handleResendWebhook(
 
   // No matching row is a normal, silent no-op — could be an event for a
   // message this app never tracked, or a timing race with the send. A given
-  // message id lives in exactly one of these two tables, so both run and at
+  // message id lives in exactly one of these three tables, so all run and at
   // most one matches.
-  const [, campaignUpdated] = await Promise.all([
+  const [, campaignUpdated, subscriberUpdated] = await Promise.all([
     fastify.prisma.emailOutbox.updateMany({ where: { resendId: emailId }, data: { status } }),
     fastify.prisma.campaignRecipient.updateMany({ where: { resendId: emailId }, data: { status } }),
+    fastify.prisma.subscriber.updateMany({
+      where: { welcomeResendId: emailId },
+      data: { welcomeStatus: status, welcomeStatusAt: new Date() },
+    }),
   ]);
 
   if (status === 'BOUNCED' || status === 'COMPLAINED') {
     // Resolve the address from whichever table owns the message rather than
-    // trusting the webhook payload's own `to` field — these two tables are
+    // trusting the webhook payload's own `to` field — these three tables are
     // what this app actually sent, and matching on the id we stored keeps a
     // forged-but-somehow-verified payload from suppressing a stranger.
-    const [outboxRow, campaignRow] = await Promise.all([
+    const [outboxRow, campaignRow, subscriberRow] = await Promise.all([
       fastify.prisma.emailOutbox.findFirst({ where: { resendId: emailId }, select: { toEmail: true } }),
       campaignUpdated.count > 0
         ? fastify.prisma.campaignRecipient.findFirst({ where: { resendId: emailId }, select: { toEmail: true } })
         : null,
+      subscriberUpdated.count > 0
+        ? fastify.prisma.subscriber.findFirst({ where: { welcomeResendId: emailId }, select: { email: true } })
+        : null,
     ]);
-    const toEmail = outboxRow?.toEmail ?? campaignRow?.toEmail;
+    const toEmail = outboxRow?.toEmail ?? campaignRow?.toEmail ?? subscriberRow?.email;
     if (toEmail) {
       const suppressed = await suppressByEmail(
         fastify.prisma,

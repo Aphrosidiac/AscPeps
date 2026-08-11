@@ -19,7 +19,7 @@ import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress, type OrderCheckKey } from '@/lib/order-progress';
 import type { Order, OrderEmail } from '@/types';
 
-// ASCEND's pipeline, not a copy of the source design's six purchasing stages —
+// Ascend MY's pipeline, not a copy of the source design's six purchasing stages —
 // this catalogue has no quotation/PO/warehouse chain to model. The stepper and
 // the tab bar are two views of the same sections and stay in sync; clicking
 // either moves both. Order Complete is read-only and reports only what has

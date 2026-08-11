@@ -17,6 +17,37 @@ const WEBP_QUALITY = 82;
 // `withoutEnlargement` so a small image is never upscaled into blur.
 const MAX_IMAGE_WIDTH = 1600;
 
+// Email clients are a different world from browsers: WebP is missing from older
+// Outlook desktop builds and AVIF is effectively unsupported everywhere, so a
+// product thumbnail in an email has to be JPEG/PNG/GIF or it renders as a
+// broken-image icon. Every stored image therefore gets a small JPEG sibling
+// written beside it (`<id>.email.jpg`), used only by the mail templates.
+// 160px covers the 56px slot at 2x with headroom, at ~4-6KB.
+const EMAIL_THUMB_WIDTH = 160;
+const EMAIL_THUMB_QUALITY = 80;
+
+/** `<id>.webp` -> `<id>.email.jpg`. Mirrored by emailThumbUrl() in emails/layout.ts. */
+export function emailThumbFilename(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '') + '.email.jpg';
+}
+
+/** Writes the email-safe JPEG sibling. Never throws — a missing thumb degrades
+ *  to the placeholder tile in the mail template, which is not worth failing an
+ *  upload over. */
+export async function writeEmailThumb(sourcePath: string, destPath: string): Promise<boolean> {
+  try {
+    await sharp(sourcePath)
+      .rotate()
+      .resize({ width: EMAIL_THUMB_WIDTH, withoutEnlargement: true })
+      .flatten({ background: '#ffffff' }) // JPEG has no alpha; a transparent PNG would otherwise go black
+      .jpeg({ quality: EMAIL_THUMB_QUALITY, mozjpeg: true })
+      .toFile(destPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Detect the real image type from the file's magic bytes — the client-declared
 // Content-Type is spoofable and must not be trusted.
 async function sniffImageType(filepath: string): Promise<string | null> {
@@ -86,9 +117,15 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
         .toFile(path.join(uploadsDir, filename));
     } catch {
       return reply.status(400).send({ error: 'Failed to process image.' });
-    } finally {
-      await unlink(tmppath).catch(() => {});
     }
+
+    // From the stored WebP, not the temp original — so the thumb always matches
+    // exactly what the site serves, including the EXIF rotation applied above.
+    await writeEmailThumb(
+      path.join(uploadsDir, filename),
+      path.join(uploadsDir, emailThumbFilename(filename))
+    );
+    await unlink(tmppath).catch(() => {});
 
     const url = `/uploads/products/${filename}`;
     return { url, filename };

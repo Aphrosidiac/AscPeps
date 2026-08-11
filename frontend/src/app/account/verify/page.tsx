@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { VerifyClient } from './VerifyClient';
 
 export const metadata: Metadata = {
-  title: 'Confirm your email | ASCEND',
+  title: 'Confirm your email | Ascend MY',
   robots: { index: false, follow: false },
 };
 

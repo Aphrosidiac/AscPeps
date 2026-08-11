@@ -1,7 +1,7 @@
 {
   "name": "ascend-api",
   "version": "1.0.0",
-  "description": "ASCEND Peptides E-Commerce API",
+  "description": "Ascend Peptides E-Commerce API",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -17,6 +17,7 @@
     "test:agent:tools": "tsx scripts/smoke-agent-tools.ts",
     "test:agent:writes": "tsx scripts/test-agent-writes.ts",
     "test:agent:e2e": "tsx scripts/test-agent-e2e.ts",
+    "test:agent:context": "tsx scripts/test-agent-context.ts",
     "test:agent:security": "tsx scripts/test-agent-security.ts"
   },
   "keywords": [],

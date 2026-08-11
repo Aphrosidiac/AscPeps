@@ -5,7 +5,7 @@ import { StorageGuidelines } from '@/components/guide/StorageGuidelines';
 
 export const metadata: Metadata = {
   title: 'Peptide Guide — Reconstitution, Storage & Handling',
-  description: 'Complete guide to handling research peptides. Learn how to reconstitute, store, and handle lyophilized peptides properly. ASCEND Malaysia peptide guide.',
+  description: 'Complete guide to handling research peptides. Learn how to reconstitute, store, and handle lyophilized peptides properly. Ascend MY peptide guide.',
   keywords: ['how to reconstitute peptides', 'peptide reconstitution guide', 'peptide storage guide', 'how to mix peptides', 'peptide handling malaysia', 'BAC water peptides'],
   alternates: { canonical: 'https://ascendpeptides.my/guide' },
 };
@@ -24,7 +24,7 @@ export default function GuidePage() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
           <p className="text-sm text-yellow-800">
-            <strong>Research Use Only.</strong> This guide is provided for educational and laboratory reference purposes. All ASCEND products are intended strictly for research and laboratory use.
+            <strong>Research Use Only.</strong> This guide is provided for educational and laboratory reference purposes. All Ascend MY products are intended strictly for research and laboratory use.
           </p>
         </div>
       </div>
@@ -45,7 +45,7 @@ export default function GuidePage() {
             <FlaskConical className="w-5 h-5 text-text-muted mt-0.5 shrink-0" />
             <div>
               <p className="font-medium text-sm">Lyophilized Peptide Vial</p>
-              <p className="text-xs text-text-muted">Your ASCEND research peptide</p>
+              <p className="text-xs text-text-muted">Your Ascend MY research peptide</p>
             </div>
           </div>
           <div className="bg-surface rounded-xl border border-border p-4 flex items-start gap-3">
@@ -157,7 +157,7 @@ export default function GuidePage() {
           </table>
           </div>
           <p className="text-sm text-text-muted">
-            ASCEND offers Acetic Acid in our <a href="/products" className="underline">store</a> for peptides that require it.
+            Ascend MY offers Acetic Acid in our <a href="/products" className="underline">store</a> for peptides that require it.
           </p>
         </Animate>
       </div>

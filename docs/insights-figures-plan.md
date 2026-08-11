@@ -221,7 +221,7 @@ Concretely, that means:
    remembers.
 3. Safest default is **redrawing** figures in our own style rather than
    screenshotting the paper. Ideas aren't copyrightable, a specific rendering
-   is — and a redrawn diagram in ASCEND's visual language looks far better than
+   is — and a redrawn diagram in Ascend MY's visual language looks far better than
    a screenshot of a PDF anyway.
 
 ---

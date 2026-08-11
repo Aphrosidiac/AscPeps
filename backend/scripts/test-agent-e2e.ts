@@ -106,7 +106,7 @@ await prisma.agentConversation.deleteMany({
 });
 
 console.log('='.repeat(70));
-console.log('ASCEND WhatsApp agent — end-to-end');
+console.log('Ascend MY WhatsApp agent — end-to-end');
 console.log('='.repeat(70));
 
 // ---------------------------------------------------------------- access control

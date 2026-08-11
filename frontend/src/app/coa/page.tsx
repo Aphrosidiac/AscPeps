@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Certificates of Analysis & Third-Party Testing',
-  description: 'How ASCEND verifies the purity and identity of every research peptide batch through independent third-party laboratory testing, and how to request a Certificate of Analysis.',
+  description: 'How Ascend MY verifies the purity and identity of every research peptide batch through independent third-party laboratory testing, and how to request a Certificate of Analysis.',
   keywords: ['peptide COA malaysia', 'certificate of analysis peptides', 'third-party tested peptides malaysia', 'peptide purity testing'],
   alternates: { canonical: 'https://ascendpeptides.my/coa' },
 };
@@ -21,7 +21,7 @@ export default function CoaPage() {
 
         <h2>Who tests our products</h2>
         <p>
-          ASCEND uses independent, accredited third-party laboratories — not in-house or manufacturer-supplied testing — to verify identity and purity. Independent testing means the lab has no commercial stake in the result, which is the point: a manufacturer's own purity claim isn't independent verification, and we don't think it should be treated as one.
+          Ascend MY uses independent, accredited third-party laboratories — not in-house or manufacturer-supplied testing — to verify identity and purity. Independent testing means the lab has no commercial stake in the result, which is the point: a manufacturer's own purity claim isn't independent verification, and we don't think it should be treated as one.
         </p>
 
         <h2>What a Certificate of Analysis actually shows</h2>

@@ -9,7 +9,7 @@ import { CalculatorClient } from './CalculatorClient';
 
 export const metadata: Metadata = {
   title: 'Peptide Reconstitution Calculator — Dosage & Concentration',
-  description: 'Free peptide reconstitution calculator. Work out draw volume, concentration, and doses per vial for research peptides. ASCEND Malaysia calculator.',
+  description: 'Free peptide reconstitution calculator. Work out draw volume, concentration, and doses per vial for research peptides. Ascend MY peptide calculator.',
   keywords: ['peptide calculator', 'peptide reconstitution calculator', 'peptide dosage calculator', 'peptide concentration calculator', 'how much bac water peptides', 'peptide calculator malaysia'],
   alternates: { canonical: 'https://ascendpeptides.my/calculator' },
 };

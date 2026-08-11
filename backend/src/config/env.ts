@@ -23,6 +23,22 @@ const envSchema = z.object({
   // bypassing nginx. Falls back to FRONTEND_URL for local dev, where the
   // frontend dev server IS already reachable directly (no nginx in front).
   FRONTEND_INTERNAL_URL: z.string().optional(),
+  // Origin the EMAIL templates point their images at. Defaults to the live
+  // site, which is the only correct answer for real mail: a client rendering
+  // an email has no origin to resolve a relative path against, so every asset
+  // URL has to be absolute and public.
+  //
+  // The cost of that is local development, where the admin's Template Preview
+  // renders the real template and therefore fetches every image from
+  // production — so any asset added but not yet deployed shows as a broken
+  // box, and it looks like the template is wrong when it is only undeployed.
+  // Point this at the frontend dev server (http://localhost:3099) to preview
+  // against local assets; it proxies /uploads to this backend, so one origin
+  // covers both images and product photos, exactly as nginx does in prod.
+  //
+  // Leave it UNSET in production. If it is ever set there, real customers get
+  // emails full of unreachable image URLs.
+  EMAIL_ASSET_BASE_URL: z.string().optional(),
   // Shared with the frontend's /api/revalidate route. Optional so a missing
   // secret degrades to "storefront stays cached until the next full deploy
   // or the 1hr window elapses" rather than crashing product saves.
