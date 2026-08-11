@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ShoppingCart, Check } from 'lucide-react';
+import Link from 'next/link';
+import { ShoppingCart, Check, ArrowRight } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
@@ -23,6 +24,8 @@ interface Props {
 
 export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, stock, addOns, addOnReminder }: Props) {
   const [quantity, setQuantity] = useState(1);
+  // Cleared whenever the selection changes: at that point the sticky bar is
+  // about a different purchase and must go back to offering Add to Cart.
   const [added, setAdded] = useState(false);
   const [inlineButtonVisible, setInlineButtonVisible] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -32,7 +35,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     (addOns ?? []).filter((a) => a.addOnRequired).map((a) => a.id)
   );
   const inlineButtonRef = useRef<HTMLDivElement>(null);
-  const { addItem } = useCart();
+  const { addItems, itemCount } = useCart();
 
   function toggleAddOn(id: string, required: boolean) {
     if (required) return;
@@ -50,8 +53,12 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    setAdded(false);
+  }, [variantId, quantity, selectedAddOnIds]);
+
   const handleAddToCart = () => {
-    addItem({
+    const lines = [{
       variantId,
       code,
       name,
@@ -60,10 +67,10 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       quantity,
       stock,
       imageUrl,
-    });
+    }];
     for (const addOn of addOns ?? []) {
       if (!selectedAddOnIds.includes(addOn.id) || addOn.stock === 0) continue;
-      addItem({
+      lines.push({
         variantId: addOn.id,
         code: addOn.code,
         name: getVariantDisplayName(addOn, addOn),
@@ -74,6 +81,9 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         imageUrl: addOn.imageUrl,
       });
     }
+    // One call, so the confirmation names the product rather than whichever
+    // add-on happened to be added last.
+    addItems(lines);
     posthog.capture('add_to_cart', {
       variant_id: variantId,
       product_code: code,
@@ -82,8 +92,12 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       price_cents: price,
       add_on_count: selectedAddOnIds.length,
     });
+    // Deliberately NOT reset on a timer. "Added" used to revert after two
+    // seconds and the toast expired half a second later, so a few seconds after
+    // tapping there was no trace anything had happened and no way forward — the
+    // page looked exactly as it had before. It now stays as the next step until
+    // the customer changes what they are buying.
     setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
   };
 
   return (
@@ -160,13 +174,17 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
             +
           </button>
         </div>
-        <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock} size="lg" className="flex-1">
-          {added ? (
-            <><Check className="w-4 h-4" /> Added</>
-          ) : (
-            <><ShoppingCart className="w-4 h-4" /> Add to Cart</>
-          )}
-        </Button>
+{added ? (
+          <Link href="/cart" className="flex-1">
+            <Button size="lg" className="w-full whitespace-nowrap">
+              <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Link>
+        ) : (
+          <Button onClick={handleAddToCart} disabled={stock === 0 || quantity > stock} size="lg" className="flex-1">
+            <ShoppingCart className="w-4 h-4" /> Add to Cart
+          </Button>
+        )}
       </div>
 
       {/* Mobile-only sticky CTA — keeps Add to Cart reachable once the inline
@@ -182,13 +200,17 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                 the bar, so at 16px the price read as a caption next to it
                 rather than as the number the customer is deciding on. */}
             <span className="font-display font-bold text-lg shrink-0">{formatPrice(price)}</span>
-            <Button onClick={handleAddToCart} size="lg" className="flex-1">
-              {added ? (
-                <><Check className="w-4 h-4" /> Added</>
-              ) : (
-                <><ShoppingCart className="w-4 h-4" /> Add to Cart</>
-              )}
-            </Button>
+{added ? (
+              <Link href="/cart" className="flex-1">
+                <Button size="lg" className="w-full whitespace-nowrap">
+                  <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            ) : (
+              <Button onClick={handleAddToCart} size="lg" className="flex-1">
+                <ShoppingCart className="w-4 h-4" /> Add to Cart
+              </Button>
+            )}
           </div>,
           document.body
         )}
