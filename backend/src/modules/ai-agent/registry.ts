@@ -8,6 +8,7 @@ import { opsTools } from './tools/ops.tools.js';
 import { reportTools } from './tools/reports.tools.js';
 import { deliveryTools } from './tools/delivery.tools.js';
 import { reminderTools } from './tools/reminders.tools.js';
+import { memoryTools } from './tools/memory.tools.js';
 
 // Domain membership is assigned here rather than as a field on each tool, so
 // the eight tool files stay unaware of routing entirely.
@@ -24,7 +25,11 @@ const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
   finance: financeTools,
   promos: contentTools.filter(isDiscountTool),
   content: contentTools.filter((t) => !isDiscountTool(t)),
-  ops: opsTools,
+  // Memory rides with ops for registration only — the two write tools are in
+  // CORE_TOOL_NAMES so they are offered on every turn regardless of routing.
+  // Remembering is not a topic the router could detect: the operator says
+  // something worth keeping while asking about an order.
+  ops: [...opsTools, ...memoryTools],
   reports: reportTools,
   delivery: deliveryTools,
   reminders: reminderTools,

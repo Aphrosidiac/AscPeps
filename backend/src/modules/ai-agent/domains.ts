@@ -43,6 +43,11 @@ export const CORE_TOOL_NAMES = [
   'get_order',
   'dashboard_stats',
   'list_low_stock',
+  // Memory writes are offered on every turn: the operator explains how
+  // something works in the middle of asking about an order, and a router that
+  // only sees "order" would leave the agent unable to keep it.
+  'memory_block_append',
+  'memory_block_replace',
 ];
 
 // Used when nothing matched. Orders and catalog are what operators ask about
