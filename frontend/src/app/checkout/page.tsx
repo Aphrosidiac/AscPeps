@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, CreditCard, Bitcoin, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { createOrder, getSettings, validateDiscount } from '@/lib/api';
@@ -15,6 +16,78 @@ import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
+
+// Written out in full rather than built from a template string, because
+// Tailwind scans source text for class names and never sees a composed one.
+const PAYMENT_ACCENTS = {
+  green: { bg: 'bg-green-100', fg: 'text-green-600' },
+  blue: { bg: 'bg-blue-100', fg: 'text-blue-600' },
+  amber: { bg: 'bg-amber-100', fg: 'text-amber-600' },
+} as const;
+
+/**
+ * One payment-method card. All three options render through this — they were
+ * three hand-copied blocks before, which is exactly how they drifted out of
+ * alignment: "Online Payment" is the only title that wraps to two lines, so
+ * its header grew to 48px against the others' 36px and pushed its description
+ * 26px lower than its neighbours'.
+ *
+ * The header is therefore pinned to a fixed height and vertically centred, so
+ * every description starts on the same line no matter how the title wraps, and
+ * the badge is taken out of the text flow entirely so it can never squeeze the
+ * title into wrapping in the first place.
+ */
+function PaymentOption({
+  icon: Icon, title, description, note, badge, accent, selected, disabled, ariaLabel, onSelect,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  /** Replaces the description in danger styling — for a method that is down. */
+  note?: string;
+  /** Corner tag, e.g. "Soon" for a method that isn't live yet. */
+  badge?: string;
+  accent: keyof typeof PAYMENT_ACCENTS;
+  selected: boolean;
+  disabled?: boolean;
+  ariaLabel?: string;
+  onSelect: () => void;
+}) {
+  const { bg, fg } = PAYMENT_ACCENTS[accent];
+  return (
+    <button
+      type="button"
+      onClick={() => { if (!disabled) onSelect(); }}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className={cn(
+        'relative flex flex-col p-4 rounded-xl border-2 text-left transition-all',
+        disabled
+          ? 'border-border opacity-50 cursor-not-allowed'
+          : selected
+            ? 'border-primary bg-primary/5 cursor-pointer'
+            : 'border-border hover:border-border-hover cursor-pointer'
+      )}
+    >
+      {badge && (
+        <span className="absolute top-3 right-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted bg-surface-elevated border border-border rounded-full px-2 py-0.5">
+          {badge}
+        </span>
+      )}
+      {/* min-h is what keeps the three cards in step; pr clears the badge so a
+          title never has to wrap around it. */}
+      <div className={cn('flex items-center gap-3 mb-2 min-h-[3rem]', badge && 'pr-12')}>
+        <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', selected ? bg : 'bg-surface-elevated')}>
+          <Icon className={cn('w-5 h-5', selected ? fg : 'text-text-muted')} />
+        </div>
+        <p className="font-semibold leading-tight">{title}</p>
+      </div>
+      <p className={cn('text-xs leading-relaxed', note ? 'text-danger' : 'text-text-secondary')}>
+        {note ?? description}
+      </p>
+    </button>
+  );
+}
 
 const makeIdempotencyKey = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
@@ -382,91 +455,46 @@ export default function CheckoutPage() {
             {/* Always three columns — the Bitcoin card is present whether or
                 not it's switched on, so the layout no longer depends on it. */}
             <div className="grid gap-3 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => { setPaymentMethod('WHATSAPP'); posthog.capture('payment_method_selected', { method: 'WHATSAPP' }); }}
-                className={cn(
-                  'p-4 rounded-xl border-2 text-left transition-all cursor-pointer group',
-                  paymentMethod === 'WHATSAPP' ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
-                )}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'WHATSAPP' ? 'bg-green-100' : 'bg-surface-elevated')}>
-                    <MessageCircle className={cn('w-5 h-5', paymentMethod === 'WHATSAPP' ? 'text-green-600' : 'text-text-muted')} />
-                  </div>
-                  <p className="font-semibold">WhatsApp</p>
-                </div>
-                <p className="text-xs text-text-secondary leading-relaxed">Pay via bank transfer, confirm on WhatsApp</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => { if (onlinePaymentEnabled) { setPaymentMethod('BILLPLZ'); posthog.capture('payment_method_selected', { method: 'BILLPLZ', gateway: paymentGateway }); } }}
+              <PaymentOption
+                icon={MessageCircle}
+                title="WhatsApp"
+                description="Pay via bank transfer, confirm on WhatsApp"
+                accent="green"
+                selected={paymentMethod === 'WHATSAPP'}
+                onSelect={() => { setPaymentMethod('WHATSAPP'); posthog.capture('payment_method_selected', { method: 'WHATSAPP' }); }}
+              />
+              <PaymentOption
+                icon={CreditCard}
+                title="Online Payment"
+                // Phrased to match its neighbours ("Pay via…", "Pay on-chain…").
+                // The bare "FPX via ToyyibPay" was a single short line between
+                // two three-line cards, which read as a gap rather than as the
+                // middle of a set.
+                description={paymentGateway === 'toyyibpay' ? 'Pay by FPX online banking via ToyyibPay' : 'Pay by FPX or card via Billplz'}
+                note={onlinePaymentEnabled ? undefined : 'Currently unavailable. Please use WhatsApp checkout.'}
+                accent="blue"
+                selected={paymentMethod === 'BILLPLZ'}
                 disabled={!onlinePaymentEnabled}
-                className={cn(
-                  'p-4 rounded-xl border-2 text-left transition-all relative',
-                  !onlinePaymentEnabled
-                    ? 'border-border opacity-50 cursor-not-allowed'
-                    : paymentMethod === 'BILLPLZ'
-                      ? 'border-primary bg-primary/5 cursor-pointer'
-                      : 'border-border hover:border-border-hover cursor-pointer'
-                )}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'BILLPLZ' ? 'bg-blue-100' : 'bg-surface-elevated')}>
-                    <CreditCard className={cn('w-5 h-5', paymentMethod === 'BILLPLZ' ? 'text-blue-600' : 'text-text-muted')} />
-                  </div>
-                  <p className="font-semibold">Online Payment</p>
-                </div>
-                {onlinePaymentEnabled ? (
-                  <p className="text-xs text-text-secondary leading-relaxed">
-                    {paymentGateway === 'toyyibpay' ? 'FPX via ToyyibPay' : 'FPX / Credit Card via Billplz'}
-                  </p>
-                ) : (
-                  <p className="text-xs text-danger leading-relaxed">Currently unavailable. Please use WhatsApp checkout.</p>
-                )}
-              </button>
+                onSelect={() => { setPaymentMethod('BILLPLZ'); posthog.capture('payment_method_selected', { method: 'BILLPLZ', gateway: paymentGateway }); }}
+              />
               {/* Always rendered, even while switched off — announcing that
-                  Bitcoin is coming is the point of shipping this early. The
-                  disabled state is "Coming soon", deliberately NOT the red
-                  "Currently unavailable" that Online Payment uses: that one
-                  means a working method is broken right now, this one means a
-                  method that has never been live yet. */}
-              <button
-                type="button"
-                onClick={() => { if (cryptoPaymentEnabled) { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); } }}
+                  Bitcoin is coming is the point of shipping this early. "Soon"
+                  rather than the red "Currently unavailable" Online Payment
+                  uses: that one means a working method is broken right now,
+                  this one has never been live. No mention of Lightning — the
+                  BTCPay instance is on-chain only, and naming a method the
+                  server can't offer is how you get a support ticket. */}
+              <PaymentOption
+                icon={Bitcoin}
+                title="Bitcoin"
+                description="Pay on-chain in BTC, rate locked at checkout"
+                badge={cryptoPaymentEnabled ? undefined : 'Soon'}
+                accent="amber"
+                selected={paymentMethod === 'CRYPTO'}
                 disabled={!cryptoPaymentEnabled}
-                aria-label={cryptoPaymentEnabled ? 'Pay with Bitcoin' : 'Bitcoin — coming soon, not yet available'}
-                className={cn(
-                  'p-4 rounded-xl border-2 text-left transition-all relative',
-                  !cryptoPaymentEnabled
-                    ? 'border-border opacity-50 cursor-not-allowed'
-                    : paymentMethod === 'CRYPTO'
-                      ? 'border-primary bg-primary/5 cursor-pointer'
-                      : 'border-border hover:border-border-hover cursor-pointer'
-                )}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'CRYPTO' ? 'bg-amber-100' : 'bg-surface-elevated')}>
-                    <Bitcoin className={cn('w-5 h-5', paymentMethod === 'CRYPTO' ? 'text-amber-600' : 'text-text-muted')} />
-                  </div>
-                  <p className="font-semibold">Bitcoin</p>
-                  {!cryptoPaymentEnabled && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted bg-surface-elevated border border-border rounded-full px-2 py-0.5 shrink-0">
-                      Soon
-                    </span>
-                  )}
-                </div>
-                {/* Same explanation in both states — a card that only says
-                    "coming soon" tells the customer nothing about what is
-                    coming, and the SOON pill above already carries the
-                    availability. Saying it twice just wrapped to five cramped
-                    lines in a third-width column. No mention of Lightning: the
-                    BTCPay instance runs on-chain only, and naming a method the
-                    server can't offer is how you get a support ticket. */}
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  Pay on-chain in BTC, rate locked at checkout
-                </p>
-              </button>
+                ariaLabel={cryptoPaymentEnabled ? 'Pay with Bitcoin' : 'Bitcoin — coming soon, not yet available'}
+                onSelect={() => { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); }}
+              />
             </div>
             {paymentMethod === 'CRYPTO' && (
               /* Set expectations before they leave the site. An on-chain
