@@ -405,7 +405,7 @@ export default function CheckoutPage() {
           {/* Customer Info */}
           <Animate variant="fadeUp" delay={0.05}>
           <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
               <h2 className="font-display font-semibold text-lg">Customer Information</h2>
             </div>
@@ -437,7 +437,7 @@ export default function CheckoutPage() {
           {/* Address */}
           <Animate variant="fadeUp" delay={0.1}>
           <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
               <h2 className="font-display font-semibold text-lg">Shipping Address</h2>
             </div>
@@ -461,7 +461,7 @@ export default function CheckoutPage() {
           {/* Payment */}
           <Animate variant="fadeUp" delay={0.15}>
           <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
               <h2 className="font-display font-semibold text-lg">Payment Method</h2>
             </div>
