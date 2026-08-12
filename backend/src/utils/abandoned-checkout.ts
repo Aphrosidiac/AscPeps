@@ -42,7 +42,14 @@ export async function sweepAbandonedCheckouts(fastify: FastifyInstance): Promise
       deletedAt: null,
       // WhatsApp orders have no gateway bill to return to — those are chased
       // by a human (or the agent) in the chat thread, not by email.
-      paymentMethod: { not: 'WHATSAPP' },
+      //
+      // CRYPTO is excluded for a different reason: this band (45min–1h45) is
+      // sized against the 2h fiat release window, but an on-chain payment can
+      // legitimately still be confirming then — the order sits UNPAID until
+      // BTCPay reports Settled. Nagging someone whose Bitcoin is already in
+      // flight is worse than not chasing an abandoned crypto cart at all.
+      // Revisit with a later, crypto-specific band if the volume justifies it.
+      paymentMethod: { notIn: ['WHATSAPP', 'CRYPTO'] },
       email: { not: null },
       createdAt: {
         gte: new Date(now - REMIND_BEFORE_MS),

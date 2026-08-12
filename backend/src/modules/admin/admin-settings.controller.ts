@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { getActiveGateway } from '../../utils/payment-gateway.js';
 
 export async function getSettings(fastify: FastifyInstance) {
   const settings = await fastify.prisma.setting.findMany();
@@ -38,6 +39,17 @@ export async function updateSettings(fastify: FastifyInstance, body: unknown) {
       if (!Number.isFinite(n) || n < bounds.min || n > bounds.max) {
         throw { statusCode: 400, message: `${key} must be between ${bounds.min} and ${bounds.max}` };
       }
+    }
+    // Crypto can only be switched ON where the server can actually mint a
+    // BTCPay invoice. Without this, ticking the box on a deployment that has
+    // no BTCPAY_* env vars shows customers a Bitcoin option that reserves
+    // their stock and then 503s — a live checkout wired to nothing.
+    // Switching it OFF is always allowed, whatever the server config.
+    if (key === 'crypto_payment_enabled' && value === 'true' && !getActiveGateway('btcpay')) {
+      throw {
+        statusCode: 400,
+        message: 'BTCPay is not configured on this server. Set BTCPAY_URL, BTCPAY_API_KEY and BTCPAY_STORE_ID before enabling crypto payment.',
+      };
     }
   }
 

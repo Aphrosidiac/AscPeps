@@ -44,10 +44,14 @@ orders(id, "orderNumber", "customerName", phone, email, address, city, state,
        "discountCodeId", notes, "deletedAt", "createdAt")
   - status: PENDING|CONFIRMED|SHIPPED|DELIVERED|CANCELLED
   - "paymentStatus": UNPAID|PAID|FAILED|REFUNDED
-  - "paymentMethod": WHATSAPP|BILLPLZ. BILLPLZ is a legacy enum name meaning
-    "paid online" — it does NOT mean the Billplz gateway. The gateway actually
-    used is the "paymentGateway" column (e.g. 'toyyibpay'). When reporting,
-    label it "online payment", never "Billplz".
+  - "paymentMethod": WHATSAPP|BILLPLZ|CRYPTO. BILLPLZ is a legacy enum name
+    meaning "paid online through the fiat gateway" — it does NOT mean the
+    Billplz gateway. The gateway actually used is the "paymentGateway" column
+    (e.g. 'toyyibpay'). When reporting, label it "online payment", never
+    "Billplz". CRYPTO means Bitcoin settled via BTCPay ("paymentGateway" =
+    'btcpay'); label it "Bitcoin" or "crypto". BILLPLZ and CRYPTO are both
+    gateway-settled, so "online orders" as a category means BOTH — filter
+    IN ('BILLPLZ','CRYPTO'), not = 'BILLPLZ'.
   - IMPORTANT: always filter "deletedAt" IS NULL unless deleted orders are
     explicitly wanted. Real revenue means "paymentStatus" = 'PAID'.
 order_items(id, "orderId", "productId" AS the variant id, quantity,

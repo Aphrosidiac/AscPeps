@@ -17,6 +17,14 @@ import { capturePurchase } from './posthog.js';
 // getBillTransactions call per open order per sweep.
 const STALE_AFTER_MS = 3 * 60 * 1000; // 3 min — re-query gateway
 const RELEASE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 h — give up and restock
+// Crypto gets a far longer rope than the fiat gateways. An FPX session is
+// dead within minutes, but a Bitcoin payment that was broadcast with a low
+// fee can sit unconfirmed for hours and still be perfectly valid — and
+// releasing it early is not a recoverable mistake: applyFailed restocks the
+// order, and applyPaid only transitions from UNPAID, so the later settlement
+// would leave us holding the customer's money on an order marked FAILED.
+// Holding stock for a day is the much cheaper error.
+const CRYPTO_RELEASE_AFTER_MS = 24 * 60 * 60 * 1000; // 24 h — give up and restock
 // WhatsApp checkouts have no gateway to verify against — an order the admin
 // never confirmed just holds its reserved stock forever. Generous window
 // because confirmation is a manual chat exchange, not an instant callback.
@@ -147,7 +155,10 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
   const orders = await fastify.prisma.order.findMany({
     where: {
       paymentStatus: 'UNPAID',
-      paymentMethod: 'BILLPLZ', // online-payment orders (gateway-backed)
+      // Every gateway-backed method. Leaving CRYPTO out here would have meant
+      // crypto orders were never re-queried and never restocked — the sweep is
+      // one of only two paths that can confirm one.
+      paymentMethod: { in: ['BILLPLZ', 'CRYPTO'] },
       createdAt: { lt: new Date(now - STALE_AFTER_MS) },
     },
     orderBy: { createdAt: 'asc' },
@@ -155,11 +166,12 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
   });
 
   for (const order of orders) {
+    const releaseAfterMs = order.paymentMethod === 'CRYPTO' ? CRYPTO_RELEASE_AFTER_MS : RELEASE_AFTER_MS;
     // Stranded order: createBill threw AFTER the tx committed, so stock was
     // reserved but no bill exists (paymentRef is null). Nothing to verify —
     // release it once it's clearly dead.
     if (!order.paymentRef) {
-      if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
+      if (order.createdAt.getTime() < now - releaseAfterMs) {
         await applyFailed(fastify, order.id, { reason: 'NO_BILL' });
       }
       continue;
@@ -172,7 +184,7 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
       const { paid, failureReason, channel } = await gateway.verifyPaid(order.paymentRef);
       if (paid) {
         await applyPaid(fastify, order);
-      } else if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
+      } else if (order.createdAt.getTime() < now - releaseAfterMs) {
         // Classified from the same re-query that just decided the order's fate,
         // so this costs no extra gateway call. Note that seeing a decline here
         // deliberately does NOT shorten the release window: ToyyibPay bills stay

@@ -93,3 +93,16 @@ export function normalizePhone(raw: string): string {
   }
   return digits || raw.trim();
 }
+
+/**
+ * How an order's payment method reads to a human.
+ *
+ * Was inlined identically in four places, all of which said "Online (…)" for
+ * anything that wasn't WhatsApp — which labelled a Bitcoin order "Online
+ * (btcpay)". Crypto is its own method, so it gets its own name.
+ */
+export function paymentMethodLabel(order: { paymentMethod: string; paymentGateway?: string | null }): string {
+  if (order.paymentMethod === 'WHATSAPP') return 'WhatsApp (Manual Transfer)';
+  if (order.paymentMethod === 'CRYPTO') return 'Bitcoin (BTCPay)';
+  return `Online (${order.paymentGateway || 'Billplz'})`;
+}

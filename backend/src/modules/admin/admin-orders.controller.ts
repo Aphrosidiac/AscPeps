@@ -5,6 +5,7 @@ import { refundBill } from '../../utils/billplz.js';
 import { restoreOrderInventory } from '../../utils/order-inventory.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { capturePurchase } from '../../utils/posthog.js';
+import { isOnlineMethod } from '../../utils/payment-gateway.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -65,13 +66,14 @@ const EMAIL_STATUS_SELECT = {
 } as const;
 
 // Order status and payment status are otherwise freely editable in any
-// direction — the only restriction is this one: once an online-gateway
-// payment (Billplz/ToyyibPay) has been confirmed Paid, it's locked and can
-// never be changed again through this endpoint. A WhatsApp/manual-transfer
-// order's Paid status stays editable, since that was an admin's manual call
-// in the first place (and can just as easily be an admin's manual fix).
+// direction — the only restriction is this one: once a gateway-settled
+// payment (Billplz/ToyyibPay, or a BTCPay crypto invoice) has been confirmed
+// Paid, it's locked and can never be changed again through this endpoint. A
+// WhatsApp/manual-transfer order's Paid status stays editable, since that was
+// an admin's manual call in the first place (and can just as easily be an
+// admin's manual fix).
 function isLockedOnlinePayment(order: { paymentMethod: string; paymentStatus: string }): boolean {
-  return order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
+  return isOnlineMethod(order.paymentMethod) && order.paymentStatus === 'PAID';
 }
 
 export async function adminListOrders(fastify: FastifyInstance, query: Record<string, string>) {
@@ -241,7 +243,9 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
   if (data.paymentStatus && isLockedOnlinePayment(order)) {
     throw {
       statusCode: 400,
-      message: 'This order was paid via online transfer and is locked — payment status can no longer be changed.',
+      message: order.paymentMethod === 'CRYPTO'
+        ? 'This order was paid in Bitcoin and is locked — payment status can no longer be changed.'
+        : 'This order was paid via online transfer and is locked — payment status can no longer be changed.',
     };
   }
 

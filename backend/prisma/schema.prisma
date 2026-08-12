@@ -159,7 +159,16 @@ enum OrderStatus {
 
 enum PaymentMethod {
   WHATSAPP
+  // Legacy name meaning "paid online through a fiat gateway" — the actual
+  // gateway is whichever one the `payment_gateway` setting names (billplz or
+  // toyyibpay), not necessarily Billplz. Kept as-is because renaming it would
+  // rewrite every historical order.
   BILLPLZ
+  // Crypto, always settled through the self-hosted BTCPay Server. Deliberately
+  // its own method rather than a third `payment_gateway` option: the gateway
+  // setting is store-wide, so putting BTCPay there would have made Bitcoin the
+  // ONLY online option and switched FPX off for everyone.
+  CRYPTO
 }
 
 enum PaymentStatus {
