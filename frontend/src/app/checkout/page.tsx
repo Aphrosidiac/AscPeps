@@ -379,7 +379,9 @@ export default function CheckoutPage() {
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
               <h2 className="font-display font-semibold text-lg">Payment Method</h2>
             </div>
-            <div className={cn('grid gap-3', cryptoPaymentEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
+            {/* Always three columns — the Bitcoin card is present whether or
+                not it's switched on, so the layout no longer depends on it. */}
+            <div className="grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => { setPaymentMethod('WHATSAPP'); posthog.capture('payment_method_selected', { method: 'WHATSAPP' }); }}
@@ -423,33 +425,48 @@ export default function CheckoutPage() {
                   <p className="text-xs text-danger leading-relaxed">Currently unavailable. Please use WhatsApp checkout.</p>
                 )}
               </button>
-              {/* Rendered only when it's actually on, rather than shown
-                  disabled the way Online Payment is. A greyed-out "Bitcoin"
-                  card on a store that doesn't take Bitcoin isn't informative,
-                  it's just a dead option — whereas online payment being
-                  temporarily down is worth explaining, because the customer
-                  may have come specifically to use it. */}
-              {cryptoPaymentEnabled && (
-                <button
-                  type="button"
-                  onClick={() => { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); }}
-                  className={cn(
-                    'p-4 rounded-xl border-2 text-left transition-all cursor-pointer relative',
-                    paymentMethod === 'CRYPTO' ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
-                  )}
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'CRYPTO' ? 'bg-amber-100' : 'bg-surface-elevated')}>
-                      <Bitcoin className={cn('w-5 h-5', paymentMethod === 'CRYPTO' ? 'text-amber-600' : 'text-text-muted')} />
-                    </div>
-                    <p className="font-semibold">Bitcoin</p>
+              {/* Always rendered, even while switched off — announcing that
+                  Bitcoin is coming is the point of shipping this early. The
+                  disabled state is "Coming soon", deliberately NOT the red
+                  "Currently unavailable" that Online Payment uses: that one
+                  means a working method is broken right now, this one means a
+                  method that has never been live yet. */}
+              <button
+                type="button"
+                onClick={() => { if (cryptoPaymentEnabled) { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); } }}
+                disabled={!cryptoPaymentEnabled}
+                aria-label={cryptoPaymentEnabled ? 'Pay with Bitcoin' : 'Bitcoin — coming soon, not yet available'}
+                className={cn(
+                  'p-4 rounded-xl border-2 text-left transition-all relative',
+                  !cryptoPaymentEnabled
+                    ? 'border-border opacity-50 cursor-not-allowed'
+                    : paymentMethod === 'CRYPTO'
+                      ? 'border-primary bg-primary/5 cursor-pointer'
+                      : 'border-border hover:border-border-hover cursor-pointer'
+                )}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'CRYPTO' ? 'bg-amber-100' : 'bg-surface-elevated')}>
+                    <Bitcoin className={cn('w-5 h-5', paymentMethod === 'CRYPTO' ? 'text-amber-600' : 'text-text-muted')} />
                   </div>
-                  {/* No mention of Lightning: the BTCPay instance runs
-                      on-chain only, and naming a method the server can't
-                      actually offer is how you get a support ticket. */}
-                  <p className="text-xs text-text-secondary leading-relaxed">Pay on-chain in BTC, rate locked at checkout</p>
-                </button>
-              )}
+                  <p className="font-semibold">Bitcoin</p>
+                  {!cryptoPaymentEnabled && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted bg-surface-elevated border border-border rounded-full px-2 py-0.5 shrink-0">
+                      Soon
+                    </span>
+                  )}
+                </div>
+                {/* Same explanation in both states — a card that only says
+                    "coming soon" tells the customer nothing about what is
+                    coming, and the SOON pill above already carries the
+                    availability. Saying it twice just wrapped to five cramped
+                    lines in a third-width column. No mention of Lightning: the
+                    BTCPay instance runs on-chain only, and naming a method the
+                    server can't offer is how you get a support ticket. */}
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Pay on-chain in BTC, rate locked at checkout
+                </p>
+              </button>
             </div>
             {paymentMethod === 'CRYPTO' && (
               /* Set expectations before they leave the site. An on-chain
