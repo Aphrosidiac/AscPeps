@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress } from '@/lib/order-progress';
+import { paymentFailureCopy } from '@/lib/payment-failure';
 import type { Order, OrderEmail } from '@/types';
 
 // "DELETED" is a pseudo-status (not a real OrderStatus value) — it's a
@@ -255,6 +256,9 @@ function AdminOrdersContent() {
             const isExpanded = expandedOrder === order.id;
             const isUpdating = updating === order.id;
             const progress = orderProgress(order);
+            // Null unless the order actually failed, so both the row marker and
+            // the expanded Payment block can render straight off it.
+            const failure = paymentFailureCopy(order);
             // Only lock: an online-transfer payment that's already confirmed
             // Paid can't be changed further. Everything else (order status,
             // WhatsApp/manual-transfer payment status) is freely editable.
@@ -299,6 +303,22 @@ function AdminOrdersContent() {
                     {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
                       <span className="hidden lg:inline-flex items-center gap-1 text-xs text-text-muted font-mono truncate max-w-[10rem]">
                         <Truck className="w-3 h-3 shrink-0" />{order.trackingNumber}
+                      </span>
+                    )}
+                    {/* mr-3 because the row is `justify-between` with no gap of
+                        its own — the left group is flex-1, so without this its
+                        last child sits flush against the price. max-w + truncate
+                        so a long label ("Dropped mid-payment") can't push on the
+                        fixed-width badge column either. Only shown for failures a
+                        human should act on — labelling the ordinary abandons too
+                        would make the marker meaningless. */}
+                    {failure?.chase && (
+                      <span
+                        className="hidden lg:inline-flex items-center gap-1 text-xs text-warning shrink-0 mr-3 max-w-[11rem]"
+                        title={failure.detail}
+                      >
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{failure.label}</span>
                       </span>
                     )}
                   </div>
@@ -357,6 +377,12 @@ function AdminOrdersContent() {
                       <div>
                         <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Payment</p>
                         <p className="text-sm text-text-secondary">{order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : `Online (${order.paymentGateway || 'Billplz'})`}</p>
+                        {failure && (
+                          <p className={`text-xs mt-1 ${failure.chase ? 'text-warning' : 'text-text-muted'}`}>
+                            {failure.label}
+                            {order.paymentFailureChannel && ` — ${order.paymentFailureChannel}`}
+                          </p>
+                        )}
                         {order.discountCode?.code && (
                           <p className="text-xs text-success mt-1">Discount: {order.discountCode.code}</p>
                         )}

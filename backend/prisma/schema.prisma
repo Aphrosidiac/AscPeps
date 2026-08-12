@@ -193,6 +193,15 @@ model Order {
   trackingNumber String?
   idempotencyKey String?       @unique
   stockRestored  Boolean       @default(false)
+  // Why an online order ended up FAILED. Set once, when the order is released.
+  // A plain String rather than an enum: these values are read by humans and by
+  // reporting, and adding a new one must never require an `ALTER TYPE` (which
+  // needs type ownership and has broken `migrate deploy` on this database
+  // before). See PaymentFailureReason in utils/toyyibpay.ts for the values.
+  paymentFailureReason String?
+  // The channel the customer actually tried, when the gateway reports one —
+  // e.g. "FPX B2C", "DuitNow QR". Null when they never chose anything.
+  paymentFailureChannel String?
   // Operational tick-box: the profit for this order has actually been paid out
   // to the people in its split. Deliberately manual and separate from whether a
   // split has been RECORDED (order_profit_shares rows) or whether the order is

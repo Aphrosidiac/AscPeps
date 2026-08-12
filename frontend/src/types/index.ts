@@ -176,6 +176,11 @@ export interface Order {
   paymentMethod: 'WHATSAPP' | 'BILLPLZ';
   paymentGateway: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
+  // Why a FAILED order failed. Null on orders that failed before this was
+  // recorded, and on every order that didn't fail. See lib/payment-failure.ts.
+  paymentFailureReason: 'DECLINED' | 'ABANDONED_MID_PAYMENT' | 'NO_ATTEMPT' | 'NO_BILL' | 'UNKNOWN' | null;
+  /** The channel the customer actually tried, e.g. "FPX B2C" / "DuitNow QR". */
+  paymentFailureChannel: string | null;
   discountCodeId: string | null;
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;

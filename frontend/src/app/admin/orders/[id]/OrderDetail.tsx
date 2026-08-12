@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress, type OrderCheckKey } from '@/lib/order-progress';
+import { paymentFailureCopy } from '@/lib/payment-failure';
 import type { Order, OrderEmail } from '@/types';
 
 // Ascend MY's pipeline, not a copy of the source design's six purchasing stages —
@@ -330,6 +331,23 @@ function OrderInfoTab({ order }: { order: Order }) {
           />
           <Field label="Discount" value={order.discountCode?.code} />
         </div>
+        {/* The full sentence lives here rather than on the list: this is the
+            page someone opens to work out what happened to one order, and
+            "Declined" on its own doesn't tell them whether to chase it. */}
+        {(() => {
+          const failure = paymentFailureCopy(order);
+          if (!failure) return null;
+          return (
+            <div className={`mt-4 pt-4 border-t border-border ${failure.chase ? 'text-warning' : 'text-text-muted'}`}>
+              <p className="text-xs font-medium uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                {failure.chase && <AlertTriangle className="w-3.5 h-3.5" />}
+                Payment failure — {failure.label}
+                {order.paymentFailureChannel && <span className="font-mono normal-case">({order.paymentFailureChannel})</span>}
+              </p>
+              <p className="text-sm text-text-secondary">{failure.detail}</p>
+            </div>
+          );
+        })()}
         {order.notes && (
           <div className="mt-4 pt-4 border-t border-border">
             <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Notes</p>

@@ -2,6 +2,9 @@ import { env } from '../config/env.js';
 import * as billplz from './billplz.js';
 import * as toyyibpay from './toyyibpay.js';
 
+export type { PaymentFailureReason, BillTransactionStatus } from './toyyibpay.js';
+import type { BillTransactionStatus } from './toyyibpay.js';
+
 export interface CreateBillParams {
   name: string;
   email?: string;
@@ -40,7 +43,14 @@ export interface PaymentGateway {
    */
   buildRedirectUrl(query: Record<string, string>, verifiedPaid?: boolean): string;
   /** Re-query the gateway for the authoritative paid state of a bill. */
-  verifyPaid(billId: string): Promise<{ paid: boolean; amount?: number }>;
+  /**
+   * When the answer is "not paid", a gateway that can tell whether the customer
+   * ever actually attempted payment should say so via `failureReason` — that is
+   * what separates a lost sale from an ordinary abandon. A gateway with no such
+   * detail should leave it undefined rather than guess; the caller records
+   * UNKNOWN instead of inventing a story about the customer.
+   */
+  verifyPaid(billId: string): Promise<BillTransactionStatus>;
   /** Best-effort: stop a bill being payable after we've released its stock. */
   deactivateBill?(billId: string): Promise<boolean>;
   /** Where to send a customer to finish paying an existing, still-open bill. */
@@ -110,6 +120,9 @@ const billplzGateway: PaymentGateway = {
   },
   async verifyPaid(billId) {
     const bill = await billplz.getBill(billId);
+    // Billplz's bill resource reports only the final state ("due"/"paid"), not
+    // whether the payer ever selected a bank — so there is nothing here that
+    // could distinguish a decline from an abandon. Left undefined on purpose.
     return { paid: bill.paid, amount: bill.paid_amount };
   },
   billUrl(billId) {
