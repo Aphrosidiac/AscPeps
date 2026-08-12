@@ -32,10 +32,14 @@ const PAYMENT_ACCENTS = {
  * its header grew to 48px against the others' 36px and pushed its description
  * 26px lower than its neighbours'.
  *
- * The header is therefore pinned to a fixed height and vertically centred, so
- * every description starts on the same line no matter how the title wraps, and
- * the badge is taken out of the text flow entirely so it can never squeeze the
- * title into wrapping in the first place.
+ * The layout is three stacked rows — icon, title, description — rather than
+ * icon-beside-title. In a third-width column (157px, so 125px of content) there
+ * is simply not room for an icon, a title and a badge on one line: an earlier
+ * attempt absolutely positioned the badge and reserved space with padding, but
+ * flex items don't shrink below their content, so "Bitcoin" overflowed the
+ * padding and sat underneath the "Soon" pill. Stacking gives the title the full
+ * 125px — enough that "Online Payment" no longer wraps either — and puts the
+ * badge beside the icon where nothing competes with it.
  */
 function PaymentOption({
   icon: Icon, title, description, note, badge, accent, selected, disabled, ariaLabel, onSelect,
@@ -69,19 +73,28 @@ function PaymentOption({
             : 'border-border hover:border-border-hover cursor-pointer'
       )}
     >
-      {badge && (
-        <span className="absolute top-3 right-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted bg-surface-elevated border border-border rounded-full px-2 py-0.5">
-          {badge}
-        </span>
-      )}
-      {/* min-h is what keeps the three cards in step; pr clears the badge so a
-          title never has to wrap around it. */}
-      <div className={cn('flex items-center gap-3 mb-2 min-h-[3rem]', badge && 'pr-12')}>
+      {/* Row 1 — icon, and the badge opposite it. Both are fixed-size, so this
+          row is the same height on every card whether or not there's a badge. */}
+      <div className="flex items-center justify-between gap-2 mb-3">
         <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', selected ? bg : 'bg-surface-elevated')}>
           <Icon className={cn('w-5 h-5', selected ? fg : 'text-text-muted')} />
         </div>
-        <p className="font-semibold leading-tight">{title}</p>
+        {badge && (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted bg-surface-elevated border border-border rounded-full px-2 py-0.5 shrink-0">
+            {badge}
+          </span>
+        )}
       </div>
+      {/* Row 2 — title. 15px rather than the default 16px because "Online
+          Payment" needs 122px at 16px and the column gives it 121: it wrapped
+          by a single pixel, which dropped that card's description a line below
+          its neighbours'. 15px needs 114px, so there's real headroom.
+          `truncate` is the structural guarantee — a longer label added later
+          ellipsises instead of silently knocking the row out of alignment
+          again. */}
+      <p className="font-semibold text-[15px] leading-tight mb-1.5 truncate">{title}</p>
+      {/* Row 3 — description. With rows 1 and 2 a fixed height on every card,
+          this starts on the same line across all three without any min-height. */}
       <p className={cn('text-xs leading-relaxed', note ? 'text-danger' : 'text-text-secondary')}>
         {note ?? description}
       </p>
