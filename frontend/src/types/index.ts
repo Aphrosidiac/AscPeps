@@ -173,7 +173,7 @@ export interface Order {
   discountAmount: number;
   total: number;
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
-  paymentMethod: 'WHATSAPP' | 'BILLPLZ';
+  paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO';
   paymentGateway: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
   // Why a FAILED order failed. Null on orders that failed before this was

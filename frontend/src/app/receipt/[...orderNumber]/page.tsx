@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { FileText, Download, ArrowLeft, Search } from 'lucide-react';
 import { getReceiptData, getReceiptPdfUrl } from '@/lib/api';
-import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
+import { formatPrice, formatDate, normalizePhone, paymentMethodLabel } from '@/lib/utils';
 import { ORDER_STATUS_LABELS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
@@ -195,7 +195,7 @@ export default function ReceiptPage() {
           {/* Payment */}
           <div className="text-sm text-text-secondary">
             <p>
-              Payment: {order.paymentMethod === 'WHATSAPP' ? 'Manual Transfer (WhatsApp)' : `Online (${order.paymentGateway || 'Billplz'})`}
+              Payment: {paymentMethodLabel(order)}
             </p>
           </div>
 

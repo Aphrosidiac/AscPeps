@@ -57,6 +57,17 @@ const envSchema = z.object({
   // FPX-only without a code change if the account ever loses approval —
   // createBill rejects enableDuitNowQR on a non-approved account.
   TOYYIBPAY_DUITNOW_QR: envBool(true),
+  // Self-hosted BTCPay Server instance (Bitcoin / Lightning). No sandbox flag
+  // like the fiat gateways above — there's no third party approving a
+  // merchant account here, so getActiveGateway only needs to check that all
+  // three are set, not guard against a leftover sandbox toggle in prod.
+  BTCPAY_URL: z.string().optional(),
+  BTCPAY_API_KEY: z.string().optional(),
+  BTCPAY_STORE_ID: z.string().optional(),
+  // Store settings -> Webhooks -> Add webhook -> https://ascendpeptides.my/api/v1/webhooks/btcpay
+  // -> select "An invoice has been settled", "An invoice has expired", "An
+  // invoice became invalid" -> copy the signing secret here.
+  BTCPAY_WEBHOOK_SECRET: z.string().optional(),
   // Server-side analytics. This is the SAME project token the frontend uses
   // (PostHog project tokens are write-only, not a secret in the credential
   // sense) — but it lives here unprefixed because it must never be inlined

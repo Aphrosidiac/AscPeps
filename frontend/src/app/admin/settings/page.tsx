@@ -35,8 +35,17 @@ export default function AdminSettingsPage() {
       setSettings(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setError('Failed to save settings');
+    } catch (err: unknown) {
+      // Show the server's own reason when it has one. A rejected setting is
+      // usually rejected for a specific, actionable reason — "BTCPay is not
+      // configured on this server", a numeric bound — and collapsing all of
+      // those into "Failed to save settings" leaves the admin re-ticking a
+      // box with no idea why it won't stick.
+      // The API reports app errors under `error` and validation errors under
+      // `message` depending on the path, so check both rather than picking one
+      // and silently falling back to the generic text.
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      setError(data?.message || data?.error || 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -193,6 +202,29 @@ export default function AdminSettingsPage() {
             </select>
           </div>
           <p className="text-xs text-text-muted">Choose which payment gateway to use for online payments. Make sure the gateway credentials are configured in the server environment variables.</p>
+        </div>
+
+        {/* Crypto — deliberately its own card and its own toggle, not a third
+            option in the gateway dropdown above. That dropdown is store-wide,
+            so putting BTCPay in it would have made Bitcoin the only online
+            method and switched FPX off for every customer. */}
+        <div style={{ animationDelay: `150ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Crypto Payment</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="crypto_payment_enabled"
+              checked={settings.crypto_payment_enabled === 'true'}
+              onChange={(e) => updateSetting('crypto_payment_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded"
+            />
+            <label htmlFor="crypto_payment_enabled" className="text-sm font-medium text-text-secondary">
+              Enable crypto payment at checkout
+            </label>
+          </div>
+          <p className="text-xs text-text-muted">
+            Adds Bitcoin as a separate payment option alongside WhatsApp and online payment — it does not replace either. Settled through the self-hosted BTCPay Server; requires <code className="font-mono">BTCPAY_URL</code>, <code className="font-mono">BTCPAY_API_KEY</code>, <code className="font-mono">BTCPAY_STORE_ID</code> and <code className="font-mono">BTCPAY_WEBHOOK_SECRET</code> in the server environment.
+          </p>
         </div>
 
         {/* Business Info */}

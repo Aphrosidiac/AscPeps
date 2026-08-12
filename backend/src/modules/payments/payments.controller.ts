@@ -72,8 +72,22 @@ export async function handlePaymentRedirect(
   query: Record<string, string>
 ): Promise<string> {
   const isBillplz = !!query['billplz[id]'];
-  const gatewayName = isBillplz ? 'billplz' : 'toyyibpay';
-  const billId = isBillplz ? query['billplz[id]'] : query.billcode || '';
+  const isBtcpay = !isBillplz && query.gateway === 'btcpay';
+  const gatewayName = isBillplz ? 'billplz' : isBtcpay ? 'btcpay' : 'toyyibpay';
+
+  let billId = isBillplz ? query['billplz[id]'] : isBtcpay ? '' : query.billcode || '';
+  if (isBtcpay && query.orderNumber) {
+    // BTCPay's redirect URL is built before the invoice exists, so it can't
+    // carry the invoice id the way billplz/toyyibpay's signed redirects do —
+    // it carries orderNumber instead. Resolve it back to the invoice id via
+    // the order row, and pass it through so buildRedirectUrl can still build
+    // a "resume this payment" link on failure.
+    const order = await fastify.prisma.order.findFirst({ where: { orderNumber: query.orderNumber } });
+    if (order?.paymentRef) {
+      billId = order.paymentRef;
+      query.invoiceId = billId;
+    }
+  }
 
   const gateway = getGatewayByBillId(billId, gatewayName);
   if (!gateway) return `${env.FRONTEND_URL}/checkout/failed`;

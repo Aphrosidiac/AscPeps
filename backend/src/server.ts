@@ -35,6 +35,7 @@ import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
 import adminCommentRoutes from './modules/admin/admin-comments.routes.js';
 import adminDeliveryRoutes from './modules/admin/admin-delivery.routes.js';
 import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
+import btcpayWebhookRoutes from './modules/webhooks/btcpay-webhook.routes.js';
 import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
@@ -161,6 +162,9 @@ await fastify.register(adminDeliveryRoutes, { prefix: '/api/v1/admin/delivery' }
 // it needs its own scoped raw-body content-type parser). The global rate
 // limiter above still applies fine as-is.
 await fastify.register(resendWebhookRoutes, { prefix: '/api/v1/webhooks/resend' });
+// Public — BTCPay Server's own instance calls this directly (see the route
+// file for why it needs its own scoped raw-body content-type parser).
+await fastify.register(btcpayWebhookRoutes, { prefix: '/api/v1/webhooks/btcpay' });
 // Admin-authenticated control of the WhatsApp worker and the agent's allowlists.
 await fastify.register(whatsappRoutes, { prefix: '/api/v1/admin/whatsapp' });
 // The WhatsApp worker's callback into the agent. Guarded by loopback source

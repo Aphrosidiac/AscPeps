@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import * as billplz from './billplz.js';
 import * as toyyibpay from './toyyibpay.js';
+import * as btcpay from './btcpay.js';
 
 export type { PaymentFailureReason, BillTransactionStatus } from './toyyibpay.js';
 import type { BillTransactionStatus } from './toyyibpay.js';
@@ -42,8 +43,9 @@ export interface PaymentGateway {
    * the order state we already committed.
    */
   buildRedirectUrl(query: Record<string, string>, verifiedPaid?: boolean): string;
-  /** Re-query the gateway for the authoritative paid state of a bill. */
   /**
+   * Re-query the gateway for the authoritative paid state of a bill.
+   *
    * When the answer is "not paid", a gateway that can tell whether the customer
    * ever actually attempted payment should say so via `failureReason` — that is
    * what separates a lost sale from an ordinary abandon. A gateway with no such
@@ -190,6 +192,71 @@ const toyyibpayGateway: PaymentGateway = {
   },
 };
 
+const btcpayGateway: PaymentGateway = {
+  name: 'btcpay',
+  async createBill(params) {
+    const backendUrl = getBackendUrl();
+    // The invoice id doesn't exist until BTCPay's create-invoice call
+    // returns, so unlike billplz/toyyibpay's signed redirect, the redirect
+    // URL can't carry it directly — it carries orderNumber (known up front)
+    // instead, and handlePaymentRedirect resolves that back to the invoice id
+    // via the order row.
+    const invoice = await btcpay.createInvoice({
+      btcpayUrl: env.BTCPAY_URL!,
+      apiKey: env.BTCPAY_API_KEY!,
+      storeId: env.BTCPAY_STORE_ID!,
+      amount: params.amount / 100,
+      currency: 'MYR',
+      orderNumber: params.orderNumber,
+      orderId: params.orderId,
+      buyerEmail: params.email,
+      redirectUrl: `${backendUrl}/api/v1/payments/redirect?gateway=btcpay&orderNumber=${encodeURIComponent(params.orderNumber)}`,
+    });
+    return { billId: invoice.id, paymentUrl: invoice.checkoutLink, gateway: 'btcpay' };
+  },
+  // Inbound confirmation for btcpay never comes through here — BTCPay's
+  // webhook signature is computed over the RAW request body, which the
+  // generic form-encoded /callback route (and this Record<string,string>
+  // shape) can't preserve. See modules/webhooks/btcpay-webhook.* instead.
+  // Kept as unreachable stubs only to satisfy the shared interface.
+  verifyCallback() {
+    return false;
+  },
+  parseCallback() {
+    return { billId: '', status: 'pending' };
+  },
+  buildRedirectUrl(query, verifiedPaid) {
+    const frontendUrl = getFrontendUrl();
+    return verifiedPaid
+      ? `${frontendUrl}/checkout/success`
+      : failedUrl(frontendUrl, query.invoiceId && this.billUrl(query.invoiceId));
+  },
+  async verifyPaid(billId) {
+    const invoice = await btcpay.getInvoice(env.BTCPAY_URL!, env.BTCPAY_API_KEY!, env.BTCPAY_STORE_ID!, billId);
+    // Only "Settled" counts as paid. "Processing" (on-chain payment seen in
+    // the mempool but not yet confirmed) is deliberately NOT treated as paid
+    // — an unconfirmed transaction can still be replaced or dropped, and
+    // applyPaid() ships the order. Same conservative handling as ToyyibPay's
+    // pending status: neither paid nor failed, just wait for the next check.
+    if (invoice.status === 'Settled') return { paid: true };
+    // BTCPay already separates the two cases we care about: "Invalid" means a
+    // payment was seen and rejected (underpaid, or replaced before confirming),
+    // while "Expired" means the invoice simply ran out with nothing sent. New /
+    // Processing are not final, so they stay undefined rather than being read
+    // as an abandon.
+    const failureReason =
+      invoice.status === 'Invalid'
+        ? ('DECLINED' as const)
+        : invoice.status === 'Expired'
+          ? ('NO_ATTEMPT' as const)
+          : undefined;
+    return { paid: false, failureReason };
+  },
+  billUrl(billId) {
+    return `${env.BTCPAY_URL}/i/${billId}`;
+  },
+};
+
 export function getActiveGateway(gatewayName?: string): PaymentGateway | null {
   const name = gatewayName || 'billplz';
   // A gateway left in sandbox mode takes no real money while cheerfully
@@ -211,12 +278,38 @@ export function getActiveGateway(gatewayName?: string): PaymentGateway | null {
   if (name === 'toyyibpay' && env.TOYYIBPAY_SECRET_KEY && env.TOYYIBPAY_CATEGORY_CODE) {
     return isProd && env.TOYYIBPAY_SANDBOX ? null : toyyibpayGateway;
   }
+  if (name === 'btcpay' && env.BTCPAY_URL && env.BTCPAY_API_KEY && env.BTCPAY_STORE_ID) {
+    return btcpayGateway;
+  }
   return null;
+}
+
+/**
+ * Payment methods that are settled by a gateway rather than by a human.
+ *
+ * BILLPLZ is the legacy enum name for "paid online through a fiat gateway"
+ * (the live one is whichever `payment_gateway` names); CRYPTO is always
+ * BTCPay. Anything that used to branch on `=== 'BILLPLZ'` to mean "this is a
+ * gateway-backed order" has to go through here instead, or crypto orders drop
+ * out of the reconcile sweep and the paid-order lock.
+ */
+export function isOnlineMethod(method: string): boolean {
+  return method === 'BILLPLZ' || method === 'CRYPTO';
+}
+
+/**
+ * Which gateway settles a given payment method. CRYPTO is pinned to BTCPay and
+ * deliberately ignores the `payment_gateway` setting — that setting picks the
+ * *fiat* gateway, and crypto is offered alongside it, not instead of it.
+ */
+export function gatewayNameForMethod(method: string, fiatGateway: string): string {
+  return method === 'CRYPTO' ? 'btcpay' : fiatGateway;
 }
 
 export function getGatewayByBillId(billId: string, gatewayName?: string): PaymentGateway | null {
   if (gatewayName === 'toyyibpay') return toyyibpayGateway;
   if (gatewayName === 'billplz') return billplzGateway;
+  if (gatewayName === 'btcpay') return btcpayGateway;
   if (billId && billId.length < 20) return toyyibpayGateway;
   return billplzGateway;
 }

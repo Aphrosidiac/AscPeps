@@ -99,6 +99,7 @@ const STATUS_LABELS: Record<string, string> = {
 const PAYMENT_LABELS: Record<string, string> = {
   BILLPLZ: 'Online (Billplz)',
   WHATSAPP: 'WhatsApp (Manual)',
+  CRYPTO: 'Bitcoin (BTCPay)',
 };
 
 /**

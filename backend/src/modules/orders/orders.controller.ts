@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
-import { getActiveGateway } from '../../utils/payment-gateway.js';
+import { getActiveGateway, isOnlineMethod, gatewayNameForMethod } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
@@ -21,7 +21,7 @@ const createOrderSchema = z.object({
   city: z.string().min(1),
   state: z.string().min(1),
   postcode: z.string().min(1),
-  paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ']),
+  paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ', 'CRYPTO']),
   discountCode: z.string().optional(),
   notes: z.string().optional(),
   // Checkout's newsletter tickbox. Defaults to false and is never inferred
@@ -39,7 +39,10 @@ const createOrderSchema = z.object({
 }).superRefine((data, ctx) => {
   // ToyyibPay rejects createBill outright with an empty billEmail — catch this
   // before the order transaction runs, not after stock is already reserved.
-  if (data.paymentMethod === 'BILLPLZ' && !data.email) {
+  // CRYPTO needs one for a different reason: a Bitcoin payment can settle long
+  // after the customer has closed the tab, so email is the only way to tell
+  // them it cleared.
+  if (isOnlineMethod(data.paymentMethod) && !data.email) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'], message: 'Email is required for online payment' });
   }
   // Cap total units per order — an unauthenticated checkout (especially
@@ -51,12 +54,31 @@ const createOrderSchema = z.object({
   }
 });
 
+/**
+ * Whether the store is currently accepting crypto. Defaults to OFF — only the
+ * literal string 'true' counts, so an absent row (every deployment that has
+ * never touched the setting) means disabled rather than enabled.
+ */
+async function isCryptoEnabled(fastify: FastifyInstance): Promise<boolean> {
+  const setting = await fastify.prisma.setting.findUnique({
+    where: { key: 'crypto_payment_enabled' },
+  });
+  return setting?.value === 'true';
+}
+
 // Rebuild the online-payment URL for an already-created order (used on the
 // idempotent-retry path, where the original bill should be reused).
 function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
   if (order.paymentGateway === 'toyyibpay' && order.paymentRef) {
     const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
     return `${host}/${order.paymentRef}`;
+  }
+  // A BTCPay invoice URL is derivable from its id, so a retry hands the
+  // customer back the invoice they already have rather than minting a second
+  // one — which matters more here than for fiat: a new invoice would carry a
+  // freshly quoted BTC rate instead of the one they were shown.
+  if (order.paymentGateway === 'btcpay' && order.paymentRef && env.BTCPAY_URL) {
+    return `${env.BTCPAY_URL}/i/${order.paymentRef}`;
   }
   return undefined; // Billplz bill URL isn't persisted; the customer must re-open from email
 }
@@ -73,6 +95,18 @@ function isOrderNumberConflict(err: unknown): boolean {
 
 export async function createOrder(fastify: FastifyInstance, body: unknown) {
   const data = createOrderSchema.parse(body);
+
+  // Refuse a switched-off payment method BEFORE anything is written. The
+  // gateway checks further down run after the order transaction has committed,
+  // so a rejection there still leaves an UNPAID order holding reserved stock
+  // until the sweep releases it. That's a tolerable outcome for a gateway that
+  // hiccups mid-checkout; it is not one for a method that is deliberately
+  // turned off, where every such request is pure garbage in the orders table.
+  // Matters most right now: crypto ships disabled, so this is the path any
+  // stray or probing CRYPTO request takes.
+  if (data.paymentMethod === 'CRYPTO' && !(await isCryptoEnabled(fastify))) {
+    throw { statusCode: 503, message: 'Crypto payment is currently unavailable. Please choose another payment method.' };
+  }
 
   // Idempotency: a network retry of a request the server already committed must
   // NOT create a second order (double stock decrement + double bill = double
@@ -302,7 +336,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       state: order.state,
       postcode: order.postcode,
     });
-  } else if (data.paymentMethod === 'BILLPLZ') {
+  } else if (isOnlineMethod(data.paymentMethod)) {
     // Payment gateways enforce a minimum charge (RM1). A total below that
     // (e.g. a near-100% discount) can't be billed online.
     if (order.total < 100) {
@@ -311,7 +345,11 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     const settings = await fastify.prisma.setting.findMany({
       where: { key: { in: ['payment_gateway'] } },
     });
-    const gatewayName = settings.find(s => s.key === 'payment_gateway')?.value || 'billplz';
+    const fiatGateway = settings.find(s => s.key === 'payment_gateway')?.value || 'billplz';
+
+    // CRYPTO always resolves to btcpay; the `payment_gateway` setting only
+    // chooses between the fiat gateways.
+    const gatewayName = gatewayNameForMethod(data.paymentMethod, fiatGateway);
     const gateway = getActiveGateway(gatewayName);
 
     // No configured gateway used to fall through silently: the order was

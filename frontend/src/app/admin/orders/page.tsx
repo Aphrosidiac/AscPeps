@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
-import { formatPrice, formatDate } from '@/lib/utils';
+import { formatPrice, formatDate, paymentMethodLabel } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
@@ -262,7 +262,7 @@ function AdminOrdersContent() {
             // Only lock: an online-transfer payment that's already confirmed
             // Paid can't be changed further. Everything else (order status,
             // WhatsApp/manual-transfer payment status) is freely editable.
-            const paymentLocked = order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
+            const paymentLocked = (order.paymentMethod === 'BILLPLZ' || order.paymentMethod === 'CRYPTO') && order.paymentStatus === 'PAID';
             return (
               <div
                 key={order.id}
@@ -305,13 +305,16 @@ function AdminOrdersContent() {
                         <Truck className="w-3 h-3 shrink-0" />{order.trackingNumber}
                       </span>
                     )}
+                    {/* Sits in the flexible left group rather than the badge
+                        column on the right, which is deliberately fixed-width
+                        and would shift on every row that has this. Only shown
+                        for failures a human should act on — labelling the
+                        ordinary abandons too would make the marker meaningless. */}
                     {/* mr-3 because the row is `justify-between` with no gap of
                         its own — the left group is flex-1, so without this its
                         last child sits flush against the price. max-w + truncate
                         so a long label ("Dropped mid-payment") can't push on the
-                        fixed-width badge column either. Only shown for failures a
-                        human should act on — labelling the ordinary abandons too
-                        would make the marker meaningless. */}
+                        fixed-width badge column either. */}
                     {failure?.chase && (
                       <span
                         className="hidden lg:inline-flex items-center gap-1 text-xs text-warning shrink-0 mr-3 max-w-[11rem]"
@@ -376,7 +379,7 @@ function AdminOrdersContent() {
                       </div>
                       <div>
                         <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Payment</p>
-                        <p className="text-sm text-text-secondary">{order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : `Online (${order.paymentGateway || 'Billplz'})`}</p>
+                        <p className="text-sm text-text-secondary">{paymentMethodLabel(order)}</p>
                         {failure && (
                           <p className={`text-xs mt-1 ${failure.chase ? 'text-warning' : 'text-text-muted'}`}>
                             {failure.label}

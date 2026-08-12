@@ -12,7 +12,7 @@ import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
-import { formatPrice, formatDate } from '@/lib/utils';
+import { formatPrice, formatDate, paymentMethodLabel } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
@@ -321,7 +321,7 @@ function OrderInfoTab({ order }: { order: Order }) {
           <Field label="Email" value={order.email} />
           <Field
             label="Payment Method"
-            value={order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : `Online (${order.paymentGateway || 'Billplz'})`}
+            value={paymentMethodLabel(order)}
           />
           <Field label="Address" value={order.address} />
           <Field label="City / State" value={`${order.city}, ${order.state} ${order.postcode}`} />
@@ -421,7 +421,7 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
 
   // Same single lock as the orders list: an online-gateway payment already
   // confirmed Paid can never be changed again.
-  const paymentLocked = order.paymentMethod === 'BILLPLZ' && order.paymentStatus === 'PAID';
+  const paymentLocked = (order.paymentMethod === 'BILLPLZ' || order.paymentMethod === 'CRYPTO') && order.paymentStatus === 'PAID';
   const trackingDirty = tracking !== (order.trackingNumber ?? '');
   const notesDirty = notes !== (order.notes ?? '');
 
@@ -1367,7 +1367,7 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
           <Field label="Payment status" value={order.paymentStatus} />
           <Field
             label="Paid via"
-            value={order.paymentMethod === 'WHATSAPP' ? 'WhatsApp (Manual Transfer)' : `Online (${order.paymentGateway || 'Billplz'})`}
+            value={paymentMethodLabel(order)}
           />
           <Field label="Customer" value={order.customerName} />
           <Field label="Tracking" value={order.trackingNumber ? <span className="font-mono">{order.trackingNumber}</span> : null} />

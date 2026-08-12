@@ -44,7 +44,7 @@ export const createOrder = (data: {
   city: string;
   state: string;
   postcode: string;
-  paymentMethod: 'WHATSAPP' | 'BILLPLZ';
+  paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO';
   notes?: string;
   /** Checkout's newsletter tickbox — only honoured when `email` is present. */
   subscribe?: boolean;

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
+import { MessageCircle, CreditCard, Bitcoin, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { createOrder, getSettings, validateDiscount } from '@/lib/api';
@@ -41,9 +41,14 @@ export default function CheckoutPage() {
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ'>('WHATSAPP');
+  const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ' | 'CRYPTO'>('WHATSAPP');
   const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
+  // Independent of onlinePaymentEnabled — crypto is its own method, so the
+  // store can run either, both, or neither.
+  const [cryptoPaymentEnabled, setCryptoPaymentEnabled] = useState(false);
   const [shippingFee, setShippingFee] = useState('');
+  // Fiat gateway only. Crypto is never a value here — it's a payment method,
+  // not a choice of online gateway.
   const [paymentGateway, setPaymentGateway] = useState<'billplz' | 'toyyibpay'>('billplz');
   // Kept out of `form` because `form` is spread straight into createOrder and
   // this is a separate consent flag, not an order field. Unticked by default:
@@ -69,6 +74,11 @@ export default function CheckoutPage() {
     notes: '',
   });
 
+  // Both online methods hand off to a hosted payment page and are confirmed by
+  // a gateway rather than by a human, so everything from here on that used to
+  // mean "is this BILLPLZ" really means this.
+  const isOnlinePayment = paymentMethod === 'BILLPLZ' || paymentMethod === 'CRYPTO';
+
   const submitting = useRef(false);
   // Stable per-attempt key so a network retry of a committed order doesn't
   // create a duplicate (double charge). Reset after a successful submit.
@@ -77,6 +87,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     getSettings().then((s) => {
       setOnlinePaymentEnabled(s.online_payment_enabled === 'true');
+      setCryptoPaymentEnabled(s.crypto_payment_enabled === 'true');
       setShippingFee(s.shipping_fee || '');
       if (s.payment_gateway === 'billplz' || s.payment_gateway === 'toyyibpay') {
         setPaymentGateway(s.payment_gateway);
@@ -193,7 +204,7 @@ export default function CheckoutPage() {
       // step. Must happen before the gateway redirect below.
       posthog.alias(`order_${result.order.orderNumber}`);
 
-      if (paymentMethod === 'BILLPLZ' && result.paymentUrl) {
+      if (isOnlinePayment && result.paymentUrl) {
         // Cart is deliberately NOT cleared here — the customer hasn't paid
         // yet, they've only been handed off to the gateway. Clearing now meant
         // anyone who bailed at the bank page came back to an empty cart and had
@@ -283,7 +294,7 @@ export default function CheckoutPage() {
     if (!form.phone.trim()) errors.phone = 'Please enter your phone number';
     else if (phoneDigits.length < 9 || phoneDigits.length > 12) errors.phone = 'Please enter a valid phone number, e.g. 012-3456789';
     const email = form.email.trim();
-    if (paymentMethod === 'BILLPLZ' && !email) errors.email = 'Email is required for online payment';
+    if (isOnlinePayment && !email) errors.email = 'Email is required for online payment';
     else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
     if (!form.address.trim()) errors.address = 'Please enter your shipping address';
     if (!form.city.trim()) errors.city = 'Please enter your city';
@@ -317,13 +328,22 @@ export default function CheckoutPage() {
               <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" error={fieldErrors.phone} required />
             </div>
             <Input
-              label={paymentMethod === 'BILLPLZ' ? 'Email (required for online payment)' : 'Email (optional)'}
+              label={
+                paymentMethod === 'CRYPTO'
+                  // Crypto needs the email for a different reason than the
+                  // fiat gateways do, and saying which one makes the extra
+                  // field feel less arbitrary: a Bitcoin payment can settle
+                  // after the customer has closed the tab, so email is the
+                  // only way to tell them it cleared.
+                  ? 'Email (required — we send your payment confirmation here)'
+                  : isOnlinePayment ? 'Email (required for online payment)' : 'Email (optional)'
+              }
               id="email"
               type="email"
               value={form.email}
               onChange={(e) => updateField('email', e.target.value)}
               error={fieldErrors.email}
-              required={paymentMethod === 'BILLPLZ'}
+              required={isOnlinePayment}
             />
           </div>
           </Animate>
@@ -359,7 +379,7 @@ export default function CheckoutPage() {
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
               <h2 className="font-display font-semibold text-lg">Payment Method</h2>
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className={cn('grid gap-3', cryptoPaymentEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
               <button
                 type="button"
                 onClick={() => { setPaymentMethod('WHATSAPP'); posthog.capture('payment_method_selected', { method: 'WHATSAPP' }); }}
@@ -403,7 +423,44 @@ export default function CheckoutPage() {
                   <p className="text-xs text-danger leading-relaxed">Currently unavailable. Please use WhatsApp checkout.</p>
                 )}
               </button>
+              {/* Rendered only when it's actually on, rather than shown
+                  disabled the way Online Payment is. A greyed-out "Bitcoin"
+                  card on a store that doesn't take Bitcoin isn't informative,
+                  it's just a dead option — whereas online payment being
+                  temporarily down is worth explaining, because the customer
+                  may have come specifically to use it. */}
+              {cryptoPaymentEnabled && (
+                <button
+                  type="button"
+                  onClick={() => { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); }}
+                  className={cn(
+                    'p-4 rounded-xl border-2 text-left transition-all cursor-pointer relative',
+                    paymentMethod === 'CRYPTO' ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
+                  )}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', paymentMethod === 'CRYPTO' ? 'bg-amber-100' : 'bg-surface-elevated')}>
+                      <Bitcoin className={cn('w-5 h-5', paymentMethod === 'CRYPTO' ? 'text-amber-600' : 'text-text-muted')} />
+                    </div>
+                    <p className="font-semibold">Bitcoin</p>
+                  </div>
+                  {/* No mention of Lightning: the BTCPay instance runs
+                      on-chain only, and naming a method the server can't
+                      actually offer is how you get a support ticket. */}
+                  <p className="text-xs text-text-secondary leading-relaxed">Pay on-chain in BTC, rate locked at checkout</p>
+                </button>
+              )}
             </div>
+            {paymentMethod === 'CRYPTO' && (
+              /* Set expectations before they leave the site. An on-chain
+                 payment isn't instant like FPX, and a customer who doesn't
+                 know that reads the delay as a failed order. */
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <p className="text-xs text-amber-900 leading-relaxed">
+                  You&apos;ll be taken to our payment page to send the exact BTC amount. The rate is locked while the invoice is open. Your order is confirmed once the transaction is confirmed on-chain — usually a few minutes, occasionally longer — and we&apos;ll email you the moment it clears.
+                </p>
+              </div>
+            )}
           </div>
           </Animate>
 
