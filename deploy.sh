@@ -15,7 +15,29 @@ git pull --ff-only
 
 cd backend
 npm install --no-audit --no-fund
-npx prisma migrate deploy || echo "WARN: migrate deploy failed (no DATABASE_URL for CLI) — apply pending migrations manually via psql"
+# The Prisma CLI does not read backend/.env — only the running app does, via
+# config/env.ts — so this used to fail with "no DATABASE_URL" on every deploy.
+# It was wrapped in `|| echo WARN`, which meant the deploy sailed on and
+# restarted the new code against an UNMIGRATED database. That is not a warning,
+# it is an outage waiting for the first request that touches a new column, and
+# it happened on 2026-08-13 (the crypto + payment-failure deploy). Export the
+# app's own DATABASE_URL, and abort if migrating fails.
+#
+# Aborting here is safe by design: nothing has been rebuilt or restarted yet, so
+# a failed migration leaves the old code running against the old schema —
+# a consistent state — rather than new code against an old schema.
+set -a; DATABASE_URL="$(grep -E '^DATABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '"')"; set +a
+if [ -z "$DATABASE_URL" ]; then
+  echo "FATAL: no DATABASE_URL in backend/.env — cannot migrate. Aborting before anything is rebuilt or restarted."
+  exit 1
+fi
+export DATABASE_URL
+npx prisma migrate deploy
+# migrate deploy does NOT regenerate the client (a known trap on this project),
+# and npm install's postinstall generate ran BEFORE the migration above. The
+# client is built from schema.prisma rather than the live DB so the ordering is
+# usually harmless, but regenerating here costs seconds and removes the doubt.
+npx prisma generate
 npm run build
 
 cd ../frontend
