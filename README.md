@@ -23,6 +23,8 @@
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
 - [Features](#features)
+- [Transactional email](#transactional-email)
+- [WhatsApp AI agent](#whatsapp-ai-agent)
 - [Product catalog](#product-catalog)
 - [Content & compliance governance](#content--compliance-governance)
 - [SEO & GEO](#seo--geo)
@@ -75,6 +77,9 @@ AscPeps/
 - "Available Sizes" cross-links between dosage variants of the same compound, "Related Products," and a "Frequently Paired With" cross-sell module (BAC water / Acetic Acid, category-aware)
 - A "How to Reconstitute" section merged onto product pages from the `/guide` content, gated to only appear where relevant (not shown on ready-to-use liquid products)
 - Shopping cart (localStorage, no login required) with a mobile sticky Add-to-Cart bar
+- Adding a product and its required add-ons is **one action with one confirmation**, naming the product and counting the extras. Previously each line fired its own toast and React batched them, so buying Retatrutide confirmed "Alcohol Swab" — the last add-on — and never mentioned the product
+- After adding, the CTA becomes a persistent `View cart (N) →` rather than an "Added" flash that reverted after 2s alongside a toast that expired at 2.5s, leaving no trace and no way forward
+- Announcement bar is always **one line**; if the text is wider than the bar it scrolls infinitely at a constant ~60px/s, and sits still when it fits. It previously wrapped to three lines on a 390px screen
 - Dual checkout: WhatsApp manual transfer + online payment (ToyyibPay/Billplz)
 - Order tracking by order number + phone (no PII exposed)
 - Certificate of Analysis per product, plus a dedicated `/coa` page explaining third-party testing methodology
@@ -91,10 +96,21 @@ AscPeps/
 - Sandbox/production toggle via `TOYYIBPAY_SANDBOX` / `BILLPLZ_SANDBOX`
 
 ### Admin Panel (`/admin`)
-- Dashboard with stats, recent orders, low stock alerts
-- Product CRUD: images, pricing, stock, featured toggle, COA URL, benefits/dosage content
-- Order management: status updates, payment tracking, WhatsApp customer link
-- Settings: announcement bar, WhatsApp number, business info, shipping fee
+- **Dashboard** — stats, recent orders, low stock alerts
+- **Analytics** — revenue/profit bar chart, costs and net profit, profit-share breakdown. Profit is computed only over paid orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all paid revenue would understate margin silently
+- **Products** — CRUD over parent products and their size variants: images, pricing, sale windows, stock, featured, COA URL, benefits/dosage content, purchasable add-ons
+- **Orders** — list and per-order detail (`/admin/orders/[id]`) with a stepper across Order Info / Order Detail / Profit Sharing / Order Complete. Status and payment updates, tracking, receipt PDF, email resend, per-line costing and a per-order profit split
+  - A manual **Profit Shared** tick per row, deliberately separate from whether an order is *costed* or whether a split has been *recorded* — money leaving the account is a real-world event the system cannot observe
+  - Row columns are fixed-width so status, payment and costing badges line up down the whole list regardless of label length
+- **Finance** — lifetime per-partner totals, company spending, capital in. Partners are created implicitly by typing a name into an order's split; one with nothing referencing it can now be **removed outright**, and the API refuses (naming what blocks it) when splits, funding, payouts or fronted expenses still point at it
+- **Delivery** — recurring weekly windows, derived slots, and a Calendly-style booking calendar pinning one slot to one order
+- **Emails** — outbox list, editable copy, and a **Template Preview** that renders the real templates against a real order with a **light/dark toggle** (the templates theme off `prefers-color-scheme`, so without it the preview only ever showed whichever scheme the admin's own machine was set to)
+- **Subscribers / Campaigns** — marketing list, welcome flow, broadcast drafting and sending
+- **Insights** — research articles with numbered figures and a click-to-enlarge gallery
+- **Comments** — moderation for reader comments on Insights
+- **Discounts** — percentage/fixed codes with optional minimum order, max uses and expiry. All three are optional and the form posts `null` for a blank one; the schema accepts that now, having previously rejected it and made the simplest possible code — a name and a percentage — impossible to create
+- **Agent** — WhatsApp operator allowlist, LID binding, group allowlist, conversation transcripts
+- **Settings** — announcement bar, WhatsApp number, business info, shipping fee, payment gateway, email toggles
 
 ### Content Pages
 - `/faq` — 12 real questions across purity, COA, ordering, payment, shipping
@@ -102,6 +118,64 @@ AscPeps/
 - `/calculator` — interactive BAC water / concentration calculator
 - `/coa` — Certificates of Analysis and third-party testing methodology
 - `/shipping`, `/terms`, `/privacy`, `/disclaimer` — legal & policy pages
+
+---
+
+## Transactional email
+
+Templates live in `backend/src/emails/`, are rendered by the outbox worker, and share one layout. The visual language is the site's OG image rather than a generic template: a near-black `#0A0A0A` hero carrying the constellation motif, the two-tone headline device ("Payment confirmed." / "We're packing it now."), the rounded trust-badge row, and a single green accent used only for status.
+
+**Six templates** — order confirmation, payment receipt, abandoned checkout, welcome, email verification, campaign broadcast.
+
+Things here that are load-bearing and easy to undo:
+
+- **The hero is dark in both colour schemes.** A dark panel gives a force-inverting client (Gmail iOS, Outlook 2021) nothing to invert, so the most brand-defining part of the email is the part that cannot be mangled.
+- **Real dark mode** via `prefers-color-scheme` plus `[data-ogsc]` for Outlook.com and Outlook Android. **Nothing those rules target may carry `!important` on the matching inline style** — an inline important declaration outranks a stylesheet one and no selector wins, so an inline `background-color:#ffffff !important` silently defeats the whole theme. `scripts/preview-emails.ts` fails the run if any element carries a themeable class alongside such a declaration.
+- **The webfont `@import` sits in its own `<style>` block.** Gmail discards an entire block when it objects to anything inside it; isolated, a rejection costs the webfont rather than the dark theme and the responsive rules.
+- **The base layout survives 320px with no stylesheet at all.** The Gmail app renders mail from non-Google accounts with `<style>` stripped, so media queries reach nobody there — they are refinement, never the thing standing between the layout and a phone.
+- **Product thumbnails point at `<id>.email.jpg`, never the stored `.webp`.** WebP is missing from older Outlook desktop. Uploads write the JPEG sibling automatically; `scripts/generate-email-thumbs.mjs` backfills an existing catalogue.
+- **`/uploads` serves `Cross-Origin-Resource-Policy: cross-origin`.** Helmet's global default is `same-origin`, which tells browsers to refuse the file to any other origin — and an email client *is* a different, often opaque origin, so every thumbnail was blocked before it was even requested.
+- **Line-art fallbacks** (vial, syringe, swab, droplet) stand in where a variant has no photo, matched on product name. Not an edge case: accessories ride along on nearly every order, and 53 of the last 80 order lines had no photo. Drawn in a single midtone grey so one asset reads on both the light and dark tile — no `display:none` swapping, which Outlook does not honour.
+- **`MUTED` is `#72727a`, not `#9a9a9e`.** The old value measured 2.80:1 on white, under WCAG AA for text that small, and it is not decoration — "30mg . Qty 1" is the variant the customer bought.
+
+### Previewing
+
+```bash
+cd backend && set -a && source .env && set +a && npx tsx scripts/preview-emails.ts
+```
+
+Renders every template against real orders, reports each one's size against Gmail's 102KB clip limit, and fails on dark-mode blockers. Set `EMAIL_ASSET_BASE_URL` to render against local assets — emails must use absolute image URLs (a mail client has no origin to resolve a relative path against), so without it both this script and the admin's Template Preview fetch every image from the live site, and any asset not yet deployed shows as a broken box. **Leave it unset in production.**
+
+---
+
+## WhatsApp AI agent
+
+An operator-facing assistant ("Abby") that can do anything the admin dashboard can — 65 tools across catalog, orders, finance, promos, content, ops, reports, delivery, reminders and memory. Runs in the **API** process (the business logic lives there); `whatsapp-worker/worker.ts` is a separate PM2 process holding only the socket.
+
+Access is an allowlist: an unknown sender never reaches a tool, or an LLM call, at all. Groups are a restriction rather than a bypass — group allowlisted *and* sender resolving to an active operator, both required.
+
+### Memory
+
+Conversations persist per chat, with rolling compaction folding older turns into a prose summary once a thread passes 30 messages. But every chat is an island, so the agent also has **four always-in-context memory blocks** — `business`, `people`, `suppliers`, `decisions` — rendered into their own system message on every turn, in every thread, for every operator. Roughly 400 tokens when populated.
+
+No vector store and no embeddings, deliberately: the problem was never retrieval, and the content is SKUs, product names, ringgit amounts and people's names — exactly where keyword matching beats semantic search.
+
+Enforced in code rather than asked for in the prompt: character caps with oldest-line eviction (a model told to stay under 1500 characters will not), duplicate writes as a no-op, one fact per line. Blocks are seeded **empty** — pre-filling them with plausible business facts would put invented claims into the system prompt on day one.
+
+**Security note.** Block content is concatenated into the *system* prompt, which makes it the highest-value injection target in the agent — anything written there is a standing instruction for every future conversation. Only what an operator says directly may be recorded, every write stores `updatedBy`, and both write tools are gated so read-only operators cannot change what the agent believes.
+
+### Tests
+
+```bash
+npm run test:agent:tools     # every tool's schema
+npm run test:agent:writes    # all write tools, with rollback + a coverage gate
+npm run test:agent:memory    # caps, eviction, dedupe, provenance, prompt rendering
+npm run test:agent:context   # routing and conversation compaction
+npm run test:agent:security  # prompt injection, privilege escalation, SQL escape hatch
+npm run test:agent:e2e       # real LLM conversations, asserted on database state
+```
+
+The context and security suites **seed the operator rows they send as**. Without that they fail silently and misleadingly on any database restored from production: an unknown sender is dropped before the agent runs, so the suite reports "a summary was written: FAIL" as though compaction were broken.
 
 ## Product catalog
 
@@ -174,6 +248,19 @@ npm run dev                  # runs on http://localhost:3000
 
 Navigate to `/admin` and log in with the credentials from your seeded/production admin user.
 
+### Test suites
+
+```bash
+cd backend
+npm run test:agent:tools     npm run test:agent:writes    npm run test:agent:memory
+npm run test:agent:context   npm run test:agent:security  npm run test:agent:e2e
+npx tsx scripts/preview-emails.ts        # renders all six email templates
+node scripts/generate-email-thumbs.mjs   # backfills the email-safe JPEG thumbnails
+node scripts/generate-email-icons.mjs ../frontend/public/images/email-icons
+```
+
+`npm run dev` runs the API under `tsx watch`, which reloads on `.ts` edits but **not** on `prisma generate` — restart the API by hand after any schema change or new columns read as absent and write as no-ops.
+
 ## Environment variables
 
 ```env
@@ -191,6 +278,20 @@ WHATSAPP_NUMBER="601161092723"
 TOYYIBPAY_SECRET_KEY="your-user-secret-key"
 TOYYIBPAY_CATEGORY_CODE="your-category-code"
 TOYYIBPAY_SANDBOX=false                # "true"/"false" parsed correctly (not coerced)
+
+# Transactional email (Resend)
+EMAIL_FROM="Ascend MY <orders@mail.ascendpeptides.my>"   # display name shown to customers
+RESEND_API_KEY=""
+RESEND_WEBHOOK_SECRET=""                 # delivery/bounce/complaint webhook
+# EMAIL_ASSET_BASE_URL="http://localhost:3099"
+#   LOCAL DEV ONLY. Origin the email templates load images from. Emails need
+#   absolute URLs, so unset this in production or customers get unreachable
+#   images. Point it at the frontend dev server to preview against local assets.
+
+# Analytics
+POSTHOG_ENABLED=false
+POSTHOG_API_KEY=""
+POSTHOG_HOST="https://us.i.posthog.com"   # region must match the token — a mismatch drops every event silently
 
 # Billplz (optional adapter)
 BILLPLZ_API_KEY=""
@@ -235,17 +336,27 @@ cd /home/ubuntu/ascend && git pull origin main
 # Backend (runs unbundled via tsx — no build step)
 cd backend
 npm install
+set -a && source .env && set +a          # deploy.sh does NOT do this; see the note below
 npx prisma migrate deploy
+npx prisma generate                      # explicitly — `npm install` skips postinstall when "up to date"
+node scripts/generate-email-thumbs.mjs   # only when new product images have landed
 pm2 restart ascend-api
 
-# Frontend (standalone output needs public/ and .next/static/ copied in manually)
+# Frontend (standalone output needs public/, .next/static/ AND .env copied in)
 cd ../frontend
-npm install
-npx next build
+pm2 restart ascend-web                   # reclaims crept RSS first — the box has ~1.9GB
+NODE_OPTIONS=--max-old-space-size=1024 npm run build
 cp -r public .next/standalone/public
 cp -r .next/static .next/standalone/.next/static
-pm2 restart ascend-web
+cp .env .next/standalone/.env            # server.js chdir's here; without it REVALIDATE_SECRET is undefined
+PORT=3000 pm2 restart ascend-web --update-env
 ```
+
+> **`PORT=3000` is not decoration.** `--update-env` re-reads the *calling shell's* environment, and the backend `.env` sourced above exports `PORT=3105`. Restarting the frontend from that same shell hands it the backend's port, `EADDRINUSE`, and a 502 across the whole site. Verify after any restart with `ss -lntp | grep -E ":(3000|3105)"` — `pm2 list` will happily show "online" while the process crash-loops.
+
+> **`deploy.sh` swallows its own migration failure.** It does not source `.env` before `prisma migrate deploy`, so the step hits a placeholder `DATABASE_URL`, fails, and is absorbed by its own `|| echo WARN`. Any deploy carrying a migration must run it by hand as above.
+
+> **Writing to the DB directly bypasses the revalidate ping.** Migrations and backfill scripts never fire it, so the storefront serves stale copy for up to an hour. After one, `POST /api/revalidate` with `x-revalidate-secret` for the affected tags.
 
 > **DB scripts over SSH:** a plain `ssh host "npx prisma migrate deploy"` picks up a placeholder `DATABASE_URL` and fails auth — env vars aren't auto-sourced in a non-interactive SSH shell. Explicitly load them first: `set -a && source .env && set +a && npx prisma migrate deploy`.
 
@@ -253,8 +364,9 @@ pm2 restart ascend-web
 
 | Name | Port | Description |
 |---|---|---|
-| `ascend-api` | 3105 | Fastify backend, runs via `npx tsx src/server.ts` (no build step) |
+| `ascend-api` | 3105 | Fastify backend, runs via `npx tsx src/server.ts` (no build step). The AI agent runs in here |
 | `ascend-web` | 3000 | Next.js frontend, standalone output |
+| `ascend-wa` | 3107 | WhatsApp socket worker (`whatsapp-worker/worker.ts`). Holds the paired session; restart with a plain `pm2 restart`, never `--update-env` from a shell that sourced the backend `.env` |
 
 ### Nginx
 
