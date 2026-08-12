@@ -19,7 +19,8 @@
     "test:agent:e2e": "tsx scripts/test-agent-e2e.ts",
     "test:agent:context": "tsx scripts/test-agent-context.ts",
     "test:agent:security": "tsx scripts/test-agent-security.ts",
-    "test:agent:memory": "tsx scripts/test-agent-memory.ts"
+    "test:agent:memory": "tsx scripts/test-agent-memory.ts",
+    "test:payment-failure": "tsx scripts/test-payment-failure.ts"
   },
   "keywords": [],
   "author": "",

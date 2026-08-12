@@ -102,15 +102,49 @@ export function verifyCallbackHash(body: Record<string, string>, secretKey: stri
   }
 }
 
-interface BillTransactionStatus {
+/**
+ * Why an unpaid order is being given up on.
+ *
+ * The distinction is operational, not cosmetic. `DECLINED` and `ABANDONED_MID_PAYMENT`
+ * are customers who picked a payment method and tried to hand us money — a real
+ * lost sale worth a follow-up message. `NO_ATTEMPT` is someone who was handed
+ * the bill page and never chose anything, which is ordinary checkout drop-off.
+ * Reporting the two as one "FAILED" bucket is what hid a genuine bank decline
+ * (ASC2608/0021, RM220) among eight abandons.
+ */
+export type PaymentFailureReason =
+  /** The gateway explicitly reported the transaction unsuccessful (status 3). */
+  | 'DECLINED'
+  /** A channel was selected and handed off, but no final result ever came back. */
+  | 'ABANDONED_MID_PAYMENT'
+  /** The bill was issued and no payment method was ever chosen. */
+  | 'NO_ATTEMPT'
+  /** createBill never produced a bill, so there was nothing to pay. */
+  | 'NO_BILL'
+  /** The gateway couldn't be asked, or doesn't report attempt detail. */
+  | 'UNKNOWN';
+
+export interface BillTransactionStatus {
   paid: boolean;
   amount?: number; // in sen/cents
+  /** Only meaningful when paid is false. */
+  failureReason?: PaymentFailureReason;
+  /** The channel the customer actually tried, e.g. "FPX B2C" / "DuitNow QR". */
+  channel?: string;
 }
 
 /**
  * Re-query ToyyibPay for the true status of a bill. Used to reconcile orders
  * whose callback was missed/delayed, and to release stale unpaid orders.
  * Returns paid=true only if at least one successful (status 1) transaction exists.
+ *
+ * This deliberately asks for ALL transaction rows rather than filtering to
+ * `billpaymentStatus=1` server-side. The unsuccessful rows are the whole point:
+ * ToyyibPay writes a channel-less stub row at bill creation and only fills
+ * `billpaymentChannel` once the payer actually selects a method, so the
+ * presence of a channel is the one reliable signal that a human tried to pay.
+ * Because the filter is gone, `paid` must now be derived from an explicit
+ * status-1 row — a non-empty response no longer implies payment.
  */
 export async function getBillTransactions(
   billCode: string,
@@ -119,7 +153,6 @@ export async function getBillTransactions(
   const formData = new URLSearchParams();
   formData.append('userSecretKey', secretKey);
   formData.append('billCode', billCode);
-  formData.append('billpaymentStatus', '1'); // only successful payments
 
   const { data } = await axios.post(
     `${getBaseUrl()}/index.php/api/getBillTransactions`,
@@ -127,16 +160,54 @@ export async function getBillTransactions(
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000 }
   );
 
-  if (Array.isArray(data) && data.length > 0) {
-    const txn = data.find((t) => String(t?.billpaymentStatus) === '1') ?? data[0];
-    const raw = txn?.billpaymentAmount;
+  return classifyBillRows(data);
+}
+
+/**
+ * The rules that turn ToyyibPay's transaction rows into a verdict. Pure and
+ * exported so it can be tested against real recorded bill shapes without a
+ * network call — the classification is the part that must not drift, and it is
+ * invisible from outside once it's buried behind an HTTP request.
+ *
+ * ToyyibPay's `billpaymentStatus`: 1 = success, 2 = pending, 3 = unsuccessful,
+ * 4 = the channel-less stub row written when the bill is created.
+ */
+export function classifyBillRows(data: unknown): BillTransactionStatus {
+  // "No data found!" (a bare string) and any unexpected shape both mean we
+  // learned nothing — never that the bill was paid.
+  const rows: Record<string, string>[] = Array.isArray(data) ? data : [];
+
+  const statusOf = (t: Record<string, string>) => String(t?.billpaymentStatus ?? '');
+  const channelOf = (t: Record<string, string>) => String(t?.billpaymentChannel ?? '').trim();
+
+  const paidRow = rows.find((t) => statusOf(t) === '1');
+  if (paidRow) {
+    const raw = paidRow.billpaymentAmount;
     // getBillTransactions returns amount in RM (e.g. "1.00") — convert to sen.
     const amount =
       raw != null && !Number.isNaN(parseFloat(raw)) ? Math.round(parseFloat(raw) * 100) : undefined;
-    return { paid: true, amount };
+    return { paid: true, amount, channel: channelOf(paidRow) || undefined };
   }
 
-  return { paid: false };
+  if (rows.length === 0) return { paid: false, failureReason: 'UNKNOWN' };
+
+  // A declined row is the strongest signal available, so it wins over a
+  // still-open attempt regardless of row order.
+  const declined = rows.find((t) => statusOf(t) === '3');
+  if (declined) {
+    return { paid: false, failureReason: 'DECLINED', channel: channelOf(declined) || undefined };
+  }
+
+  const attempted = rows.find((t) => channelOf(t) !== '');
+  if (attempted) {
+    return {
+      paid: false,
+      failureReason: 'ABANDONED_MID_PAYMENT',
+      channel: channelOf(attempted),
+    };
+  }
+
+  return { paid: false, failureReason: 'NO_ATTEMPT' };
 }
 
 /**

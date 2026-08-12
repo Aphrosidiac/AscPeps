@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getGatewayByBillId } from './payment-gateway.js';
+import type { PaymentFailureReason } from './payment-gateway.js';
 import { restoreOrderInventory } from './order-inventory.js';
 import { enqueueEmail } from './email-outbox.js';
 import { capturePurchase } from './posthog.js';
@@ -81,18 +82,36 @@ export async function applyPaid(
  */
 export async function applyFailed(
   fastify: FastifyInstance,
-  orderId: string
+  orderId: string,
+  failure?: { reason: PaymentFailureReason; channel?: string }
 ): Promise<boolean> {
+  const reason = failure?.reason ?? 'UNKNOWN';
   const { count } = await fastify.prisma.order.updateMany({
     where: { id: orderId, paymentStatus: 'UNPAID' },
-    data: { paymentStatus: 'FAILED', status: 'CANCELLED' },
+    data: {
+      paymentStatus: 'FAILED',
+      status: 'CANCELLED',
+      paymentFailureReason: reason,
+      paymentFailureChannel: failure?.channel ?? null,
+    },
   });
   if (count === 0) return false;
 
   // Atomic, idempotent, floored — safe even if a callback and a sweep both flip
   // this order FAILED at the same time.
   await restoreOrderInventory(fastify, orderId);
-  fastify.log.info(`Order ${orderId} marked FAILED — stock & discount restored`);
+
+  // A customer who selected a payment method and was refused is a lost sale
+  // someone should chase, not a statistic — log it loudly enough to find, and
+  // distinctly from the ordinary abandons it used to be indistinguishable from.
+  if (reason === 'DECLINED' || reason === 'ABANDONED_MID_PAYMENT') {
+    fastify.log.warn(
+      { orderId, reason, channel: failure?.channel },
+      'Order FAILED after a real payment attempt — possible lost sale'
+    );
+  } else {
+    fastify.log.info(`Order ${orderId} marked FAILED (${reason}) — stock & discount restored`);
+  }
 
   // Best-effort and deliberately after the transition: a gateway hiccup here
   // must not leave the order half-released. Runs exactly once per order
@@ -141,7 +160,7 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
     // release it once it's clearly dead.
     if (!order.paymentRef) {
       if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
-        await applyFailed(fastify, order.id);
+        await applyFailed(fastify, order.id, { reason: 'NO_BILL' });
       }
       continue;
     }
@@ -150,11 +169,20 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
     if (!gateway) continue;
 
     try {
-      const { paid } = await gateway.verifyPaid(order.paymentRef);
+      const { paid, failureReason, channel } = await gateway.verifyPaid(order.paymentRef);
       if (paid) {
         await applyPaid(fastify, order);
       } else if (order.createdAt.getTime() < now - RELEASE_AFTER_MS) {
-        await applyFailed(fastify, order.id);
+        // Classified from the same re-query that just decided the order's fate,
+        // so this costs no extra gateway call. Note that seeing a decline here
+        // deliberately does NOT shorten the release window: ToyyibPay bills stay
+        // payable after a refused attempt and customers do retry and succeed on
+        // the same bill (ASC2608/0020 took five tries), so releasing on the
+        // first refusal would take a live sale away from them.
+        await applyFailed(fastify, order.id, {
+          reason: failureReason ?? 'UNKNOWN',
+          channel,
+        });
       }
     } catch (err) {
       // Gateway hiccup — leave the order untouched and retry next sweep.

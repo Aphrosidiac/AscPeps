@@ -57,7 +57,10 @@ export async function handlePaymentCallback(fastify: FastifyInstance, body: Reco
       fastify.log.info(`Order ${order.orderNumber} paid via ${gateway.name} (bill ${result.billId})`);
     }
   } else {
-    await applyFailed(fastify, order.id);
+    // Only reachable for an explicit gateway failure — 'pending' returned above.
+    // The gateway told us the transaction was refused, so the customer did pick
+    // a method and try: that is a DECLINE, never an abandon.
+    await applyFailed(fastify, order.id, { reason: 'DECLINED' });
     fastify.log.info(`Order ${order.orderNumber} payment failed via ${gateway.name} (bill ${result.billId})`);
   }
 
