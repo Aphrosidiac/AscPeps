@@ -24,7 +24,12 @@ export default async function ProductDetailPage({ params }: Props) {
   if (!product) notFound();
 
   const [settings, catalog] = await Promise.all([getSettingsServer(), getProductsServer({ limit: 100 })]);
-  const shippingFee = settings.shipping_fee || '';
+  // Read server-side from the same settings call rather than fetched in the
+  // client, so the payment badge stays part of the static HTML — this page's
+  // SSR is load-bearing for crawlability. Only the literal 'true' counts,
+  // matching the checkout gate, so the badge can never claim a method the
+  // store isn't actually taking.
+  const cryptoEnabled = settings.crypto_payment_enabled === 'true';
   const allProducts = catalog.data;
 
   const shownIds = new Set([product.id]);
@@ -67,7 +72,7 @@ export default async function ProductDetailPage({ params }: Props) {
         </ol>
       </nav>
 
-      <VariantSwitcher product={product} benefits={benefits} shippingFee={shippingFee} />
+      <VariantSwitcher product={product} benefits={benefits} cryptoEnabled={cryptoEnabled} />
 
       {/* Dosage / research information */}
       {product.dosageInfo && (

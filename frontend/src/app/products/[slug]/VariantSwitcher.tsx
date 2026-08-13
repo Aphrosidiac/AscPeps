@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { Check, ShieldCheck, Truck } from 'lucide-react';
+import { Check, ShieldCheck, Wallet, User, BadgeCheck } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { Animate } from '@/components/ui/Animate';
 import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
@@ -13,7 +14,80 @@ import type { Product, ProductVariant } from '@/types';
 interface Props {
   product: Product;
   benefits: string[];
-  shippingFee: string;
+  cryptoEnabled: boolean;
+}
+
+/**
+ * One reassurance badge in the block under Add to Cart. Extracted rather than
+ * copied a fourth time — the checkout's payment cards were three hand-copied
+ * blocks and drifted out of alignment precisely because nothing forced them to
+ * stay identical.
+ *
+ * `items-start` rather than `items-center`: at narrow widths the label wraps to
+ * two lines, and centring floats the icon into the middle of the text block
+ * instead of keeping it on the first line where it reads as a marker.
+ */
+function TrustBadge({ icon: Icon, label, detail }: { icon: LucideIcon; label: string; detail: string }) {
+  return (
+    <div className="flex items-start gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
+      <Icon className="w-4 h-4 text-text-muted shrink-0 mt-0.5" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold leading-snug">{label}</p>
+        <p className="text-[11px] text-text-muted leading-snug">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Fakhrul's figure, covering every channel the business sells through.
+ *
+ * Do NOT "correct" this down against the orders table. That table only holds
+ * orders placed through this site — 36 distinct phone numbers, 26 of them paid
+ * at the time of writing — and misses the WhatsApp and direct sales that make
+ * up the rest. The database is a floor on the real number, not the number.
+ */
+const TRUSTED_BUYER_COUNT = 100;
+
+/**
+ * Social proof under the badge grid. Deliberately NOT another grey card: it's a
+ * different kind of claim from "we ship for RM10", and giving it the same
+ * treatment is what made it read as filler.
+ *
+ * The avatars are generic on purpose. The obvious version of this pattern uses
+ * customer photos and first names, but this store has neither — inventing them
+ * would be fabricated social proof, and using real buyers' details would leak
+ * customer identity onto a public product page for a regulated substance.
+ * Anonymous silhouettes make the same visual point while only claiming what the
+ * number claims. Swap in real avatars if consented testimonials ever exist.
+ */
+function SocialProof() {
+  return (
+    // Stacks below sm. Side-by-side, the line wraps at phone widths and leaves
+    // the avatars floating against a two-line block with a ragged tail — and
+    // once it fills the column there is no slack left, so "centred" stops
+    // meaning anything. Stacked and centre-aligned it reads as deliberate at
+    // every width.
+    <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-2.5 text-center sm:text-left">
+      <div className="flex -space-x-2 shrink-0" aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            // ring in the page background colour, not a border, so the discs
+            // read as overlapping cut-outs rather than three touching circles.
+            className="w-7 h-7 rounded-full bg-surface-elevated ring-2 ring-surface flex items-center justify-center"
+          >
+            <User className="w-3.5 h-3.5 text-text-muted" />
+          </span>
+        ))}
+      </div>
+      <p className="text-xs text-text-muted leading-snug">
+        <span className="font-semibold text-text-primary">Trusted by {TRUSTED_BUYER_COUNT}+</span>
+        <BadgeCheck className="inline-block w-3.5 h-3.5 text-blue-500 align-text-bottom mx-1" aria-hidden="true" />
+        buyers &amp; researchers across Malaysia
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -178,7 +252,7 @@ function SizeSelector({
 // swaps them together, without navigating to a different URL. Everything
 // below this (dosage info, COA, related-product rails) is static per parent
 // and stays server-rendered in page.tsx.
-export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
+export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
   // Memoised so `slides` below is genuinely stable: a fresh filter() array
   // every render would defeat its useMemo and re-run the gallery's effect.
   const activeVariants = useMemo(() => product.variants.filter((v) => v.active), [product.variants]);
@@ -295,25 +369,25 @@ export function VariantSwitcher({ product, benefits, shippingFee }: Props) {
                 to Cart would be actively misleading at the moment of purchase.
                 Wire this up once COAs are per-product. */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
-                <ShieldCheck className="w-4 h-4 text-text-muted shrink-0" />
-                <div>
-                  <p className="text-xs font-semibold">3rd Party Verified</p>
-                  <p className="text-[11px] text-text-muted">Identity &amp; purity tested</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2.5 bg-surface-elevated rounded-lg px-3 py-2.5">
-                <Truck className="w-4 h-4 text-text-muted shrink-0" />
-                <div>
-                  <p className="text-xs font-semibold">
-                    {!shippingFee || shippingFee === '0' ? 'Free Shipping' : `Shipping: RM${shippingFee}`}
-                  </p>
-                  <p className="text-[11px] text-text-muted">
-                    {!shippingFee || shippingFee === '0' ? 'All orders, Peninsular Malaysia' : 'Peninsular Malaysia delivery'}
-                  </p>
-                </div>
-              </div>
+              <TrustBadge
+                icon={ShieldCheck}
+                label="3rd Party Verified"
+                detail="Identity & purity tested"
+              />
+              {/* Crypto is named either way, but only claimed as accepted when
+                  the store is actually taking it. Checkout shows Bitcoin as
+                  "Soon" while crypto_payment_enabled is off, and a product page
+                  promising a method the checkout then refuses is the kind of
+                  contradiction a buyer notices at exactly the wrong moment.
+                  Flipping the setting upgrades this line automatically. */}
+              <TrustBadge
+                icon={Wallet}
+                label="Flexible Payment"
+                detail={cryptoEnabled ? 'DuitNow QR, FPX & crypto' : 'DuitNow QR & FPX, crypto soon'}
+              />
             </div>
+
+            <SocialProof />
 
             <p className="text-xs text-text-muted italic">For research and laboratory use only.</p>
 
