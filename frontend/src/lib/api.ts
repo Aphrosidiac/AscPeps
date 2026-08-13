@@ -3,6 +3,12 @@ import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput,
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
+  // Without this a stalled request never settles, and every page that renders a
+  // skeleton until its fetch resolves sits on grey blocks forever with no error
+  // and no way back. On a phone dropping between cells that is the common case,
+  // not the rare one. 30s is well past a slow-but-working response, so anything
+  // over it is a failure the user should be told about rather than wait out.
+  timeout: 30_000,
 });
 
 // Auto-redirect to admin login on expired/invalid JWT

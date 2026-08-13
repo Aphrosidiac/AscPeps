@@ -263,13 +263,16 @@ export default function AdminDiscountsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-elevated">
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Code</th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Type</th>
-                  <th className="text-right px-4 py-3 font-medium text-text-secondary">Value</th>
+                  <th className="text-left px-3 sm:px-4 py-3 font-medium text-text-secondary">Code</th>
+                  {/* Percentage-vs-fixed is already legible from the value
+                      itself ("10%" vs "RM10.00"), so the column goes on a
+                      phone rather than pushing Status and Actions off. */}
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary hidden md:table-cell">Type</th>
+                  <th className="text-right px-2 sm:px-4 py-3 font-medium text-text-secondary">Value</th>
                   <th className="text-right px-4 py-3 font-medium text-text-secondary hidden sm:table-cell">Min Order</th>
                   <th className="text-center px-4 py-3 font-medium text-text-secondary hidden sm:table-cell">Usage</th>
-                  <th className="text-center px-4 py-3 font-medium text-text-secondary">Status</th>
-                  <th className="text-center px-4 py-3 font-medium text-text-secondary">Actions</th>
+                  <th className="text-center px-2 sm:px-4 py-3 font-medium text-text-secondary">Status</th>
+                  <th className="text-center px-2 sm:px-4 py-3 font-medium text-text-secondary">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -277,15 +280,15 @@ export default function AdminDiscountsPage() {
                   const status = getDiscountStatus(discount);
                   return (
                     <tr key={discount.id} className="border-b border-border last:border-0 hover:bg-surface-elevated/50 transition-colors">
-                      <td className="px-4 py-3">
+                      <td className="px-3 sm:px-4 py-3">
                         <div>
-                          <p className="font-mono font-semibold text-xs tracking-wide">{discount.code}</p>
+                          <p className="font-mono font-semibold text-xs tracking-wide break-all">{discount.code}</p>
                           {discount.description && (
                             <p className="text-xs text-text-muted mt-0.5 line-clamp-1 max-w-48">{discount.description}</p>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 hidden md:table-cell">
                         <div className="flex items-center gap-1.5">
                           {discount.discountType === 'PERCENTAGE' ? (
                             <Percent className="w-3.5 h-3.5 text-text-muted" />
@@ -297,7 +300,7 @@ export default function AdminDiscountsPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right font-display font-semibold">
+                      <td className="px-2 sm:px-4 py-3 text-right font-display font-semibold whitespace-nowrap">
                         {formatDiscountValue(discount)}
                       </td>
                       <td className="px-4 py-3 text-right text-text-secondary hidden sm:table-cell">
@@ -309,10 +312,10 @@ export default function AdminDiscountsPage() {
                           {discount.maxUses ? <span className="text-text-muted"> / {discount.maxUses}</span> : ''}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-2 sm:px-4 py-3 text-center">
                         <Badge className={status.color}>{status.label}</Badge>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-2 sm:px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => openEdit(discount)}

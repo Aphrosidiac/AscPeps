@@ -519,7 +519,43 @@ export default function AdminAnalyticsPage() {
               <p className="text-sm text-text-muted">No product sales in this period</p>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-5 sm:-mx-6">
+            <>
+            {/* Phones get a stacked row per product. The table wants 540px, so
+                Qty Sold and Revenue — the two figures that make it a ranking —
+                were off the right edge. */}
+            <div className="divide-y divide-border sm:hidden -mx-5">
+              {topProducts.map((product, idx) => (
+                <div key={`m-${product.code}-${idx}`} className="flex items-start gap-3 px-5 py-3">
+                  <span
+                    className={cn(
+                      'inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold shrink-0',
+                      idx === 0
+                        ? 'bg-primary text-white'
+                        : idx === 1
+                          ? 'bg-surface-elevated text-text-primary'
+                          : idx === 2
+                            ? 'bg-surface-elevated text-text-secondary'
+                            : 'text-text-muted'
+                    )}
+                  >
+                    {idx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="text-sm font-medium min-w-0">{product.name}</p>
+                      <span className="text-sm font-display font-bold tabular-nums shrink-0">
+                        {formatPrice(product.revenue)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      <code className="font-mono">{product.code}</code> · {product.quantity.toLocaleString()} sold
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden sm:block overflow-x-auto -mx-5 sm:-mx-6">
               <table className="w-full min-w-[540px]">
                 <thead>
                   <tr className="border-b border-border">
@@ -585,6 +621,7 @@ export default function AdminAnalyticsPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </Animate>

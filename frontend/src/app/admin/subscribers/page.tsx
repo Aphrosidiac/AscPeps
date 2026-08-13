@@ -273,7 +273,7 @@ export default function AdminSubscribersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-elevated">
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">Email</th>
+                  <th className="text-left px-3 sm:px-4 py-3 font-medium text-text-secondary">Email</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary hidden sm:table-cell">Source</th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary hidden md:table-cell">Joined</th>
                   <th className="text-center px-4 py-3 font-medium text-text-secondary">
@@ -317,8 +317,11 @@ export default function AdminSubscribersPage() {
                       onClick={() => setFlowTarget(s)}
                       className="border-b border-border last:border-0 hover:bg-surface-elevated/50 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3">
-                        <p className={cn('font-medium', s.status === 'UNSUBSCRIBED' && 'text-text-muted line-through')}>
+                      <td className="px-3 sm:px-4 py-3">
+                        {/* An address has no spaces to wrap at, so the column
+                            could not shrink and pushed Actions off a phone.
+                            break-all lets it fold instead. */}
+                        <p className={cn('font-medium break-all', s.status === 'UNSUBSCRIBED' && 'text-text-muted line-through')}>
                           {s.email}
                         </p>
                         {s.status === 'UNSUBSCRIBED' && (
@@ -330,7 +333,7 @@ export default function AdminSubscribersPage() {
                       </td>
                       <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{SOURCE_LABELS[s.source]}</td>
                       <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{formatDate(s.createdAt)}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-2 sm:px-4 py-3 text-center">
                         <Badge className={cn('gap-1', welcome.color)}>
                           <welcome.icon className="w-3 h-3" />
                           {welcome.label}
@@ -353,7 +356,7 @@ export default function AdminSubscribersPage() {
                           <span className="text-text-muted">--</span>
                         )}
                       </td>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-2 sm:px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => setFlowTarget(s)}
