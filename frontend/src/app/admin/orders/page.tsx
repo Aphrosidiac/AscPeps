@@ -345,33 +345,54 @@ function AdminOrdersContent() {
                   <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap sm:flex-nowrap">
                     <p className="font-display font-bold hidden sm:block">{formatPrice(order.total)}</p>
                     <Badge className={`w-24 justify-center ${ORDER_STATUS_COLORS[order.status]}`}>{ORDER_STATUS_LABELS[order.status]}</Badge>
-                    <Badge className={`hidden sm:inline-flex w-20 justify-center ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
+                    {/* Shown at every width. It used to carry `hidden
+                        sm:inline-flex`, but `cn` is plain clsx with no
+                        tailwind-merge, so Badge's own `inline-flex` sat in the
+                        same class list and won — this has always rendered on
+                        phones regardless. It fits and it is worth seeing, so
+                        the class now says what actually happens. */}
+                    <Badge className={`w-20 justify-center ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
                     {/* Whether the books are done with this order — separate
                         from its delivery status, because an order can be
                         delivered and still have no cost against it. */}
                     {/* Always rendered, invisible when there is nothing to
                         say, so the Profit Shared control after it does not
-                        shift left on rows without a costing state. */}
-                    <Badge
-                      className={`w-28 justify-center ${progress.state === 'NONE' ? 'invisible' : progress.className}`}
-                      title={progress.hint}
-                    >
-                      {progress.label || '—'}
-                    </Badge>
+                        shift left on rows without a costing state. That only
+                        buys alignment in the single-line desktop row — on a
+                        phone the group wraps, so an invisible 7rem badge is
+                        just a hole, and it collapses instead. */}
+                    {/* Wrapped, because `hidden` cannot be passed to Badge —
+                        see the note above. The span is what disappears on a
+                        phone; the placeholder only has to hold its column open
+                        on the single-line desktop row. */}
+                    <span className={progress.state === 'NONE' ? 'hidden sm:inline-flex sm:invisible' : 'inline-flex'}>
+                      <Badge
+                        className={`w-28 justify-center ${progress.state === 'NONE' ? '' : progress.className}`}
+                        title={progress.hint}
+                      >
+                        {progress.label || '—'}
+                      </Badge>
+                    </span>
                     {/* Manual: the money actually left the account. The system
                         cannot observe that, so someone asserts it. stopPropagation
-                        because this sits inside the row's expand toggle. */}
+                        because this sits inside the row's expand toggle.
+
+                        Shown on phones too. This row is the only place in the
+                        admin that can set profitShared, so hiding it below sm
+                        meant the flag could not be read or changed from a phone
+                        at all. Roomier hit area there — a 14px box is not a
+                        finger-sized target. */}
                     <label
                       onClick={(e) => e.stopPropagation()}
                       title={order.profitShared ? 'Profit has been shared' : 'Mark profit as shared'}
-                      className="hidden sm:inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors"
+                      className="inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors -my-1 py-1 px-1.5 -mx-1.5 rounded-lg sm:m-0 sm:p-0 sm:rounded-none"
                     >
                       <input
                         type="checkbox"
                         checked={!!order.profitShared}
                         disabled={sharingId === order.id}
                         onChange={(e) => handleProfitShared(order.id, e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer disabled:opacity-50"
+                        className="w-4 h-4 sm:w-3.5 sm:h-3.5 rounded border-border accent-primary cursor-pointer disabled:opacity-50"
                       />
                       Profit Shared
                     </label>
