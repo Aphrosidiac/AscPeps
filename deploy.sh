@@ -42,6 +42,18 @@ npm run build
 
 cd ../frontend
 npm install --no-audit --no-fund
+# The running standalone server writes its own caches into
+# .next/standalone/.next/cache (fetch-cache, and the image optimiser's output).
+# `next build` cleans .next first, walks into that nested copy, and dies with
+# ENOTEMPTY because the live process is still writing there — the build then
+# aborts having ALREADY part-cleaned .next, so the server it left running is
+# serving from a half-deleted directory. That is not a failed deploy, it is an
+# outage: it took /products and /checkout to 500 on 2026-08-13 while / stayed
+# 200, so it does not even look broken from the front page.
+#
+# Removing the nested cache before the build is enough. It is pure cache — the
+# optimiser refills it on the first request for each image.
+rm -rf .next/standalone/.next/cache
 npm run build
 cp -r public .next/standalone/public
 cp -r .next/static .next/standalone/.next/static
