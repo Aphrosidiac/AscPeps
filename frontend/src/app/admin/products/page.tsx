@@ -166,9 +166,12 @@ export default function AdminProductsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      {/* Stacks below sm: "Manage Featured Order" and "Add Product" beside the
+          title needed more than a phone has, so both buttons wrapped their own
+          labels onto three lines and rode over the heading. */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="font-display text-2xl font-bold">Products</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Button variant="outline" onClick={() => setShowFeaturedOrder(true)}><ArrowUpDown className="w-4 h-4" /> Manage Featured Order</Button>
           <Link href="/admin/products/new"><Button><Plus className="w-4 h-4" /> Add Product</Button></Link>
         </div>
@@ -230,8 +233,69 @@ export default function AdminProductsPage() {
       ) : displayedProducts.length === 0 ? (
         <p className="text-text-muted py-8 text-center">No products match the current filters.</p>
       ) : (
-        <div className="bg-surface rounded-xl border border-border overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="bg-surface rounded-xl border border-border overflow-hidden lg:overflow-x-auto">
+          {/* Seven columns don't fit a phone — price, stock, status and the
+              edit/deactivate controls all sat off the right edge, so the list
+              was browse-only there. One card per product instead, with the
+              controls back within reach. */}
+          <div className="divide-y divide-border lg:hidden">
+            {displayedProducts.map((product, rowIndex) => {
+              const defaultVariant = getDefaultVariant(product);
+              const activeVariants = product.variants.filter((v) => v.active);
+              const distinctPrices = new Set(activeVariants.map((v) => v.price)).size;
+              return (
+                <div
+                  key={product.id}
+                  style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }}
+                  className="row-rise p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
+                      {defaultVariant?.imageUrl ? (
+                        <img src={defaultVariant.imageUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[8px] font-bold text-text-muted">{defaultVariant?.code ?? '—'}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium min-w-0">{product.name}</p>
+                        <span className="text-sm font-semibold shrink-0 tabular-nums">
+                          {defaultVariant ? (distinctPrices > 1 ? `From ${formatPrice(defaultVariant.price)}` : formatPrice(defaultVariant.price)) : '—'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {product.category.name} · {totalStock(product)} in stock
+                      </p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {activeVariants.length > 0
+                          ? activeVariants.map((v) => v.size || v.code).join(', ')
+                          : <span className="text-danger">No active variants</span>}
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap mt-2">
+                        <button onClick={() => handleToggleActive(product)} className="cursor-pointer">
+                          <Badge className={product.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                            {product.active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </button>
+                        {product.featured && <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-medium">Featured</span>}
+                        {product.addOnOnly && <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-medium">Add-on only</span>}
+                        <span className="flex-1" />
+                        <Link href={`/admin/products/${product.id}`} className="p-1.5 hover:bg-surface-elevated rounded cursor-pointer inline-flex" title="Edit">
+                          <Pencil className="w-4 h-4 text-text-muted" />
+                        </Link>
+                        <button onClick={() => handleDelete(product)} className="p-1.5 hover:bg-red-50 rounded cursor-pointer" title="Deactivate">
+                          <Trash2 className="w-4 h-4 text-text-muted hover:text-danger" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <table className="w-full text-sm hidden lg:table">
             <thead>
               <tr className="border-b border-border bg-surface-elevated">
                 <SortHeader label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleSort} />

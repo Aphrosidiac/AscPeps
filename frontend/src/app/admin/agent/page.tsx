@@ -219,7 +219,9 @@ export default function AgentPage() {
   const phase = PHASE_COPY[status?.phase ?? 'idle'] ?? { label: status?.phase ?? '—', tone: 'text-text-secondary' };
 
   return (
-    <div className="space-y-8 p-6 md:p-8">
+    // No padding of its own — the admin <main> already pads every page, and
+    // doubling it cost this one 48px of a 375px screen.
+    <div className="space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-text-primary">
@@ -602,7 +604,10 @@ export default function AgentPage() {
 
       {/* ---- Activity ---- */}
       <Animate variant="fadeUp" delay={0.15}>
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* min-w-0 on the children: a grid item defaults to min-width:auto, so a
+          row holding an unbreakable tool name and phone number widened the
+          track past the page and pushed the whole layout sideways. */}
+      <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         <section className="rounded-xl border border-border bg-surface p-6">
           <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
             <Wrench className="h-5 w-5" /> Recent actions

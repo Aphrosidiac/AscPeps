@@ -27,12 +27,15 @@ export default function AdminExpensesPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [partners, setPartners] = useState<PartnerBalance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [closingForm, setClosingForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Every setState here happens in a promise callback, never synchronously in
+  // the effect body — the retry button is what re-arms `loading`.
   const load = useCallback(() => {
     if (!token) return;
     Promise.all([adminGetExpenses(token), adminGetFinanceOverview(token)])
@@ -40,10 +43,13 @@ export default function AdminExpensesPage() {
         setExpenses(e.expenses);
         setCategories(e.categories);
         setPartners(o.partners.filter((p) => p.active));
+        setLoadFailed(false);
       })
-      .catch(() => {})
+      .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
   }, [token]);
+
+  const retry = () => { setLoading(true); setLoadFailed(false); load(); };
 
   useEffect(() => { load(); }, [load]);
 
@@ -105,8 +111,11 @@ export default function AdminExpensesPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="flex items-start gap-3">
+      {/* Stacks on phones: "Company Spending" plus the back arrow plus the
+          button need more than 375px, and squeezing them onto one row clipped
+          the button. */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
+        <div className="flex items-start gap-3 min-w-0">
           <Link
             href="/admin/finance"
             aria-label="Back to finance"
@@ -124,7 +133,7 @@ export default function AdminExpensesPage() {
         {!adding && (
           <button
             onClick={() => { setAdding(true); setError(''); }}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer shrink-0 self-start"
           >
             <Plus className="w-4 h-4" /> Add expense
           </button>
@@ -209,6 +218,13 @@ export default function AdminExpensesPage() {
         <div className="animate-pulse space-y-3">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 bg-surface-elevated rounded-xl" />)}
         </div>
+      ) : loadFailed ? (
+        <div className="text-center py-16">
+          <Receipt className="w-10 h-10 text-text-muted mx-auto mb-3" />
+          <p className="text-text-muted mb-1">Could not load spending.</p>
+          <p className="text-sm text-text-muted mb-4">The request failed or timed out.</p>
+          <button onClick={retry} className="text-sm font-medium text-primary underline cursor-pointer">Try again</button>
+        </div>
       ) : expenses.length === 0 ? (
         <div className="text-center py-16">
           <Receipt className="w-10 h-10 text-text-muted mx-auto mb-3" />
@@ -219,7 +235,45 @@ export default function AdminExpensesPage() {
         </div>
       ) : (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Cards on phones — the table needs ~760px, so Amount and the delete
+              control were both off the right edge on a 375px screen. */}
+          <div className="divide-y divide-border md:hidden">
+            {expenses.map((e, i) => (
+              <div
+                key={e.id}
+                style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+                className="row-rise px-4 py-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-sm min-w-0">{e.description}</p>
+                  <div className="flex items-baseline gap-1 shrink-0">
+                    <span className="text-sm font-semibold tabular-nums">{formatPrice(e.amount)}</span>
+                    <button onClick={() => remove(e.id)} aria-label={`Delete ${e.description}`}
+                      className="p-1 -mr-1 rounded-lg text-text-muted hover:text-danger transition-colors cursor-pointer">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs text-text-muted">
+                  <span className="px-2 py-0.5 rounded-full bg-surface-elevated">{e.category}</span>
+                  <span>{formatShortDate(e.occurredAt)}</span>
+                  <span>·</span>
+                  {e.paidBy ? (
+                    <span>
+                      {e.paidBy.name}
+                      <span className={cn(e.funding?.type === 'ADVANCE' ? 'text-warning' : 'text-text-muted')}>
+                        {e.funding?.type === 'ADVANCE' ? ' · owed back' : ' · investment'}
+                      </span>
+                    </span>
+                  ) : (
+                    <span>Company account</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm min-w-[760px]">
               <thead>
                 <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">

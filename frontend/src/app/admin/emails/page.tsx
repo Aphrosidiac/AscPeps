@@ -27,10 +27,12 @@ const STATUS_TAB_LABELS: Record<StatusTab, string> = {
 
 // The three top-level sections this page is split into — kept separate so
 // each reads as one focused screen instead of one long scroll.
+// `short` is the phone label — the three full labels plus their icons overrun
+// a 375px bar, and a tab bar that scrolls swallows the tap meant to switch it.
 const MAIN_TABS = [
-  { key: 'list', label: 'Email List', icon: ListChecks },
-  { key: 'content', label: 'Email Content', icon: FileEdit },
-  { key: 'preview', label: 'Template Preview', icon: Eye },
+  { key: 'list', label: 'Email List', short: 'List', icon: ListChecks },
+  { key: 'content', label: 'Email Content', short: 'Content', icon: FileEdit },
+  { key: 'preview', label: 'Template Preview', short: 'Preview', icon: Eye },
 ] as const;
 type MainTab = (typeof MAIN_TABS)[number]['key'];
 
@@ -224,14 +226,18 @@ function AdminEmailsContent() {
           <button
             key={t.key}
             onClick={() => setMainTab(t.key)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer whitespace-nowrap ${
+            aria-label={t.label}
+            // Tighter padding below sm so the tabs fit a phone rather than
+            // scrolling sideways under the finger meant to switch them.
+            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer whitespace-nowrap ${
               mainTab === t.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-secondary hover:text-text-primary'
             }`}
           >
             <t.icon className="w-4 h-4" />
-            {t.label}
+            <span className="sm:hidden">{t.short}</span>
+            <span className="hidden sm:inline">{t.label}</span>
             {t.key === 'list' && (stats?.failed ?? 0) > 0 && (
               <span className="px-1.5 py-px rounded-full text-[10px] font-semibold bg-danger text-white">{stats!.failed}</span>
             )}
@@ -351,8 +357,45 @@ function EmailListTab({
         </div>
       ) : (
         <>
-          <div className="bg-surface rounded-xl border border-border overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="bg-surface rounded-xl border border-border overflow-hidden lg:overflow-x-auto">
+            {/* Seven whitespace-nowrap columns want ~1080px. On a phone that
+                meant everything past Type — including Status, the reason you
+                open this page — was behind a scrollbar. */}
+            <div className="divide-y divide-border lg:hidden">
+              {rows.map((row) => {
+                const { text, className } = emailStatusText(row);
+                const isRetrying = retrying === row.id;
+                return (
+                  <div key={row.id} className="px-4 py-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <Link href={`/admin/orders?orderId=${row.order.id}`} className="font-display font-semibold hover:text-primary transition-colors">
+                        {row.order.orderNumber}
+                      </Link>
+                      <span className={`${className} shrink-0 text-sm`} title={row.lastError ?? undefined}>{text}</span>
+                    </div>
+                    <p className="text-sm font-medium mt-0.5">{EMAIL_TYPE_LABELS[row.type]}</p>
+                    <p className="text-xs text-text-secondary break-all">{row.toEmail}</p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {formatDate(row.sentAt ?? row.createdAt)} · {row.attempts} attempt{row.attempts === 1 ? '' : 's'}
+                      {(row.status === 'PENDING' || row.status === 'FAILED') && (
+                        <> · next {formatDate(row.nextAttemptAt)}</>
+                      )}
+                    </p>
+                    {row.status === 'FAILED' && (
+                      <button
+                        onClick={() => handleRetryRow(row)}
+                        disabled={isRetrying}
+                        className="mt-2 px-2 py-0.5 bg-surface-elevated text-text-secondary rounded text-xs font-medium hover:bg-border hover:text-text-primary transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {isRetrying ? 'Queuing...' : 'Retry'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <table className="w-full text-sm hidden lg:table">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-4 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Order #</th>

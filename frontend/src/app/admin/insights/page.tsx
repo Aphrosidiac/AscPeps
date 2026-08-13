@@ -85,29 +85,37 @@ export default function AdminInsightsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-elevated">
-                <th className="px-4 py-3 text-left font-medium text-text-secondary">Title</th>
-                <th className="px-4 py-3 text-left font-medium text-text-secondary">Category</th>
-                <th className="px-4 py-3 text-left font-medium text-text-secondary">Author</th>
-                <th className="px-4 py-3 text-center font-medium text-text-secondary">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-text-secondary">Date</th>
-                <th className="text-center px-4 py-3 font-medium text-text-secondary">Actions</th>
+                <th className="px-3 sm:px-4 py-3 text-left font-medium text-text-secondary">Title</th>
+                {/* Category, author and date fold under the title on a phone —
+                    six columns put Status and Actions off the right edge. */}
+                <th className="px-4 py-3 text-left font-medium text-text-secondary hidden lg:table-cell">Category</th>
+                <th className="px-4 py-3 text-left font-medium text-text-secondary hidden lg:table-cell">Author</th>
+                <th className="px-2 sm:px-4 py-3 text-center font-medium text-text-secondary">Status</th>
+                <th className="px-4 py-3 text-left font-medium text-text-secondary hidden md:table-cell">Date</th>
+                <th className="text-center px-2 sm:px-4 py-3 font-medium text-text-secondary">Actions</th>
               </tr>
             </thead>
             <tbody>
               {displayed.map((insight, rowIndex) => (
                 <tr key={insight.id} style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }} className="row-rise border-b border-border last:border-0 hover:bg-surface-elevated/50 transition-colors">
-                  <td className="px-4 py-3 font-medium max-w-xs truncate">{insight.title}</td>
-                  <td className="px-4 py-3 text-text-secondary text-xs">{insight.category}</td>
-                  <td className="px-4 py-3 text-text-secondary text-xs">{insight.authorName}</td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 sm:px-4 py-3 font-medium lg:max-w-xs lg:truncate">
+                    {insight.title}
+                    <span className="block lg:hidden text-xs font-normal text-text-muted mt-0.5">
+                      {insight.category} · {insight.authorName}
+                      <span className="md:hidden"> · {formatShortDate(insight.publishedAt ?? insight.createdAt)}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-text-secondary text-xs hidden lg:table-cell">{insight.category}</td>
+                  <td className="px-4 py-3 text-text-secondary text-xs hidden lg:table-cell">{insight.authorName}</td>
+                  <td className="px-2 sm:px-4 py-3 text-center">
                     <Badge className={insight.published ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
                       {insight.published ? 'Published' : 'Draft'}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-text-secondary text-xs">
+                  <td className="px-4 py-3 text-text-secondary text-xs hidden md:table-cell">
                     {formatShortDate(insight.publishedAt ?? insight.createdAt)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 sm:px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
                       <Link href={`/admin/insights/${insight.id}`} className="p-1.5 hover:bg-surface-elevated rounded cursor-pointer inline-flex" title="Edit">
                         <Pencil className="w-4 h-4 text-text-muted" />

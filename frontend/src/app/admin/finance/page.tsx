@@ -57,14 +57,17 @@ export default function AdminFinancePage() {
   const [partnerError, setPartnerError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Every setState here happens in a promise callback, never synchronously in
+  // the effect body — the retry button is what re-arms `loading`.
   const load = useCallback(() => {
     if (!token) return;
-    setError(false);
     adminGetFinanceOverview(token)
-      .then(setData)
+      .then((d) => { setData(d); setError(false); })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [token]);
+
+  const retry = () => { setLoading(true); setError(false); load(); };
 
   useEffect(() => { load(); }, [load]);
 
@@ -74,7 +77,7 @@ export default function AdminFinancePage() {
       <div className="text-center py-16">
         <Wallet className="w-10 h-10 text-text-muted mx-auto mb-3" />
         <p className="text-text-muted mb-4">Failed to load finance data.</p>
-        <button onClick={load} className="text-sm font-medium text-primary underline cursor-pointer">Try again</button>
+        <button onClick={retry} className="text-sm font-medium text-primary underline cursor-pointer">Try again</button>
       </div>
     );
   }
@@ -192,7 +195,71 @@ export default function AdminFinancePage() {
             <h2 className="font-display font-semibold">Partners</h2>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Phones get a card per partner. The table wants ~820px, so on a
+              375px screen everything from "Capital fronted" rightwards — Owed
+              included, which is the number this page exists to report — sat off
+              the right edge behind a scrollbar. */}
+          <div className="divide-y divide-border lg:hidden">
+            {data.partners.map((p) => (
+              <div key={p.partnerId} className="px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/admin/finance/partners/${p.partnerId}`}
+                      className="font-medium hover:text-primary hover:underline transition-colors"
+                    >
+                      {p.name}
+                    </Link>
+                    {!p.active && <span className="ml-2 text-xs text-text-muted">inactive</span>}
+                    {p.removable && (
+                      <button
+                        onClick={() => handleRemovePartner(p.partnerId, p.name)}
+                        disabled={removingPartner === p.partnerId}
+                        title={`Remove ${p.name} — nothing is recorded against them`}
+                        className="ml-2 text-xs text-text-muted hover:text-danger transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {removingPartner === p.partnerId ? 'removing…' : 'remove'}
+                      </button>
+                    )}
+                    <p className="text-xs text-text-muted mt-0.5">Owed</p>
+                  </div>
+                  <span className={cn(
+                    'font-display text-lg font-bold tabular-nums shrink-0',
+                    p.owed < 0 ? 'text-danger' : ''
+                  )}>
+                    {formatPrice(p.owed)}
+                  </span>
+                </div>
+
+                {/* One column on phones. Two columns of label-plus-figure only
+                    left ~85px per label at 375px, which wrapped "Capital
+                    fronted" onto two lines and clipped "Advances outstanding".
+                    Skipped entirely for a partner with nothing recorded — five
+                    RM0.00 rows each is a screenful of nothing on a phone, and
+                    these are usually the typo rows waiting to be removed. */}
+                {(p.earned || p.capitalFronted || p.advancesOutstanding || p.paidOut || p.contributed) ? (
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mt-3 text-xs">
+                    {[
+                      ['Earned', formatPrice(p.earned)],
+                      ['Capital fronted', formatPrice(p.capitalFronted)],
+                      ['Advances outstanding', formatPrice(p.advancesOutstanding)],
+                      ['Paid out', p.paidOut > 0 ? `−${formatPrice(p.paidOut)}` : formatPrice(0)],
+                      ['Contributed', formatPrice(p.contributed)],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-baseline justify-between gap-2">
+                        <dt className="text-text-muted">{label}</dt>
+                        <dd className="tabular-nums text-text-secondary">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="text-xs text-text-muted mt-1">Nothing recorded yet.</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-sm min-w-[820px]">
               <thead>
                 <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
@@ -279,23 +346,38 @@ export default function AdminFinancePage() {
               {data.recentActivity.map((a) => {
                 const style = ACTIVITY_STYLES[a.kind];
                 return (
-                  <div key={`${a.kind}-${a.id}`} className="flex items-center justify-between gap-4 px-5 py-3">
-                    <div className="min-w-0 flex items-center gap-3">
-                      {/* Fixed width so every row's text starts at the same x —
-                          "Spending" and "Contribution" are very different
-                          lengths, and left-aligning to the chip made the list
-                          look ragged. */}
-                      <span
-                        className={cn(
-                          'w-24 shrink-0 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-medium',
-                          style.chip
-                        )}
-                      >
-                        {style.label}
-                      </span>
-                      <div className="min-w-0">
+                  <div key={`${a.kind}-${a.id}`} className="flex items-start gap-3 px-5 py-3">
+                    {/* Fixed width so every row's text starts at the same x —
+                        "Spending" and "Contribution" are very different
+                        lengths, and left-aligning to the chip made the list
+                        look ragged. Dropped on phones, where 96px of the 375
+                        available left the description truncating to two words;
+                        there it moves down onto the meta line instead. */}
+                    <span
+                      className={cn(
+                        'hidden sm:inline-flex w-24 shrink-0 items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-medium',
+                        style.chip
+                      )}
+                    >
+                      {style.label}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-3">
                         <p className="text-sm font-medium truncate">{a.description}</p>
-                        <p className="text-xs text-text-muted truncate">
+                        <p className={cn('text-sm font-semibold shrink-0 tabular-nums', a.direction === 'IN' ? 'text-success' : '')}>
+                          {a.direction === 'IN' ? '+' : '−'}{formatPrice(a.amount)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={cn(
+                            'sm:hidden inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium',
+                            style.chip
+                          )}
+                        >
+                          {style.label}
+                        </span>
+                        <span className="min-w-0">
                           {[
                             a.category,
                             formatShortDate(a.occurredAt),
@@ -306,12 +388,9 @@ export default function AdminFinancePage() {
                           ]
                             .filter(Boolean)
                             .join(' · ')}
-                        </p>
-                      </div>
+                        </span>
+                      </p>
                     </div>
-                    <p className={cn('text-sm font-semibold shrink-0 tabular-nums', a.direction === 'IN' ? 'text-success' : '')}>
-                      {a.direction === 'IN' ? '+' : '−'}{formatPrice(a.amount)}
-                    </p>
                   </div>
                 );
               })}

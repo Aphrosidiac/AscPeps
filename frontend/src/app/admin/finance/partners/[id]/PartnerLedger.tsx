@@ -39,21 +39,35 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
   const [data, setData] = useState<PartnerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Distinct from notFound: a partner that genuinely isn't there is a dead end,
+  // a request that timed out or failed is worth retrying. Collapsing the two
+  // told people "Partner not found" about a partner that exists.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [repayingId, setRepayingId] = useState<string | null>(null);
   const [repayAmount, setRepayAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // Every setState here happens in a promise callback, never synchronously in
+  // the effect body — the retry button is what re-arms `loading`.
   const load = useCallback(() => {
     if (!token) return;
     adminGetPartner(token, partnerId)
-      .then(setData)
-      .catch(() => setNotFound(true))
+      .then((d) => { setData(d); setNotFound(false); setLoadFailed(false); })
+      .catch((err: unknown) => {
+        const status = err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : undefined;
+        if (status === 404) setNotFound(true);
+        else setLoadFailed(true);
+      })
       .finally(() => setLoading(false));
   }, [token, partnerId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const retry = () => { setLoading(true); setLoadFailed(false); load(); };
 
   const apiError = (err: unknown, fallback: string) => {
     const message = err && typeof err === 'object' && 'response' in err
@@ -102,6 +116,19 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
         <div className="h-10 w-56 bg-surface-elevated rounded-lg" />
         <div className="h-40 bg-surface-elevated rounded-xl" />
         <div className="h-64 bg-surface-elevated rounded-xl" />
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-text-muted mb-1">Could not load this partner.</p>
+        <p className="text-sm text-text-muted mb-4">The request failed or timed out.</p>
+        <div className="flex items-center justify-center gap-4">
+          <button onClick={retry} className="text-sm font-medium text-primary underline cursor-pointer">Try again</button>
+          <Link href="/admin/finance" className="text-sm font-medium text-text-muted hover:text-text-primary">Back to Finance</Link>
+        </div>
       </div>
     );
   }
@@ -213,8 +240,8 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
 
                   {!settled && (
                     repayingId === f.id ? (
-                      <div className="flex items-center gap-2 mt-3">
-                        <div className="relative w-36">
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        <div className="relative w-32 sm:w-36">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
                           <input
                             type="number"
@@ -320,38 +347,63 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
         {earnings.length === 0 ? (
           <p className="px-5 py-6 text-sm text-text-muted text-center">No orders with a split yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[520px]">
-              <thead>
-                <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
-                  <th className="text-left px-5 py-2.5">Order</th>
-                  <th className="text-left px-3 py-2.5">Date</th>
-                  <th className="text-right px-3 py-2.5">Share</th>
-                  <th className="text-right px-3 py-2.5">Order profit</th>
-                  <th className="text-right px-5 py-2.5">Their cut</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {earnings.map((e) => (
-                  <tr key={e.orderId}>
-                    <td className="px-5 py-2.5">
-                      <Link href={`/admin/orders/${e.orderId}`} className="font-medium hover:text-primary hover:underline transition-colors">
-                        {e.orderNumber}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2.5 text-text-muted">{formatShortDate(e.occurredAt)}</td>
-                    <td className="px-3 py-2.5 text-right text-text-secondary">{bpsToPercent(e.shareBps)}%</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-text-secondary">
-                      {e.costed ? formatPrice(e.orderProfit) : <span className="text-text-muted">not costed</span>}
-                    </td>
-                    <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
+          <>
+            {/* Phones get stacked cards rather than a scrolled-off table. The
+                table needed ~520px to lay out, so on a 375px screen "Their cut"
+                — the only number anyone opens this page for — sat past the
+                right edge behind a scrollbar most people never found. */}
+            <div className="divide-y divide-border sm:hidden">
+              {earnings.map((e) => (
+                <div key={e.orderId} className="px-5 py-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <Link href={`/admin/orders/${e.orderId}`} className="font-medium text-sm hover:text-primary hover:underline transition-colors">
+                      {e.orderNumber}
+                    </Link>
+                    <span className="text-sm font-semibold tabular-nums shrink-0">
                       {e.costed ? formatPrice(e.amount) : <span className="text-text-muted font-normal">—</span>}
-                    </td>
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-muted mt-1">
+                    {formatShortDate(e.occurredAt)} · {bpsToPercent(e.shareBps)}% of{' '}
+                    {e.costed ? formatPrice(e.orderProfit) : 'an order not costed yet'}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
+                    <th className="text-left px-5 py-2.5">Order</th>
+                    <th className="text-left px-3 py-2.5">Date</th>
+                    <th className="text-right px-3 py-2.5">Share</th>
+                    <th className="text-right px-3 py-2.5">Order profit</th>
+                    <th className="text-right px-5 py-2.5">Their cut</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {earnings.map((e) => (
+                    <tr key={e.orderId}>
+                      <td className="px-5 py-2.5">
+                        <Link href={`/admin/orders/${e.orderId}`} className="font-medium hover:text-primary hover:underline transition-colors">
+                          {e.orderNumber}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">{formatShortDate(e.occurredAt)}</td>
+                      <td className="px-3 py-2.5 text-right text-text-secondary">{bpsToPercent(e.shareBps)}%</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-text-secondary">
+                        {e.costed ? formatPrice(e.orderProfit) : <span className="text-text-muted">not costed</span>}
+                      </td>
+                      <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
+                        {e.costed ? formatPrice(e.amount) : <span className="text-text-muted font-normal">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

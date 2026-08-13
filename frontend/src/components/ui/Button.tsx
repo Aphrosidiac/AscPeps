@@ -24,7 +24,12 @@ export function Button({ variant = 'primary', size = 'md', className, ...props }
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
+        // whitespace-nowrap: squeezed next to a heading on a phone, buttons
+        // were wrapping their own labels onto two and three lines ("Manage
+        // Featured Order" became a paragraph). A button that won't fit should
+        // move to the next line, not fold in on itself — the layouts around it
+        // wrap, so that is what happens.
+        'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap',
         variants[variant],
         sizes[size],
         className

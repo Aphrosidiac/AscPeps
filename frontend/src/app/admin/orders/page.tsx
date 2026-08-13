@@ -270,8 +270,12 @@ function AdminOrdersContent() {
                 style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }}
                 className={`row-rise bg-surface rounded-xl border transition-all ${isExpanded ? 'border-primary/30 shadow-sm' : 'border-border hover:border-border-hover'}`}
               >
+                {/* Stacks below sm. The left column is fixed at 9.5rem and the
+                    badge column runs to ~250px, which together overflow a 375px
+                    row — and because neither side may shrink, the badges landed
+                    on top of the order number rather than pushing it aside. */}
                 <div
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0 p-4 cursor-pointer hover:bg-surface-elevated/50 transition-colors"
                   onClick={() => { setExpandedOrder(isExpanded ? null : order.id); setTrackingError(null); }}
                 >
                   <div className="flex items-center gap-4 sm:gap-6 min-w-0 flex-1">
@@ -279,7 +283,7 @@ function AdminOrdersContent() {
                         ("ASC2607/020" vs "ASC2608/0022") and letting the column
                         size to its content pushed every customer name to a
                         different x. */}
-                    <div className="w-[9.5rem] shrink-0">
+                    <div className="min-w-0 flex-1 sm:flex-none sm:w-[9.5rem] sm:shrink-0">
                       {/* The order number is the way into the full detail page;
                           the rest of the row still toggles the inline expand,
                           so stop the click here from doing both. */}
@@ -291,6 +295,10 @@ function AdminOrdersContent() {
                         {order.orderNumber}
                       </Link>
                       <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
+                      {/* The customer has their own column from sm up. Below
+                          that it folds in here, so a phone row still says who
+                          the order is for. */}
+                      <p className="sm:hidden text-xs text-text-muted truncate">{order.customerName}</p>
                     </div>
                     <div className="hidden sm:block min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{order.customerName}</p>
@@ -324,8 +332,17 @@ function AdminOrdersContent() {
                         <span className="truncate">{failure.label}</span>
                       </span>
                     )}
+                    {/* The total has its own slot in the badge column from sm
+                        up; on a phone that column wraps underneath, so it rides
+                        along here to stay on the order's own line. */}
+                    <p className="sm:hidden font-display font-bold shrink-0">{formatPrice(order.total)}</p>
+                    {/* Rides with the total on a phone. Left in the badge group
+                        it wrapped onto a line of its own under the badges. */}
+                    <span className="sm:hidden shrink-0 text-text-muted">
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap sm:flex-nowrap">
                     <p className="font-display font-bold hidden sm:block">{formatPrice(order.total)}</p>
                     <Badge className={`w-24 justify-center ${ORDER_STATUS_COLORS[order.status]}`}>{ORDER_STATUS_LABELS[order.status]}</Badge>
                     <Badge className={`hidden sm:inline-flex w-20 justify-center ${PAYMENT_STATUS_COLORS[order.paymentStatus]}`}>{order.paymentStatus}</Badge>
@@ -358,7 +375,9 @@ function AdminOrdersContent() {
                       />
                       Profit Shared
                     </label>
-                    {isExpanded ? <ChevronUp className="w-4 h-4 text-text-muted shrink-0" /> : <ChevronDown className="w-4 h-4 text-text-muted shrink-0" />}
+                    {isExpanded
+                      ? <ChevronUp className="hidden sm:block w-4 h-4 text-text-muted shrink-0" />
+                      : <ChevronDown className="hidden sm:block w-4 h-4 text-text-muted shrink-0" />}
                   </div>
                 </div>
 

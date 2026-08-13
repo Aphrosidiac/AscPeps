@@ -76,12 +76,14 @@ export default function AdminCampaignsPage() {
   return (
     <div>
       <Animate variant="fadeUp">
-        <div className="flex items-center justify-between mb-6">
+        {/* Stacks below sm — beside the heading the button had to wrap its own
+            label onto two lines and squeezed the subtitle. */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="font-display text-2xl font-bold">Campaigns</h1>
             <p className="text-sm text-text-muted mt-0.5">Newsletters and announcements to the list</p>
           </div>
-          <Button onClick={handleCreate} disabled={creating}>
+          <Button onClick={handleCreate} disabled={creating} className="self-start shrink-0 whitespace-nowrap">
             <Plus className="w-4 h-4" /> New campaign
           </Button>
         </div>

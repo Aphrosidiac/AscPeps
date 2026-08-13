@@ -25,11 +25,14 @@ import type { Order, OrderEmail } from '@/types';
 // the tab bar are two views of the same sections and stay in sync; clicking
 // either moves both. Order Complete is read-only and reports only what has
 // actually been saved, which is why it reads as a summary rather than a form.
+// `short` is what the tab bar uses on phones. The four full labels plus their
+// gaps run to ~460px, so on a 375px screen the bar scrolled sideways and the
+// last tab sat off the edge — and a tap meant to switch tabs just scrolled it.
 const STEPS = [
-  { key: 'info', label: 'Order Info' },
-  { key: 'detail', label: 'Order Detail' },
-  { key: 'profit', label: 'Profit Sharing' },
-  { key: 'complete', label: 'Order Complete' },
+  { key: 'info', label: 'Order Info', short: 'Info' },
+  { key: 'detail', label: 'Order Detail', short: 'Detail' },
+  { key: 'profit', label: 'Profit Sharing', short: 'Profit' },
+  { key: 'complete', label: 'Order Complete', short: 'Complete' },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]['key'];
@@ -220,7 +223,11 @@ export function OrderDetail({ orderId }: { orderId: string }) {
         </button>
       </div>
 
-      {/* Stepper */}
+      {/* Stepper. The four labels are ~95px each and set whitespace-nowrap, so
+          on a 375px screen they forced the row wider than its card and pushed
+          "Order Complete" off the right edge. Phones get the circles and the
+          connecting track only, with the current step named underneath — the
+          tab bar below is the labelled way to move between them there. */}
       <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface border border-border rounded-xl p-5 sm:p-6 mb-6">
         <div className="flex items-start">
           {STEPS.map((s, i) => {
@@ -231,6 +238,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
                 <button
                   onClick={() => setStep(s.key)}
                   aria-current={isActive ? 'step' : undefined}
+                  aria-label={s.label}
                   className="flex flex-col items-center gap-2 cursor-pointer group shrink-0"
                 >
                   <span
@@ -245,7 +253,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
                     {i + 1}
                   </span>
                   <span
-                    className={`text-xs text-center whitespace-nowrap transition-colors ${
+                    className={`hidden sm:block text-xs text-center whitespace-nowrap transition-colors ${
                       isActive ? 'font-semibold text-text-primary' : 'text-text-muted group-hover:text-text-secondary'
                     }`}
                   >
@@ -259,22 +267,29 @@ export function OrderDetail({ orderId }: { orderId: string }) {
             );
           })}
         </div>
+        <p className="sm:hidden text-center text-xs font-semibold mt-3">
+          Step {activeIndex + 1} of {STEPS.length} — {STEPS[activeIndex].label}
+        </p>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-border mb-6 overflow-x-auto">
-        <div className="flex gap-6 min-w-max">
+      <div className="border-b border-border mb-6 sm:overflow-x-auto">
+        <div className="flex justify-between gap-2 sm:justify-start sm:gap-6 sm:min-w-max">
           {STEPS.map((s) => (
             <button
               key={s.key}
               onClick={() => setStep(s.key)}
+              // Spelled out, so the abbreviated phone label doesn't become the
+              // accessible name.
+              aria-label={s.label}
               className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer whitespace-nowrap ${
                 step === s.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-muted hover:text-text-primary'
               }`}
             >
-              {s.label}
+              <span className="sm:hidden">{s.short}</span>
+              <span className="hidden sm:inline">{s.label}</span>
             </button>
           ))}
         </div>
@@ -358,7 +373,28 @@ function OrderInfoTab({ order }: { order: Order }) {
 
       {/* Items */}
       <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Four columns each carrying 40px of horizontal padding leaves the
+            item name nothing on a phone, so the row scrolled sideways and the
+            line total — the figure you scan for — went with it. */}
+        <div className="divide-y divide-border sm:hidden">
+          {order.items.map((item) => (
+            <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                </p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  <span className="font-mono">{item.variant.code}</span> · {item.quantity} × {formatPrice(item.unitPrice)}
+                </p>
+              </div>
+              <span className="text-sm font-semibold shrink-0 tabular-nums">
+                {formatPrice(item.unitPrice * item.quantity)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
@@ -819,7 +855,59 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           <Package className="w-4 h-4 text-text-muted" />
           <h2 className="text-sm font-semibold">Item Costs</h2>
         </div>
-        <div className="overflow-x-auto">
+        {/* Six columns, one of them an editable input, do not fit a phone: the
+            unit-cost box — the only thing on this card you actually type into —
+            was cut in half by the right edge. Stacked per item instead. */}
+        <div className="divide-y divide-border md:hidden">
+          {order.items.map((item) => {
+            const lineRevenue = item.unitPrice * item.quantity;
+            const cost = lineCost(item.id, item.quantity);
+            const lineProfit = cost === null ? null : lineRevenue - cost;
+            return (
+              <div key={item.id} className="px-4 py-3">
+                <p className="text-sm font-medium">
+                  {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                  <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
+                </p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Qty {item.quantity} · {formatPrice(lineRevenue)} revenue
+                </p>
+                <div className="flex items-end justify-between gap-3 mt-2">
+                  <label className="min-w-0">
+                    <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Unit cost</span>
+                    <span className="relative block w-32">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={itemCosts[item.id] ?? ''}
+                        onChange={(e) => { setItemCosts((p) => ({ ...p, [item.id]: e.target.value })); touch(); }}
+                        placeholder="0.00"
+                        aria-label={`Unit cost for ${item.variant.product.name}`}
+                        className="w-full pl-9 pr-2 py-1.5 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </span>
+                  </label>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs text-text-muted">
+                      {cost === null ? 'Line cost —' : `Line cost ${formatPrice(cost)}`}
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {lineProfit === null ? (
+                        <span className="text-text-muted font-normal">—</span>
+                      ) : (
+                        <span className={lineProfit < 0 ? 'text-danger' : 'text-success'}>{formatPrice(lineProfit)}</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
@@ -912,7 +1000,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                     aria-label={`Extra cost ${i + 1} label`}
                     className="flex-1 min-w-0 px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
-                  <div className="relative w-36 shrink-0">
+                  {/* Narrower on phones so the label field beside it keeps
+                      enough room to read what you've typed. */}
+                  <div className="relative w-28 sm:w-36 shrink-0">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">RM</span>
                     <input
                       type="number"
@@ -1008,9 +1098,18 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
               <span className="w-7 shrink-0" />
             </div>
 
+            {/* One flex row needed ~430px of fixed widths (112 + 128 + 112 + a
+                button + gaps) before the name field got anything, so on a phone
+                the name collapsed to an empty sliver and you could not tell who
+                a row belonged to. Phones get a bordered card per person laid out
+                on three lines; `sm:contents` dissolves the grouping wrappers at
+                sm and up so the original single-row layout is unchanged. */}
             <div className="space-y-3">
               {shares.map((row, i) => (
-                <div key={i} className="flex items-center gap-3">
+                <div
+                  key={i}
+                  className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-border p-3 sm:flex sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:p-0"
+                >
                   <input
                     type="text"
                     value={row.name}
@@ -1018,9 +1117,17 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                     placeholder="Name"
                     maxLength={60}
                     aria-label={`Person ${i + 1} name`}
-                    className="flex-1 min-w-0 px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    className="min-w-0 sm:flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
-                  <div className="relative w-28 shrink-0">
+                  <button
+                    onClick={() => { setShares((p) => splitEvenly(p.filter((_, j) => j !== i))); touch(); }}
+                    aria-label={`Remove person ${i + 1}`}
+                    className="justify-self-end p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0 sm:order-last"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <div className="col-span-2 flex items-center gap-2 sm:contents">
+                  <div className="relative flex-1 sm:flex-none sm:w-28 shrink-0">
                     <input
                       type="number"
                       min="0"
@@ -1036,7 +1143,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                   {/* What this person paid up front to cover the order's
                       costs. Returned to them on top of their profit cut — it is
                       money owed back, not a charge. */}
-                  <div className="relative w-32 shrink-0">
+                  <div className="relative flex-1 sm:flex-none sm:w-32 shrink-0">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
                     <input
                       type="number"
@@ -1052,7 +1159,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                       className="w-full pl-9 pr-2 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
-                  <span className="w-28 shrink-0 text-right text-sm font-semibold">
+                  </div>
+                  {/* Take-home gets its own line on a phone, labelled — a bare
+                      figure in a third column has no header to explain it once
+                      the desktop header row is hidden. */}
+                  <div className="col-span-2 flex items-baseline justify-between gap-2 sm:contents">
+                  <span className="text-xs text-text-muted sm:hidden">Take-home</span>
+                  <span className="text-right text-sm font-semibold sm:w-28 sm:shrink-0">
                     {shareNet(i) === null ? (
                       <span className="text-text-muted">—</span>
                     ) : (
@@ -1071,19 +1184,16 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                       </>
                     )}
                   </span>
-                  <button
-                    onClick={() => { setShares((p) => splitEvenly(p.filter((_, j) => j !== i))); touch(); }}
-                    aria-label={`Remove person ${i + 1}`}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-border">
-              <div className="flex gap-2">
+            {/* Stacks on phones — the reconciliation line underneath the total
+                ("RM120 put in of RM300 costs — RM180 unaccounted for") is a
+                full sentence and had no room beside the two buttons. */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, capital: '' }])); touch(); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
@@ -1097,7 +1207,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                   Split evenly
                 </button>
               </div>
-              <div className="text-right">
+              <div className="sm:text-right">
                 <p className={`text-sm font-medium ${totalBps === 10_000 ? 'text-success' : 'text-danger'}`}>
                   {bpsToPercent(totalBps)}%{totalBps !== 10_000 && ' — must be 100%'}
                 </p>

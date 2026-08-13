@@ -159,7 +159,10 @@ export default function DeliveryPage() {
   };
 
   return (
-    <div className="space-y-8 p-6 md:p-8">
+    // No padding of its own: the admin <main> already pads every page, and
+    // adding p-6 on top left this one with 295px of a 375px screen while every
+    // sibling page got 343.
+    <div className="space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-text-primary">
