@@ -1,4 +1,5 @@
 import { absoluteImageUrl, isSaleActive, getEffectivePrice } from '@/lib/utils';
+import { eastFeeDiffers } from '@/lib/shipping-region';
 
 // Shared single escaping point for every JSON-LD emission on the site.
 // JSON.stringify alone is NOT safe inside a <script> tag: a stored value
@@ -133,8 +134,13 @@ interface ProductGroupJsonLdProps {
   // itself an image instead of leaving that only on the nested variants.
   image?: string | null;
   // Flat shipping fee in whole MYR (e.g. "10.0"), or empty/"0" for free —
-  // mirrors the settings.shipping_fee value already used on-page.
+  // mirrors the settings.shipping_fee value already used on-page. Applies to
+  // Peninsular Malaysia.
   shippingFee: string;
+  // Shipping fee in whole MYR for Sabah, Sarawak and Labuan. Empty means those
+  // states pay `shippingFee` — the same fallback the checkout and the server
+  // use — in which case no separate shipping entry is emitted for them.
+  eastShippingFee?: string;
   // One entry per active variant (size) — each becomes its own nested
   // Product/Offer under `hasVariant`, per Google's documented pattern for a
   // single product line sold in multiple sizes (variesBy: size).
@@ -149,10 +155,43 @@ export function ProductGroupJsonLd({
   updatedAt,
   image,
   shippingFee,
+  eastShippingFee,
   variants,
 }: ProductGroupJsonLdProps) {
   const url = `https://ascendpeptides.my/products/${slug}`;
   const freeShipping = !shippingFee || shippingFee === '0';
+
+  // Peninsular Malaysia and East Malaysia are declared as two separate
+  // OfferShippingDetails rather than one widened entry. They genuinely differ
+  // on both axes — rate and transit time — and merging them would have to
+  // publish the worse of each: East Malaysia's fee on Klang Valley orders, or
+  // a 1-7 day band that makes Peninsular delivery look slower than it is.
+  // Both are what /shipping states in prose; keep the two in step.
+  const EAST_REGIONS = ['Sabah', 'Sarawak', 'Labuan'];
+  const PENINSULAR_REGIONS = [
+    'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Melaka', 'Negeri Sembilan',
+    'Pahang', 'Penang', 'Perak', 'Perlis', 'Putrajaya', 'Selangor', 'Terengganu',
+  ];
+  const shippingEntry = (rate: string, regions: string[], minTransit: number, maxTransit: number) => ({
+    '@type': 'OfferShippingDetails',
+    shippingRate: { '@type': 'MonetaryAmount', value: rate, currency: 'MYR' },
+    shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'MY', addressRegion: regions },
+    deliveryTime: {
+      '@type': 'ShippingDeliveryTime',
+      handlingTime: { '@type': 'QuantitativeValue', minValue: 1, maxValue: 2, unitCode: 'DAY' },
+      transitTime: { '@type': 'QuantitativeValue', minValue: minTransit, maxValue: maxTransit, unitCode: 'DAY' },
+    },
+  });
+  // A blank East fee means those states pay the standard rate, so they simply
+  // join the Peninsular entry rather than getting one of their own. The
+  // RM600 minimum is deliberately not expressed here: schema.org has no field
+  // for a region-scoped minimum order, and inventing one would be noise.
+  const shippingDetails = eastFeeDiffers(shippingFee, eastShippingFee)
+    ? [
+        shippingEntry(freeShipping ? '0' : shippingFee, PENINSULAR_REGIONS, 1, 4),
+        shippingEntry(eastShippingFee!, EAST_REGIONS, 3, 7),
+      ]
+    : shippingEntry(freeShipping ? '0' : shippingFee, [...PENINSULAR_REGIONS, ...EAST_REGIONS], 1, 7);
 
   const hasVariant = variants.map((v) => {
     // validFrom/priceValidUntil are Google's sale-duration markers (per their
@@ -197,43 +236,7 @@ export function ProductGroupJsonLd({
           applicableCountry: 'MY',
           returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
         },
-        shippingDetails: {
-          '@type': 'OfferShippingDetails',
-          shippingRate: {
-            '@type': 'MonetaryAmount',
-            value: freeShipping ? '0' : shippingFee,
-            currency: 'MYR',
-          },
-          shippingDestination: {
-            '@type': 'DefinedRegion',
-            addressCountry: 'MY',
-            // We don't ship to Sabah or Sarawak — see /shipping. Everything
-            // else in MALAYSIAN_STATES (lib/constants.ts) is listed here.
-            addressRegion: [
-              'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Labuan', 'Melaka',
-              'Negeri Sembilan', 'Pahang', 'Penang', 'Perak', 'Perlis',
-              'Putrajaya', 'Selangor', 'Terengganu',
-            ],
-          },
-          deliveryTime: {
-            '@type': 'ShippingDeliveryTime',
-            handlingTime: {
-              '@type': 'QuantitativeValue',
-              minValue: 1,
-              maxValue: 2,
-              unitCode: 'DAY',
-            },
-            // Sitewide conservative range covering both documented regional
-            // bands (Klang Valley 1-2d, other Peninsular 2-4d) — see /shipping.
-            // We don't ship to Sabah/Sarawak, so their 3-7d band isn't included.
-            transitTime: {
-              '@type': 'QuantitativeValue',
-              minValue: 1,
-              maxValue: 4,
-              unitCode: 'DAY',
-            },
-          },
-        },
+        shippingDetails,
       },
     };
   });

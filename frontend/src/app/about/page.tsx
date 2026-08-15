@@ -92,7 +92,7 @@ export default function AboutPage() {
             <Truck className="w-7 h-7 mb-4 text-text-primary" />
             <h3 className="font-display font-semibold text-lg mb-2">Fast Peninsular Delivery</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
-              We ship across Peninsular Malaysia (we do not currently ship to Sabah or Sarawak). Track your order in real-time using your phone number.
+              We ship fast across Peninsular Malaysia. Track your order in real-time using your phone number. See our <a href="/shipping" className="underline">Shipping Policy</a> for East Malaysia terms.
             </p>
           </div>
         </Stagger>

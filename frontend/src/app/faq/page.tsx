@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Animate } from '@/components/ui/Animate';
 import { FaqJsonLd } from '@/components/JsonLd';
 import { getSettingsServer } from '@/lib/server-api';
+import { hasEastMinimum, eastFeeDiffers } from '@/lib/shipping-region';
 
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions About Peptides',
@@ -10,10 +11,23 @@ export const metadata: Metadata = {
   alternates: { canonical: 'https://ascendpeptides.my/faq' },
 };
 
-function buildFaqs(freeShipping: boolean, shippingFee: string) {
-  const shippingAnswer = freeShipping
-    ? 'Yes. All orders within Malaysia ship free, with no minimum order required.'
-    : `A flat shipping fee of RM${shippingFee} applies to all orders within Malaysia. There is no minimum order required.`;
+function buildFaqs(freeShipping: boolean, shippingFee: string, eastMinOrder: string, eastShippingFee: string) {
+  // East Malaysia terms only get mentioned when they actually apply: a blank
+  // minimum means the rule is off, and a blank East fee means those orders pay
+  // the standard one. Same conditions the checkout and shipping page use, so
+  // the three can't drift into contradicting each other.
+  const eastHasMinimum = hasEastMinimum(eastMinOrder);
+  const eastFeeSentence = eastFeeDiffers(shippingFee, eastShippingFee)
+    ? ` Orders to Sabah, Sarawak and Labuan are charged RM${eastShippingFee}.`
+    : '';
+  const eastMinSentence = eastHasMinimum
+    ? ` Orders to Sabah, Sarawak and Labuan require a minimum of RM${eastMinOrder} in products.`
+    : '';
+
+  const shippingAnswer = (freeShipping
+    ? 'Yes. Orders within Peninsular Malaysia ship free.'
+    : `A flat shipping fee of RM${shippingFee} applies to orders within Peninsular Malaysia.`)
+    + eastFeeSentence;
 
   return [
     {
@@ -58,9 +72,13 @@ function buildFaqs(freeShipping: boolean, shippingFee: string) {
         },
         {
           q: 'Is there a minimum order amount?',
-          a: freeShipping
-            ? 'No. There is no minimum order requirement, and all orders ship free within Malaysia.'
-            : `No. There is no minimum order requirement. A flat shipping fee of RM${shippingFee} applies to all orders within Malaysia.`,
+          a: (eastHasMinimum
+            ? `There is no minimum order for Peninsular Malaysia.${eastMinSentence}`
+            : 'No. There is no minimum order requirement.')
+            + (freeShipping
+              ? ' Orders within Peninsular Malaysia ship free.'
+              : ` A flat shipping fee of RM${shippingFee} applies within Peninsular Malaysia.`)
+            + eastFeeSentence,
         },
       ],
     },
@@ -73,7 +91,7 @@ function buildFaqs(freeShipping: boolean, shippingFee: string) {
         },
         {
           q: 'How long does delivery take?',
-          a: 'Peninsular Malaysia (Klang Valley): 1-2 business days. Other Peninsular states: 2-4 business days. We currently do not ship to Sabah or Sarawak. Orders are processed within 1-2 business days after payment confirmation.',
+          a: 'Peninsular Malaysia (Klang Valley): 1-2 business days. Other Peninsular states: 2-4 business days. Sabah, Sarawak and Labuan: 3-7 business days. Orders are processed within 1-2 business days after payment confirmation.',
         },
         {
           q: 'How is my order packaged?',
@@ -113,7 +131,12 @@ export default async function FaqPage() {
   const settings = await getSettingsServer();
   const shippingFee = settings.shipping_fee || '';
   const freeShipping = !shippingFee || shippingFee === '0';
-  const faqs = buildFaqs(freeShipping, shippingFee);
+  const faqs = buildFaqs(
+    freeShipping,
+    shippingFee,
+    settings.east_malaysia_min_order || '',
+    settings.east_malaysia_shipping_fee || ''
+  );
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">

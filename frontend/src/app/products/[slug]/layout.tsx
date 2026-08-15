@@ -94,6 +94,7 @@ export default async function ProductLayout({ params, children }: Props) {
             updatedAt={product.updatedAt}
             image={absoluteImageUrl(variant.imageUrl)}
             shippingFee={settings.shipping_fee || ''}
+            eastShippingFee={settings.east_malaysia_shipping_fee || ''}
             variants={product.variants.filter((v) => v.active).map((v) => ({
               code: v.code,
               size: v.size,

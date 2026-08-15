@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getSettingsServer } from '@/lib/server-api';
+import { hasEastMinimum, eastFeeDiffers } from '@/lib/shipping-region';
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettingsServer();
@@ -22,26 +23,45 @@ export default async function ShippingPage() {
   const settings = await getSettingsServer();
   const shippingFee = settings.shipping_fee || '';
   const freeShipping = !shippingFee || shippingFee === '0';
+  // East Malaysia terms, read from the same settings the checkout enforces so
+  // this page can never quote a fee or a minimum the server disagrees with.
+  // A blank East fee means those orders pay the standard fee — see
+  // lib/shipping-region.ts — so the two only need stating separately when they
+  // actually differ.
+  const eastMinOrder = settings.east_malaysia_min_order || '';
+  const eastShippingFee = settings.east_malaysia_shipping_fee || '';
+  const eastHasMinimum = hasEastMinimum(eastMinOrder);
+  const eastFeeIsDifferent = eastFeeDiffers(shippingFee, eastShippingFee);
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       <h1 className="font-display text-3xl font-bold mb-2">Shipping Policy</h1>
-      <p className="text-sm text-text-muted mb-10">Last updated: May 2026</p>
+      <p className="text-sm text-text-muted mb-10">Last updated: August 2026</p>
 
       <div className="prose-custom">
         <h2>Shipping Coverage</h2>
         <p>
-          Ascend MY ships across Peninsular Malaysia. We currently ship domestically within Malaysia only, and do not yet deliver to Sabah or Sarawak.
+          Ascend MY ships domestically within Malaysia only. We deliver across Peninsular Malaysia, and to
+          Sabah, Sarawak and Labuan{eastHasMinimum ? <> on orders of <strong>RM{eastMinOrder}</strong> or more</> : null}.
         </p>
 
         <h2>Shipping Fees</h2>
         <p>
           {freeShipping ? (
-            <>We offer <strong>free shipping</strong> on all orders within Malaysia. No minimum order required.</>
+            <>We offer <strong>free shipping</strong> on orders within Peninsular Malaysia.</>
           ) : (
-            <>A flat shipping fee of <strong>RM{shippingFee}</strong> applies to all orders within Malaysia. No minimum order required.</>
+            <>A flat shipping fee of <strong>RM{shippingFee}</strong> applies to orders within Peninsular Malaysia.</>
           )}
+          {eastFeeIsDifferent ? (
+            <> Orders to Sabah, Sarawak and Labuan are charged <strong>RM{eastShippingFee}</strong>.</>
+          ) : null}
         </p>
+        {eastHasMinimum && (
+          <p>
+            Orders to Sabah, Sarawak and Labuan must total <strong>RM{eastMinOrder}</strong> or more in products,
+            before any discount and excluding shipping. Peninsular Malaysia has no minimum order.
+          </p>
+        )}
 
         <h2>Processing Time</h2>
         <p>
@@ -57,6 +77,7 @@ export default async function ShippingPage() {
           <tbody>
             <tr><td>Peninsular Malaysia (Klang Valley)</td><td>1-2 business days</td></tr>
             <tr><td>Peninsular Malaysia (Other states)</td><td>2-4 business days</td></tr>
+            <tr><td>Sabah, Sarawak &amp; Labuan</td><td>3-7 business days</td></tr>
           </tbody>
         </table>
         </div>

@@ -12,7 +12,7 @@ export default function TermsPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       <h1 className="font-display text-3xl font-bold mb-2">Terms & Conditions</h1>
-      <p className="text-sm text-text-muted mb-10">Last updated: May 2026</p>
+      <p className="text-sm text-text-muted mb-10">Last updated: August 2026</p>
 
       <div className="prose-custom">
         <p>
@@ -46,7 +46,7 @@ export default function TermsPage() {
 
         <h2>6. Shipping and Delivery</h2>
         <p>
-          We ship across Peninsular Malaysia. We do not currently ship to Sabah or Sarawak. Delivery times may vary depending on your location. Please refer to our <Link href="/shipping" className="underline">Shipping Policy</Link> for full details. Ascend MY is not responsible for delays caused by courier services or circumstances beyond our control.
+          We ship across Peninsular Malaysia, and to Sabah, Sarawak and Labuan subject to a minimum order value and a separate shipping fee. Delivery times may vary depending on your location. Please refer to our <Link href="/shipping" className="underline">Shipping Policy</Link> for the current minimum, fees and delivery estimates. Ascend MY is not responsible for delays caused by courier services or circumstances beyond our control.
         </p>
 
         <h2>7. Returns and Refunds</h2>
