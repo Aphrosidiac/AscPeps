@@ -1,5 +1,6 @@
 import { formatPrice, formatShortDate } from '@/lib/utils';
 import { getProductsServer, getSettingsServer, getInsightsServer } from '@/lib/server-api';
+import { hasEastMinimum, eastFeeDiffers } from '@/lib/shipping-region';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -15,9 +16,20 @@ export async function GET() {
   const shippingFee = settings.shipping_fee || '';
   const freeShipping = !shippingFee || shippingFee === '0';
   const shippingSummaryClause = freeShipping ? 'free, fast shipping across Peninsular Malaysia' : 'fast shipping across Peninsular Malaysia';
+  // East Malaysia terms, stated only when they actually differ from the
+  // standard ones — same conditions the shipping page and FAQ use.
+  const eastMinOrder = settings.east_malaysia_min_order || '';
+  const eastShippingFee = settings.east_malaysia_shipping_fee || '';
+  const eastHasMinimum = hasEastMinimum(eastMinOrder);
+  const eastFeeClause = eastFeeDiffers(shippingFee, eastShippingFee)
+    ? ` RM${eastShippingFee} to Sabah, Sarawak and Labuan.`
+    : '';
   const shippingFactLine = freeShipping
-    ? '- Currency: MYR. Shipping: free on all orders. Payment: bank transfer, FPX, credit/debit card.'
-    : `- Currency: MYR. Shipping: flat RM${shippingFee} on all orders. Payment: bank transfer, FPX, credit/debit card.`;
+    ? `- Currency: MYR. Shipping: free within Peninsular Malaysia.${eastFeeClause} Payment: bank transfer, FPX, credit/debit card.`
+    : `- Currency: MYR. Shipping: flat RM${shippingFee} within Peninsular Malaysia.${eastFeeClause} Payment: bank transfer, FPX, credit/debit card.`;
+  const marketFactLine = eastHasMinimum
+    ? `- Market served: Malaysia only (Peninsular Malaysia, plus Sabah, Sarawak and Labuan on orders of RM${eastMinOrder} or more in products).`
+    : '- Market served: Malaysia only (Peninsular Malaysia, Sabah, Sarawak and Labuan).';
 
   const productLines = products.map((p) => {
     const activePrices = p.variants.filter((v) => v.active).map((v) => v.price);
@@ -58,7 +70,7 @@ export async function GET() {
     ...(insightLines.length > 0 ? ['', '## Insights', ...insightLines] : []),
     '',
     '## Key facts',
-    '- Market served: Malaysia (shipping across Peninsular Malaysia; Sabah and Sarawak are not currently served).',
+    marketFactLine,
     shippingFactLine,
     '- Quality: 99%+ purity, third-party tested, Certificate of Analysis on request.',
     '- Contact: WhatsApp +60 11-6109 2723.',

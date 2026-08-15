@@ -10,6 +10,7 @@ import { useCart } from '@/lib/cart';
 import { createOrder, getSettings, validateDiscount } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
+import { isEastMalaysia, parseEastMalaysiaMinOrder, resolveShippingFeeSen } from '@/lib/shipping-region';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -133,6 +134,14 @@ export default function CheckoutPage() {
   // store can run either, both, or neither.
   const [cryptoPaymentEnabled, setCryptoPaymentEnabled] = useState(false);
   const [shippingFee, setShippingFee] = useState('');
+  // Minimum order (RM, as stored) to ship to Sabah/Sarawak/Labuan. Empty until
+  // settings load, which reads as "no minimum" — the server is the real gate,
+  // so a slow settings fetch can't let a short order through, only delay the
+  // warning about one.
+  const [eastMinOrder, setEastMinOrder] = useState('');
+  // Shipping fee (RM, as stored) for those same states. Blank means "same as
+  // the standard fee" — not free — matching the server.
+  const [eastShippingFee, setEastShippingFee] = useState('');
   // Fiat gateway only. Crypto is never a value here — it's a payment method,
   // not a choice of online gateway.
   const [paymentGateway, setPaymentGateway] = useState<'billplz' | 'toyyibpay'>('billplz');
@@ -175,6 +184,8 @@ export default function CheckoutPage() {
       setOnlinePaymentEnabled(s.online_payment_enabled === 'true');
       setCryptoPaymentEnabled(s.crypto_payment_enabled === 'true');
       setShippingFee(s.shipping_fee || '');
+      setEastMinOrder(s.east_malaysia_min_order || '');
+      setEastShippingFee(s.east_malaysia_shipping_fee || '');
       if (s.payment_gateway === 'billplz' || s.payment_gateway === 'toyyibpay') {
         setPaymentGateway(s.payment_gateway);
       }
@@ -230,9 +241,21 @@ export default function CheckoutPage() {
   };
 
   const discountAmount = appliedDiscount?.discountAmount ?? 0;
-  const shippingParsed = parseFloat(shippingFee);
-  const shippingInSen = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
+
+  // Everything below depends on which region the order is going to, so the
+  // region is resolved first. Both the fee and the minimum change the moment
+  // the customer picks an East Malaysian state.
+  const isEastState = isEastMalaysia(form.state);
+  const shippingInSen = resolveShippingFeeSen(shippingFee, eastShippingFee, isEastState);
   const orderTotal = Math.max(0, total + shippingInSen - discountAmount);
+
+  // East Malaysia minimum. Measured against `total` — the cart subtotal, before
+  // discount and before shipping — because that is exactly what the server
+  // measures. Anything else here and the inline warning would disagree with the
+  // rejection the customer actually gets.
+  const eastMinInSen = parseEastMalaysiaMinOrder(eastMinOrder);
+  const eastMinShortfall = isEastState && eastMinInSen > 0 && total < eastMinInSen ? eastMinInSen - total : 0;
+  const blockedByEastMin = eastMinShortfall > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -385,6 +408,9 @@ export default function CheckoutPage() {
     if (!form.address.trim()) errors.address = 'Please enter your shipping address';
     if (!form.city.trim()) errors.city = 'Please enter your city';
     if (!form.state) errors.state = 'Please select your state';
+    else if (blockedByEastMin) {
+      errors.state = `Sabah, Sarawak and Labuan need a minimum order of ${formatPrice(eastMinInSen)}`;
+    }
     if (!form.postcode.trim()) errors.postcode = 'Please enter your postcode';
     else if (!/^\d{5}$/.test(form.postcode.trim())) errors.postcode = 'Postcode must be 5 digits';
     return errors;
@@ -455,6 +481,29 @@ export default function CheckoutPage() {
               />
               <Input label="Postcode" id="postcode" value={form.postcode} onChange={(e) => updateField('postcode', e.target.value)} error={fieldErrors.postcode} required />
             </div>
+
+            {/* East Malaysia minimum. Appears the moment the state is picked,
+                not on submit — the customer needs to know they have to add
+                items while they still have the cart in mind, and the sticky
+                Place Order button is far from this card on mobile. Framed as
+                how much more is needed rather than as a refusal, because that
+                is the only version of this message they can act on. */}
+            {blockedByEastMin && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-1.5">
+                  Minimum order for {form.state}
+                </p>
+                <p className="text-sm text-amber-900 leading-relaxed">
+                  We ship to Sabah, Sarawak and Labuan on orders of{' '}
+                  <strong>{formatPrice(eastMinInSen)}</strong> or more. Your cart is at{' '}
+                  <strong>{formatPrice(total)}</strong> — add{' '}
+                  <strong>{formatPrice(eastMinShortfall)}</strong> more to continue.
+                </p>
+                <Link href="/products" className="inline-block mt-2.5 text-sm font-medium text-amber-900 underline">
+                  Browse products
+                </Link>
+              </div>
+            )}
           </div>
           </Animate>
 
@@ -636,8 +685,11 @@ export default function CheckoutPage() {
               )}
               <div className="flex justify-between text-sm text-text-secondary">
                 <span>Shipping</span>
-                <span className={!shippingFee || shippingFee === '0' ? 'text-success font-medium' : ''}>
-                  {!shippingFee || shippingFee === '0' ? 'Free' : formatPrice(shippingInSen)}
+                {/* Driven by the resolved fee rather than by the raw standard
+                    setting, so picking an East Malaysian state updates this
+                    line and the total along with it. */}
+                <span className={shippingInSen === 0 ? 'text-success font-medium' : ''}>
+                  {shippingInSen === 0 ? 'Free' : formatPrice(shippingInSen)}
                 </span>
               </div>
               <div className="flex justify-between font-display font-bold text-lg pt-2 border-t border-border">
@@ -646,9 +698,18 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            <Button type="submit" className="w-full" size="lg" disabled={loading || blockedByEastMin}>
               {loading ? 'Placing Order...' : 'Place Order'}
             </Button>
+            {/* The button is in a sticky sidebar that can sit a long way from
+                the address card, so a disabled button on its own would read as
+                broken. Says why, right where the click lands. */}
+            {blockedByEastMin && (
+              <p className="text-xs text-amber-800 text-center mt-2.5 leading-relaxed">
+                Add {formatPrice(eastMinShortfall)} more to reach the{' '}
+                {formatPrice(eastMinInSen)} minimum for {form.state}.
+              </p>
+            )}
           </div>
 
           {/* Trust Signals */}
@@ -663,7 +724,11 @@ export default function CheckoutPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5" />
-              <span className="text-xs">{!shippingFee || shippingFee === '0' ? 'Free Shipping' : 'Peninsular Malaysia Shipping'}</span>
+              <span className="text-xs">
+                {isEastState
+                  ? 'East Malaysia Shipping'
+                  : shippingInSen === 0 ? 'Free Shipping' : 'Peninsular Malaysia Shipping'}
+              </span>
             </div>
           </div>
         </div>

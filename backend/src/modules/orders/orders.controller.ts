@@ -10,6 +10,7 @@ import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { newUnsubscribeToken } from '../../utils/marketing.js';
+import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage, resolveShippingFeeSen } from '../../utils/shipping-region.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -186,11 +187,36 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       return sum + getEffectivePrice(variant, now) * item.quantity;
     }, 0);
 
+    // East Malaysia minimum. Checked here — after required add-ons have been
+    // injected and the real subtotal is known, but before the discount code
+    // reservation below — so a rejected order never burns a use of a capped
+    // code. (The transaction would roll that back anyway; not depending on it
+    // is cheaper and clearer.)
+    //
+    // The threshold is measured against the goods subtotal: before the
+    // discount and before shipping. Measuring after the discount would let a
+    // 50%-off code turn an RM800 order into an RM400 one and defeat the rule
+    // that exists to cover what East Malaysia costs to ship.
+    //
+    // Only read the East settings for an order actually going east — that's a
+    // small minority of orders, and every other one shouldn't pay for the query.
+    const goingEast = isEastMalaysia(data.state);
+    let eastShippingFeeValue: string | undefined;
+    if (goingEast) {
+      const eastSettings = await tx.setting.findMany({
+        where: { key: { in: ['east_malaysia_min_order', 'east_malaysia_shipping_fee'] } },
+      });
+      const eastSetting = (key: string) => eastSettings.find((s) => s.key === key)?.value;
+      const minOrder = parseEastMalaysiaMinOrder(eastSetting('east_malaysia_min_order'));
+      if (minOrder > 0 && subtotal < minOrder) {
+        const message = eastMalaysiaMinOrderMessage(minOrder);
+        throw { statusCode: 400, message, details: [{ path: 'state', message }] };
+      }
+      eastShippingFeeValue = eastSetting('east_malaysia_shipping_fee');
+    }
+
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
-    // Guard against a non-numeric/empty setting value: parseFloat("") is NaN,
-    // and NaN would propagate into total and the gateway amount.
-    const shippingParsed = shippingSetting ? parseFloat(shippingSetting.value) : 0;
-    const shippingFee = Number.isFinite(shippingParsed) && shippingParsed > 0 ? Math.round(shippingParsed * 100) : 0;
+    const shippingFee = resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
 
     let discountAmount = 0;
     let discountCodeId: string | undefined;

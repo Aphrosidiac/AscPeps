@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
+import { notifyRevalidate } from '../../utils/revalidate.js';
 
 export async function getSettings(fastify: FastifyInstance) {
   const settings = await fastify.prisma.setting.findMany();
@@ -10,7 +11,17 @@ export async function getSettings(fastify: FastifyInstance) {
 const updateSettingsSchema = z.record(z.string(), z.string());
 
 // Settings whose value must be a non-negative finite number (stored as a string).
-const NUMERIC_SETTINGS = new Set(['shipping_fee', 'welcome_discount_days', 'welcome_discount_min_order']);
+const NUMERIC_SETTINGS = new Set([
+  'shipping_fee',
+  'welcome_discount_days',
+  'welcome_discount_min_order',
+  // Minimum order value (RM) required to ship to Sabah, Sarawak or Labuan.
+  // Blank or 0 switches the rule off entirely — see utils/shipping-region.ts.
+  'east_malaysia_min_order',
+  // Shipping fee (RM) for those same states. Blank falls back to the standard
+  // shipping_fee; an explicit 0 means free.
+  'east_malaysia_shipping_fee',
+]);
 
 // Numeric settings with a hard ceiling as well as a floor. The welcome
 // discount is a percentage that gets minted straight into a real, redeemable
@@ -60,6 +71,15 @@ export async function updateSettings(fastify: FastifyInstance, body: unknown) {
       create: { key, value },
     });
   }
+
+  // Settings are baked into server-rendered pages — the shipping policy, the
+  // FAQ, llms.txt and the product JSON-LD all read shipping fees and the East
+  // Malaysia minimum through the 'products'-tagged fetch in
+  // frontend/src/lib/server-api.ts. Without this ping those pages keep quoting
+  // the old figures for up to an hour after a save, while checkout (a client
+  // fetch) switches immediately — so the site would actively contradict itself
+  // about what a customer owes. Fire-and-forget, like every other caller.
+  notifyRevalidate();
 
   return getSettings(fastify);
 }

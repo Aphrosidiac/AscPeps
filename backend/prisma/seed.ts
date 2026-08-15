@@ -162,6 +162,11 @@ async function main() {
     { key: 'whatsapp_number', value: '601161092723' },
     { key: 'business_name', value: 'Ascend MY' },
     { key: 'business_tagline', value: 'Premium Peptides Malaysia' },
+    // Minimum order (RM) to ship to Sabah, Sarawak or Labuan. Upserted with an
+    // empty `update`, like the rest, so re-seeding never overwrites a value an
+    // admin has since changed in the dashboard.
+    { key: 'east_malaysia_min_order', value: '600' },
+    { key: 'east_malaysia_shipping_fee', value: '20' },
   ];
 
   for (const setting of settings) {
@@ -173,7 +178,7 @@ async function main() {
   }
 
   const variantCount = productGroups.reduce((sum, g) => sum + g.variants.length, 0);
-  console.log(`Seed completed: 5 categories, ${productGroups.length} products (${variantCount} variants), 1 admin user, 3 settings`);
+  console.log(`Seed completed: 5 categories, ${productGroups.length} products (${variantCount} variants), 1 admin user, ${settings.length} settings`);
 }
 
 main()

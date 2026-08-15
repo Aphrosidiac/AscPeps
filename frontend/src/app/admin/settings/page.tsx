@@ -323,6 +323,39 @@ export default function AdminSettingsPage() {
             onChange={(e) => updateSetting('shipping_fee', e.target.value)}
             placeholder="0 for free shipping"
           />
+          <div className="space-y-1.5">
+            <Input
+              label="East Malaysia Shipping Fee (RM)"
+              id="east_malaysia_shipping_fee"
+              type="number"
+              min="0"
+              step="0.01"
+              value={settings.east_malaysia_shipping_fee || ''}
+              onChange={(e) => updateSetting('east_malaysia_shipping_fee', e.target.value)}
+              placeholder="Leave blank to use the standard fee"
+            />
+            <p className="text-xs text-text-muted">
+              Charged instead of the standard fee on orders to <strong>Sabah, Sarawak and Labuan</strong>.
+              Leave blank and those orders pay the standard fee above; set 0 to ship them free.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Input
+              label="East Malaysia Minimum Order (RM)"
+              id="east_malaysia_min_order"
+              type="number"
+              min="0"
+              step="0.01"
+              value={settings.east_malaysia_min_order || ''}
+              onChange={(e) => updateSetting('east_malaysia_min_order', e.target.value)}
+              placeholder="0 for no minimum"
+            />
+            <p className="text-xs text-text-muted">
+              Orders to <strong>Sabah, Sarawak and Labuan</strong> must reach this amount in products
+              (before discount and shipping) or checkout blocks them. Leave blank or set 0 to accept
+              East Malaysia orders of any size.
+            </p>
+          </div>
           <Input
             label="Minimum Order (RM)"
             id="minimum_order"

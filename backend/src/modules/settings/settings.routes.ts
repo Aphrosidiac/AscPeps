@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 
 const PUBLIC_KEYS = [
   'business_name', 'business_tagline', 'shipping_fee', 'whatsapp_number',
+  // Public on purpose: checkout has to tell an East Malaysian customer the
+  // minimum and the higher fee before they hit Place Order, not after. Nothing
+  // is given away — these are shipping rules we want stated plainly.
+  'east_malaysia_min_order', 'east_malaysia_shipping_fee',
   'announcement_enabled', 'announcement_text', 'online_payment_enabled', 'payment_gateway',
   // Crypto is its own checkout method with its own on/off flag, independent of
   // online_payment_enabled — turning FPX off must not turn Bitcoin off too,

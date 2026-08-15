@@ -33,7 +33,13 @@ export default fp(async (fastify: FastifyInstance) => {
 
     const statusCode = 'statusCode' in error ? (error as FastifyError).statusCode : undefined;
     if (statusCode) {
-      return reply.status(statusCode).send({ error: error.message });
+      // A hand-thrown `{ statusCode, message }` may also carry `details` in the
+      // same shape a ZodError produces. That's the only way a rule enforced in
+      // code rather than in the schema (e.g. the East Malaysia minimum, which
+      // needs a DB read) can still land inline on the field it's about instead
+      // of in the generic error banner. Absent on almost every throw.
+      const details = (error as { details?: { path?: string; message?: string }[] }).details;
+      return reply.status(statusCode).send({ error: error.message, ...(details ? { details } : {}) });
     }
 
     fastify.log.error(error);
