@@ -85,6 +85,17 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
   const where: Record<string, unknown> = query.status === 'DELETED'
     ? { deletedAt: { not: null } }
     : { deletedAt: null, ...(query.status ? { status: query.status } : {}) };
+
+  // Opt-in "hide cancelled" for the views that would otherwise mix them in.
+  // Applied server-side so it actually removes them from the page the admin
+  // is looking at — filtering client-side would just leave gaps in a page
+  // that was already capped at `limit` rows. Ignored when the admin has
+  // explicitly asked for a single status (including CANCELLED itself), since
+  // that request is unambiguous.
+  if (!query.status && query.excludeCancelled === 'true') {
+    where.status = { not: 'CANCELLED' };
+  }
+
   if (query.search) {
     where.OR = [
       { orderNumber: { contains: query.search, mode: 'insensitive' } },

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle, EyeOff } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
 import { formatPrice, formatDate, paymentMethodLabel } from '@/lib/utils';
@@ -47,6 +47,10 @@ function AdminOrdersContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  // Only meaningful on views that can mix cancelled orders in — asking for a
+  // single status is already unambiguous, so the toggle is hidden there.
+  const [hideCancelled, setHideCancelled] = useState(false);
+  const canHideCancelled = statusFilter === 'ALL';
   const [search, setSearch] = useState('');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -67,6 +71,7 @@ function AdminOrdersContent() {
     if (!token) return;
     const params: Record<string, string> = { limit: '50' };
     if (statusFilter !== 'ALL') params.status = statusFilter;
+    if (canHideCancelled && hideCancelled) params.excludeCancelled = 'true';
     if (search) params.search = search;
     adminGetOrders(token, params)
       .then((r) => setOrders(r.data))
@@ -74,7 +79,7 @@ function AdminOrdersContent() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [token, statusFilter, search]);
+  useEffect(() => { load(); }, [token, statusFilter, hideCancelled, search]);
 
   // Runs once the target order has actually loaded — a plain status filter
   // (e.g. the order is CANCELLED) could otherwise leave this waiting forever,
@@ -236,6 +241,21 @@ function AdminOrdersContent() {
               {s === 'ALL' ? 'All' : s === 'DELETED' ? 'Deleted' : ORDER_STATUS_LABELS[s]}
             </button>
           ))}
+          {canHideCancelled && (
+            <button
+              onClick={() => setHideCancelled((v) => !v)}
+              aria-pressed={hideCancelled}
+              title={hideCancelled ? 'Cancelled orders are hidden' : 'Hide cancelled orders from this list'}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                hideCancelled
+                  ? 'bg-text-primary text-surface'
+                  : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              Hide cancelled
+            </button>
+          )}
         </div>
       </div>
 
@@ -247,7 +267,13 @@ function AdminOrdersContent() {
         <div className="text-center py-16">
           <p className="text-text-muted text-lg mb-1">No orders found</p>
           <p className="text-text-muted text-sm">
-            {search ? 'Try a different search term.' : statusFilter !== 'ALL' ? 'No orders with this status.' : 'Orders will appear here once customers start purchasing.'}
+            {search
+              ? 'Try a different search term.'
+              : statusFilter !== 'ALL'
+                ? 'No orders with this status.'
+                : hideCancelled
+                  ? 'Every order here is cancelled — turn off “Hide cancelled” to see them.'
+                  : 'Orders will appear here once customers start purchasing.'}
           </p>
         </div>
       ) : (
