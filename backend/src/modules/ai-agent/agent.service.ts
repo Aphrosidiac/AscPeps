@@ -9,6 +9,14 @@ import { loadConversationContext, summaryBlock } from './context.js';
 import { loadMemoryBlocks, renderMemoryBlocks } from './memory.js';
 import type { AgentActor, ToolContext } from './tool-kit.js';
 import { truncate } from './tool-kit.js';
+import {
+  checkGrounding,
+  parseGroundingMode,
+  repairInstruction,
+  GROUNDING_SUPPRESSED_REPLY,
+  type GroundingViolation,
+  type ToolResultRecord,
+} from './grounding.js';
 
 export interface InboundMessage {
   // 'dm' | 'group'
@@ -40,6 +48,57 @@ const PENDING_TTL_MS = 5 * 60 * 1000;
 
 const MAX_TOOL_ITERATIONS = 8;
 
+// How many times a turn may be sent back to the model because its draft reply
+// asserted something the tools had not established. One is almost always
+// enough: in both August incidents the model reached the correct answer on its
+// first attempt once it actually called get_order. Two leaves room for a reply
+// that needs a second, different lookup; beyond that it is looping, not
+// learning, and the refusal is the honest outcome.
+const MAX_GROUNDING_REPAIRS = 2;
+
+// ---------------------------------------------------------------- turn locking
+
+/**
+ * One turn at a time per conversation.
+ *
+ * `handleMessage` is re-entrant and, until this, nothing stopped two messages
+ * on the same thread being processed at once. In a group with two operators
+ * that is the normal case, not an edge case: on 17 Aug at 09:30:39 and 09:30:44
+ * two people asked about the same order, both turns ran concurrently, and the
+ * group got two overlapping replies six seconds apart that disagreed with each
+ * other. Worse, each turn loaded history that did not contain the other's
+ * message, so neither could see it was duplicating work.
+ *
+ * Queueing rather than dropping: the second message is a real question and
+ * deserves an answer — it just deserves one written with the first turn's
+ * result already in the thread.
+ *
+ * In-process is sufficient because the API runs under PM2 in fork mode (one
+ * process). If it is ever moved to cluster mode this must become a Postgres
+ * advisory lock (`pg_advisory_xact_lock` on a hash of the chatKey), or the
+ * guarantee silently disappears while the code still looks correct.
+ */
+const turnQueues = new Map<string, Promise<unknown>>();
+
+function withConversationLock<T>(chatKey: string, run: () => Promise<T>): Promise<T> {
+  const previous = turnQueues.get(chatKey) ?? Promise.resolve();
+  // `then(run, run)` so a turn that threw still releases the queue — otherwise
+  // one failure would wedge that conversation permanently.
+  const result = previous.then(run, run);
+  // The stored tail never rejects; the caller gets the real error from `result`.
+  const tail = result.then(
+    () => undefined,
+    () => undefined
+  );
+  turnQueues.set(chatKey, tail);
+  // Drop the entry once this is the last turn in the queue, so a long-lived
+  // process does not accumulate one promise per conversation forever.
+  void tail.then(() => {
+    if (turnQueues.get(chatKey) === tail) turnQueues.delete(chatKey);
+  });
+  return result;
+}
+
 // The model's way of widening its own tool list mid-turn when the keyword router
 // guessed wrong. Handled inside the loop rather than in the registry: it takes
 // no ToolContext, touches no data, and its effect is on the next request rather
@@ -61,8 +120,25 @@ const LOAD_CONTEXT_TOOL = {
   },
 };
 
-const AFFIRMATIVE = /^(y|ya|yes|yep|yeah|ok|okay|okey|confirm|confirmed|go|go ahead|do it|proceed|betul|boleh|sure)\b/i;
-const NEGATIVE = /^(n|no|nope|cancel|stop|abort|jangan|tak|tidak|nevermind|never mind)\b/i;
+// A confirmation is a WHOLE message, not a prefix.
+//
+// These were anchored but open-ended (`/^(no|...)\b/`), which meant any
+// instruction that merely began with one of these words was swallowed by the
+// confirmation machinery and never reached the model at all. On 17 Aug
+// "No the latest order ab, try again" — a real request, mid-conversation —
+// matched `^no\b` and was answered with the canned "Nothing was pending, so
+// nothing has changed", while the operator sat there having asked a question.
+//
+// AFFIRMATIVE had the same shape and the worse failure mode: "ok what's the
+// latest order" would have been treated as a bare yes and pushed the model to
+// carry out whatever it thought it had last proposed.
+//
+// Trailing punctuation and a short courtesy tail ("yes please", "no thanks")
+// still count — anything longer is a sentence and belongs to the model.
+const AFFIRMATIVE =
+  /^(y|ya|yes|yep|yeah|yup|ok|okay|okey|k|confirm|confirmed|go|go ahead|do it|proceed|betul|boleh|sure)(\s+(please|pls|boss|ab|abby|thanks|tq))?\s*[.!]*$/i;
+const NEGATIVE =
+  /^(n|no|nope|nah|cancel|stop|abort|jangan|tak|tidak|nevermind|never mind)(\s+(thanks|thank you|tq|please|pls|boss|ab|abby))?\s*[.!]*$/i;
 
 // The tail of every confirmation prompt this service generates. Used to spot
 // its own prompts in stored history — see redactConfirmationPrompts.
@@ -418,6 +494,47 @@ async function runTool(
   }
 }
 
+/**
+ * Records a turn whose draft reply could not be backed by this turn's tools.
+ *
+ * Best-effort, exactly like the tool audit row: a failure to write the record
+ * of a problem must never become a second problem. Returns the row id so a
+ * later repair can mark the same row as resolved, or null if it could not be
+ * written.
+ */
+async function recordGroundingEvent(
+  fastify: FastifyInstance,
+  event: {
+    conversationId: string;
+    actorPhone: string;
+    mode: string;
+    violations: GroundingViolation[];
+    reply: string;
+    toolsRan: string[];
+    repaired: boolean;
+    suppressed: boolean;
+  }
+): Promise<string | null> {
+  try {
+    const row = await fastify.prisma.agentGroundingEvent.create({
+      data: {
+        conversationId: event.conversationId,
+        actorPhone: event.actorPhone,
+        mode: event.mode,
+        violations: truncate(JSON.stringify(event.violations), 4000),
+        reply: truncate(event.reply, 2000),
+        toolsRan: event.toolsRan.join(',') || '(none)',
+        repaired: event.repaired,
+        suppressed: event.suppressed,
+      },
+    });
+    return row.id;
+  } catch (err) {
+    fastify.log.error({ err }, 'failed to write agent grounding event');
+    return null;
+  }
+}
+
 // --------------------------------------------------------------- main entry
 
 export async function handleMessage(fastify: FastifyInstance, msg: InboundMessage): Promise<AgentOutcome> {
@@ -425,6 +542,17 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
   if (!gate.ok) return { action: 'ignore', reason: gate.reason };
   const actor = gate.actor;
 
+  // The gate is deliberately OUTSIDE the lock: an unknown sender must never be
+  // able to make a real operator queue behind them.
+  const chatKey = msg.kind === 'group' ? `group:${msg.groupJid}` : `dm:${actor.phone}`;
+  return withConversationLock(chatKey, () => runTurn(fastify, msg, actor));
+}
+
+async function runTurn(
+  fastify: FastifyInstance,
+  msg: InboundMessage,
+  actor: AgentActor
+): Promise<AgentOutcome> {
   const conversation = await getConversation(fastify, msg, actor);
   const text = msg.text.trim();
 
@@ -575,7 +703,30 @@ async function produceReply(
   // Anything that mutated state this turn. Drives the honesty guard below.
   const writesSucceeded: string[] = [];
 
+  // Every tool result produced this turn, in order — the evidence the reply is
+  // allowed to draw on. Accumulates ACROSS repair attempts on purpose: a repair
+  // that finally calls get_order makes the facts it returns legitimately
+  // available to the rewritten reply.
+  const toolResults: ToolResultRecord[] = [];
+
+  // What the model may state without a tool call: who it is talking to, and the
+  // operator-authored memory blocks it was handed. Both are given to it in the
+  // system prompt, so neither is an invention.
+  const trustedContext = [ctx.actor.name, ctx.actor.phone, ...memoryBlocks.map((b) => `${b.label} ${b.content}`)];
+
+  const groundingMode = parseGroundingMode(process.env.AGENT_GROUNDING_MODE);
+
   try {
+    let reply = '';
+    let violations: GroundingViolation[] = [];
+    let repairs = 0;
+    let lastEventId: string | null = null;
+
+    // Outer loop: draft a reply, then check it can be backed up. A draft that
+    // cannot is pushed back to the model with what is missing, and the inner
+    // tool loop runs again — which is what turns "I'll tell you what I think is
+    // on the order" into "I'll go and look".
+    for (;;) {
     let response = await createCompletion({ max_tokens: 2048, tools: openAiTools, messages });
     let assistant = response.choices[0]?.message;
     let iterations = 0;
@@ -678,6 +829,9 @@ async function produceReply(
             /* unparseable result — treat as no confirmed write */
           }
         }
+        // Recorded exactly as the model receives it, so the grounding check is
+        // run against the same bytes the model saw and not a re-serialisation.
+        toolResults.push({ tool: name, result });
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
       }
 
@@ -689,16 +843,18 @@ async function produceReply(
       fastify.log.warn({ conversationId }, 'agent hit tool iteration cap');
     }
 
-    const reply =
+    reply =
       assistant?.content?.trim() || 'I ran that but have nothing to report back — try asking again more specifically.';
 
-    // Honesty guard. The prompt tells the model never to claim a change it did
-    // not make, and mostly it complies — but "mostly" is not good enough when
-    // the claim is "order deleted" and the order is still there. An operator
-    // who believes a change landed stops checking.
+    // Honesty guard, WRITE side. The prompt tells the model never to claim a
+    // change it did not make, and mostly it complies — but "mostly" is not good
+    // enough when the claim is "order deleted" and the order is still there. An
+    // operator who believes a change landed stops checking.
     //
     // Only fires when NOTHING was written this turn, so a genuine write can
-    // never be second-guessed by a wording match.
+    // never be second-guessed by a wording match. Checked before grounding
+    // because a false completion claim is the more serious of the two and its
+    // refusal is final — there is nothing to repair.
     if (!writesSucceeded.length && CLAIMS_COMPLETION.test(reply)) {
       fastify.log.warn(
         { conversationId, reply: reply.slice(0, 200) },
@@ -707,7 +863,68 @@ async function produceReply(
       return `I haven't made that change — I don't have it confirmed as done, and I won't tell you it happened when it hasn't. Ask me again and I'll run it properly.`;
     }
 
-    return reply;
+    // Honesty guard, READ side. See grounding.ts for why this exists and what
+    // it is made of.
+    if (groundingMode === 'off') return reply;
+
+    violations = checkGrounding({ reply, toolResults, operatorText: text, trustedContext }).violations;
+    if (!violations.length) {
+      // A repair that worked is the outcome worth knowing about: it means the
+      // guard turned an unsupported answer into a checked one rather than into
+      // a refusal. Recorded against the row the failed draft opened.
+      if (lastEventId) {
+        await fastify.prisma.agentGroundingEvent
+          .update({ where: { id: lastEventId }, data: { repaired: true } })
+          .catch(() => undefined);
+        fastify.log.info({ conversationId, repairs }, 'agent reply grounded after repair');
+      }
+      return reply;
+    }
+
+    const canRepair = groundingMode === 'enforce' && repairs < MAX_GROUNDING_REPAIRS;
+
+    lastEventId = await recordGroundingEvent(fastify, {
+      conversationId,
+      actorPhone: ctx.actor.phone,
+      mode: groundingMode,
+      violations,
+      reply,
+      toolsRan: toolResults.map((t) => t.tool),
+      // Provisional: a repair that succeeds updates this row's outcome above.
+      repaired: false,
+      suppressed: !canRepair && groundingMode === 'enforce',
+    });
+
+    fastify.log.warn(
+      {
+        conversationId,
+        mode: groundingMode,
+        violations: violations.map((v) => `${v.kind}:${v.entityType}:${v.entity}`).slice(0, 8),
+        toolsRan: toolResults.map((t) => t.tool),
+      },
+      groundingMode === 'shadow'
+        ? 'agent reply was not grounded in this turn\'s tool results — SHADOW, delivered anyway'
+        : 'agent reply was not grounded in this turn\'s tool results'
+    );
+
+    // Shadow mode observes and never intervenes. That is the point: the rate
+    // gets measured on real traffic before the guard is allowed to change what
+    // an operator sees.
+    if (groundingMode === 'shadow') return reply;
+
+    if (!canRepair) {
+      fastify.log.warn({ conversationId }, 'grounding repair exhausted — reply suppressed');
+      return GROUNDING_SUPPRESSED_REPLY;
+    }
+
+    repairs++;
+    // The draft goes back in as the assistant's own turn so the correction has
+    // something to refer to, and the instruction goes in as `system` — never as
+    // a tool result, which the model is explicitly told it may weigh rather
+    // than obey.
+    messages.push({ role: 'assistant', content: reply });
+    messages.push({ role: 'system', content: repairInstruction(violations) });
+    }
   } catch (err: any) {
     fastify.log.error({ err }, 'agent turn failed');
     return `Something went wrong on my side: ${err?.message ?? 'unknown error'}. Nothing was changed by this message.`;

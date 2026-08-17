@@ -56,17 +56,91 @@ Four independent layers. None of them is the model being well-behaved.
    order ASC2507/0042 (Nurul, RM 480.00)"), and nothing happens without an
    explicit yes. Parked actions expire after 5 minutes.
 
-Plus two things learned from testing:
+Plus three things learned from production:
 
 - **Bare "yes" can never fabricate an action.** With nothing parked, a "yes"
   re-drives the model to actually call a tool; it cannot simply narrate success.
-- **Honesty guard.** If a reply claims a change was made and no write tool
-  succeeded that turn, the reply is suppressed and replaced. An operator who
-  believes a change landed stops checking, so this is the one failure mode worth
-  a hard code-level backstop.
+  A confirmation must be the WHOLE message — `AFFIRMATIVE`/`NEGATIVE` are
+  anchored at both ends. They were prefix-only until 17 Aug 2026, when
+  "No the latest order ab, try again" matched `^no\b` and was answered with the
+  canned "nothing was pending" instead of reaching the model at all.
+- **Honesty guard, write side.** If a reply claims a change was made and no
+  write tool succeeded that turn, the reply is suppressed and replaced. An
+  operator who believes a change landed stops checking.
+- **Honesty guard, read side** — see [Grounding](#grounding) below. The write
+  guard has existed since day one; the read side had nothing, and the same class
+  of failure appeared there instead.
 
 Everything the agent does is written to `agent_tool_calls` — tool, arguments,
-actor, success, duration — and shown on the admin page.
+actor, success, duration — and shown on the admin page. Everything it nearly
+*said* but could not support is written to `agent_grounding_events`.
+
+## Grounding
+
+**The failure this exists for.** Twice, identically, twelve days apart, the
+agent was asked for an order's contents, called only `list_orders` — which has
+never returned items or an address — and answered anyway:
+
+- **5 Aug 2026.** Invented two line items that were not on the order, and gave
+  an address belonging to a *different customer* in the same tool result.
+- **17 Aug 2026.** Invented a line item, then said "address: not yet on file"
+  for an order whose address was in the database. Corrected itself only after
+  the operator pushed twice; the moment it called `get_order` it was right.
+
+The system prompt already forbade this in as many words ("Never state a number,
+price, stock level or order detail from memory or assumption — look it up"). It
+did not hold, exactly as the markdown-formatting instruction did not hold until
+`toWhatsAppText` fixed it in code. So this is fixed in code.
+
+`grounding.ts` runs two independent checks on every draft reply, because they
+fail in opposite directions:
+
+1. **Grounding.** Every checkable entity in the reply — order numbers, phone
+   numbers, SKU codes, product+size pairs, emails, address lines — must appear
+   in a tool result *from this turn*, filed under the record the reply
+   attributes it to. Facts are indexed against their enclosing record, not into
+   one flat bag, which is what makes the 5 Aug cross-record bleed detectable: a
+   flat "is this string anywhere in the context" check passes that reply.
+2. **Preconditions.** Certain claim shapes require certain tools to have run,
+   whatever the reply says. Grounding cannot catch a false claim of *absence* —
+   "no address on file" invents no string to look up — and that was half of the
+   17 Aug failure.
+
+**Money is deliberately not checked.** Operators ask for derived figures ("how
+much does each of us get?") and the answer is arithmetic over grounded inputs.
+Flagging those would train everyone to ignore the guard, which is worse than not
+having one.
+
+**On a violation the turn is repaired, not suppressed.** The draft goes back to
+the model with a system message naming exactly what is unsupported, and the tool
+loop runs again — in both incidents the correct tool was one call away and the
+model got the right answer immediately once it made it. After
+`MAX_GROUNDING_REPAIRS` the reply is replaced with a refusal.
+
+### Modes
+
+`AGENT_GROUNDING_MODE` — `off` | `shadow` | `enforce`. **Defaults to `shadow`,
+and any unrecognised value also means `shadow`, never `off`.**
+
+- `shadow` logs and records violations and delivers the reply unchanged. This is
+  how it should be rolled out: measure the rate on real traffic first.
+- `enforce` repairs, and refuses if repair fails.
+
+### Measuring it
+
+`npm run audit:agent:grounding [days]` replays the guard over conversations that
+have already happened, from `agent_messages` + `agent_tool_calls`. Use it to
+calibrate before enforcing, and on a schedule afterwards — it is how the *next*
+new failure class becomes visible on the day it appears rather than on the day
+an operator happens to push back.
+
+Note it over-reports slightly: the audit table truncates tool results at 2000
+characters while the model saw up to 6000, so a clipped turn can show facts as
+ungrounded that the model could legitimately see. Those turns are counted
+separately in the output.
+
+At the time it was built, the replay over 40 days of production traffic flagged
+24 of 174 turns.
 
 ### WhatsApp LIDs — why an operator can be ignored
 

@@ -1,5 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
-import { clampLimit, money, toCents, parseDate, rm } from '../tool-kit.js';
+import { clampLimit, listResult, money, toCents, parseDate, rm } from '../tool-kit.js';
 import { getEffectivePrice, isSaleActive } from '../../../utils/product-pricing.js';
 
 // Catalogue tools. The parent/variant split matters here and the descriptions
@@ -82,23 +82,34 @@ export const catalogTools: AgentTool[] = [
       }
       if (input.inStockOnly) where.variants = { some: { stock: { gt: 0 }, active: true } };
 
-      const products = await prisma.product.findMany({
-        where,
-        include: { category: true, variants: { orderBy: { price: 'asc' } } },
-        orderBy: [{ featured: 'desc' }, { name: 'asc' }],
-        take: clampLimit(input.limit),
-      });
+      // Counted separately from the page so a capped result is visible as one.
+      // The catalogue is 51 products against a MAX_ROWS of 50: "list all our
+      // products" returned 50 of them and read as the complete set, because a
+      // bare array cannot say otherwise. See listResult.
+      const [products, matched] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          include: { category: true, variants: { orderBy: { price: 'asc' } } },
+          orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+          take: clampLimit(input.limit),
+        }),
+        prisma.product.count({ where }),
+      ]);
 
-      return products.map((p) => ({
-        productId: p.id,
-        name: p.name,
-        slug: p.slug,
-        category: p.category.name,
-        featured: p.featured,
-        active: p.active,
-        addOnOnly: p.addOnOnly,
-        variants: p.variants.map(variantView),
-      }));
+      return listResult(
+        products.map((p) => ({
+          productId: p.id,
+          name: p.name,
+          slug: p.slug,
+          category: p.category.name,
+          featured: p.featured,
+          active: p.active,
+          addOnOnly: p.addOnOnly,
+          variants: p.variants.map(variantView),
+        })),
+        matched,
+        'products'
+      );
     },
   },
 
