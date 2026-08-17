@@ -939,6 +939,45 @@ model AgentPendingAction {
 // Because it is a row, a reminder is never lost to downtime: one that came due
 // while WhatsApp was disconnected is still PENDING when the worker returns and
 // goes out late, which is what someone who asked to be reminded actually wants.
+// Every turn where the read-side grounding guard found the reply asserting
+// something this turn's tool results did not support. See grounding.ts.
+//
+// A row here is the counterpart to AgentToolCall: that table records what the
+// agent DID, this one records what it nearly SAID and could not back up. Both
+// August incidents were invisible until an operator happened to push back —
+// this makes the next one visible the moment it happens, whether or not anyone
+// is paying attention.
+//
+// Written in shadow mode too, where nothing is blocked. That is the whole point
+// of shadow mode: measure the rate on real traffic before it can affect anyone.
+model AgentGroundingEvent {
+  id             String  @id @default(cuid())
+  conversationId String?
+  actorPhone     String
+
+  // 'shadow' — logged only. 'enforce' — repair was attempted.
+  mode String
+
+  // JSON array of GroundingViolation. Truncated on write, like AgentToolCall:
+  // this is a signal, not a backup.
+  violations String
+
+  // A repair round trip fixed it and the operator saw a supported answer.
+  repaired Boolean @default(false)
+  // Repair did not fix it and the reply was replaced with a refusal.
+  suppressed Boolean @default(false)
+
+  // What was nearly sent, for the admin transcript.
+  reply    String
+  toolsRan String
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorPhone])
+  @@map("agent_grounding_events")
+}
+
 model AgentReminder {
   id String @id @default(cuid())
 

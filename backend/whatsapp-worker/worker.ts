@@ -139,6 +139,26 @@ async function emitAlert(level: 'DOWN' | 'RECOVERED', text: string) {
       console.error('[worker] Webhook alert failed:', err?.message)
     }
   }
+
+  // The API sink, which unlike the two above needs NOTHING configured to work:
+  // it emails every AdminUser using the Resend key the shop already sends
+  // receipts with. Both optional sinks above were unset in production for the
+  // whole of the agent's life, so the 4h22m outage on 17 Aug 2026 alerted
+  // precisely nobody — an alerting system whose only sink is opt-in is an
+  // alerting system that is off.
+  //
+  // The API is a valid sink for a WhatsApp outage specifically because the two
+  // fail independently: the socket dies, the Fastify process does not.
+  try {
+    await fetch(`${API_BASE}/api/v1/internal/agent/alert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ level, text }),
+      signal: AbortSignal.timeout(15_000),
+    })
+  } catch (err: any) {
+    console.error('[worker] API alert sink failed:', err?.message)
+  }
 }
 
 let sock: WASocket | null = null

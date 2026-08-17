@@ -158,6 +158,50 @@ export function clampLimit(limit: unknown, fallback = 20): number {
   return Math.min(n, MAX_ROWS);
 }
 
+/**
+ * Wraps a capped list so the model can tell a COMPLETE answer from a PARTIAL
+ * one.
+ *
+ * A bare array is indistinguishable from the whole truth. On 11 Aug an operator
+ * asked the agent to list all the products; `search_products` returned a plain
+ * array capped at MAX_ROWS = 50 against a catalogue of 51, and the agent — with
+ * nothing in the payload to suggest otherwise — presented it as the full
+ * line-up. Nobody could have caught that from the transcript either, because
+ * the omission left no trace anywhere.
+ *
+ * `matched` is the real total from a COUNT, not `rows.length`. That distinction
+ * is the entire point: without a separate count there is no way to know a cap
+ * was hit.
+ */
+export function listResult<T>(rows: T[], matched: number, key = 'items'): Record<string, unknown> {
+  const truncated = matched > rows.length;
+  return {
+    matched,
+    showing: rows.length,
+    truncated,
+    ...(truncated
+      ? {
+          note: `Showing ${rows.length} of ${matched}. This list is INCOMPLETE — say so rather than presenting it as everything, and narrow the search or raise the limit if the operator needs the rest.`,
+        }
+      : {}),
+    [key]: rows,
+  };
+}
+
+/**
+ * Marker for a payload that describes records without carrying their detail.
+ *
+ * Summary rows are where both August fabrication incidents started: the agent
+ * had a `list_orders` result in front of it, which has never contained line
+ * items or an address, and wrote both anyway. The tool description already said
+ * "Returns summaries — call get_order for full detail" and that was not enough,
+ * because a description is read once when choosing the tool while this travels
+ * with the data itself.
+ */
+export function summaryOnly(missing: string, detailTool: string): string {
+  return `SUMMARY ONLY — this payload does NOT contain ${missing}. Do not state, describe, guess or deny any of those from this result; call ${detailTool} first. If you have not called it, say you have not checked.`;
+}
+
 // Tool results are JSON-stringified into the model's context. An unbounded
 // result (a 500-row report, a product description) can blow the window on its
 // own, and the model only ever needs enough to answer.
