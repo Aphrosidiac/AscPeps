@@ -41,11 +41,16 @@ interface AnalyticsData {
   orderStatuses: Record<string, number>;
 }
 
-const PERIOD_OPTIONS = [
+// "all" is a range, not a day count — the API resolves it to the date of the
+// first order the store ever took.
+type PeriodValue = number | 'all';
+
+const PERIOD_OPTIONS: readonly { label: string; days: PeriodValue }[] = [
   { label: '7d', days: 7 },
   { label: '30d', days: 30 },
   { label: '90d', days: 90 },
-] as const;
+  { label: 'All', days: 'all' },
+];
 
 const SERIES_OPTIONS = [
   { key: 'revenue', label: 'Revenue' },
@@ -125,7 +130,7 @@ export default function AdminAnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState<PeriodValue>(30);
   const [series, setSeries] = useState<SeriesKey>('revenue');
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
 

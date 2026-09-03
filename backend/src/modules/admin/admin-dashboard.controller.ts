@@ -88,11 +88,35 @@ interface DailyPoint {
 }
 
 export async function getAnalytics(fastify: FastifyInstance, query: { days?: string }) {
+  // "all" is not a number of days — it means "since the first order this store
+  // ever took". It still resolves to a concrete `since` below, because every
+  // total and every daily bucket downstream is built by walking whole local
+  // days forward from that date.
+  const allTime = query.days === 'all';
   const parsedDays = parseInt(query.days ?? '30', 10);
-  const days = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 30;
+  const requestedDays = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 30;
+
   const since = new Date();
-  since.setDate(since.getDate() - days);
+  if (allTime) {
+    const firstOrder = await fastify.prisma.order.findFirst({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
+    // A store with no orders leaves `since` at today, which produces one empty
+    // bucket. Without this the range would be unbounded and the day loop below
+    // would walk from the epoch.
+    if (firstOrder) since.setTime(firstOrder.createdAt.getTime());
+  } else {
+    since.setDate(since.getDate() - requestedDays);
+  }
   since.setHours(0, 0, 0, 0);
+
+  // Reported back as a real span in days, so a client reading `period` never
+  // has to know the range was asked for as "all".
+  const days = allTime
+    ? Math.max(1, Math.round((Date.now() - since.getTime()) / 86_400_000))
+    : requestedDays;
 
   const orders = await fastify.prisma.order.findMany({
     where: { createdAt: { gte: since }, deletedAt: null },
