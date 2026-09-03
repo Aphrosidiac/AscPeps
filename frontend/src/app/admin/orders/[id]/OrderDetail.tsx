@@ -141,8 +141,7 @@ const shareCapitalCents = (row: ShareRow) => inputToCents(row.capital) ?? 0;
 // split is already recorded.
 const DEFAULT_SHARES: ShareRow[] = [
   { name: 'Fakhrul', shareBps: 3000, capital: '' },
-  { name: 'Asyraf', shareBps: 3000, capital: '' },
-  { name: 'Investors', shareBps: 4000, capital: '' },
+  { name: 'Asyraf', shareBps: 7000, capital: '' },
 ];
 
 export function OrderDetail({ orderId }: { orderId: string }) {
