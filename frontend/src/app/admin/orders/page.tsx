@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle, EyeOff } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle, EyeOff, BadgeCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
 import { formatPrice, formatDate, paymentMethodLabel } from '@/lib/utils';
@@ -51,6 +51,10 @@ function AdminOrdersContent() {
   // single status is already unambiguous, so the toggle is hidden there.
   const [hideCancelled, setHideCancelled] = useState(false);
   const canHideCancelled = statusFilter === 'ALL';
+  // Payment status is a separate axis from the status tabs — a PAID order can
+  // still be PENDING fulfilment — so this stacks with whichever tab is open
+  // instead of replacing it, and stays available on every tab.
+  const [paidOnly, setPaidOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -72,6 +76,7 @@ function AdminOrdersContent() {
     const params: Record<string, string> = { limit: '50' };
     if (statusFilter !== 'ALL') params.status = statusFilter;
     if (canHideCancelled && hideCancelled) params.excludeCancelled = 'true';
+    if (paidOnly) params.paymentStatus = 'PAID';
     if (search) params.search = search;
     adminGetOrders(token, params)
       .then((r) => setOrders(r.data))
@@ -79,7 +84,7 @@ function AdminOrdersContent() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [token, statusFilter, hideCancelled, search]);
+  useEffect(() => { load(); }, [token, statusFilter, hideCancelled, paidOnly, search]);
 
   // Runs once the target order has actually loaded — a plain status filter
   // (e.g. the order is CANCELLED) could otherwise leave this waiting forever,
@@ -256,6 +261,19 @@ function AdminOrdersContent() {
               Hide cancelled
             </button>
           )}
+          <button
+            onClick={() => setPaidOnly((v) => !v)}
+            aria-pressed={paidOnly}
+            title={paidOnly ? 'Showing only orders marked Paid' : 'Show only orders marked Paid'}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+              paidOnly
+                ? 'bg-green-600 text-white'
+                : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <BadgeCheck className="w-3.5 h-3.5" />
+            Paid
+          </button>
         </div>
       </div>
 
@@ -269,11 +287,15 @@ function AdminOrdersContent() {
           <p className="text-text-muted text-sm">
             {search
               ? 'Try a different search term.'
-              : statusFilter !== 'ALL'
-                ? 'No orders with this status.'
-                : hideCancelled
-                  ? 'Every order here is cancelled — turn off “Hide cancelled” to see them.'
-                  : 'Orders will appear here once customers start purchasing.'}
+              : paidOnly
+                ? statusFilter !== 'ALL'
+                  ? 'No paid orders with this status.'
+                  : 'No orders are marked Paid yet — turn off “Paid” to see the rest.'
+                : statusFilter !== 'ALL'
+                  ? 'No orders with this status.'
+                  : hideCancelled
+                    ? 'Every order here is cancelled — turn off “Hide cancelled” to see them.'
+                    : 'Orders will appear here once customers start purchasing.'}
           </p>
         </div>
       ) : (
