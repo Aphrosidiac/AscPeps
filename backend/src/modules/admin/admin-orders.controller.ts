@@ -54,6 +54,11 @@ const profitSharesSchema = z.object({
     .max(10),
 });
 
+// Payment statuses accepted as a list filter. Checked against this list
+// before it reaches Prisma: an unrecognised value would otherwise be handed
+// straight to the query and blow up as a 500 instead of being ignored.
+const LIST_PAYMENT_STATUSES = ['UNPAID', 'PAID', 'FAILED', 'REFUNDED'];
+
 const resendEmailSchema = z.object({
   type: z.enum(['ORDER_CONFIRMATION', 'PAYMENT_RECEIPT']),
 });
@@ -94,6 +99,13 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
   // that request is unambiguous.
   if (!query.status && query.excludeCancelled === 'true') {
     where.status = { not: 'CANCELLED' };
+  }
+
+  // Payment status is an independent axis from order status — an order can be
+  // PAID and still PENDING fulfilment, or DELIVERED and still UNPAID — so this
+  // stacks with the status tab rather than replacing it.
+  if (query.paymentStatus && LIST_PAYMENT_STATUSES.includes(query.paymentStatus)) {
+    where.paymentStatus = query.paymentStatus;
   }
 
   if (query.search) {
