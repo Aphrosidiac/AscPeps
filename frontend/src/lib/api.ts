@@ -1,5 +1,11 @@
 import axios from 'axios';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document } from '@/types';
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document,
+  ShadowSku,
+  ShadowMappingRow,
+  ShadowCoverage,
+  ShadowSummary,
+  ShadowOrderRow,
+} from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -574,3 +580,95 @@ export const adminDeleteComment = (token: string, id: string) =>
 
 export const adminSetMemberBanned = (token: string, memberId: string, banned: boolean) =>
   api.patch(`/api/v1/admin/comments/members/${memberId}`, { banned }, auth(token)).then((r) => r.data);
+
+// --- Shadow SKUs -----------------------------------------------------------
+
+export const adminGetShadowSkus = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{ data: ShadowSku[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+      '/api/v1/admin/shadow-skus',
+      { ...auth(token), params },
+    )
+    .then((r) => r.data);
+
+export const adminCreateShadowSku = (
+  token: string,
+  body: { code: string; name: string; description?: string | null },
+) => api.post<ShadowSku>('/api/v1/admin/shadow-skus', body, auth(token)).then((r) => r.data);
+
+export const adminUpdateShadowSku = (
+  token: string,
+  id: string,
+  body: Partial<{ code: string; name: string; description: string | null; active: boolean }>,
+) => api.patch<ShadowSku>(`/api/v1/admin/shadow-skus/${id}`, body, auth(token)).then((r) => r.data);
+
+export const adminDeleteShadowSku = (token: string, id: string) =>
+  api.delete<{ success: boolean }>(`/api/v1/admin/shadow-skus/${id}`, auth(token)).then((r) => r.data);
+
+export const adminGetShadowCoverage = (token: string) =>
+  api.get<ShadowCoverage>('/api/v1/admin/shadow-skus/coverage', auth(token)).then((r) => r.data);
+
+export const adminGetShadowMapping = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{ data: ShadowMappingRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+      '/api/v1/admin/shadow-skus/mapping',
+      { ...auth(token), params },
+    )
+    .then((r) => r.data);
+
+export const adminAssignShadowMapping = (
+  token: string,
+  body: { variantIds: string[]; shadowSkuId: string | null },
+) =>
+  api.put<{ updated: number }>('/api/v1/admin/shadow-skus/mapping', body, auth(token)).then((r) => r.data);
+
+export const adminGetShadowOrders = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{ data: ShadowOrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+      '/api/v1/admin/shadow-skus/orders',
+      { ...auth(token), params },
+    )
+    .then((r) => r.data);
+
+/**
+ * Order numbers contain a slash (ASC2608/0022), so anything passed here must be
+ * encoded — pass the order id where you have it, which never needs it.
+ */
+export const adminGetShadowSummary = (token: string, orderRef: string) =>
+  api
+    .get<ShadowSummary>(
+      `/api/v1/admin/shadow-skus/orders/${encodeURIComponent(orderRef)}/summary`,
+      auth(token),
+    )
+    .then((r) => r.data);
+
+/**
+ * The sheet as a blob URL, for previewing in an iframe. A plain src cannot work:
+ * the token is in localStorage rather than a cookie, so the browser's own
+ * request would arrive unauthenticated. The caller owns the URL and must
+ * revoke it.
+ */
+export const adminFetchShadowSummaryBlob = async (token: string, orderRef: string) => {
+  const res = await api.get(
+    `/api/v1/admin/shadow-skus/orders/${encodeURIComponent(orderRef)}/summary.pdf`,
+    { ...auth(token), responseType: 'blob', timeout: 120_000 },
+  );
+  return URL.createObjectURL(res.data as Blob);
+};
+export const adminDownloadShadowSummary = async (
+  token: string,
+  orderRef: string,
+  orderNumber: string,
+) => {
+  const res = await api.get(
+    `/api/v1/admin/shadow-skus/orders/${encodeURIComponent(orderRef)}/summary.pdf`,
+    { ...auth(token), responseType: 'blob', timeout: 120_000 },
+  );
+  const url = URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  // Mirrors the server's own sanitising — order numbers carry a slash.
+  link.download = `${orderNumber.replace(/[^A-Za-z0-9._-]+/g, '-')}-internal-summary.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+};

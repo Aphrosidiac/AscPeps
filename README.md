@@ -24,6 +24,7 @@
 - [Project structure](#project-structure)
 - [Features](#features)
 - [Bookkeeping & documents](#bookkeeping--documents)
+- [Shadow SKUs](#shadow-skus)
 - [Transactional email](#transactional-email)
 - [WhatsApp AI agent](#whatsapp-ai-agent)
 - [Product catalog](#product-catalog)
@@ -115,6 +116,7 @@ AscPeps/
   - Documents filed against the order — supplier invoice, courier slip, the customer's transfer screenshot — attachable from the order itself, which is where the paperwork is actually in your hand
 - **Finance** — lifetime per-partner totals, company spending, capital in. Revenue, COGS, order extras and gateway fees are broken out so the bottom line can be taken apart and checked; the four cost lines sum to gross profit exactly. Spending is split `OPERATING` / `INVENTORY` because stock bought ahead of demand is not a cost until it sells. Partners are created implicitly by typing a name into an order's split; one with nothing referencing it can be **removed outright**, and the API refuses (naming what blocks it) when splits, funding, payouts or fronted expenses still point at it. See [docs/bookkeeping.md](docs/bookkeeping.md)
 - **Documents** — the filing cabinet: receipts, supplier invoices, courier bills, bank slips, statements. Many-to-many against orders and expenses, or against nothing at all. Search matches order numbers as well as titles, and **Unfiled** is a first-class filter because the failure mode of any document store is paperwork piling up unattached. Files are private — stored outside the public `/uploads` mount and readable only through an authenticated route. See [docs/documents.md](docs/documents.md)
+- **Shadow SKUs** — the generalised name each product carries on internal paperwork, and the internal order summary built from it. Coverage leads the page because an order containing an unmapped SKU produces no sheet at all. Never reaches a customer: storefront, checkout, confirmation email and the receipt all keep the real product name. See [docs/shadow-skus.md](docs/shadow-skus.md)
 - **Delivery** — recurring weekly windows, derived slots, and a Calendly-style booking calendar pinning one slot to one order
 - **Emails** — outbox list, editable copy, and a **Template Preview** that renders the real templates against a real order with a **light/dark toggle** (the templates theme off `prefers-color-scheme`, so without it the preview only ever showed whichever scheme the admin's own machine was set to)
 - **Subscribers / Campaigns** — marketing list, welcome flow, broadcast drafting and sending
@@ -193,6 +195,36 @@ that, because a negative stops holding the moment someone adds a field.
 **There is no backup of `backend/documents/`.** A deleted document is gone.
 
 ---
+
+## Shadow SKUs
+
+The generalised name a product is listed under on internal paperwork —
+`Retatrutide 10mg` reads as `Research peptide, 10mg vial`. Less specific, still
+true. Full detail in [docs/shadow-skus.md](docs/shadow-skus.md).
+
+The customer-facing side of the shop is untouched: storefront, cart, checkout,
+confirmation email and the customer's receipt always show the real product.
+Nothing here writes to any of them.
+
+- **Not a receipt.** The internal summary PDF carries a fixed banner saying so,
+  the real order number, and a footer naming the customer receipt as the record
+  of sale. None of the three is configurable, and it deliberately does not reuse
+  the receipt letterhead.
+- **Money is never shadowed.** Quantities, prices and totals are copied from the
+  order, so the sheet's total matches the receipt's by construction.
+- **Nothing is frozen.** Every sheet is resolved live from the current mapping,
+  so changing a shadow name changes every sheet. An earlier design froze the
+  wording on first print; it only ever made old sheets disagree with the mapping.
+- **Unmapped is refused, not defaulted.** An order with an unmapped SKU produces
+  no sheet at all, rather than silently falling back to the real product name.
+
+`/admin/shadow-skus` has three views: **Mapping** (one row per real SKU, with
+bulk assign) led by coverage, where the unmapped count is a filter rather than a
+statistic; **Order sheets**, the backlog of every order filtered
+Ready or Blocked, where a row opens the mapping and the rendered PDF side by
+side; and **Shadow codes** for the
+vocabulary itself. Each order also carries an Internal summary panel on its Info
+tab, under the real items.
 
 ## Transactional email
 
@@ -518,6 +550,12 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - `GET /api/v1/auth/me` — current admin user
 - `GET /api/v1/admin/dashboard/stats` — dashboard stats
 - `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (featured, COA URL) — pings IndexNow on every mutation
+- `GET/POST/PATCH/DELETE /api/v1/admin/shadow-skus` — shadow code CRUD (delete refused while referenced)
+- `GET /api/v1/admin/shadow-skus/coverage` — mapped/unmapped counts over active variants
+- `GET/PUT /api/v1/admin/shadow-skus/mapping` — read the SKU→shadow map; bulk assign or unassign
+- `GET /api/v1/admin/shadow-skus/orders?state=ready|blocked` — the order backlog with each order's sheet state
+- `GET /api/v1/admin/shadow-skus/orders/:ref/summary` — preview an order in shadow wording (no side effects)
+- `GET /api/v1/admin/shadow-skus/orders/:ref/summary.pdf` — render the internal summary PDF
 - `GET/PATCH /api/v1/admin/orders` — order management
 - `GET/PUT /api/v1/admin/settings` — store settings (announcement, WhatsApp, shipping, gateway fee rules)
 - `PUT /api/v1/admin/orders/:id/costs` — per-line costs, extra costs and the gateway fee
@@ -536,6 +574,7 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - **JWT** with HS256 pinned (sign + verify), 24h expiry, secret min 32 chars; all admin routes authenticated
 - **File uploads** validated by real magic bytes (not the client MIME), random UUID filenames, size-limited; `/uploads` served with a locked-down CSP + nosniff
 - **Documents are private, `/uploads` is not.** Receipts and invoices carry customer addresses and bank details, so they are stored outside the static mount and every route touching them — the file stream included — sits behind the admin JWT. A UUID in a URL is obscurity, not a permission. Verified: unauthenticated reads 401, a **storefront member's** token 403s (members are signed with the same secret, so the `kind` claim is what separates the two populations), and the files are unreachable through `/uploads`
+- **The internal summary is admin-only and cannot impersonate a receipt.** Every shadow-SKU route sits behind the admin JWT, the PDF included. The document itself carries a fixed, non-configurable banner declaring it is not a receipt, prints the real order number, and names the customer receipt as the record of sale — and its totals are copied from the order rather than recomputed, so the two documents cannot disagree about money. Producing a sheet for an order with an unmapped SKU is refused rather than falling back to the real product name
 - **Content-Disposition** is RFC 6266 with both an ASCII `filename` and a percent-encoded `filename*` — a non-ASCII filename in a raw header throws `ERR_INVALID_CHAR` in Node and 500s the response
 - **`trustProxy: true`** on the Fastify instance so per-IP rate limiting actually keys on the real client IP behind nginx, not nginx's own loopback address
 - Boolean/numeric env vars parsed safely (no `Boolean("false") === true` traps); numeric settings validated server-side
