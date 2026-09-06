@@ -34,9 +34,16 @@ trap restore EXIT
 rm -rf .next/standalone/.next/cache
 npm run build
 
-echo "→ checking the built bundle for a local API URL"
-if grep -rq "localhost:3105" .next/static .next/standalone 2>/dev/null; then
-  echo "REFUSING TO DEPLOY: the build has localhost:3105 baked into it."
+echo "→ checking the CLIENT bundle for a local API URL"
+# .next/static only — the client bundles, which run in a visitor's browser and
+# must therefore never name localhost.
+#
+# Deliberately NOT the whole of .next/standalone: the server output legitimately
+# contains localhost:3105, because src/lib/server-api.ts falls back to it for
+# server-side fetches, and the Next server really does reach the API that way on
+# the same box. Grepping the whole tree flags every correct build.
+if grep -rq "localhost:3105" .next/static 2>/dev/null; then
+  echo "REFUSING TO DEPLOY: localhost:3105 is baked into the CLIENT bundle."
   echo "Something set NEXT_PUBLIC_API_URL at build time. Production expects it UNSET"
   echo "so the client uses same-origin relative URLs through nginx."
   exit 1
