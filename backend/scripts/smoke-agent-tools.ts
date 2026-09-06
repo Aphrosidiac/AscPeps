@@ -32,6 +32,7 @@ const someProduct = await fastify.prisma.product.findFirst({ include: { variants
 const someOrder = await fastify.prisma.order.findFirst({ where: { deletedAt: null } });
 const someInsight = await fastify.prisma.insight.findFirst();
 const somePartner = await fastify.prisma.partner.findFirst();
+const someDocument = await fastify.prisma.document.findFirst();
 
 const INPUTS: Record<string, any> = {
   get_product: someProduct ? { productIdOrSlug: someProduct.slug } : null,
@@ -48,6 +49,8 @@ const INPUTS: Record<string, any> = {
   list_insights: { limit: 3 },
   list_discount_codes: { limit: 3 },
   list_expenses: { limit: 3 },
+  list_documents: { limit: 3 },
+  get_document: someDocument ? { documentId: someDocument.id } : null,
   email_outbox_status: {},
   agent_activity_log: { limit: 3 },
   run_report_query: {
@@ -65,7 +68,10 @@ for (const tool of ALL_TOOLS) {
     skipped++;
     continue;
   }
-  const input = INPUTS[tool.name] ?? {};
+  // `??` would fold the null sentinel into {} before the skip check below ever
+  // ran, so a tool whose sample row is missing was invoked with no arguments
+  // and reported as a failure. Only tools with no entry at all default to {}.
+  const input = tool.name in INPUTS ? INPUTS[tool.name] : {};
   if (input === null) {
     console.log(`~ ${tool.name.padEnd(24)} skipped (no sample row in dev db)`);
     skipped++;

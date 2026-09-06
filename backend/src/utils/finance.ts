@@ -11,6 +11,18 @@
  * The genuinely recorded events — funding, repayments, payouts — are real rows
  * and are never recomputed.
  *
+ * Three rules the arithmetic here encodes, each of which was previously wrong:
+ *
+ *  1. Revenue is counted for every order the money arrived on. Only PROFIT
+ *     waits for costing. The two used to move together, so an uncosted order
+ *     contributed nothing at all and the takings read low.
+ *  2. A refund reverses revenue by its exact amount and leaves the costs we
+ *     already paid standing. Refunded orders used to be filtered out of the
+ *     input entirely, which erased the courier and the goods along with the
+ *     sale.
+ *  3. Stock bought ahead of demand is not an operating cost. It is charged
+ *     once, as COGS, when the goods sell — never both there and as spending.
+ *
  * All amounts are integer cents.
  */
 
@@ -34,9 +46,16 @@ export interface FinanceOrder extends CostableOrder {
   profitShares: { partnerId: string | null; shareBps: number; capitalAmount: number }[];
 }
 
+export type ExpenseKind = 'OPERATING' | 'INVENTORY';
+
 export interface FinanceExpense {
   id: string;
   amount: number;
+  /**
+   * Absent is read as OPERATING, matching the column default — a caller that
+   * predates the split gets exactly the behaviour it had.
+   */
+  kind?: ExpenseKind;
 }
 
 export interface FinanceFunding {
@@ -73,16 +92,52 @@ export interface PartnerBalance {
 }
 
 export interface FinanceSummary {
-  /** Sum of profit across fully-costed paid orders. Before company spending. */
+  /**
+   * Net revenue across EVERY order the money arrived on, costed or not, less
+   * anything refunded. Counting this only for costed orders is what used to
+   * make a month's takings look smaller than they were, purely because nobody
+   * had typed the unit costs in yet.
+   */
+  revenue: number;
+  /** Cents handed back to customers, already deducted from `revenue`. */
+  refunded: number;
+  /** The part of `revenue` whose costs are known. */
+  costedRevenue: number;
+  /** The rest of it — real money in, profit unknowable until it is costed. */
+  uncostedRevenue: number;
+
+  /* The cost side, all measured over the SAME costed orders as costedRevenue,
+     so grossOrderProfit === costedRevenue − cogs − extraCosts − gatewayFees
+     exactly. Mixing in figures from uncosted orders would break that identity
+     and leave a summary that doesn't add up. */
+  cogs: number;
+  extraCosts: number;
+  gatewayFees: number;
+
+  /** costedRevenue − cogs − extraCosts − gatewayFees. Before company spending. */
   grossOrderProfit: number;
+
+  /** Spending consumed now. The only expense figure that reduces net profit. */
+  operatingSpend: number;
+  /** Spending that bought stock. Becomes a cost as COGS when the goods sell. */
+  inventoryPurchased: number;
+  /** Every expense row added up — cash out, regardless of kind. */
   companySpend: number;
-  /** grossOrderProfit − companySpend. The number that's actually real. */
+  /**
+   * inventoryPurchased − cogs. Negative is meaningful, not an error: it means
+   * more stock has been sold than this system has ever recorded buying,
+   * because the purchases predate it.
+   */
+  stockOnHand: number;
+
+  /** grossOrderProfit − operatingSpend. The number that's actually real. */
   netProfit: number;
+
   totalContributed: number;
   totalAdvancesOutstanding: number;
   totalPaidOut: number;
   costedOrders: number;
-  /** Paid orders still missing a cost — their profit is in none of the above. */
+  /** Paid orders still missing a cost — their PROFIT is in none of the above. */
   uncostedOrders: number;
   partners: PartnerBalance[];
 }
@@ -112,19 +167,37 @@ export function computeFinance(input: {
 
   const byId = new Map<string, PartnerBalance>(partners.map((p) => [p.id, blank(p)]));
 
-  /* ----- earned: allocate each costed order's profit across its own split */
-  let grossOrderProfit = 0;
+  /* ----- revenue and earned.
+     Revenue is counted for EVERY order in `orders` — profit is not. That split
+     is the point: the money arriving is a fact, while what it earned is
+     unknowable until someone prices the lines. Reporting both off the costed
+     subset used to make revenue itself look smaller than it was. */
+  let revenue = 0;
+  let refunded = 0;
+  let costedRevenue = 0;
+  let cogs = 0;
+  let extraCosts = 0;
+  let gatewayFees = 0;
   let costedOrders = 0;
   let uncostedOrders = 0;
 
   for (const order of orders) {
-    const { profit } = costOrder(order);
-    if (profit === null) {
+    const costing = costOrder(order);
+
+    revenue += costing.revenue;
+    refunded += costing.refunded;
+
+    if (costing.profit === null) {
       uncostedOrders++;
       continue;
     }
     costedOrders++;
-    grossOrderProfit += profit;
+    costedRevenue += costing.revenue;
+    cogs += costing.itemCost;
+    extraCosts += costing.extraCost;
+    gatewayFees += costing.gatewayFee;
+
+    const profit = costing.profit;
 
     // Only shares pointing at a known partner can be attributed. A share whose
     // partner was deleted lands nowhere rather than being silently reassigned.
@@ -157,8 +230,18 @@ export function computeFinance(input: {
   /* ----- company spending: reduces company profit, and nothing else. It never
      lands on a person as a charge — nothing in this file ever does. If someone
      paid for it, that is money owed back to them, recorded either as the
-     capital on an order's split or as funding below. */
-  const companySpend = expenses.reduce((sum, e) => sum + e.amount, 0);
+     capital on an order's split or as funding below.
+
+     Split by kind, because only OPERATING spending is a cost now. INVENTORY
+     spending bought goods we still hold; charging it here AND again as COGS
+     when those goods sell is the double-count this separation removes. */
+  let operatingSpend = 0;
+  let inventoryPurchased = 0;
+  for (const expense of expenses) {
+    if (expense.kind === 'INVENTORY') inventoryPurchased += expense.amount;
+    else operatingSpend += expense.amount;
+  }
+  const companySpend = operatingSpend + inventoryPurchased;
 
   /* ----- money in */
   for (const entry of funding) {
@@ -193,10 +276,25 @@ export function computeFinance(input: {
 
   balances.sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
 
+  // Derived from its own components rather than accumulated separately, so the
+  // summary can never report a gross profit that its own cost lines disagree
+  // with.
+  const grossOrderProfit = costedRevenue - cogs - extraCosts - gatewayFees;
+
   return {
+    revenue,
+    refunded,
+    costedRevenue,
+    uncostedRevenue: revenue - costedRevenue,
+    cogs,
+    extraCosts,
+    gatewayFees,
     grossOrderProfit,
+    operatingSpend,
+    inventoryPurchased,
     companySpend,
-    netProfit: grossOrderProfit - companySpend,
+    stockOnHand: inventoryPurchased - cogs,
+    netProfit: grossOrderProfit - operatingSpend,
     totalContributed: balances.reduce((s, b) => s + b.contributed, 0),
     totalAdvancesOutstanding: balances.reduce((s, b) => s + b.advancesOutstanding, 0),
     totalPaidOut: balances.reduce((s, b) => s + b.paidOut, 0),

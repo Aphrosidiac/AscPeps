@@ -6,6 +6,7 @@ import { restoreOrderInventory } from '../../utils/order-inventory.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { capturePurchase } from '../../utils/posthog.js';
 import { isOnlineMethod } from '../../utils/payment-gateway.js';
+import { computeGatewayFee } from '../../utils/gateway-fee.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -13,6 +14,9 @@ const updateOrderSchema = z.object({
   trackingNumber: z.string().max(50).optional(),
   notes: z.string().optional(),
   profitShared: z.boolean().optional(),
+  // How much was actually handed back. Sent alongside paymentStatus REFUNDED
+  // for a partial refund; omitted, a refund is taken to be the whole total.
+  refundedAmount: z.number().int().min(0).max(100_000_000).optional(),
 });
 
 // Cents. Capped well above any plausible order so a mistyped figure can't
@@ -34,6 +38,11 @@ const orderCostsSchema = z.object({
   extraCosts: z
     .array(z.object({ label: z.string().trim().min(1, 'Label is required').max(60), amount: moneyCents }))
     .max(20),
+  // Stamped automatically at the PAID transition from the configured rule, and
+  // editable here because a published rate is a schedule, not a promise — the
+  // real settlement can differ, and the order should record what was actually
+  // taken. Omitted leaves whatever is already stored.
+  gatewayFee: moneyCents.optional(),
 });
 
 // No .default() on any field — this schema is only ever used for partial
@@ -156,11 +165,11 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
 
 // Saves per-line costs and extra costs in one call.
 export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string, body: unknown) {
-  const { itemCosts, extraCosts } = orderCostsSchema.parse(body);
+  const { itemCosts, extraCosts, gatewayFee } = orderCostsSchema.parse(body);
 
   const order = await fastify.prisma.order.findUnique({
     where: { id },
-    select: { id: true, items: { select: { id: true } } },
+    select: { id: true, total: true, items: { select: { id: true } } },
   });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
 
@@ -172,7 +181,17 @@ export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string
     throw { statusCode: 400, message: 'One or more items do not belong to this order.' };
   }
 
+  if (gatewayFee !== undefined && gatewayFee > order.total) {
+    throw {
+      statusCode: 400,
+      message: `The gateway fee cannot exceed the order total (RM${(order.total / 100).toFixed(2)}).`,
+    };
+  }
+
   await fastify.prisma.$transaction([
+    ...(gatewayFee !== undefined
+      ? [fastify.prisma.order.update({ where: { id }, data: { gatewayFee } })]
+      : []),
     ...itemCosts.map((c) =>
       fastify.prisma.orderItem.update({ where: { id: c.itemId }, data: { unitCost: c.unitCost } })
     ),
@@ -263,12 +282,18 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
   const order = await fastify.prisma.order.findUnique({ where: { id }, include: { items: true } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
 
-  if (data.paymentStatus && isLockedOnlinePayment(order)) {
+  // The lock exists to stop a genuinely-paid online order being flipped back to
+  // UNPAID or FAILED, which restocks goods that were bought and paid for.
+  // REFUNDED is the one transition it must NOT block: it is a forward move that
+  // says the money went back, and refusing it left online orders — nearly all of
+  // them — with no way to record a refund at all. Reporting then had no refund
+  // to reverse and simply kept counting the sale.
+  if (data.paymentStatus && data.paymentStatus !== 'REFUNDED' && isLockedOnlinePayment(order)) {
     throw {
       statusCode: 400,
       message: order.paymentMethod === 'CRYPTO'
-        ? 'This order was paid in Bitcoin and is locked — payment status can no longer be changed.'
-        : 'This order was paid via online transfer and is locked — payment status can no longer be changed.',
+        ? 'This order was paid in Bitcoin and is locked — it can only be moved to Refunded.'
+        : 'This order was paid via online transfer and is locked — it can only be moved to Refunded.',
     };
   }
 
@@ -307,10 +332,33 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     updateData.trackingNumber = data.trackingNumber.trim() || null;
   }
 
+  // A refund has to carry an amount or reporting cannot reverse it. Marking an
+  // order REFUNDED without one means the whole thing came back — the common
+  // case, and the only one the UI could express before partial refunds existed.
+  if (data.paymentStatus === 'REFUNDED' && data.refundedAmount === undefined) {
+    updateData.refundedAmount = order.total;
+  }
+  if (data.refundedAmount !== undefined && data.refundedAmount > order.total) {
+    throw {
+      statusCode: 400,
+      message: `A refund cannot exceed the order total (RM${(order.total / 100).toFixed(2)}).`,
+    };
+  }
+  // Moving an order back off REFUNDED clears the reversal with it, so the books
+  // don't keep deducting a refund that is no longer recorded anywhere visible.
+  if (data.paymentStatus && data.paymentStatus !== 'REFUNDED' && order.refundedAmount > 0) {
+    updateData.refundedAmount = 0;
+  }
+
   // Admin manually marking an order Paid (the WhatsApp/manual-transfer flow)
   // is a real payment confirmation — queue the receipt email with the same
   // same-transaction guarantee the gateway path gets in applyPaid.
   if (data.paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
+    // Same stamp applyPaid makes on the gateway path. Zero for WhatsApp and
+    // manual transfers, which have no gateway and cost nothing to collect —
+    // but an online order confirmed by hand here still carried a processor fee.
+    updateData.gatewayFee = await computeGatewayFee(fastify, order.paymentGateway, order.total);
+
     const updated = await fastify.prisma.$transaction(async (tx) => {
       const row = await tx.order.update({ where: { id }, data: updateData });
       await enqueueEmail(tx, row, 'PAYMENT_RECEIPT');

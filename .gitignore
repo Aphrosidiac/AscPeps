@@ -6,4 +6,11 @@ dist/
 *.log
 .DS_Store
 uploads/
+# Uploaded receipts, invoices and statements. Never in git: they carry customer
+# addresses and bank details, and a repo is the wrong place for either.
+#
+# Anchored to the one directory that holds them. A bare `documents/` matches at
+# EVERY depth, which silently excluded frontend/src/app/admin/documents — the
+# whole UI for this feature — from being committed at all.
+/backend/documents/
 *.mp4

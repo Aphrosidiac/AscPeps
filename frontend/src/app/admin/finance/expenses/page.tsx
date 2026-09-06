@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus, X, Receipt } from 'lucide-react';
+import { ArrowLeft, Plus, X, Receipt, Paperclip } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  adminGetExpenses, adminCreateExpense, adminDeleteExpense, adminGetFinanceOverview,
+  adminGetExpenses, adminCreateExpense, adminUpdateExpense, adminDeleteExpense, adminGetFinanceOverview,
 } from '@/lib/api';
+import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
-import type { CompanyExpense, PartnerBalance, FundingType } from '@/types';
+import type { CompanyExpense, PartnerBalance, FundingType, ExpenseKind } from '@/types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -17,8 +18,14 @@ const emptyForm = {
   category: '',
   description: '',
   amount: '',
+  kind: 'OPERATING' as ExpenseKind,
   paidByPartnerId: '',
   paidByFundingType: 'ADVANCE' as FundingType,
+};
+
+const KIND_LABEL: Record<ExpenseKind, string> = {
+  OPERATING: 'Operating',
+  INVENTORY: 'Stock',
 };
 
 export default function AdminExpensesPage() {
@@ -33,6 +40,7 @@ export default function AdminExpensesPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [docsFor, setDocsFor] = useState<CompanyExpense | null>(null);
 
   // Every setState here happens in a promise callback, never synchronously in
   // the effect body — the retry button is what re-arms `loading`.
@@ -80,6 +88,7 @@ export default function AdminExpensesPage() {
         category: form.category.trim(),
         description: form.description.trim(),
         amount: cents,
+        kind: form.kind,
         paidByPartnerId: form.paidByPartnerId || null,
         // Only meaningful when a partner fronted it — this is the question that
         // decides whether the company now owes them.
@@ -97,6 +106,22 @@ export default function AdminExpensesPage() {
     }
   };
 
+  // The whole point of the operating/stock split: every expense recorded before
+  // it existed defaults to Operating, and the stock purchases among them are
+  // exactly the rows that were being counted twice. Editing in place rather
+  // than delete-and-recreate keeps any advance still owed to whoever paid.
+  const reclassify = async (expense: CompanyExpense) => {
+    if (!token) return;
+    const next: ExpenseKind = expense.kind === 'INVENTORY' ? 'OPERATING' : 'INVENTORY';
+    setError('');
+    try {
+      await adminUpdateExpense(token, expense.id, { kind: next });
+      load();
+    } catch {
+      setError('Could not change that expense.');
+    }
+  };
+
   const remove = async (id: string) => {
     if (!token || !confirm('Delete this expense? Any advance it created is removed too.')) return;
     try {
@@ -107,7 +132,33 @@ export default function AdminExpensesPage() {
     }
   };
 
+  // A receipt is filed at the moment you are looking at the expense, not from a
+  // separate page later — so the control that opens the paperwork lives on the
+  // row itself, and says whether anything is there yet.
+  const DocsButton = ({ expense }: { expense: CompanyExpense }) => {
+    // Counted by the database on the expense itself. This used to be tallied in
+    // the browser from a fetch of every document, which meant the number went
+    // quietly wrong once there were more documents than one page of them.
+    const count = expense._count?.documents ?? 0;
+    return (
+      <button
+        onClick={(ev) => { ev.stopPropagation(); setDocsFor(expense); }}
+        title={count ? `${count} document${count === 1 ? '' : 's'} filed` : 'No receipt filed — click to attach one'}
+        aria-label={`Documents for ${expense.description}`}
+        className={cn(
+          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs transition-colors cursor-pointer',
+          count ? 'text-text-secondary hover:bg-surface-elevated' : 'text-text-muted hover:text-primary hover:bg-surface-elevated'
+        )}
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        {count > 0 && <span className="tabular-nums">{count}</span>}
+      </button>
+    );
+  };
+
   const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const stockTotal = expenses.reduce((sum, e) => sum + (e.kind === 'INVENTORY' ? e.amount : 0), 0);
+  const operatingTotal = total - stockTotal;
 
   return (
     <div>
@@ -126,7 +177,8 @@ export default function AdminExpensesPage() {
           <div>
             <h1 className="font-display text-2xl font-bold">Company Spending</h1>
             <p className="text-xs text-text-muted mt-0.5">
-              {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(total)} total
+              {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(operatingTotal)} operating
+              {stockTotal > 0 && <> · {formatPrice(stockTotal)} stock</>}
             </p>
           </div>
         </div>
@@ -174,6 +226,22 @@ export default function AdminExpensesPage() {
               <input id="e-desc" type="text" value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="e.g. Meta ads, July"
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+            </div>
+            <div>
+              <label htmlFor="e-kind" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+                What kind of spending
+              </label>
+              <select id="e-kind" value={form.kind}
+                onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as ExpenseKind }))}
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface">
+                <option value="OPERATING">Operating — used up now</option>
+                <option value="INVENTORY">Stock — goods to sell later</option>
+              </select>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                {form.kind === 'INVENTORY'
+                  ? 'Not counted against profit now. It becomes a cost as goods, when it sells — otherwise the same stock is charged twice.'
+                  : 'Ads, software, packaging, fees. Reduces net profit today.'}
+              </p>
             </div>
             <div>
               <label htmlFor="e-paidby" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Who paid</label>
@@ -230,7 +298,7 @@ export default function AdminExpensesPage() {
           <Receipt className="w-10 h-10 text-text-muted mx-auto mb-3" />
           <p className="text-text-muted mb-1">No company spending recorded.</p>
           <p className="text-sm text-text-muted">
-            Company spending reduces net profit. What each person carries is set per order.
+            Operating spending reduces net profit. Stock does not — it becomes a cost when it sells.
           </p>
         </div>
       ) : (
@@ -247,6 +315,7 @@ export default function AdminExpensesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-medium text-sm min-w-0">{e.description}</p>
                   <div className="flex items-baseline gap-1 shrink-0">
+                    <DocsButton expense={e} />
                     <span className="text-sm font-semibold tabular-nums">{formatPrice(e.amount)}</span>
                     <button onClick={() => remove(e.id)} aria-label={`Delete ${e.description}`}
                       className="p-1 -mr-1 rounded-lg text-text-muted hover:text-danger transition-colors cursor-pointer">
@@ -255,6 +324,20 @@ export default function AdminExpensesPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs text-text-muted">
+                  <button
+                    onClick={() => reclassify(e)}
+                    title={e.kind === 'INVENTORY'
+                      ? 'Stock — becomes a cost when it sells. Tap to make it operating spending.'
+                      : 'Operating — a cost today. Tap if this bought stock instead.'}
+                    className={cn(
+                      'px-2 py-0.5 rounded-full cursor-pointer transition-colors',
+                      e.kind === 'INVENTORY'
+                        ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                        : 'bg-surface-elevated hover:bg-border'
+                    )}
+                  >
+                    {KIND_LABEL[e.kind]}
+                  </button>
                   <span className="px-2 py-0.5 rounded-full bg-surface-elevated">{e.category}</span>
                   <span>{formatShortDate(e.occurredAt)}</span>
                   <span>·</span>
@@ -274,13 +357,15 @@ export default function AdminExpensesPage() {
           </div>
 
           <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-sm min-w-[760px]">
+            <table className="w-full text-sm min-w-[860px]">
               <thead>
                 <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
                   <th className="text-left px-5 py-3">Date</th>
+                  <th className="text-left px-3 py-3">Kind</th>
                   <th className="text-left px-3 py-3">Category</th>
                   <th className="text-left px-3 py-3">Description</th>
                   <th className="text-left px-3 py-3">Paid by</th>
+                  <th className="text-center px-3 py-3">Docs</th>
                   <th className="text-right px-3 py-3">Amount</th>
                   <th className="px-5 py-3" />
                 </tr>
@@ -294,6 +379,26 @@ export default function AdminExpensesPage() {
                     className="row-rise hover:bg-surface-elevated/50 transition-colors"
                   >
                     <td className="px-5 py-3 text-text-muted whitespace-nowrap">{formatShortDate(e.occurredAt)}</td>
+                    <td className="px-3 py-3">
+                      {/* Click to switch. Reclassifying is the common action on
+                          this column — every row entered before the split
+                          existed says Operating, including the stock buys that
+                          were being double-counted. */}
+                      <button
+                        onClick={() => reclassify(e)}
+                        title={e.kind === 'INVENTORY'
+                          ? 'Stock — becomes a cost when it sells. Click to make it operating spending.'
+                          : 'Operating — a cost today. Click if this bought stock instead.'}
+                        className={cn(
+                          'px-2 py-0.5 rounded-full text-xs cursor-pointer transition-colors whitespace-nowrap',
+                          e.kind === 'INVENTORY'
+                            ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                            : 'bg-surface-elevated text-text-secondary hover:bg-border'
+                        )}
+                      >
+                        {KIND_LABEL[e.kind]}
+                      </button>
+                    </td>
                     <td className="px-3 py-3">
                       <span className="px-2 py-0.5 rounded-full bg-surface-elevated text-xs">{e.category}</span>
                     </td>
@@ -310,6 +415,7 @@ export default function AdminExpensesPage() {
                         <span className="text-text-muted">Company</span>
                       )}
                     </td>
+                    <td className="px-3 py-3 text-center"><DocsButton expense={e} /></td>
                     <td className="px-3 py-3 text-right font-semibold tabular-nums whitespace-nowrap">{formatPrice(e.amount)}</td>
                     <td className="px-5 py-3 text-right">
                       <button onClick={() => remove(e.id)} aria-label={`Delete ${e.description}`}
@@ -321,6 +427,36 @@ export default function AdminExpensesPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Deliberately a panel over this page rather than a jump to Documents:
+          you are checking one expense against its receipt, and losing the list
+          you were working down is the wrong trade. */}
+      {docsFor && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-start sm:items-center justify-center p-4 overflow-y-auto"
+          onClick={() => { setDocsFor(null); load(); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Documents for ${docsFor.description}`}
+        >
+          <div onClick={(ev) => ev.stopPropagation()} className="w-full max-w-lg my-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="min-w-0">
+                <p className="text-white font-display font-semibold truncate">{docsFor.description}</p>
+                <p className="text-white/70 text-xs">{docsFor.category} · {formatPrice(docsFor.amount)}</p>
+              </div>
+              <button
+                onClick={() => { setDocsFor(null); load(); }}
+                aria-label="Close"
+                className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <AttachedDocuments expenseId={docsFor.id} />
           </div>
         </div>
       )}

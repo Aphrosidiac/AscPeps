@@ -28,6 +28,7 @@ export const DOMAINS = [
   'reports',
   'delivery',
   'reminders',
+  'documents',
 ] as const;
 
 export type Domain = (typeof DOMAINS)[number];
@@ -96,6 +97,15 @@ const KEYWORDS: Record<Domain, string[]> = {
     'schedule', 'jadual', 'dispatch', 'tracking', 'pickup', 'drop',
   ],
   reminders: ['remind', 'reminder', 'peringatan', 'ingatkan', 'nudge', 'later', 'nanti', 'follow up', 'alarm'],
+  documents: [
+    'document', 'dokumen', 'file', 'fail', 'upload', 'muat naik', 'attach',
+    'attachment', 'lampiran', 'scan', 'imbas', 'pdf', 'paperwork', 'kertas',
+    'statement', 'penyata', 'slip', 'certificate', 'sijil', 'filed', 'copy',
+    // "receipt"/"resit" and "invoice" also sit under orders — a message about
+    // either genuinely wants both domains, and loading two is far cheaper than
+    // routing to the wrong one.
+    'receipt', 'resit', 'invoice', 'invois', 'bil',
+  ],
 };
 
 // ------------------------------------------------------------------ playbooks
@@ -165,6 +175,7 @@ const DOMAIN_PLAYBOOKS: Record<Domain, string[]> = {
   reports: ['moneyflow'],
   delivery: ['statuses'],
   reminders: [],
+  documents: [],
 };
 
 // ------------------------------------------------------------------- routing
@@ -225,4 +236,5 @@ const DOMAIN_BLURB: Record<Domain, string> = {
   reports: 'sales analytics, breakdowns, inventory reports, database queries',
   delivery: 'delivery scheduling and the delivery run',
   reminders: 'reminders for the operators',
+  documents: 'the document store — receipts, invoices, bank slips, statements, and what they are filed against',
 };
