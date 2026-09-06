@@ -22,6 +22,7 @@
     "test:agent:memory": "tsx scripts/test-agent-memory.ts",
     "test:agent:grounding": "tsx scripts/test-grounding-unit.ts",
     "test:agent:grounding:e2e": "tsx scripts/test-agent-grounding.ts",
+    "test:agent:documents": "tsx scripts/test-agent-documents.ts",
     "audit:agent:grounding": "tsx scripts/audit-agent-grounding.ts",
     "test:payment-failure": "tsx scripts/test-payment-failure.ts"
   },

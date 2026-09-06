@@ -6,6 +6,7 @@ import {
   saveFinancePartners,
   listExpenses,
   createExpense,
+  updateExpense,
   deleteExpense,
   createFunding,
   deleteFunding,
@@ -35,6 +36,9 @@ export default async function adminFinanceRoutes(fastify: FastifyInstance) {
     listExpenses(fastify, request.query as Record<string, string>)
   );
   fastify.post('/expenses', async (request) => createExpense(fastify, request.body));
+  fastify.patch<{ Params: { id: string } }>('/expenses/:id', async (request) =>
+    updateExpense(fastify, request.params.id, request.body)
+  );
   fastify.delete<{ Params: { id: string } }>('/expenses/:id', async (request) =>
     deleteExpense(fastify, request.params.id)
   );

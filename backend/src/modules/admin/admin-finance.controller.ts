@@ -25,12 +25,21 @@ const expenseSchema = z.object({
   category: z.string().trim().min(1, 'Category is required').max(60),
   description: z.string().trim().min(1, 'Description is required').max(300),
   amount: moneyCents,
+  // Whether this is consumed now or bought stock. Optional so an older client
+  // keeps writing operating spending, which is what it always meant.
+  kind: z.enum(['OPERATING', 'INVENTORY']).optional(),
   paidByPartnerId: z.string().nullable().optional(),
   // Only meaningful alongside paidByPartnerId — decides whether fronting this
   // cost created a debt to that partner or was pure investment.
   paidByFundingType: z.enum(['CONTRIBUTION', 'ADVANCE']).nullable().optional(),
-  receiptUrl: z.string().trim().max(500).nullable().optional(),
 });
+
+// Partial by construction — every field optional, and `paidByPartnerId` absent
+// entirely. See updateExpense for why who-paid is not editable.
+const expenseUpdateSchema = expenseSchema
+  .omit({ paidByPartnerId: true, paidByFundingType: true })
+  .partial()
+  .refine((d) => Object.keys(d).length > 0, { message: 'Nothing to update' });
 
 const fundingSchema = z.object({
   partnerId: z.string().min(1),
@@ -58,19 +67,28 @@ const payoutSchema = z.object({
 async function loadFinanceInput(fastify: FastifyInstance) {
   const [partners, orders, expenses, funding, payouts] = await Promise.all([
     fastify.prisma.partner.findMany(),
-    // Only PAID, non-deleted orders can have produced real profit — matching
-    // the analytics endpoint exactly, so the two never disagree.
+    // Orders the money actually arrived on — matching the analytics endpoint
+    // exactly, so the two never disagree.
+    //
+    // REFUNDED is included deliberately. Filtering to PAID alone did not just
+    // remove the refunded sale, it removed the courier, the packaging and the
+    // gateway fee we had already paid on it: a refund made the books LOOK
+    // better than reality. Its revenue is now reversed by refundedAmount and
+    // the costs stand — see costOrder.
     fastify.prisma.order.findMany({
-      where: { deletedAt: null, paymentStatus: 'PAID' },
+      where: { deletedAt: null, paymentStatus: { in: ['PAID', 'REFUNDED'] } },
       select: {
         id: true,
         total: true,
+        gatewayFee: true,
+        refundedAmount: true,
+        stockRestored: true,
         items: { select: { quantity: true, unitCost: true } },
         extraCosts: { select: { amount: true } },
         profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true } },
       },
     }),
-    fastify.prisma.companyExpense.findMany({ select: { id: true, amount: true } }),
+    fastify.prisma.companyExpense.findMany({ select: { id: true, amount: true, kind: true } }),
     fastify.prisma.partnerFunding.findMany({
       select: { id: true, partnerId: true, type: true, amount: true, repayments: { select: { amount: true } } },
     }),
@@ -233,6 +251,7 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
         order: {
           select: {
             id: true, orderNumber: true, createdAt: true, total: true, deletedAt: true, paymentStatus: true,
+            gatewayFee: true, refundedAmount: true, stockRestored: true,
             items: { select: { quantity: true, unitCost: true } },
             extraCosts: { select: { amount: true } },
             profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true } },
@@ -247,7 +266,13 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
   // exactly — including the rounding remainder, which a naive
   // profit × shareBps ÷ 10000 per row would lose.
   const earnings = shares
-    .filter((s) => s.order.deletedAt === null && s.order.paymentStatus === 'PAID')
+    // Same order set as loadFinanceInput, for the same reason: a refunded order
+    // still belongs in someone's history — it just earned less, or nothing.
+    .filter(
+      (s) =>
+        s.order.deletedAt === null &&
+        (s.order.paymentStatus === 'PAID' || s.order.paymentStatus === 'REFUNDED')
+    )
     .map((s) => {
       const contributing = computeFinance({
         partners: input.partners,
@@ -265,6 +290,7 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
         orderProfit: contributing.grossOrderProfit,
         amount: mine?.earned ?? 0,
         costed: contributing.costedOrders > 0,
+        refunded: s.order.refundedAmount > 0,
       };
     });
 
@@ -306,6 +332,10 @@ export async function listExpenses(fastify: FastifyInstance, query: Record<strin
       include: {
         paidBy: { select: { id: true, name: true } },
         funding: { select: { id: true, type: true, repayments: { select: { amount: true } } } },
+        // Counted here rather than by fetching every document and tallying them
+        // in the browser: that tally was capped by the documents page size, so
+        // past it a row would quietly report fewer receipts than it has.
+        _count: { select: { documents: true } },
       },
     }),
     // Powers the "categories already in use" suggestions — the thing that keeps
@@ -343,6 +373,62 @@ export async function createExpense(fastify: FastifyInstance, body: unknown) {
           occurredAt: data.occurredAt,
           description: `Paid for: ${data.description}`,
           expenseId: expense.id,
+        },
+      });
+    }
+
+    return expense;
+  });
+}
+
+/**
+ * Edit an expense in place.
+ *
+ * This exists because the OPERATING/INVENTORY split is worthless without it:
+ * every expense recorded before the split defaulted to OPERATING, and the stock
+ * purchases among them are exactly the rows that were being double-counted.
+ * Without an edit the only way to reclassify one is delete-and-recreate, which
+ * destroys the funding row linked to it and, with it, an advance the company
+ * still owes someone.
+ *
+ * `paidByPartnerId` is deliberately NOT editable here. Changing who fronted the
+ * cash means rewriting or deleting a PartnerFunding row that may already have
+ * repayments recorded against it, and quietly discarding a repayment history is
+ * a worse outcome than making someone re-enter the expense.
+ */
+export async function updateExpense(fastify: FastifyInstance, id: string, body: unknown) {
+  const data = expenseUpdateSchema.parse(body);
+
+  const existing = await fastify.prisma.companyExpense.findUnique({
+    where: { id },
+    include: { funding: { select: { id: true, repayments: { select: { amount: true } } } } },
+  });
+  if (!existing) throw { statusCode: 404, message: 'Expense not found' };
+
+  // The linked funding row is the same money seen from the partner's side, so
+  // the two amounts must move together or the company would owe a figure that
+  // no longer matches what was actually spent.
+  const funding = existing.funding;
+  if (data.amount !== undefined && funding) {
+    const repaid = funding.repayments.reduce((sum, r) => sum + r.amount, 0);
+    if (data.amount < repaid) {
+      throw {
+        statusCode: 400,
+        message: `Already repaid RM${(repaid / 100).toFixed(2)} against this — the amount cannot drop below that.`,
+      };
+    }
+  }
+
+  return fastify.prisma.$transaction(async (tx) => {
+    const expense = await tx.companyExpense.update({ where: { id }, data });
+
+    if (funding && (data.amount !== undefined || data.occurredAt !== undefined || data.description !== undefined)) {
+      await tx.partnerFunding.update({
+        where: { id: funding.id },
+        data: {
+          ...(data.amount !== undefined ? { amount: data.amount } : {}),
+          ...(data.occurredAt !== undefined ? { occurredAt: data.occurredAt } : {}),
+          ...(data.description !== undefined ? { description: `Paid for: ${data.description}` } : {}),
         },
       });
     }

@@ -5,14 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, User, Users, FileText, Truck, Trash2, RotateCcw, Mail, ExternalLink,
-  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt,
+  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt, CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
-import { formatPrice, formatDate, paymentMethodLabel } from '@/lib/utils';
+import { formatPrice, formatDate, paymentMethodLabel, cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
@@ -85,24 +86,43 @@ const bpsToPercent = (bps: number) => (bps / 100).toFixed(2).replace(/\.00$/, ''
 function profitSummary(
   order: Order,
   unitCostFor: (itemId: string) => number | null,
-  extraCents: number[]
+  extraCents: number[],
+  gatewayFeeCents?: number
 ) {
   const itemsRevenue = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-  const revenue = order.total;
+
+  // A refund reverses revenue by exactly what went back, rather than the order
+  // dropping out of reporting entirely — which used to erase the courier and
+  // the processor's cut along with the sale.
+  const refunded = order.refundedAmount ?? 0;
+  const revenue = order.total - refunded;
+  const gatewayFee = gatewayFeeCents ?? order.gatewayFee ?? 0;
 
   // An order with no lines counts as uncosted, not as "fully costed with zero
   // cost" — matching backend/src/utils/profit.ts, which would otherwise exclude
   // it from analytics while this page happily showed it a profit.
   const noItems = order.items.length === 0;
   const unpricedCount = noItems ? 1 : order.items.filter((i) => unitCostFor(i.id) === null).length;
-  const itemCostTotal = order.items.reduce((sum, i) => sum + (unitCostFor(i.id) ?? 0) * i.quantity, 0);
+
+  // Goods that came back are not a cost. Gated on a refund having happened, not
+  // on stockRestored alone — that flag is also set when a still-paid order is
+  // cancelled, and zeroing the goods cost against full revenue would invent
+  // profit. All-or-nothing, because the restore is.
+  const goodsReturned = refunded > 0 && order.stockRestored === true;
+  const itemCostTotal = goodsReturned
+    ? 0
+    : order.items.reduce((sum, i) => sum + (unitCostFor(i.id) ?? 0) * i.quantity, 0);
   const extrasTotal = extraCents.reduce((sum, c) => sum + c, 0);
+  const totalCost = itemCostTotal + extrasTotal + gatewayFee;
 
   // Withheld while any line is unpriced: a partial total reads as a real profit
   // figure and is simply wrong.
-  const netProfit = unpricedCount > 0 ? null : revenue - itemCostTotal - extrasTotal;
+  const netProfit = unpricedCount > 0 ? null : revenue - totalCost;
 
-  return { itemsRevenue, revenue, unpricedCount, itemCostTotal, extrasTotal, netProfit };
+  return {
+    itemsRevenue, revenue, refunded, unpricedCount,
+    itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit,
+  };
 }
 
 // Ringgit text field <-> integer cents. Empty string is a real state ("not
@@ -475,13 +495,40 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
   };
 
   const handlePaymentUpdate = (paymentStatus: string) => {
-    if (paymentStatus === 'REFUNDED' && order.paymentGateway === 'toyyibpay') {
+    if (paymentStatus !== 'REFUNDED') {
+      patch({ paymentStatus });
+      return;
+    }
+
+    if (order.paymentGateway === 'toyyibpay') {
       const ok = window.confirm(
         'ToyyibPay has no automatic refund. This only restores stock and marks the order Refunded — you must process the actual refund manually in the ToyyibPay dashboard. Continue?'
       );
       if (!ok) return;
     }
-    patch({ paymentStatus });
+
+    // How much went back, not just that something did. Reporting reverses
+    // revenue by this exact figure, so a partial refund has to be expressible —
+    // and it is the whole reason the amount is asked for rather than assumed.
+    // Prefilled with the full total, which is the usual answer.
+    const answer = window.prompt(
+      `How much was refunded, in RM? The full order is ${(order.total / 100).toFixed(2)}. ` +
+        'Enter less for a partial refund.',
+      (order.total / 100).toFixed(2)
+    );
+    if (answer === null) return;
+
+    const cents = inputToCents(answer);
+    if (cents === null || cents <= 0) {
+      window.alert('That is not a valid refund amount.');
+      return;
+    }
+    if (cents > order.total) {
+      window.alert(`A refund cannot exceed the order total (RM${(order.total / 100).toFixed(2)}).`);
+      return;
+    }
+
+    patch({ paymentStatus, refundedAmount: cents });
   };
 
   const handleDelete = async () => {
@@ -553,20 +600,28 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
             <label htmlFor="payment-status" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
               Payment Status
             </label>
+            {/* The lock stops a genuinely-paid online order being flipped back
+                to Unpaid or Failed, which restocks goods that were bought and
+                paid for. Refunded is the one move it must allow: the money
+                really did go back, and blocking it left almost every order with
+                no way to record a refund at all — so reporting had nothing to
+                reverse and simply kept counting the sale. Matches the same
+                carve-out in the API. */}
             <select
               id="payment-status"
               value={order.paymentStatus}
               onChange={(e) => handlePaymentUpdate(e.target.value)}
-              disabled={saving || paymentLocked}
-              title={paymentLocked ? 'Paid via online transfer — locked, can no longer be changed' : undefined}
+              disabled={saving}
               className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface font-medium disabled:opacity-50"
             >
-              <option value="UNPAID">Unpaid</option>
-              <option value="PAID">Paid</option>
-              <option value="FAILED">Failed</option>
+              <option value="UNPAID" disabled={paymentLocked}>Unpaid</option>
+              <option value="PAID" disabled={paymentLocked}>Paid</option>
+              <option value="FAILED" disabled={paymentLocked}>Failed</option>
               <option value="REFUNDED">Refunded</option>
             </select>
-            {paymentLocked && <p className="text-xs text-text-muted mt-1">🔒 Paid online — locked</p>}
+            {paymentLocked && (
+              <p className="text-xs text-text-muted mt-1">🔒 Paid online — Refunded is the only change left</p>
+            )}
           </div>
         </div>
 
@@ -691,6 +746,11 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const [extras, setExtras] = useState<{ label: string; amount: string }[]>(() =>
     (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }))
   );
+  // Stamped automatically when the order was confirmed paid, from the rule in
+  // backend/src/utils/gateway-fee.ts. Editable because the published rate is a
+  // schedule, not a promise — what the processor actually took can differ, and
+  // the order should record what really happened.
+  const [gatewayFeeInput, setGatewayFeeInput] = useState(() => centsToInput(order.gatewayFee ?? 0));
   const [shares, setShares] = useState<ShareRow[]>(() => {
     const saved = order.profitShares ?? [];
     return saved.length > 0
@@ -714,10 +774,14 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   /* ----- live totals, from what's currently typed rather than what's saved */
   const shipping = order.shippingFee;
   const discount = order.discountAmount;
-  const { itemsRevenue, revenue, unpricedCount, itemCostTotal, extrasTotal, netProfit } = profitSummary(
+  const {
+    itemsRevenue, revenue, refunded, unpricedCount,
+    itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit,
+  } = profitSummary(
     order,
     (itemId) => inputToCents(itemCosts[itemId] ?? ''),
-    extras.map((e) => inputToCents(e.amount) ?? 0)
+    extras.map((e) => inputToCents(e.amount) ?? 0),
+    inputToCents(gatewayFeeInput) ?? 0
   );
 
   const lineCost = (itemId: string, quantity: number) => {
@@ -749,18 +813,22 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
   const costsDirty =
     JSON.stringify(normalisedItemCosts) !== JSON.stringify(savedItemCosts) ||
-    JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras);
+    JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras) ||
+    (inputToCents(gatewayFeeInput) ?? 0) !== (order.gatewayFee ?? 0);
   const sharesDirty = JSON.stringify(normalisedShares) !== JSON.stringify(savedShares);
   const dirty = costsDirty || sharesDirty;
 
   const extrasValid = extras.every((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null);
+  // A blank fee is a real zero here (plenty of orders cost nothing to collect),
+  // but a stray character must not save silently as one.
+  const gatewayFeeValid = gatewayFeeInput.trim() === '' || inputToCents(gatewayFeeInput) !== null;
   // Blank capital means "put in nothing", which is fine. Anything typed has to
   // actually parse, so a stray character cannot silently save as zero.
   const sharesValid =
     shares.length === 0 ||
     (totalBps === 10_000 &&
       shares.every((s) => s.name.trim() !== '' && (s.capital.trim() === '' || inputToCents(s.capital) !== null)));
-  const canSave = extrasValid && sharesValid;
+  const canSave = extrasValid && sharesValid && gatewayFeeValid;
 
   /* ----- split editing */
   const splitEvenly = (list: ShareRow[]) => {
@@ -780,8 +848,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     netProfit === null ? null : (amounts[index] ?? 0) + shareCapitalCents(shares[index]);
   const capitalTotal = shares.reduce((sum, s) => sum + shareCapitalCents(s), 0);
   // What the order actually cost, for reconciling against the capital column:
-  // every ringgit of cost came out of somebody's pocket.
-  const totalCost = itemCostTotal + extrasTotal;
+  // every ringgit of cost came out of somebody's pocket. `totalCost` comes from
+  // profitSummary and now includes the processor's cut, which nobody fronts —
+  // it was withheld from the payment — so a fee-only gap is expected.
   const capitalGap = totalCost - capitalTotal;
 
   const handleSave = async () => {
@@ -795,6 +864,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           extraCosts: extras
             .filter((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null)
             .map((e) => ({ label: e.label.trim(), amount: inputToCents(e.amount) as number })),
+          gatewayFee: inputToCents(gatewayFeeInput) ?? 0,
         });
       }
       if (sharesDirty) {
@@ -835,8 +905,14 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <span className="text-text-muted">Shipping charged</span>
             <span className="font-medium">{shipping ? formatPrice(shipping) : 'Free'}</span>
           </div>
+          {refunded > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-text-muted">Refunded to customer</span>
+              <span className="font-medium text-danger">-{formatPrice(refunded)}</span>
+            </div>
+          )}
           <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
-            <span>Total revenue</span>
+            <span>{refunded > 0 ? 'Revenue kept' : 'Total revenue'}</span>
             <span>{formatPrice(revenue)}</span>
           </div>
         </div>
@@ -844,6 +920,15 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           <p className="text-xs text-text-muted mt-3">
             Shipping the customer paid counts as revenue. What the courier actually charged belongs
             in Extra Costs below.
+          </p>
+        )}
+        {refunded > 0 && (
+          <p className="text-xs text-text-muted mt-3">
+            A refund reverses revenue by what went back.{' '}
+            {order.stockRestored
+              ? 'The stock returned to inventory, so the goods are no longer a cost.'
+              : 'The stock did not return, so the goods stay a cost.'}{' '}
+            Courier, packaging and the gateway fee are never recovered.
           </p>
         )}
       </Card>
@@ -1040,6 +1125,43 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         )}
       </Card>
 
+      {/* Gateway fee. Its own card rather than another Extra Cost row: extras are
+          free-text things a human decides to record, while this is stamped
+          automatically at the moment the order is confirmed paid and is the
+          same on every order paid the same way. Burying it in the extras list
+          would make it look optional, which is how it came to be missing from
+          every order's profit in the first place. */}
+      <Card title="Gateway Fee" icon={<CreditCard className="w-4 h-4" />}>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="min-w-0">
+            <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">
+              Kept by the processor
+            </span>
+            <span className="relative block w-36">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">RM</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={gatewayFeeInput}
+                onChange={(e) => { setGatewayFeeInput(e.target.value); touch(); }}
+                placeholder="0.00"
+                aria-label="Gateway fee kept by the payment processor"
+                className="w-full pl-10 pr-3 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </span>
+          </label>
+          <p className="text-xs text-text-muted flex-1 min-w-[16rem] pb-2">
+            {order.paymentGateway
+              ? `Set automatically from the ${order.paymentGateway} rate when this order was confirmed paid. Correct it here if the settlement differed.`
+              : 'No gateway on this order — a manual transfer costs nothing to collect. Leave it at zero unless something was actually deducted.'}
+          </p>
+        </div>
+        {!gatewayFeeValid && (
+          <p className="text-xs text-danger mt-2">That is not a valid amount.</p>
+        )}
+      </Card>
+
       {/* Bottom line */}
       <Card title="Net Profit" icon={<Scale className="w-4 h-4" />}>
         <div className="space-y-1 max-w-md">
@@ -1054,6 +1176,15 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           <div className="flex justify-between text-sm">
             <span className="text-text-muted">Extra costs</span>
             <span className="font-medium text-danger">-{formatPrice(extrasTotal)}</span>
+          </div>
+          {/* Always shown, even at zero: a missing row reads as "no fee was
+              charged", which is exactly the assumption that overstated every
+              online order's profit while this was recorded nowhere. */}
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Gateway fee</span>
+            <span className={cn('font-medium', gatewayFee > 0 && 'text-danger')}>
+              {gatewayFee > 0 ? `-${formatPrice(gatewayFee)}` : formatPrice(0)}
+            </span>
           </div>
           <div className="flex justify-between font-display font-bold text-lg border-t border-border pt-2 mt-1">
             <span>Net profit</span>
@@ -1269,11 +1400,12 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
   // Reads saved values only — never the Profit Sharing tab's unsaved drafts.
   // This tab answers "what is recorded against this order", which is a
   // different question from "what am I currently typing".
-  const { revenue, unpricedCount, itemCostTotal, extrasTotal, netProfit } = profitSummary(
-    order,
-    (itemId) => order.items.find((i) => i.id === itemId)?.unitCost ?? null,
-    (order.extraCosts ?? []).map((c) => c.amount)
-  );
+  const { revenue, unpricedCount, itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit } =
+    profitSummary(
+      order,
+      (itemId) => order.items.find((i) => i.id === itemId)?.unitCost ?? null,
+      (order.extraCosts ?? []).map((c) => c.amount)
+    );
 
   const shares = order.profitShares ?? [];
   const amounts = netProfit === null ? [] : allocate(netProfit, shares.map((s) => s.shareBps));
@@ -1329,8 +1461,8 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
         <StatTile label="Revenue" value={formatPrice(revenue)} hint="Including shipping charged" />
         <StatTile
           label="Total costs"
-          value={formatPrice(itemCostTotal + extrasTotal)}
-          hint={`${formatPrice(itemCostTotal)} items + ${formatPrice(extrasTotal)} extras`}
+          value={formatPrice(totalCost)}
+          hint={`${formatPrice(itemCostTotal)} items + ${formatPrice(extrasTotal)} extras + ${formatPrice(gatewayFee)} fee`}
         />
         <StatTile
           label="Net profit"
@@ -1457,6 +1589,18 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
               <span className="font-medium text-danger">-{formatPrice(cost.amount)}</span>
             </div>
           ))}
+          <div className="flex justify-between text-sm">
+            <span className="text-text-muted">Gateway fee</span>
+            <span className={cn('font-medium', gatewayFee > 0 && 'text-danger')}>
+              {gatewayFee > 0 ? `-${formatPrice(gatewayFee)}` : formatPrice(0)}
+            </span>
+          </div>
+          {order.refundedAmount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-text-muted">Refunded to customer</span>
+              <span className="font-medium text-danger">-{formatPrice(order.refundedAmount)}</span>
+            </div>
+          )}
           <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
             <span>Net profit</span>
             {netProfit === null ? (
@@ -1467,6 +1611,11 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
           </div>
         </div>
       </Card>
+
+      {/* Paperwork filed against this order — the supplier invoice, the courier
+          slip, the customer's transfer screenshot. Attaching happens here
+          because here is where the document is actually in your hand. */}
+      <AttachedDocuments orderId={order.id} />
 
       {/* Fulfilment facts, so this tab stands alone as the "what happened" view */}
       <Card title="Record" icon={<Truck className="w-4 h-4" />}>

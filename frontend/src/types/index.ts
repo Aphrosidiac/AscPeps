@@ -176,6 +176,17 @@ export interface Order {
   paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO';
   paymentGateway: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
+  /**
+   * What the payment processor kept out of `total`, in cents. A real cost of
+   * the sale, deducted alongside item and extra costs. Zero is a real value —
+   * WhatsApp/manual transfers and BTCPay genuinely cost nothing to collect.
+   */
+  gatewayFee: number;
+  /** Cents handed back to the customer. Reverses revenue by exactly this much. */
+  refundedAmount: number;
+  /** Whether the order's stock went back into inventory. Only consulted on a
+   *  refunded order — goods that came back are not a cost. */
+  stockRestored?: boolean;
   // Why a FAILED order failed. Null on orders that failed before this was
   // recorded, and on every order that didn't fail. See lib/payment-failure.ts.
   paymentFailureReason: 'DECLINED' | 'ABANDONED_MID_PAYMENT' | 'NO_ATTEMPT' | 'NO_BILL' | 'UNKNOWN' | null;
@@ -381,16 +392,71 @@ export interface PartnerRef {
   name: string;
 }
 
+/**
+ * OPERATING spending is consumed on purchase and reduces net profit now.
+ * INVENTORY spending bought stock, and becomes a cost only as COGS when the
+ * goods sell — counting it in both places is what double-charged stock.
+ */
+export type ExpenseKind = 'OPERATING' | 'INVENTORY';
+
 export interface CompanyExpense {
   id: string;
   occurredAt: string;
   category: string;
   description: string;
   amount: number;
+  kind: ExpenseKind;
   paidByPartnerId: string | null;
-  receiptUrl: string | null;
   paidBy?: PartnerRef | null;
   funding?: { id: string; type: FundingType; repayments: { amount: number }[] } | null;
+  /** Exact number of documents filed against this expense, counted server-side. */
+  _count?: { documents: number };
+}
+
+/**
+ * A filed document — receipt, invoice, courier bill, bank slip, statement.
+ *
+ * Note there is no `url`. The file is not public: it lives outside the static
+ * /uploads mount and is fetched through an authenticated endpoint, so the only
+ * way to show one is to request the bytes with the admin token and render the
+ * resulting blob. See lib/api.ts → adminFetchDocumentBlob.
+ */
+export interface Document {
+  id: string;
+  title: string;
+  description: string | null;
+  kind: string;
+  /** The date ON the document, which is not the upload time. */
+  occurredAt: string;
+  /** Cents. Null where the document has no amount — a certificate, say. */
+  amount: number | null;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  links: DocumentLink[];
+}
+
+/** One attachment of a document to exactly one order or one expense. */
+export interface DocumentLink {
+  id: string;
+  documentId: string;
+  orderId: string | null;
+  expenseId: string | null;
+  order?: {
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    total: number;
+    createdAt: string;
+  } | null;
+  expense?: {
+    id: string;
+    description: string;
+    category: string;
+    amount: number;
+    occurredAt: string;
+  } | null;
 }
 
 export interface PartnerFunding {
@@ -430,11 +496,31 @@ export interface PartnerEarning {
   orderProfit: number;
   amount: number;
   costed: boolean;
+  /** Money went back to the customer, so this order earned less — or nothing. */
+  refunded: boolean;
 }
 
 export interface FinanceOverview {
+  /** Net takings across every order the money arrived on, costed or not. */
+  revenue: number;
+  refunded: number;
+  /** The part of `revenue` whose costs are known. */
+  costedRevenue: number;
+  /** Real money in, profit unknowable until someone prices the lines. */
+  uncostedRevenue: number;
+  cogs: number;
+  extraCosts: number;
+  gatewayFees: number;
+  /** costedRevenue − cogs − extraCosts − gatewayFees. */
   grossOrderProfit: number;
+  /** The only expense figure that reduces net profit. */
+  operatingSpend: number;
+  /** Spending that bought stock — a cost later, as COGS, not now. */
+  inventoryPurchased: number;
+  /** Every expense row added up, whatever its kind. */
   companySpend: number;
+  /** inventoryPurchased − cogs. Negative means purchases predate the system. */
+  stockOnHand: number;
   netProfit: number;
   totalContributed: number;
   totalAdvancesOutstanding: number;

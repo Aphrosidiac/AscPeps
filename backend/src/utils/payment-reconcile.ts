@@ -4,6 +4,7 @@ import type { PaymentFailureReason } from './payment-gateway.js';
 import { restoreOrderInventory } from './order-inventory.js';
 import { enqueueEmail } from './email-outbox.js';
 import { capturePurchase } from './posthog.js';
+import { computeGatewayFee } from './gateway-fee.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
@@ -58,10 +59,16 @@ export async function applyPaid(
     paymentGateway: string | null;
   }
 ): Promise<boolean> {
+  // Stamped at the transition rather than derived on read: what it cost to
+  // collect this payment is a fact about this order, and must not move when the
+  // rate is edited later. Resolved before the transaction so a settings read
+  // can't hold it open.
+  const gatewayFee = await computeGatewayFee(fastify, order.paymentGateway, order.total);
+
   const transitioned = await fastify.prisma.$transaction(async (tx) => {
     const { count } = await tx.order.updateMany({
       where: { id: order.id, paymentStatus: 'UNPAID' },
-      data: { paymentStatus: 'PAID', status: 'CONFIRMED' },
+      data: { paymentStatus: 'PAID', status: 'CONFIRMED', gatewayFee },
     });
     if (count > 0) await enqueueEmail(tx, order, 'PAYMENT_RECEIPT');
     return count > 0;

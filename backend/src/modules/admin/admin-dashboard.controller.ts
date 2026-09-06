@@ -129,6 +129,9 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       paymentStatus: true,
       paymentMethod: true,
       paymentGateway: true,
+      gatewayFee: true,
+      refundedAmount: true,
+      stockRestored: true,
       createdAt: true,
       items: {
         select: {
@@ -168,34 +171,46 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   let uncostedOrders = 0;
   let totalItemCost = 0;
   let totalExtraCost = 0;
+  // The processor's cut. A real cost of every online sale, and previously
+  // recorded nowhere — so reported margin was overstated by exactly this.
+  let totalGatewayFees = 0;
+  let totalRefunded = 0;
   const profitByPerson: Record<string, number> = {};
 
   for (const order of orders) {
     const dayKey = localDayKey(order.createdAt);
+    // "The money arrived" — the same set utils/finance.ts counts, so the two
+    // pages can never report different takings. A refunded order stays in:
+    // dropping it would erase the courier and the fee we already paid along
+    // with the sale. Its revenue is reversed by refundedAmount instead.
+    const moneyIn = order.paymentStatus === 'PAID' || order.paymentStatus === 'REFUNDED';
+    const costing = costOrder(order);
+
     if (dailyRevenue[dayKey]) {
       dailyRevenue[dayKey].orders++;
-      if (order.paymentStatus === 'PAID') {
-        dailyRevenue[dayKey].revenue += order.total;
+      if (moneyIn) {
+        dailyRevenue[dayKey].revenue += costing.revenue;
       }
     }
 
     totalOrders++;
-    if (order.paymentStatus === 'PAID') {
+    if (moneyIn) {
       paidOrders++;
-      totalRevenue += order.total;
+      totalRevenue += costing.revenue;
+      totalRefunded += costing.refunded;
 
-      const costing = costOrder(order);
       if (costing.profit === null) {
         uncostedOrders++;
       } else {
         costedOrders++;
-        costedRevenue += order.total;
+        costedRevenue += costing.revenue;
         totalItemCost += costing.itemCost;
         totalExtraCost += costing.extraCost;
+        totalGatewayFees += costing.gatewayFee;
 
         if (dailyRevenue[dayKey]) {
-          dailyRevenue[dayKey].costedRevenue += order.total;
-          dailyRevenue[dayKey].cost += costing.itemCost + costing.extraCost;
+          dailyRevenue[dayKey].costedRevenue += costing.revenue;
+          dailyRevenue[dayKey].cost += costing.cost;
           dailyRevenue[dayKey].profit += costing.profit;
         }
 
@@ -236,7 +251,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   const conversionRate = totalOrders > 0 ? Math.round((paidOrders / totalOrders) * 10000) / 100 : 0;
   const avgOrderValue = paidOrders > 0 ? Math.round(totalRevenue / paidOrders) : 0;
 
-  const totalCost = totalItemCost + totalExtraCost;
+  const totalCost = totalItemCost + totalExtraCost + totalGatewayFees;
   const netProfit = costedRevenue - totalCost;
   // Against costedRevenue, not totalRevenue — see the note where these are summed.
   const profitMargin = costedRevenue > 0 ? Math.round((netProfit / costedRevenue) * 10000) / 100 : 0;
@@ -256,6 +271,8 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       avgOrderValue,
       totalItemCost,
       totalExtraCost,
+      totalGatewayFees,
+      totalRefunded,
       totalCost,
       netProfit,
       profitMargin,

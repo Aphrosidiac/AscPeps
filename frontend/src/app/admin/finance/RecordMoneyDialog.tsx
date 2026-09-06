@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalA11y } from '@/hooks/useModalA11y';
 import { adminCreateFunding, adminCreatePayout } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { PartnerBalance } from '@/types';
@@ -65,18 +66,7 @@ export function RecordMoneyDialog({
   }, []);
   const requestClose = useCallback(() => dismiss(onClose), [dismiss, onClose]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
-    window.addEventListener('keydown', onKey);
-    // The page behind must not scroll while a modal is open — closing it and
-    // finding yourself somewhere else in the list is disorienting.
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [requestClose]);
+  const panelRef = useModalA11y({ onClose: requestClose });
 
   const cents = Math.round(Number(amount) * 100);
   const valid = partnerId && Number.isFinite(cents) && cents > 0 &&
@@ -117,7 +107,8 @@ export function RecordMoneyDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={cn('dialog-panel bg-surface rounded-xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto', closing && 'is-closing')}
+        ref={panelRef}
+        className={cn('dialog-panel bg-surface rounded-xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto outline-none', closing && 'is-closing')}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-surface">
           <h2 className="font-display font-semibold">Record money</h2>

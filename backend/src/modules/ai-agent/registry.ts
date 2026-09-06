@@ -3,6 +3,7 @@ import { CORE_TOOL_NAMES, DOMAINS, type Domain } from './domains.js';
 import { catalogTools } from './tools/catalog.tools.js';
 import { orderTools } from './tools/orders.tools.js';
 import { financeTools } from './tools/finance.tools.js';
+import { documentTools } from './tools/documents.tools.js';
 import { contentTools } from './tools/content.tools.js';
 import { opsTools } from './tools/ops.tools.js';
 import { reportTools } from './tools/reports.tools.js';
@@ -33,6 +34,14 @@ const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
   reports: reportTools,
   delivery: deliveryTools,
   reminders: reminderTools,
+  // Its own domain rather than riding with finance, because a tool may appear
+  // in exactly one bucket (ALL_TOOLS is a flatMap over the domains, and the
+  // duplicate-name check at the bottom of this file fires on a repeat).
+  // Nothing is lost: routeDomains returns EVERY domain a message matches, and
+  // the documents keyword list shares "receipt"/"invoice" with orders, so
+  // "record the ads expense, here's the receipt" loads finance and documents
+  // together.
+  documents: documentTools,
 };
 
 export const ALL_TOOLS: AgentTool[] = DOMAINS.flatMap((d) => DOMAIN_TOOLS[d]);

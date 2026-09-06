@@ -179,35 +179,51 @@ enum PaymentStatus {
 }
 
 model Order {
-  id             String        @id @default(cuid())
-  orderNumber    String        @unique
-  customerName   String
-  phone          String
-  email          String?
-  address        String
-  city           String
-  state          String
-  postcode       String
-  subtotal       Int           @default(0)
-  shippingFee    Int           @default(0)
-  discountAmount Int           @default(0)
-  total          Int
-  status         OrderStatus   @default(PENDING)
-  paymentMethod  PaymentMethod
-  paymentGateway String?
-  paymentStatus  PaymentStatus @default(UNPAID)
-  paymentRef     String?
-  discountCodeId String?
-  notes          String?
-  trackingNumber String?
-  idempotencyKey String?       @unique
-  stockRestored  Boolean       @default(false)
+  id                    String        @id @default(cuid())
+  orderNumber           String        @unique
+  customerName          String
+  phone                 String
+  email                 String?
+  address               String
+  city                  String
+  state                 String
+  postcode              String
+  subtotal              Int           @default(0)
+  shippingFee           Int           @default(0)
+  discountAmount        Int           @default(0)
+  total                 Int
+  // What the payment gateway kept out of `total`, in cents. A real cost of the
+  // sale and nothing else: it is deducted in costOrder alongside item and extra
+  // costs, so an order's profit is what actually reached us, not what the
+  // customer was charged. Set once at the PAID transition from the fee rule in
+  // utils/gateway-fee.ts, and editable per order because the published rate is
+  // a schedule, not a promise — a real settlement can differ.
+  //
+  // Zero for WhatsApp/manual transfers (no gateway) and for BTCPay (self-hosted,
+  // no processor cut). Zero is therefore a real value, not "unknown".
+  gatewayFee            Int           @default(0)
+  // Cents handed back to the customer. Kept as an amount rather than being
+  // implied by paymentStatus REFUNDED so a PARTIAL refund is representable —
+  // and so reporting can reverse revenue by the exact figure instead of
+  // dropping the order out of the books entirely, which is what used to happen
+  // and silently deleted the costs we had already incurred along with it.
+  refundedAmount        Int           @default(0)
+  status                OrderStatus   @default(PENDING)
+  paymentMethod         PaymentMethod
+  paymentGateway        String?
+  paymentStatus         PaymentStatus @default(UNPAID)
+  paymentRef            String?
+  discountCodeId        String?
+  notes                 String?
+  trackingNumber        String?
+  idempotencyKey        String?       @unique
+  stockRestored         Boolean       @default(false)
   // Why an online order ended up FAILED. Set once, when the order is released.
   // A plain String rather than an enum: these values are read by humans and by
   // reporting, and adding a new one must never require an `ALTER TYPE` (which
   // needs type ownership and has broken `migrate deploy` on this database
   // before). See PaymentFailureReason in utils/toyyibpay.ts for the values.
-  paymentFailureReason String?
+  paymentFailureReason  String?
   // The channel the customer actually tried, when the gateway reports one —
   // e.g. "FPX B2C", "DuitNow QR". Null when they never chose anything.
   paymentFailureChannel String?
@@ -216,12 +232,12 @@ model Order {
   // split has been RECORDED (order_profit_shares rows) or whether the order is
   // fully costed — money leaving the account is a real-world event the system
   // cannot observe, so someone has to assert it.
-  profitShared   Boolean       @default(false)
+  profitShared          Boolean       @default(false)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
-  deletedAt      DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  deletedAt             DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   items        OrderItem[]
   delivery     DeliveryBooking?
@@ -230,6 +246,7 @@ model Order {
   profitShares OrderProfitShare[]
   extraCosts   OrderExtraCost[]
   reminders    AgentReminder[]
+  documents    DocumentLink[]
 
   @@index([phone])
   @@index([status])
@@ -414,7 +431,7 @@ model DiscountCode {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  orders Order[]
+  orders     Order[]
   // Set only on the single-use codes minted for newsletter welcome emails, so
   // an admin deleting a subscriber can't orphan a code that a real order may
   // already reference (the relation is optional in both directions).
@@ -525,10 +542,10 @@ model InsightFigure {
 // Today an account does exactly one thing: it lets you comment on an Insight.
 // Orders remain guest checkout and are NOT linked here.
 model Member {
-  id           String  @id @default(cuid())
+  id           String @id @default(cuid())
   // Stored lowercased (normalised at the controller) so "A@x.com" and
   // "a@x.com" can't become two accounts that look identical in the UI.
-  email        String  @unique
+  email        String @unique
   passwordHash String
   // What other readers see on a comment. Email is never exposed publicly.
   displayName  String
@@ -537,7 +554,7 @@ model Member {
   // That ordering is deliberate: a signed-in-but-unverified user gets a "check
   // your inbox" prompt in place of the composer, rather than a login form that
   // appears to have silently failed.
-  emailVerified Boolean @default(false)
+  emailVerified        Boolean   @default(false)
   // Only the SHA-256 of the emailed token is stored. A leaked DB snapshot then
   // can't be replayed to verify (and thereby take over) a pending address —
   // same reasoning as not storing raw passwords.
@@ -624,30 +641,53 @@ model Partner {
 
 // Spending on the business itself — ads, software, equipment, stock bought
 // ahead of demand. Distinct from OrderExtraCost, which is tied to one order.
+// Whether spending is consumed now or turns into stock we still hold.
+//
+// This distinction is not cosmetic: it is the difference between counting a
+// cost once and counting it twice. Vials bought ahead of demand used to be
+// recorded here as ordinary spending AND charged again per order through
+// OrderItem.unitCost when they sold, so RM5,000 of stock took RM10,000 off net
+// profit. INVENTORY spending is therefore excluded from operating spend and
+// becomes a cost only as COGS, when the goods actually sell.
+enum ExpenseKind {
+  // Consumed on purchase — ads, software, packaging, fees. Reduces net profit
+  // on the day it happens.
+  OPERATING
+  // Buys stock. Not a cost yet; it becomes one as COGS when the goods sell.
+  INVENTORY
+}
+
 model CompanyExpense {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   occurredAt  DateTime
   // Free text by design, with the form suggesting categories already in use.
   category    String
   description String
   amount      Int
+  // See ExpenseKind. Defaults to OPERATING so every pre-existing row keeps the
+  // behaviour it was entered under; stock purchases are reclassified by hand.
+  kind        ExpenseKind @default(OPERATING)
 
   // Who actually fronted the cash. Null means it came from a company account
   // and creates no obligation to anyone. This is the ONLY way an expense
   // touches a person: it never lands on anyone's balance as a cost, only as
   // money the company may owe the person who paid it.
   paidByPartnerId String?
-  receiptUrl      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  paidBy  Partner?        @relation("ExpensePaidBy", fields: [paidByPartnerId], references: [id])
+  paidBy    Partner?        @relation("ExpensePaidBy", fields: [paidByPartnerId], references: [id])
   // The funding record created when a partner paid for this out of pocket.
-  funding PartnerFunding?
+  funding   PartnerFunding?
+  // Receipts and invoices filed against this spending. Replaces the old
+  // `receiptUrl` column, which allowed exactly one file, was never wired to any
+  // UI, and pointed into the world-readable /uploads mount.
+  documents DocumentLink[]
 
   @@index([occurredAt])
   @@index([category])
+  @@index([kind])
   @@map("company_expenses")
 }
 
@@ -963,7 +1003,7 @@ model AgentGroundingEvent {
   violations String
 
   // A repair round trip fixed it and the operator saw a supported answer.
-  repaired Boolean @default(false)
+  repaired   Boolean @default(false)
   // Repair did not fix it and the reply was replaced with a refusal.
   suppressed Boolean @default(false)
 
@@ -1138,17 +1178,17 @@ model Subscriber {
   // simply waits, and a welcome that arrives late is still a welcome — unlike
   // an order confirmation, which is why enqueueEmail() deliberately drops
   // those instead of queuing them.
-  welcomeSentAt   DateTime?
-  welcomeAttempts Int       @default(0)
-  welcomeError    String?
+  welcomeSentAt         DateTime?
+  welcomeAttempts       Int           @default(0)
+  welcomeError          String?
   // Resend's id for the successful send, and where that message's lifecycle
   // landed — same enum and same webhook (modules/webhooks/resend-webhook.controller.ts)
   // as EmailOutbox, so a welcome email gets the exact DELIVERED/BOUNCED/COMPLAINED
   // tracking order emails already have. welcomeStatusAt is the last time the
   // webhook moved this row past SENT — the "delivered at" / "bounced at" instant.
-  welcomeResendId String?
-  welcomeStatus   EmailStatus @default(PENDING)
-  welcomeStatusAt DateTime?
+  welcomeResendId       String?
+  welcomeStatus         EmailStatus   @default(PENDING)
+  welcomeStatusAt       DateTime?
   // The first-order code minted for this specific person, single-use. Per
   // subscriber rather than one shared WELCOME10 because a shared code in this
   // niche ends up on a deals forum within a week and then discounts every
@@ -1303,4 +1343,90 @@ model MemoryBlock {
   updatedAt DateTime @updatedAt
 
   @@map("memory_blocks")
+}
+
+// ---------------------------------------------------------------- documents
+//
+// The filing cabinet: receipts, supplier invoices, courier bills, bank slips,
+// statements, certificates. One uploaded file per row, with the facts a human
+// needs to find it again and links to whatever it is evidence for.
+//
+// Three decisions worth knowing before changing anything here:
+//
+//  1. The FILE IS NOT PUBLIC. Product images live in /uploads, which is served
+//     statically to the whole internet (see server.ts — it even loosens CORP so
+//     mail clients can load thumbnails). A receipt carries a customer's name and
+//     address, or our bank details, so documents are stored in a separate
+//     directory that nothing serves statically and are readable only through an
+//     authenticated route. A UUID filename is not access control.
+//  2. The FILE IS STORED AS UPLOADED. The product image endpoint re-encodes to
+//     WebP and downscales to 1600px, which is right for a photo and wrong for a
+//     document you may have to produce to someone later. Bytes in, bytes out.
+//  3. LINKS ARE MANY-TO-MANY AND OPTIONAL. One supplier invoice covers stock
+//     that ships across twenty orders; one order can have an invoice, a courier
+//     slip and a payment slip. And a document that links to nothing — an SSM
+//     certificate, a bank statement — is perfectly valid and must not be forced
+//     to attach to something it has no relationship with.
+model Document {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  // Free text with the form suggesting what is already in use, matching
+  // CompanyExpense.category. A fixed enum would need a migration the first time
+  // a new kind of paperwork shows up, which is a certainty.
+  kind        String
+  // The date ON THE DOCUMENT, which is not when it was uploaded — August
+  // receipts get filed in September, and the date printed on the paper is what
+  // anyone will search by. Same split as CompanyExpense.occurredAt/createdAt.
+  occurredAt  DateTime
+  // Cents, and optional: not every document has an amount (a certificate does
+  // not). Where it exists it makes the cabinet checkable rather than merely
+  // searchable — a RM5,000 invoice with no expense recorded against it is a
+  // question worth being able to ask.
+  amount      Int?
+
+  // Stored name on disk, "<uuid>.<ext>". Never the name the user gave: an
+  // uploaded filename is attacker-controlled and must not reach the filesystem.
+  filename     String
+  // What it was called when uploaded, shown in the UI and used for downloads.
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  links DocumentLink[]
+
+  @@index([occurredAt])
+  @@index([kind])
+  @@map("documents")
+}
+
+// One document attached to one thing. Deliberately a single table with two
+// nullable targets rather than two join tables: "what is this document filed
+// against" is then one query and one UI list, and a third kind of target later
+// is a column, not a new table. Exactly one target must be set — enforced by a
+// CHECK constraint in the migration, which Prisma's schema language cannot
+// express.
+model DocumentLink {
+  id         String  @id @default(cuid())
+  documentId String
+  orderId    String?
+  expenseId  String?
+
+  createdAt DateTime @default(now())
+
+  document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  order    Order?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  expense  CompanyExpense? @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  // Postgres treats NULLs as distinct, so these stop the same document being
+  // attached to the same order (or expense) twice without constraining the
+  // rows whose other target is null.
+  @@unique([documentId, orderId])
+  @@unique([documentId, expenseId])
+  @@index([orderId])
+  @@index([expenseId])
+  @@map("document_links")
 }

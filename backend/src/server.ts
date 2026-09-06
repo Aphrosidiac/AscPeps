@@ -22,6 +22,7 @@ import adminOrderRoutes from './modules/admin/admin-orders.routes.js';
 import adminEmailRoutes from './modules/admin/admin-emails.routes.js';
 import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
 import adminFinanceRoutes from './modules/admin/admin-finance.routes.js';
+import adminDocumentsRoutes from './modules/admin/admin-documents.routes.js';
 import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
 import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
@@ -148,6 +149,10 @@ await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
 await fastify.register(adminEmailRoutes, { prefix: '/api/v1/admin/emails' });
 await fastify.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
 await fastify.register(adminFinanceRoutes, { prefix: '/api/v1/admin/finance' });
+// Documents are NOT served from the static /uploads mount above — every route
+// in here, the file stream included, sits behind the admin JWT. See
+// utils/document-store.ts for why.
+await fastify.register(adminDocumentsRoutes, { prefix: '/api/v1/admin/documents' });
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' });

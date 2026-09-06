@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,9 @@ const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/finance', label: 'Finance', icon: Wallet },
+  // Beside Finance, not off with Settings: a document is almost always the
+  // receipt behind a number on the page above it.
+  { href: '/admin/documents', label: 'Documents', icon: FolderOpen },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/insights', label: 'Insights', icon: Newspaper },
   { href: '/admin/comments', label: 'Comments', icon: MessageSquare },

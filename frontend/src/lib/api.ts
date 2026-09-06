@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense } from '@/types';
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document } from '@/types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
@@ -120,7 +120,7 @@ export const adminUpdateOrder = (token: string, id: string, data: Record<string,
 export const adminUpdateOrderCosts = (
   token: string,
   id: string,
-  data: { itemCosts: OrderItemCostInput[]; extraCosts: OrderExtraCostInput[] }
+  data: { itemCosts: OrderItemCostInput[]; extraCosts: OrderExtraCostInput[]; gatewayFee?: number }
 ) =>
   api.put<Order>(`/api/v1/admin/orders/${id}/costs`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
@@ -236,8 +236,123 @@ export const adminGetExpenses = (token: string, params?: Record<string, string>)
 export const adminCreateExpense = (token: string, data: Record<string, unknown>) =>
   api.post<CompanyExpense>('/api/v1/admin/finance/expenses', data, auth(token)).then((r) => r.data);
 
+// Edit in place rather than delete-and-recreate: an expense a partner fronted
+// has a funding row hanging off it, and recreating would drop the advance the
+// company still owes them. Reclassifying operating spend as stock goes through
+// here.
+export const adminUpdateExpense = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<CompanyExpense>(`/api/v1/admin/finance/expenses/${id}`, data, auth(token)).then((r) => r.data);
+
 export const adminDeleteExpense = (token: string, id: string) =>
   api.delete(`/api/v1/admin/finance/expenses/${id}`, auth(token)).then((r) => r.data);
+
+/* ------------------------------------------------------------ documents
+ *
+ * The file itself is never a plain URL. Documents are receipts and invoices —
+ * they carry customer addresses and bank details — so they are stored outside
+ * the public /uploads mount and served only behind the admin JWT.
+ *
+ * A consequence worth stating, because it looks like an oversight otherwise:
+ * <img src="/api/.../file"> CANNOT work here. The token lives in localStorage,
+ * not a cookie, so the browser would send the request unauthenticated. Every
+ * preview and download therefore fetches the bytes with the header attached and
+ * renders the resulting object URL.
+ */
+
+export const adminGetDocuments = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{
+      documents: Document[];
+      total: number;
+      page: number;
+      limit: number;
+      hasMore: boolean;
+      kinds: string[];
+    }>('/api/v1/admin/documents', { ...auth(token), params })
+    .then((r) => r.data);
+
+export const adminGetDocument = (token: string, id: string) =>
+  api.get<Document>(`/api/v1/admin/documents/${id}`, auth(token)).then((r) => r.data);
+
+/** Multipart: the file plus its metadata and initial links in one request. */
+export const adminUploadDocument = (
+  token: string,
+  file: File,
+  meta: {
+    title: string;
+    description?: string;
+    kind: string;
+    occurredAt: string;
+    amount?: number | null;
+    orderIds?: string[];
+    expenseIds?: string[];
+  },
+  onProgress?: (percent: number) => void
+) => {
+  const form = new FormData();
+  form.append('title', meta.title);
+  if (meta.description) form.append('description', meta.description);
+  form.append('kind', meta.kind);
+  form.append('occurredAt', meta.occurredAt);
+  if (meta.amount != null) form.append('amount', String(meta.amount));
+  if (meta.orderIds?.length) form.append('orderIds', JSON.stringify(meta.orderIds));
+  if (meta.expenseIds?.length) form.append('expenseIds', JSON.stringify(meta.expenseIds));
+  form.append('file', file);
+
+  return api
+    .post<Document>('/api/v1/admin/documents', form, {
+      ...auth(token),
+      // A 20MB scan over a phone connection is well past the shared 30s ceiling,
+      // and a timeout mid-upload looks identical to a rejected file.
+      timeout: 180_000,
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+      },
+    })
+    .then((r) => r.data);
+};
+
+export const adminUpdateDocument = (token: string, id: string, data: Record<string, unknown>) =>
+  api.patch<Document>(`/api/v1/admin/documents/${id}`, data, auth(token)).then((r) => r.data);
+
+/** Replace-all: the links are only meaningful as a set. */
+export const adminSetDocumentLinks = (
+  token: string,
+  id: string,
+  links: { orderIds?: string[]; expenseIds?: string[] }
+) => api.put<Document>(`/api/v1/admin/documents/${id}/links`, links, auth(token)).then((r) => r.data);
+
+export const adminDeleteDocument = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/documents/${id}`, auth(token)).then((r) => r.data);
+
+/**
+ * The bytes, as an object URL. Caller owns it and must URL.revokeObjectURL it
+ * when the preview closes — these are whole PDFs held in memory.
+ */
+export const adminFetchDocumentBlob = async (token: string, id: string): Promise<string> => {
+  const res = await api.get(`/api/v1/admin/documents/${id}/file`, {
+    ...auth(token),
+    responseType: 'blob',
+    timeout: 120_000,
+  });
+  return URL.createObjectURL(res.data as Blob);
+};
+
+/** Save to disk under the name it was uploaded with. */
+export const adminDownloadDocument = async (token: string, id: string, filename: string) => {
+  const res = await api.get(`/api/v1/admin/documents/${id}/file`, {
+    ...auth(token),
+    params: { download: '1' },
+    responseType: 'blob',
+    timeout: 120_000,
+  });
+  const url = URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+};
 
 export const adminCreateFunding = (token: string, data: Record<string, unknown>) =>
   api.post('/api/v1/admin/finance/funding', data, auth(token)).then((r) => r.data);

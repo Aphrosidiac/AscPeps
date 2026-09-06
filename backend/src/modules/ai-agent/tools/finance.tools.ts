@@ -132,7 +132,6 @@ export const financeTools: AgentTool[] = [
           enum: ['CONTRIBUTION', 'ADVANCE'],
           description: 'Required when paidByPartner is set. ADVANCE creates a debt to that person; CONTRIBUTION does not.',
         },
-        receiptUrl: { type: 'string' },
       },
       required: ['amountRm', 'category', 'description'],
     },
@@ -153,7 +152,6 @@ export const financeTools: AgentTool[] = [
         amount: toCents(input.amountRm),
         paidByPartnerId,
         paidByFundingType: paidByPartnerId ? input.paidByFundingType : null,
-        receiptUrl: input.receiptUrl ?? null,
       });
       return { expenseId: row.id, amount: money(row.amount), category: row.category, occurredAt: row.occurredAt };
     },

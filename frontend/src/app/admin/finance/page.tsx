@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Wallet, TrendingUp, Coins, Users, AlertTriangle, Plus, ArrowRight, Receipt,
+  Wallet, TrendingUp, Coins, Users, AlertTriangle, Plus, ArrowRight, Receipt, Scale,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminDeletePartner, adminGetFinanceOverview } from '@/lib/api';
@@ -145,7 +145,17 @@ export default function AdminFinancePage() {
 
       {/* Company position */}
       <Animate variant="fadeUp" delay={0.1}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <StatCard
+            label="Revenue"
+            value={formatPrice(data.revenue)}
+            hint={
+              data.refunded > 0
+                ? `Net of ${formatPrice(data.refunded)} refunded`
+                : 'Every order the money arrived on'
+            }
+            icon={Wallet}
+          />
           <StatCard
             label="Gross profit"
             value={formatPrice(data.grossOrderProfit)}
@@ -153,24 +163,59 @@ export default function AdminFinancePage() {
             icon={TrendingUp}
           />
           <StatCard
-            label="Company spend"
-            value={formatPrice(data.companySpend)}
-            hint="Reduces net profit only"
+            label="Operating spend"
+            value={formatPrice(data.operatingSpend)}
+            hint={
+              data.inventoryPurchased > 0
+                ? `Excludes ${formatPrice(data.inventoryPurchased)} spent on stock`
+                : 'Reduces net profit only'
+            }
             icon={Coins}
           />
           <StatCard
             label="Net profit"
             value={formatPrice(data.netProfit)}
-            hint="Gross profit − company spend"
-            icon={Wallet}
+            hint="Gross profit − operating spend"
+            icon={Scale}
             tone={data.netProfit < 0 ? 'bad' : 'good'}
           />
-          <StatCard
-            label="Capital in"
-            value={formatPrice(data.totalContributed)}
-            hint={`${formatPrice(data.totalAdvancesOutstanding)} advances outstanding`}
-            icon={Users}
-          />
+        </div>
+      </Animate>
+
+      {/* The cost lines behind gross profit. Shown rather than left implied
+          because two of them — the processor's cut and the goods themselves —
+          were previously either missing or counted twice, and a bottom line
+          nobody can take apart is a bottom line nobody can check. */}
+      <Animate variant="fadeUp" delay={0.11}>
+        <div className="bg-surface rounded-xl border border-border px-5 py-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+            {[
+              ['Costed revenue', formatPrice(data.costedRevenue), 'The part with known costs'],
+              ['Goods (COGS)', `−${formatPrice(data.cogs)}`, 'What the items cost us'],
+              ['Order extras', `−${formatPrice(data.extraCosts)}`, 'Courier, packaging, fuel'],
+              ['Gateway fees', `−${formatPrice(data.gatewayFees)}`, 'Kept by the processor'],
+            ].map(([label, value, hint]) => (
+              <div key={label}>
+                <p className="text-xs text-text-muted">{label}</p>
+                <p className="font-medium tabular-nums mt-0.5">{value}</p>
+                <p className="text-[11px] text-text-muted mt-0.5">{hint}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-text-muted mt-4 pt-3 border-t border-border">
+            Those four are gross profit, exactly. Stock bought ahead of demand is
+            <span className="text-text-secondary"> not</span> operating spend — it becomes a cost here, as
+            goods, when it sells.{' '}
+            {data.inventoryPurchased > 0 && (
+              <>
+                {formatPrice(data.inventoryPurchased)} bought,{' '}
+                <span className={cn(data.stockOnHand < 0 && 'text-warning')}>
+                  {formatPrice(data.stockOnHand)} still on hand
+                </span>
+                {data.stockOnHand < 0 && ' — more has sold than was recorded bought, so some purchases predate this system'}.
+              </>
+            )}
+          </p>
         </div>
       </Animate>
 
@@ -180,13 +225,35 @@ export default function AdminFinancePage() {
             <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
             <p className="text-sm text-text-secondary">
               <span className="font-medium text-text-primary">
-                {data.uncostedOrders} paid order{data.uncostedOrders === 1 ? '' : 's'} not costed yet.
+                {data.uncostedOrders} order{data.uncostedOrders === 1 ? '' : 's'} not costed yet
+                {data.uncostedRevenue > 0 && `, worth ${formatPrice(data.uncostedRevenue)}`}.
               </span>{' '}
-              Their profit is in none of these figures — cost them on each order&rsquo;s Profit Sharing tab.
+              That revenue <span className="text-text-primary">is</span> counted above — only its profit is
+              missing. Cost them on each order&rsquo;s Profit Sharing tab.
             </p>
           </div>
         </Animate>
       )}
+
+      {/* Capital sits below the trading figures on purpose: it is money people
+          put in, not money the business made, and putting it in the same row
+          made a contribution look like earnings. */}
+      <Animate variant="fadeUp" delay={0.13}>
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <StatCard
+            label="Capital in"
+            value={formatPrice(data.totalContributed)}
+            hint="Contributed — never owed back"
+            icon={Users}
+          />
+          <StatCard
+            label="Advances outstanding"
+            value={formatPrice(data.totalAdvancesOutstanding)}
+            hint="Money the company still has to return"
+            icon={Coins}
+          />
+        </div>
+      </Animate>
 
       {/* Partners */}
       <Animate variant="fadeUp" delay={0.15}>
@@ -194,6 +261,12 @@ export default function AdminFinancePage() {
           <div className="px-5 py-3.5 border-b border-border">
             <h2 className="font-display font-semibold">Partners</h2>
           </div>
+          {/* The server refuses to remove a partner anything still references,
+              and says what — but that message was captured into state and never
+              rendered, so a refused removal looked like a dead button. */}
+          {partnerError && (
+            <p className="px-5 py-3 bg-danger/10 border-b border-danger/20 text-sm text-danger">{partnerError}</p>
+          )}
 
           {/* Phones get a card per partner. The table wants ~820px, so on a
               375px screen everything from "Capital fronted" rightwards — Owed
