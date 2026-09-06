@@ -1,10 +1,32 @@
 # Finance section — plan
 
+> **STATUS: SHIPPED. This document is the design discussion that preceded it, kept
+> for the reasoning behind the decisions — not a description of what exists.**
+>
+> For what the code actually does today, read [bookkeeping.md](./bookkeeping.md).
+>
+> Three things below are now out of date:
+>
+> 1. **"Nothing here is built"** — all of it is, and has been since
+>    `20260731000000_add_finance_section`.
+> 2. **Section 2's per-expense allocation** (`OWNERSHIP` / `SINGLE_PARTNER` /
+>    `UNALLOCATED`, `Partner.ownershipBps`, `chargedToPartnerId`) was **not**
+>    built. Company spending never lands on a person as a charge. The only way an
+>    expense touches someone is `paidByPartnerId` — money the company may owe
+>    them back. That is a simpler rule than any of the three options debated here,
+>    and it is the one in the code.
+> 3. **`CompanyExpense.receiptUrl`** in section 3 shipped but was never wired to
+>    any UI, and has since been dropped in favour of the
+>    [document store](./documents.md), which allows many files per expense and
+>    does not serve them from the public `/uploads` mount.
+>
+> Since written, spending also gained a `kind` (`OPERATING` / `INVENTORY`) —
+> section 2's cost model assumed all spending is consumed on purchase, which
+> double-counted stock. See [bookkeeping.md](./bookkeeping.md).
+
 Goal: one place that answers, for the life of the business rather than one
 order — what has each person earned, what have they put back in, what has the
 company spent, and what is each person actually owed right now.
-
-Nothing here is built. This is the proposal.
 
 ---
 

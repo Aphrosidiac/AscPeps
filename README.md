@@ -23,6 +23,7 @@
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
 - [Features](#features)
+- [Bookkeeping & documents](#bookkeeping--documents)
 - [Transactional email](#transactional-email)
 - [WhatsApp AI agent](#whatsapp-ai-agent)
 - [Product catalog](#product-catalog)
@@ -63,9 +64,16 @@ AscPeps/
 │   └── src/lib/               server-api.ts, product-relations.ts, utils.ts
 ├── backend/                 Fastify API — port 3105
 │   ├── src/modules/          products, orders, payments, admin, auth
-│   ├── src/utils/            payment-gateway.ts, indexnow.ts, order-inventory.ts
+│   ├── src/utils/            payment-gateway.ts, indexnow.ts, order-inventory.ts,
+│   │                         profit.ts, finance.ts, gateway-fee.ts, document-store.ts
 │   ├── scripts/               one-off/maintenance scripts (content backfills, etc.)
-│   └── prisma/                schema.prisma, single 0_baseline migration
+│   ├── documents/             uploaded receipts and invoices — NOT git-tracked, NOT
+│   │                         served statically, readable only via an authed route
+│   ├── uploads/               product images — public static mount
+│   └── prisma/                schema.prisma + migrations
+├── docs/                    bookkeeping.md, documents.md, whatsapp-agent.md, posthog.md
+├── deploy.sh                pull, build on the server, restart
+├── deploy-frontend.sh       build LOCALLY and ship the output (see Deployment)
 └── README.md
 ```
 
@@ -97,12 +105,16 @@ AscPeps/
 
 ### Admin Panel (`/admin`)
 - **Dashboard** — stats, recent orders, low stock alerts
-- **Analytics** — revenue/profit bar chart, costs and net profit, profit-share breakdown. Profit is computed only over paid orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all paid revenue would understate margin silently
+- **Analytics** — revenue/profit bar chart, costs and net profit, profit-share breakdown. Profit is computed only over paid orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all paid revenue would understate margin silently. Revenue itself is counted whenever the money arrived, net of refunds, and costs include the gateway fee; it reads the same order set through the same `costOrder` as Finance, so the two pages cannot disagree
 - **Products** — CRUD over parent products and their size variants: images, pricing, sale windows, stock, featured, COA URL, benefits/dosage content, purchasable add-ons
 - **Orders** — list and per-order detail (`/admin/orders/[id]`) with a stepper across Order Info / Order Detail / Profit Sharing / Order Complete. Status and payment updates, tracking, receipt PDF, email resend, per-line costing and a per-order profit split
   - A manual **Profit Shared** tick per row, deliberately separate from whether an order is *costed* or whether a split has been *recorded* — money leaving the account is a real-world event the system cannot observe
   - Row columns are fixed-width so status, payment and costing badges line up down the whole list regardless of label length
-- **Finance** — lifetime per-partner totals, company spending, capital in. Partners are created implicitly by typing a name into an order's split; one with nothing referencing it can now be **removed outright**, and the API refuses (naming what blocks it) when splits, funding, payouts or fronted expenses still point at it
+  - **Gateway fee** per order, stamped automatically at the PAID transition and editable, because a published rate is a schedule rather than a promise
+  - **Refunds** record an amount, so a partial refund is expressible and reporting reverses revenue by an exact figure instead of dropping the order — and the goods stop being a cost only when the stock actually came back
+  - Documents filed against the order — supplier invoice, courier slip, the customer's transfer screenshot — attachable from the order itself, which is where the paperwork is actually in your hand
+- **Finance** — lifetime per-partner totals, company spending, capital in. Revenue, COGS, order extras and gateway fees are broken out so the bottom line can be taken apart and checked; the four cost lines sum to gross profit exactly. Spending is split `OPERATING` / `INVENTORY` because stock bought ahead of demand is not a cost until it sells. Partners are created implicitly by typing a name into an order's split; one with nothing referencing it can be **removed outright**, and the API refuses (naming what blocks it) when splits, funding, payouts or fronted expenses still point at it. See [docs/bookkeeping.md](docs/bookkeeping.md)
+- **Documents** — the filing cabinet: receipts, supplier invoices, courier bills, bank slips, statements. Many-to-many against orders and expenses, or against nothing at all. Search matches order numbers as well as titles, and **Unfiled** is a first-class filter because the failure mode of any document store is paperwork piling up unattached. Files are private — stored outside the public `/uploads` mount and readable only through an authenticated route. See [docs/documents.md](docs/documents.md)
 - **Delivery** — recurring weekly windows, derived slots, and a Calendly-style booking calendar pinning one slot to one order
 - **Emails** — outbox list, editable copy, and a **Template Preview** that renders the real templates against a real order with a **light/dark toggle** (the templates theme off `prefers-color-scheme`, so without it the preview only ever showed whichever scheme the admin's own machine was set to)
 - **Subscribers / Campaigns** — marketing list, welcome flow, broadcast drafting and sending
@@ -118,6 +130,67 @@ AscPeps/
 - `/calculator` — interactive BAC water / concentration calculator
 - `/coa` — Certificates of Analysis and third-party testing methodology
 - `/shipping`, `/terms`, `/privacy`, `/disclaimer` — legal & policy pages
+
+---
+
+## Bookkeeping & documents
+
+Two related pieces: the arithmetic behind every money figure, and the filing
+cabinet of paperwork that backs it up. Full detail in
+[docs/bookkeeping.md](docs/bookkeeping.md) and
+[docs/documents.md](docs/documents.md).
+
+### The figures
+
+```
+grossOrderProfit = costedRevenue − cogs − extraCosts − gatewayFees
+netProfit        = grossOrderProfit − operatingSpend
+stockOnHand      = inventoryPurchased − cogs
+```
+
+The first identity holds exactly — every cost figure is measured over the same
+costed orders as `costedRevenue`, so the summary can never report a bottom line
+its own cost lines disagree with.
+
+Four things that were previously wrong and are now not:
+
+- **Stock is charged once.** `CompanyExpense.kind` separates `OPERATING` from
+  `INVENTORY`; stock becomes a cost as COGS when it sells, not on purchase. It
+  used to hit both, so RM5,000 of vials took RM10,000 off net profit
+- **Gateway fees exist.** `Order.gatewayFee`, stamped at the PAID transition from
+  a per-gateway `flat + bps` rule and editable per order. Configure with the
+  `gateway_fee_<gateway>_flat` / `_bps` settings
+- **Refunds reverse rather than delete.** `Order.refundedAmount` takes revenue
+  down by an exact figure while the courier and the fee already paid stand. A
+  refund used to make the books look *better* than reality
+- **Revenue does not wait for costing.** Only profit does — an unpriced order
+  used to contribute nothing at all, so takings read low because of unfinished
+  data entry
+
+`backend/src/utils/profit.ts` is mirrored by `profitSummary` in
+`frontend/src/app/admin/orders/[id]/OrderDetail.tsx`. There is no shared package
+between the two apps, so **they must be changed together.**
+
+Orders confirmed paid before the fee column existed still carry zero:
+`npx tsx scripts/backfill-gateway-fees.ts` reports, and `--apply` writes.
+
+### The documents
+
+Uploaded files are **not public**. Product images live in `uploads/`, a static
+mount served to the whole internet; a receipt carries a customer's address or our
+bank details, and a UUID filename is obscurity rather than access control. So
+documents live in `backend/documents/`, which nothing serves statically, behind
+`GET /api/v1/admin/documents/:id/file` and the admin JWT.
+
+Files are stored byte-for-byte — no re-encode, no downscale — with the type
+verified from magic bytes (PDF and images only). The 10 MB cap matches nginx's
+`client_max_body_size`; raising one means raising the other.
+
+The WhatsApp agent can say what a document *is* and what it is filed against, and
+can never emit a filename, path or URL. `npm run test:agent:documents` asserts
+that, because a negative stops holding the moment someone adds a field.
+
+**There is no backup of `backend/documents/`.** A deleted document is gone.
 
 ---
 
@@ -254,6 +327,8 @@ Navigate to `/admin` and log in with the credentials from your seeded/production
 cd backend
 npm run test:agent:tools     npm run test:agent:writes    npm run test:agent:memory
 npm run test:agent:context   npm run test:agent:security  npm run test:agent:e2e
+npm run test:agent:documents # asserts the agent can never emit a document's file
+npx tsx scripts/backfill-gateway-fees.ts # dry run; --apply writes
 npx tsx scripts/preview-emails.ts        # renders all six email templates
 node scripts/generate-email-thumbs.mjs   # backfills the email-safe JPEG thumbnails
 node scripts/generate-email-icons.mjs ../frontend/public/images/email-icons
@@ -354,11 +429,48 @@ PORT=3000 pm2 restart ascend-web --update-env
 
 > **`PORT=3000` is not decoration.** `--update-env` re-reads the *calling shell's* environment, and the backend `.env` sourced above exports `PORT=3105`. Restarting the frontend from that same shell hands it the backend's port, `EADDRINUSE`, and a 502 across the whole site. Verify after any restart with `ss -lntp | grep -E ":(3000|3105)"` — `pm2 list` will happily show "online" while the process crash-loops.
 
-> **`deploy.sh` swallows its own migration failure.** It does not source `.env` before `prisma migrate deploy`, so the step hits a placeholder `DATABASE_URL`, fails, and is absorbed by its own `|| echo WARN`. Any deploy carrying a migration must run it by hand as above.
+> **`deploy.sh` migrates safely now.** It reads `DATABASE_URL` out of `backend/.env` itself, aborts with `FATAL` if it is missing, and runs under `set -euo pipefail` — so a failed migration stops the deploy *before* anything is rebuilt or restarted, leaving the old code running against the old schema. That is a consistent state. (It previously swallowed the failure with `|| echo WARN` and restarted new code against an unmigrated database; that is what took the site down on 2026-08-13.)
 
 > **Writing to the DB directly bypasses the revalidate ping.** Migrations and backfill scripts never fire it, so the storefront serves stale copy for up to an hour. After one, `POST /api/revalidate` with `x-revalidate-secret` for the affected tags.
 
 > **DB scripts over SSH:** a plain `ssh host "npx prisma migrate deploy"` picks up a placeholder `DATABASE_URL` and fails auth — env vars aren't auto-sourced in a non-interactive SSH shell. Explicitly load them first: `set -a && source .env && set +a && npx prisma migrate deploy`.
+
+### Building on the server, or not
+
+`deploy.sh` builds the frontend **on the box**. That is only safe when the box has
+room: it has ~2 GB of RAM shared with a dozen other PM2 apps, and `next build`
+cleans `.next` *before* it fails — so an OOM leaves `ascend-web` serving out of a
+half-deleted directory. Check first:
+
+```bash
+free -m          # want comfortably more than a few hundred MB available
+swapon --show    # and swap that isn't already mostly consumed
+```
+
+When it is tight, use **`./deploy-frontend.sh`** instead. It builds locally and
+rsyncs the output, so the server only ever receives files and restarts.
+
+> **The trap that path exists to close.** `NEXT_PUBLIC_*` variables are inlined
+> into the client bundle at **build** time, not read at runtime — and
+> `frontend/.env.local` sets `NEXT_PUBLIC_API_URL=http://localhost:3105` for local
+> development. Building on a laptop with that file in place bakes `localhost` into
+> every client bundle, and the server's own `.env` **cannot** override it. Every
+> visitor's browser then calls the API on its own machine: a total outage of the
+> admin and the storefront's client-side calls. It took production down on
+> 2026-09-06.
+>
+> Nothing looks wrong from `curl` — server-rendered HTML still returns 200. **A
+> 200 is not proof.** Verify with a real client-side request in a browser.
+>
+> `deploy-frontend.sh` moves `.env.local` aside, refuses to ship a bundle with
+> `localhost:3105` in `.next/static`, and re-checks the deployed files on the
+> server. The check is scoped to `.next/static` deliberately: server output
+> legitimately contains `localhost:3105`, because `src/lib/server-api.ts` falls
+> back to it for server-side fetches and the Next server really does reach the API
+> that way on the same box.
+
+Production expects `NEXT_PUBLIC_API_URL` **unset**, so the client uses same-origin
+relative URLs through nginx.
 
 ### PM2 Processes
 
@@ -407,7 +519,12 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - `GET /api/v1/admin/dashboard/stats` — dashboard stats
 - `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (featured, COA URL) — pings IndexNow on every mutation
 - `GET/PATCH /api/v1/admin/orders` — order management
-- `GET/PUT /api/v1/admin/settings` — store settings (announcement, WhatsApp, shipping)
+- `GET/PUT /api/v1/admin/settings` — store settings (announcement, WhatsApp, shipping, gateway fee rules)
+- `PUT /api/v1/admin/orders/:id/costs` — per-line costs, extra costs and the gateway fee
+- `GET /api/v1/admin/finance/overview` — revenue, COGS, fees, operating spend, stock on hand, per-partner balances
+- `GET/POST/PATCH/DELETE /api/v1/admin/finance/expenses` — company spending; `PATCH` is what reclassifies `OPERATING` ⇄ `INVENTORY` without destroying a linked advance
+- `GET/POST/PATCH/DELETE /api/v1/admin/documents` — the document store; `PUT /:id/links` replaces a document's whole link set
+- `GET /api/v1/admin/documents/:id/file` — the bytes, **authenticated** (`?download=1` forces a save). Never served from the static mount
 - `POST /api/v1/admin/upload/image` — product image upload (JPEG/PNG/WebP/AVIF, max 5MB, magic-byte validated)
 
 ## Security
@@ -418,6 +535,8 @@ Daily `pg_dump` at 3am via cron. 14-day retention.
 - **Order lookup** requires order number + phone and returns no PII (no enumeration); per-route rate limits (login 5/min, lookup 10/min, discount 15/min, order create 20/min, callback 300/min) on top of the global 100/min
 - **JWT** with HS256 pinned (sign + verify), 24h expiry, secret min 32 chars; all admin routes authenticated
 - **File uploads** validated by real magic bytes (not the client MIME), random UUID filenames, size-limited; `/uploads` served with a locked-down CSP + nosniff
+- **Documents are private, `/uploads` is not.** Receipts and invoices carry customer addresses and bank details, so they are stored outside the static mount and every route touching them — the file stream included — sits behind the admin JWT. A UUID in a URL is obscurity, not a permission. Verified: unauthenticated reads 401, a **storefront member's** token 403s (members are signed with the same secret, so the `kind` claim is what separates the two populations), and the files are unreachable through `/uploads`
+- **Content-Disposition** is RFC 6266 with both an ASCII `filename` and a percent-encoded `filename*` — a non-ASCII filename in a raw header throws `ERR_INVALID_CHAR` in Node and 500s the response
 - **`trustProxy: true`** on the Fastify instance so per-IP rate limiting actually keys on the real client IP behind nginx, not nginx's own loopback address
 - Boolean/numeric env vars parsed safely (no `Boolean("false") === true` traps); numeric settings validated server-side
 - CORS origins from environment; Helmet security headers; Zod validation on all endpoints; `prisma generate` runs on install so a stale client can't ship
