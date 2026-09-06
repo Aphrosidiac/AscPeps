@@ -29,6 +29,7 @@ export const DOMAINS = [
   'delivery',
   'reminders',
   'documents',
+  'shadow',
 ] as const;
 
 export type Domain = (typeof DOMAINS)[number];
@@ -106,6 +107,10 @@ const KEYWORDS: Record<Domain, string[]> = {
     // routing to the wrong one.
     'receipt', 'resit', 'invoice', 'invois', 'bil',
   ],
+  shadow: [
+    'shadow', 'bayang', 'generalis', 'generaliz', 'alias', 'codename', 'code name',
+    'internal summary', 'internal name', 'nama dalaman', 'unmapped', 'mapping',
+  ],
 };
 
 // ------------------------------------------------------------------ playbooks
@@ -176,6 +181,9 @@ const DOMAIN_PLAYBOOKS: Record<Domain, string[]> = {
   delivery: ['statuses'],
   reminders: [],
   documents: [],
+  // Borrows the catalogue playbook: every question here is ultimately about a
+  // variant, and the model needs to know a product is not the sellable thing.
+  shadow: ['products'],
 };
 
 // ------------------------------------------------------------------- routing
@@ -237,4 +245,5 @@ const DOMAIN_BLURB: Record<Domain, string> = {
   delivery: 'delivery scheduling and the delivery run',
   reminders: 'reminders for the operators',
   documents: 'the document store — receipts, invoices, bank slips, statements, and what they are filed against',
+  shadow: 'shadow SKUs — the generalised names products are listed under on internal paperwork, and which SKUs still have none',
 };

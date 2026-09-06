@@ -8,6 +8,7 @@ import {
   Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt, CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { InternalSummaryCard } from './InternalSummaryCard';
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares,
@@ -459,6 +460,8 @@ function OrderInfoTab({ order }: { order: Order }) {
           </div>
         </div>
       </div>
+
+      <InternalSummaryCard order={order} />
     </div>
   );
 }

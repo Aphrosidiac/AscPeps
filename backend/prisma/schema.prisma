@@ -113,15 +113,29 @@ model ProductVariant {
   // sizes — a variant can never be hard-deleted once an order references it
   // (OrderItem's FK below has no cascade), so this is the only way to retire one.
   active       Boolean   @default(true)
+  // The neutral name this SKU is listed under on paperwork that isn't the
+  // storefront — stock sheets, supplier POs, packing slips. Many variants
+  // deliberately share one shadow (every 5mg vial can collapse to a single
+  // generic line), so this is a plain FK and not a unique one.
+  //
+  // Null means unmapped, which is a real state and not an error: a renderer
+  // asked for the shadow name of an unmapped SKU must refuse rather than fall
+  // back to the real name, because falling back puts the real name on the one
+  // document whose entire purpose is not to carry it.
+  shadowSkuId  String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   product           Product        @relation(fields: [productId], references: [id])
   orderItems        OrderItem[]
   offeredAsAddOnFor ProductAddOn[]
+  // SetNull, not Cascade: retiring a shadow code must never take sellable
+  // SKUs with it. Unlinking is exactly this — the variant survives, unmapped.
+  shadowSku         ShadowSku?     @relation(fields: [shadowSkuId], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([active])
+  @@index([shadowSkuId])
   @@map("product_variants")
 }
 
@@ -1429,4 +1443,43 @@ model DocumentLink {
   @@index([orderId])
   @@index([expenseId])
   @@map("document_links")
+}
+
+// ---------------------------------------------------------------------------
+// Shadow SKUs — the neutral vocabulary
+// ---------------------------------------------------------------------------
+
+// A neutral name a real SKU can be listed under away from the storefront. The
+// catalogue, cart, checkout, customer receipt and confirmation email all keep
+// the real product name; this exists for the paperwork that doesn't need to
+// name a compound — stock sheets, supplier POs, packing slips, and admin views
+// masked for someone who shouldn't learn the catalogue.
+//
+// It renames a line and nothing else. No shadow ever carries its own price,
+// quantity or order number: any document built from these reduces back to its
+// real order by orderNumber, which is what keeps the two readings of an order
+// from ever disagreeing about money.
+model ShadowSku {
+  id          String  @id @default(cuid())
+  // The shadow's own SKU string, e.g. "LR-0042". Unique so it can be searched
+  // and scanned like a real code.
+  code        String  @unique
+  // What the line reads as. Keep the size in it ("Lab Reagent A 10mg") — a
+  // bare code forces whoever reads the sheet to decode it against a mapping
+  // they probably don't have.
+  name        String
+  // Optional longer line for documents with room for one.
+  description String?
+  // Retiring a code rather than deleting it. A shadow referenced by any
+  // OrderItem snapshot can never be safely removed, so deactivating is the
+  // only real retirement — same rule as ProductVariant.active.
+  active      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variants ProductVariant[]
+
+  @@index([active])
+  @@map("shadow_skus")
 }

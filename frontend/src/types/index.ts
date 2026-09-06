@@ -562,3 +562,82 @@ export interface PartnerDetail {
   funding: PartnerFunding[];
   payouts: ProfitPayout[];
 }
+
+// ---------------------------------------------------------------------------
+// Shadow SKUs — the generalised internal vocabulary
+// ---------------------------------------------------------------------------
+
+export interface ShadowSku {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** How many real SKUs currently map to it. */
+  variantCount: number;
+}
+
+/** One real, sellable SKU and what it is listed as internally. */
+export interface ShadowMappingRow {
+  id: string;
+  code: string;
+  size: string | null;
+  active: boolean;
+  shadowSkuId: string | null;
+  displayName: string;
+  orderLineCount: number;
+  product: { id: string; name: string; categoryId: string };
+  shadowSku: { id: string; code: string; name: string; active: boolean } | null;
+}
+
+export interface ShadowCoverage {
+  activeVariants: number;
+  mapped: number;
+  unmapped: number;
+  shadowCount: number;
+  activeShadowCount: number;
+}
+
+export interface ShadowSummaryLine {
+  itemId: string;
+  quantity: number;
+  unitPrice: number;
+  /** What the sheet prints. */
+  code: string;
+  name: string;
+  /** What it really is — operator-facing, never on the PDF. */
+  realName: string;
+  realCode: string;
+}
+
+export interface ShadowSummary {
+  order: {
+    id: string;
+    orderNumber: string;
+    createdAt: string;
+    subtotal: number;
+    shippingFee: number;
+    discountAmount: number;
+    total: number;
+    status: string;
+    paymentStatus: string;
+  };
+  lines: ShadowSummaryLine[];
+  unmapped: { itemId: string; quantity: number; realName: string; realCode: string }[];
+  complete: boolean;
+}
+
+/** One order in the shadow backlog: can a sheet be produced, and has one been. */
+export interface ShadowOrderRow {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  total: number;
+  status: string;
+  paymentStatus: string;
+  lineCount: number;
+  complete: boolean;
+  unmappedCount: number;
+}

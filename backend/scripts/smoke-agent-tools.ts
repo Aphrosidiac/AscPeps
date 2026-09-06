@@ -51,6 +51,7 @@ const INPUTS: Record<string, any> = {
   list_expenses: { limit: 3 },
   list_documents: { limit: 3 },
   get_document: someDocument ? { documentId: someDocument.id } : null,
+  preview_internal_summary: someOrder ? { orderRef: someOrder.orderNumber } : null,
   email_outbox_status: {},
   agent_activity_log: { limit: 3 },
   run_report_query: {
