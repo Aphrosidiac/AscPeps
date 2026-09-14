@@ -5,6 +5,36 @@ import { notifyRevalidate } from '../../utils/revalidate.js';
 import { checkoutConfigSchema } from 'manualpaygate/core';
 import { MANUALPAY_CONFIG_KEY, MANUALPAY_ENABLED_KEY, loadManualPayConfig } from '../../plugins/manualpay.js';
 
+// zod's "methods.0.qrImageUrl — Too small" means nothing to the person who
+// just pressed "+ DuitNow QR". Name the method and the field they left empty.
+const MANUALPAY_FIELD_LABELS: Record<string, string> = {
+  qrImageUrl: 'the QR image',
+  payeeName: 'the payee name',
+  bankName: 'the bank name',
+  accountNumber: 'the account number',
+  accountName: 'the account name',
+  url: 'the link URL',
+  merchantName: 'the merchant name',
+  logoUrl: 'the logo',
+  iconUrl: 'the brand icon',
+};
+function describeManualPayIssue(cfg: unknown, issue: { path: PropertyKey[]; message: string } | undefined): string {
+  if (!issue) return 'Manual payment config is not valid';
+  const [root, idx, field] = issue.path;
+  const c = cfg as { methods?: { type?: string; label?: string }[] } | null;
+  if (root === 'methods' && typeof idx === 'number' && typeof field === 'string') {
+    const m = c?.methods?.[idx];
+    const name = m?.label || { duitnow_qr: 'DuitNow QR', bank_transfer: 'Bank transfer', payment_link: 'Payment link' }[m?.type ?? ''] || `Method ${idx + 1}`;
+    const what = MANUALPAY_FIELD_LABELS[field] ?? field;
+    const empty = /too small|at least 1|>=1/i.test(issue.message);
+    return empty ? `${name}: add ${what} before saving (or remove the method).` : `${name}: ${what} — ${issue.message}`;
+  }
+  if (root === 'branding' && typeof idx === 'string') {
+    return `Checkout page branding: ${MANUALPAY_FIELD_LABELS[idx] ?? idx} — ${issue.message}`;
+  }
+  return `Manual payment config: ${issue.path.join('.')} — ${issue.message}`;
+}
+
 export async function getSettings(fastify: FastifyInstance) {
   const settings = await fastify.prisma.setting.findMany();
   return Object.fromEntries(settings.map((s) => [s.key, s.value]));
@@ -62,14 +92,15 @@ export async function updateSettings(fastify: FastifyInstance, body: unknown) {
     // Parse it here so a malformed save is refused with the field that is
     // wrong, instead of being stored and silently replaced by defaults on read.
     if (key === MANUALPAY_CONFIG_KEY) {
+      let parsedJson: unknown;
       try {
-        checkoutConfigSchema.parse(JSON.parse(value));
-      } catch (err) {
-        const issue = (err as { issues?: { path: (string | number)[]; message: string }[] }).issues?.[0];
-        throw {
-          statusCode: 400,
-          message: issue ? `Manual payment config: ${issue.path.join('.')} — ${issue.message}` : 'Manual payment config is not valid JSON',
-        };
+        parsedJson = JSON.parse(value);
+      } catch {
+        throw { statusCode: 400, message: 'Manual payment config is not valid JSON' };
+      }
+      const result = checkoutConfigSchema.safeParse(parsedJson);
+      if (!result.success) {
+        throw { statusCode: 400, message: describeManualPayIssue(parsedJson, result.error.issues[0]) };
       }
     }
     // Same shape of guard as crypto below: switching the hosted checkout ON

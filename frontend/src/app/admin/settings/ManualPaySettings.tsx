@@ -18,7 +18,29 @@ const DEFAULTS: CheckoutConfig = {
   methods: [],
 };
 
+/**
+ * The editor's draft round-trips through this on every keystroke, so it
+ * must NOT be validated here: a method that was just added has an empty QR
+ * URL, which the strict schema rejects — and falling back to DEFAULTS at
+ * that point made the card the admin had just added vanish before they
+ * could fill it in. Shape-check only; the server validates on save and
+ * reports the field that is wrong.
+ */
 export function parseManualPayConfig(raw: string | undefined): CheckoutConfig {
+  if (!raw) return DEFAULTS;
+  try {
+    const parsed = JSON.parse(raw) as Partial<CheckoutConfig>;
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.methods) || !parsed.branding || typeof parsed.branding !== 'object') {
+      return DEFAULTS;
+    }
+    return { ...DEFAULTS, ...parsed, branding: { ...DEFAULTS.branding, ...parsed.branding }, methods: parsed.methods } as CheckoutConfig;
+  } catch {
+    return DEFAULTS;
+  }
+}
+
+/** Strict parse for readers that need a valid config (never the editor). */
+export function parseManualPayConfigStrict(raw: string | undefined): CheckoutConfig {
   if (!raw) return DEFAULTS;
   try {
     const parsed = checkoutConfigSchema.safeParse(JSON.parse(raw));
