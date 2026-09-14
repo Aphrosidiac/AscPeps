@@ -11,6 +11,7 @@ import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { newUnsubscribeToken } from '../../utils/marketing.js';
 import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage, resolveShippingFeeSen } from '../../utils/shipping-region.js';
+import { MANUALPAY_GATEWAY, isManualPayEnabled } from '../../plugins/manualpay.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -22,7 +23,10 @@ const createOrderSchema = z.object({
   city: z.string().min(1),
   state: z.string().min(1),
   postcode: z.string().min(1),
-  paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ', 'CRYPTO']),
+  // MANUAL is an API-level value only: it is stored as WHATSAPP (the manual
+  // method) with paymentGateway 'manualpaygate', so the PaymentMethod enum
+  // never needs an ALTER TYPE. See plugins/manualpay.ts.
+  paymentMethod: z.enum(['WHATSAPP', 'BILLPLZ', 'CRYPTO', 'MANUAL']),
   discountCode: z.string().optional(),
   notes: z.string().optional(),
   // Checkout's newsletter tickbox. Defaults to false and is never inferred
@@ -69,6 +73,51 @@ async function isCryptoEnabled(fastify: FastifyInstance): Promise<boolean> {
 
 // Rebuild the online-payment URL for an already-created order (used on the
 // idempotent-retry path, where the original bill should be reused).
+/**
+ * The hosted checkout session for a MANUAL order — created on first call,
+ * found again on every later one (idempotent on orderNumber). Split out from
+ * createOrder because the order row commits BEFORE the session exists: a
+ * retry that hits the idempotency key must be able to finish the job rather
+ * than hand back an order with no way to pay for it.
+ */
+async function ensureManualPaySession(
+  fastify: FastifyInstance,
+  order: { id: string; orderNumber: string; total: number; subtotal: number; shippingFee: number; discountAmount: number; customerName: string; email: string | null; phone: string; paymentRef: string | null },
+  discountLabel?: string,
+): Promise<string> {
+  if (order.paymentRef) return `${env.FRONTEND_URL}/pay/${order.paymentRef}`;
+  const full = await fastify.prisma.order.findUniqueOrThrow({
+    where: { id: order.id },
+    include: { items: { include: { variant: { include: { product: true } } } } },
+  });
+  // The session snapshots the order's lines and totals (what the customer
+  // sees on the page is what the admin later compares against the
+  // screenshot), and the order carries the session id as paymentRef so the
+  // two can always find each other.
+  const session = await fastify.manualPay.createSession({
+    reference: full.orderNumber,
+    amount: full.total,
+    currency: 'MYR',
+    idempotent: true,
+    lineItems: full.items.map((item) => ({
+      name: getVariantDisplayName(item.variant.product, item.variant),
+      quantity: item.quantity,
+      unitAmount: item.unitPrice,
+    })),
+    amounts: {
+      subtotal: full.subtotal,
+      shipping: full.shippingFee,
+      discount: full.discountAmount > 0 ? { label: discountLabel, amount: full.discountAmount } : undefined,
+    },
+    customer: { name: full.customerName, email: full.email ?? undefined, phone: full.phone },
+    successUrl: `${env.FRONTEND_URL}/checkout/success?manual=1&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${env.FRONTEND_URL}/cart`,
+    metadata: { orderId: full.id },
+  });
+  await fastify.prisma.order.update({ where: { id: full.id }, data: { paymentRef: session.id } });
+  return `${env.FRONTEND_URL}/pay/${session.id}`;
+}
+
 function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
   if (order.paymentGateway === 'toyyibpay' && order.paymentRef) {
     const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
@@ -80,6 +129,10 @@ function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRe
   // freshly quoted BTC rate instead of the one they were shown.
   if (order.paymentGateway === 'btcpay' && order.paymentRef && env.BTCPAY_URL) {
     return `${env.BTCPAY_URL}/i/${order.paymentRef}`;
+  }
+  // The hosted manual checkout is ours, so the page is always re-openable.
+  if (order.paymentGateway === MANUALPAY_GATEWAY && order.paymentRef) {
+    return `${env.FRONTEND_URL}/pay/${order.paymentRef}`;
   }
   return undefined; // Billplz bill URL isn't persisted; the customer must re-open from email
 }
@@ -108,6 +161,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
   if (data.paymentMethod === 'CRYPTO' && !(await isCryptoEnabled(fastify))) {
     throw { statusCode: 503, message: 'Crypto payment is currently unavailable. Please choose another payment method.' };
   }
+  if (data.paymentMethod === 'MANUAL' && !(await isManualPayEnabled(fastify))) {
+    throw { statusCode: 503, message: 'Bank transfer checkout is currently unavailable. Please choose another payment method.' };
+  }
+  const isManualPay = data.paymentMethod === 'MANUAL';
 
   // Idempotency: a network retry of a request the server already committed must
   // NOT create a second order (double stock decrement + double bill = double
@@ -117,6 +174,9 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       where: { idempotencyKey: data.idempotencyKey },
     });
     if (existing) {
+      if (existing.paymentGateway === MANUALPAY_GATEWAY) {
+        return { order: existing, paymentUrl: await ensureManualPaySession(fastify, existing, data.discountCode?.toUpperCase()) };
+      }
       return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
     }
   }
@@ -259,7 +319,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         shippingFee,
         discountAmount,
         total,
-        paymentMethod: data.paymentMethod,
+        paymentMethod: isManualPay ? 'WHATSAPP' : (data.paymentMethod as 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO'),
+        paymentGateway: isManualPay ? MANUALPAY_GATEWAY : undefined,
         discountCodeId,
         notes: data.notes,
         idempotencyKey: data.idempotencyKey,
@@ -295,7 +356,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       return created;
     }, { timeout: 15000, maxWait: 5000 });
 
-  let order;
+  let order: Awaited<ReturnType<typeof runCreateTransaction>>;
   // Order-number generation is read-max-then-increment with no lock, so two
   // concurrent orders can compute the same number — the loser hits the unique
   // constraint and regenerates on a fresh attempt.
@@ -312,7 +373,12 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         const existing = await fastify.prisma.order.findUnique({
           where: { idempotencyKey: data.idempotencyKey },
         });
-        if (existing) return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+        if (existing) {
+          if (existing.paymentGateway === MANUALPAY_GATEWAY) {
+            return { order: existing, paymentUrl: await ensureManualPaySession(fastify, existing, data.discountCode?.toUpperCase()) };
+          }
+          return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
+        }
       }
       if (code === 'P2002' && attempt < MAX_ATTEMPTS && isOrderNumberConflict(err)) continue;
       throw err;
@@ -362,6 +428,8 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       state: order.state,
       postcode: order.postcode,
     });
+  } else if (isManualPay) {
+    paymentUrl = await ensureManualPaySession(fastify, order, data.discountCode?.toUpperCase());
   } else if (isOnlineMethod(data.paymentMethod)) {
     // Payment gateways enforce a minimum charge (RM1). A total below that
     // (e.g. a near-100% discount) can't be billed online.

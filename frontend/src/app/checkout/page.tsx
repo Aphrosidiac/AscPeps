@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, Bitcoin, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
+import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
@@ -24,6 +24,7 @@ const PAYMENT_ACCENTS = {
   green: { bg: 'bg-green-100', fg: 'text-green-600' },
   blue: { bg: 'bg-blue-100', fg: 'text-blue-600' },
   amber: { bg: 'bg-amber-100', fg: 'text-amber-600' },
+  slate: { bg: 'bg-slate-100', fg: 'text-slate-700' },
 } as const;
 
 /**
@@ -128,11 +129,12 @@ export default function CheckoutPage() {
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ' | 'CRYPTO'>('WHATSAPP');
+  const [paymentMethod, setPaymentMethod] = useState<'WHATSAPP' | 'BILLPLZ' | 'CRYPTO' | 'MANUAL'>('WHATSAPP');
   const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(false);
   // Independent of onlinePaymentEnabled — crypto is its own method, so the
   // store can run either, both, or neither.
   const [cryptoPaymentEnabled, setCryptoPaymentEnabled] = useState(false);
+  const [manualPaymentEnabled, setManualPaymentEnabled] = useState(false);
   const [shippingFee, setShippingFee] = useState('');
   // Minimum order (RM, as stored) to ship to Sabah/Sarawak/Labuan. Empty until
   // settings load, which reads as "no minimum" — the server is the real gate,
@@ -173,6 +175,10 @@ export default function CheckoutPage() {
   // a gateway rather than by a human, so everything from here on that used to
   // mean "is this BILLPLZ" really means this.
   const isOnlinePayment = paymentMethod === 'BILLPLZ' || paymentMethod === 'CRYPTO';
+  // MANUAL also hands off to a hosted page (ours), but is confirmed by a
+  // person reviewing an uploaded screenshot — so it redirects like an online
+  // method and keeps the cart like one, without being one.
+  const isRedirectPayment = isOnlinePayment || paymentMethod === 'MANUAL';
 
   const submitting = useRef(false);
   // Stable per-attempt key so a network retry of a committed order doesn't
@@ -183,6 +189,7 @@ export default function CheckoutPage() {
     getSettings().then((s) => {
       setOnlinePaymentEnabled(s.online_payment_enabled === 'true');
       setCryptoPaymentEnabled(s.crypto_payment_enabled === 'true');
+      setManualPaymentEnabled(s.manual_payment_enabled === 'true');
       setShippingFee(s.shipping_fee || '');
       setEastMinOrder(s.east_malaysia_min_order || '');
       setEastShippingFee(s.east_malaysia_shipping_fee || '');
@@ -313,7 +320,7 @@ export default function CheckoutPage() {
       // step. Must happen before the gateway redirect below.
       posthog.alias(`order_${result.order.orderNumber}`);
 
-      if (isOnlinePayment && result.paymentUrl) {
+      if (isRedirectPayment && result.paymentUrl) {
         // Cart is deliberately NOT cleared here — the customer hasn't paid
         // yet, they've only been handed off to the gateway. Clearing now meant
         // anyone who bailed at the bank page came back to an empty cart and had
@@ -514,9 +521,21 @@ export default function CheckoutPage() {
               <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
               <h2 className="font-display font-semibold text-lg">Payment Method</h2>
             </div>
-            {/* Always three columns — the Bitcoin card is present whether or
-                not it's switched on, so the layout no longer depends on it. */}
+            {/* Three columns, four cards when the hosted bank-transfer
+                checkout is switched on: it wraps to its own row rather than
+                squeezing the set, and is simply absent when off (unlike
+                Bitcoin, it is not being announced). */}
             <div className="grid gap-3 sm:grid-cols-3">
+              {manualPaymentEnabled && (
+                <PaymentOption
+                  icon={Landmark}
+                  title="Bank Transfer"
+                  description="DuitNow QR or transfer, then upload your receipt"
+                  accent="slate"
+                  selected={paymentMethod === 'MANUAL'}
+                  onSelect={() => { setPaymentMethod('MANUAL'); posthog.capture('payment_method_selected', { method: 'MANUAL', gateway: 'manualpaygate' }); }}
+                />
+              )}
               <PaymentOption
                 icon={MessageCircle}
                 title="WhatsApp"
@@ -558,6 +577,13 @@ export default function CheckoutPage() {
                 onSelect={() => { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); }}
               />
             </div>
+            {paymentMethod === 'MANUAL' && (
+              <div className="rounded-xl border border-border bg-surface-elevated p-4">
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  You&apos;ll be taken to our payment page with the DuitNow QR and bank details for the exact amount. After paying, upload a screenshot of the confirmation there — your order is confirmed once we&apos;ve checked it, usually within a few hours.
+                </p>
+              </div>
+            )}
             {paymentMethod === 'CRYPTO' && (
               /* Set expectations before they leave the site. An on-chain
                  payment isn't instant like FPX, and a customer who doesn't
@@ -699,7 +725,7 @@ export default function CheckoutPage() {
             </div>
 
             <Button type="submit" className="w-full" size="lg" disabled={loading || blockedByEastMin}>
-              {loading ? 'Placing Order...' : 'Place Order'}
+              {loading ? 'Placing Order...' : paymentMethod === 'MANUAL' ? 'Continue to Payment' : 'Place Order'}
             </Button>
             {/* The button is in a sticky sidebar that can sit a long way from
                 the address card, so a disabled button on its own would read as

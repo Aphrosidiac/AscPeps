@@ -10,6 +10,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { InternalSummaryCard } from './InternalSummaryCard';
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
+import { ManualPayReview } from './ManualPayReview';
 import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
@@ -709,6 +710,15 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
                 );
               })}
           </div>
+        </Card>
+      )}
+
+      {/* Hosted bank-transfer checkout: the uploaded screenshot and the
+          decision live here, next to the status they change. Approving goes
+          through the gateway so the receipt email and analytics fire once. */}
+      {order.paymentGateway === 'manualpaygate' && order.paymentRef && (
+        <Card title="Proof of payment" icon={<Receipt className="w-4 h-4" />}>
+          <ManualPayReview sessionId={order.paymentRef} onDecided={onChange} />
         </Card>
       )}
 

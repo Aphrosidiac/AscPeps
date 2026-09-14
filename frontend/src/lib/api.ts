@@ -56,7 +56,7 @@ export const createOrder = (data: {
   city: string;
   state: string;
   postcode: string;
-  paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO';
+  paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO' | 'MANUAL';
   notes?: string;
   /** Checkout's newsletter tickbox — only honoured when `email` is present. */
   subscribe?: boolean;
@@ -158,6 +158,33 @@ export const adminSendTestEmail = (token: string, data: { type: 'ORDER_CONFIRMAT
 
 export const adminDeleteProduct = (token: string, id: string) =>
   api.delete(`/api/v1/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+// ---- ManualPayGate (hosted manual checkout) admin ----------------------------
+export const adminGetPaySession = (token: string, sessionId: string) =>
+  api.get<ManualPaySessionWire>(`/api/v1/pay/admin/sessions/${sessionId}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminApprovePaySession = (token: string, sessionId: string) =>
+  api.post(`/api/v1/pay/admin/sessions/${sessionId}/approve`, undefined, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminRejectPaySession = (token: string, sessionId: string, reason: string) =>
+  api.post(`/api/v1/pay/admin/sessions/${sessionId}/reject`, { reason }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+// The proof bytes sit behind the admin JWT, and an <img> cannot carry a
+// bearer header — so fetch them as a blob and hand back an object URL.
+export const adminFetchPayProofUrl = (token: string, proofId: string) =>
+  api
+    .get<Blob>(`/api/v1/pay/admin/proofs/${proofId}/file`, { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' })
+    .then((r) => URL.createObjectURL(r.data));
+
+/** CheckoutSession as it arrives over JSON: dates are ISO strings. */
+export interface ManualPaySessionWire {
+  id: string; reference: string; amount: number; currency: string; status: string;
+  lineItems: { name: string; quantity: number; unitAmount: number }[];
+  customer?: { name?: string; email?: string; phone?: string };
+  successUrl: string; cancelUrl?: string; expiresAt: string; paidAt?: string; cancelledAt?: string;
+  rejectReason?: string; reviewedBy?: string; createdAt: string; updatedAt: string;
+  proofs: { id: string; sessionId: string; filename: string; originalName: string; mimeType: string; sizeBytes: number; note?: string; status: string; rejectReason?: string; submittedAt: string; reviewedAt?: string; reviewedBy?: string }[];
+}
 
 export const adminGetSettings = (token: string) =>
   api.get<Record<string, string>>('/api/v1/admin/settings', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);

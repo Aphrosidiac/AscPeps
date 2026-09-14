@@ -7,6 +7,7 @@ import { enqueueEmail } from '../../utils/email-outbox.js';
 import { capturePurchase } from '../../utils/posthog.js';
 import { isOnlineMethod } from '../../utils/payment-gateway.js';
 import { computeGatewayFee } from '../../utils/gateway-fee.js';
+import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -300,6 +301,13 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
   if (data.status === 'CANCELLED') {
     await restoreOrderInventory(fastify, order.id);
     fastify.log.info(`Order ${order.orderNumber} cancelled — stock restored`);
+    // A hosted-checkout order: close the payment page as well, so a customer
+    // who still has the link cannot upload a proof against a dead order.
+    if (order.paymentGateway === MANUALPAY_GATEWAY && order.paymentRef) {
+      await fastify.manualPay.cancel(order.paymentRef).catch((err) =>
+        fastify.log.warn({ err, orderId: order.id }, 'manualpay: could not cancel session')
+      );
+    }
   }
 
   if (data.paymentStatus) {

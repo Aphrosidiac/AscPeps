@@ -41,6 +41,8 @@ import btcpayWebhookRoutes from './modules/webhooks/btcpay-webhook.routes.js';
 import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
+import manualPayPlugin from './plugins/manualpay.js';
+import { manualPayGatePlugin } from 'manualpaygate/server/fastify';
 import { processEmailOutbox } from './utils/email-worker.js';
 import { processWelcomeEmails, processCampaigns } from './utils/marketing-worker.js';
 import { sweepAbandonedCheckouts } from './utils/abandoned-checkout.js';
@@ -129,6 +131,7 @@ await fastify.register(fastifyStatic, {
 
 await fastify.register(prismaPlugin);
 await fastify.register(authPlugin);
+await fastify.register(manualPayPlugin);
 await fastify.register(errorHandler);
 
 fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
@@ -161,6 +164,22 @@ await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' 
 await fastify.register(adminSubscriberRoutes, { prefix: '/api/v1/admin/subscribers' });
 await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
+// ManualPayGate: the hosted proof-of-payment checkout. Public reads + the
+// customer upload live under /api/v1/pay; everything under /api/v1/pay/admin
+// goes through the same admin JWT gate as the rest of the admin API. Session
+// creation is NOT exposed over HTTP — orders.controller calls the gateway
+// directly, so nobody can mint a session for an amount of their choosing.
+await fastify.register(manualPayGatePlugin, {
+  prefix: '/api/v1/pay',
+  gateway: fastify.manualPay,
+  adminAuth: async (request, reply) => {
+    await fastify.authenticate(request, reply);
+    if (reply.sent) throw { statusCode: 401, message: 'Unauthorized' };
+    const user = request.user as { email?: string; id?: string };
+    return user.email ?? user.id ?? 'admin';
+  },
+  uploadRateLimit: { max: 10, timeWindow: '1 minute' },
+});
 await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
 await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
 await fastify.register(adminCommentRoutes, { prefix: '/api/v1/admin/comments' });
@@ -212,6 +231,12 @@ try {
   const timer = setInterval(() => {
     reconcileStaleOrders(fastify).catch((err) =>
       fastify.log.error({ err }, 'payment reconcile sweep failed')
+    );
+    // Hosted manual-payment sessions past their window: the gateway flips
+    // them to EXPIRED and its onExpired hook cancels + restocks the order.
+    // A session with a proof awaiting review is never touched.
+    fastify.manualPay.expireStale().catch((err) =>
+      fastify.log.error({ err }, 'manualpay expiry sweep failed')
     );
     // Same cadence and the same rows, read for the opposite purpose: this
     // decides which unpaid orders are still worth a nudge, while the sweep

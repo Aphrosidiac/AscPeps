@@ -102,7 +102,7 @@ export function normalizePhone(raw: string): string {
  * (btcpay)". Crypto is its own method, so it gets its own name.
  */
 export function paymentMethodLabel(order: { paymentMethod: string; paymentGateway?: string | null }): string {
-  if (order.paymentMethod === 'WHATSAPP') return 'WhatsApp (Manual Transfer)';
+  if (order.paymentMethod === 'WHATSAPP') return order.paymentGateway === 'manualpaygate' ? 'Bank Transfer / DuitNow (hosted page)' : 'WhatsApp (Manual Transfer)';
   if (order.paymentMethod === 'CRYPTO') return 'Bitcoin (BTCPay)';
   return `Online (${order.paymentGateway || 'Billplz'})`;
 }

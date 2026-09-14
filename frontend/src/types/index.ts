@@ -175,6 +175,8 @@ export interface Order {
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO';
   paymentGateway: string | null;
+  /** Gateway bill id — or, for the hosted manual checkout, the ManualPayGate session id. */
+  paymentRef?: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
   /**
    * What the payment processor kept out of `total`, in cents. A real cost of
