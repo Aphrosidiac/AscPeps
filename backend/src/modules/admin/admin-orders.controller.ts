@@ -118,6 +118,18 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     where.paymentStatus = query.paymentStatus;
   }
 
+  // The review queue: hosted-checkout orders whose customer has uploaded a
+  // proof nobody has looked at yet. Resolved through the session table so
+  // the list never needs a second round-trip per row.
+  if (query.awaitingProof === 'true') {
+    const pending = await fastify.prisma.checkoutSession.findMany({
+      where: { status: 'PROOF_SUBMITTED' },
+      select: { id: true },
+    });
+    where.paymentGateway = MANUALPAY_GATEWAY;
+    where.paymentRef = { in: pending.map((s) => s.id) };
+  }
+
   if (query.search) {
     where.OR = [
       { orderNumber: { contains: query.search, mode: 'insensitive' } },
@@ -375,6 +387,14 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     // Manual confirmation is a real payment — WhatsApp orders never reach
     // applyPaid, so without this they'd be invisible in revenue reporting.
     capturePurchase(fastify, updated);
+    // A hosted-checkout order confirmed by hand (screenshot came over
+    // WhatsApp, or the bank statement was checked): close the payment page to
+    // match, without the gateway's onPaid running applyPaid a second time.
+    if (order.paymentGateway === MANUALPAY_GATEWAY && order.paymentRef) {
+      await fastify.manualPay.markPaid(order.paymentRef, 'admin').catch((err) =>
+        fastify.log.warn({ err, orderId: order.id }, 'manualpay: could not mark session paid')
+      );
+    }
     return updated;
   }
 

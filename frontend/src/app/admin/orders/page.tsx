@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle, EyeOff, BadgeCheck } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle, EyeOff, BadgeCheck, Receipt } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetOrders, adminUpdateOrder, adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail } from '@/lib/api';
 import { formatPrice, formatDate, paymentMethodLabel } from '@/lib/utils';
@@ -55,6 +55,11 @@ function AdminOrdersContent() {
   // still be PENDING fulfilment — so this stacks with whichever tab is open
   // instead of replacing it, and stays available on every tab.
   const [paidOnly, setPaidOnly] = useState(false);
+  // The hosted bank-transfer checkout's review queue: orders with a customer
+  // screenshot waiting for a human. Its count is fetched separately so the
+  // badge is right whichever tab is open.
+  const [awaitingProof, setAwaitingProof] = useState(false);
+  const [awaitingCount, setAwaitingCount] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -77,14 +82,18 @@ function AdminOrdersContent() {
     if (statusFilter !== 'ALL') params.status = statusFilter;
     if (canHideCancelled && hideCancelled) params.excludeCancelled = 'true';
     if (paidOnly) params.paymentStatus = 'PAID';
+    if (awaitingProof) params.awaitingProof = 'true';
     if (search) params.search = search;
     adminGetOrders(token, params)
       .then((r) => setOrders(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
+    adminGetOrders(token, { limit: '1', awaitingProof: 'true' })
+      .then((r) => setAwaitingCount(r.pagination?.total ?? r.data.length))
+      .catch(() => {});
   };
 
-  useEffect(() => { load(); }, [token, statusFilter, hideCancelled, paidOnly, search]);
+  useEffect(() => { load(); }, [token, statusFilter, hideCancelled, paidOnly, awaitingProof, search]);
 
   // Runs once the target order has actually loaded — a plain status filter
   // (e.g. the order is CANCELLED) could otherwise leave this waiting forever,
@@ -274,6 +283,21 @@ function AdminOrdersContent() {
             <BadgeCheck className="w-3.5 h-3.5" />
             Paid
           </button>
+          {(awaitingCount ?? 0) > 0 || awaitingProof ? (
+            <button
+              onClick={() => setAwaitingProof((v) => !v)}
+              aria-pressed={awaitingProof}
+              title="Bank-transfer orders with a payment screenshot waiting for review"
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                awaitingProof
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              Proof to review{awaitingCount ? ` · ${awaitingCount}` : ''}
+            </button>
+          ) : null}
         </div>
       </div>
 

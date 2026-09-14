@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   // A payment page is personal and single-use: never indexed, never cached by
   // a crawler that followed a shared link.
   robots: { index: false, follow: false },
+  // The session URL is the credential: it must not leak to Wise/Stripe/
+  // WhatsApp through the referrer when the customer follows a link out.
+  referrer: 'same-origin',
 };
 
 // Server-side reads go straight to the backend origin, the same way

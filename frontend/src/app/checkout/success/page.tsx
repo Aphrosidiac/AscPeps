@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle, Clock } from 'lucide-react';
@@ -25,8 +25,19 @@ function CheckoutSuccessContent() {
   // The hosted bank-transfer checkout lands here after the customer uploads
   // proof — nothing is confirmed yet, a person still has to check it. Same
   // page, different words: "confirmed" here would be a lie for a few hours.
-  const manual = params.get('manual') === '1';
   const sessionId = params.get('session_id');
+  // A customer can come back to this URL hours later, after the proof was
+  // approved — then "verifying" would be stale. Read the live session state
+  // and let it override the query-string hint.
+  const [sessionStatus, setSessionStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionId || !/^cs_[A-Za-z0-9]{24}$/.test(sessionId)) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/v1/pay/sessions/${sessionId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s: { status?: string } | null) => s?.status && setSessionStatus(s.status))
+      .catch(() => {});
+  }, [sessionId]);
+  const manual = params.get('manual') === '1' && sessionStatus !== 'PAID';
 
   // Checkout hands the customer to the gateway without clearing the cart, so
   // that abandoning payment leaves it intact to retry. This is the point where

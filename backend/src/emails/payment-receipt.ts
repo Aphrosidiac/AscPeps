@@ -25,7 +25,9 @@ export function renderPaymentReceipt(
 ): { subject: string; html: string } {
   const payMethod =
     order.paymentMethod === 'WHATSAPP'
-      ? 'Manual Transfer (WhatsApp)'
+      ? order.paymentGateway === 'manualpaygate'
+        ? 'Bank Transfer / DuitNow'
+        : 'Manual Transfer (WhatsApp)'
       : `Online (${escapeHtml(order.paymentGateway || 'Billplz')})`;
 
   const html = renderLayout({
