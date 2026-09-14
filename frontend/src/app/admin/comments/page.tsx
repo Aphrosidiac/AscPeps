@@ -14,6 +14,7 @@ import { formatShortDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import type { AdminComment } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 type Filter = 'all' | 'visible' | 'hidden';
 
@@ -70,12 +71,10 @@ export default function AdminCommentsPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold">Comments</h1>
-        <p className="text-sm text-text-muted mt-1">
-          Reader comments on Insights articles. Hiding removes a comment from the site but keeps it here.
-        </p>
-      </div>
+      <PageHeader
+        title="Comments"
+        subtitle="Reader comments on Insights articles. Hiding removes a comment from the site but keeps it here."
+      />
 
       <div className="flex gap-1.5 mb-6">
         {FILTERS.map((f) => (

@@ -222,7 +222,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
           </button>
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="font-display text-2xl font-bold truncate">{order.orderNumber}</h1>
+              <h1 className="font-display text-[20px] leading-7 font-semibold tracking-[-0.01em] truncate">{order.orderNumber}</h1>
               <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
               <Badge className={PAYMENT_STATUS_COLORS[order.paymentStatus]}>{order.paymentStatus}</Badge>
               {order.deletedAt && <Badge className="bg-red-100 text-red-800">Deleted</Badge>}
@@ -587,7 +587,7 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
         {error && <p className="text-sm text-danger mb-4">{error}</p>}
         <div className="grid sm:grid-cols-2 gap-5">
           <div>
-            <label htmlFor="order-status" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+            <label htmlFor="order-status" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
               Order Status
             </label>
             <select
@@ -601,7 +601,7 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
             </select>
           </div>
           <div>
-            <label htmlFor="payment-status" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+            <label htmlFor="payment-status" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
               Payment Status
             </label>
             {/* The lock stops a genuinely-paid online order being flipped back
@@ -630,7 +630,7 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
         </div>
 
         <div className="mt-5">
-          <label htmlFor="tracking" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+          <label htmlFor="tracking" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
             Tracking Number
           </label>
           <div className="flex gap-2 items-center max-w-md">
@@ -662,7 +662,7 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
         </div>
 
         <div className="mt-5">
-          <label htmlFor="notes" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+          <label htmlFor="notes" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
             Notes
           </label>
           <textarea

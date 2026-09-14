@@ -138,7 +138,7 @@ export function RecordMoneyDialog({
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="rm-partner" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Partner</label>
+              <label htmlFor="rm-partner" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Partner</label>
               <select
                 id="rm-partner"
                 value={partnerId}
@@ -149,7 +149,7 @@ export function RecordMoneyDialog({
               </select>
             </div>
             <div>
-              <label htmlFor="rm-date" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Date</label>
+              <label htmlFor="rm-date" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Date</label>
               <input
                 id="rm-date"
                 type="date"
@@ -161,7 +161,7 @@ export function RecordMoneyDialog({
           </div>
 
           <div>
-            <label htmlFor="rm-amount" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Amount</label>
+            <label htmlFor="rm-amount" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Amount</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">RM</span>
               <input
@@ -178,7 +178,7 @@ export function RecordMoneyDialog({
           </div>
 
           <div>
-            <label htmlFor="rm-desc" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+            <label htmlFor="rm-desc" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
               {kind === 'PAYOUT' ? 'Note (optional)' : 'What for'}
             </label>
             <input

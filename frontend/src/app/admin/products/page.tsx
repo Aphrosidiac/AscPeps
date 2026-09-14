@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { FeaturedOrderModal } from './FeaturedOrderModal';
 import type { Product, Category } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 type SortKey = 'name' | 'category' | 'price' | 'stock' | 'status';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -169,13 +170,15 @@ export default function AdminProductsPage() {
       {/* Stacks below sm: "Manage Featured Order" and "Add Product" beside the
           title needed more than a phone has, so both buttons wrapped their own
           labels onto three lines and rode over the heading. */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="font-display text-2xl font-bold">Products</h1>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="outline" onClick={() => setShowFeaturedOrder(true)}><ArrowUpDown className="w-4 h-4" /> Manage Featured Order</Button>
-          <Link href="/admin/products/new"><Button><Plus className="w-4 h-4" /> Add Product</Button></Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Products"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowFeaturedOrder(true)}><ArrowUpDown className="w-4 h-4" /> Manage Featured Order</Button>
+            <Link href="/admin/products/new"><Button><Plus className="w-4 h-4" /> Add Product</Button></Link>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="relative w-full max-w-sm">

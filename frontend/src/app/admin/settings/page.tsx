@@ -5,7 +5,7 @@ import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Card, CardHeader, CardBody, Field, TextInput, SelectInput, Affixed, Toggle, TabBar, SaveBar } from '@/components/admin/settings-ui';
+import { Card, CardHeader, CardBody, Field, TextInput, SelectInput, Affixed, Toggle, TabBar, SaveBar } from '@/components/admin/ui';
 import { ManualPaySettings, MANUALPAY_CONFIG_KEY } from './ManualPaySettings';
 
 /**

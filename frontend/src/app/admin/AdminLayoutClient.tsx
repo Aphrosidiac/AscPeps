@@ -132,8 +132,17 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* Main content — aside is fixed (out of flow) at every breakpoint
           now, so this needs its own left margin to clear it on desktop
-          instead of relying on flexbox to share the row with aside. */}
-      <main className="flex-1 lg:ml-64 p-4 sm:p-6 lg:p-8 bg-background overflow-auto pt-18 lg:pt-8 min-h-screen">{children}</main>
+          instead of relying on flexbox to share the row with aside.
+
+          overflow-x-clip, not overflow-auto: `auto` made <main> a scroll
+          container that never actually scrolled (it grows with its content
+          and the body scrolls), so every `sticky bottom-*` save bar inside it
+          measured against a scrollport the size of the whole page and never
+          stuck — the forms had to portal a fixed bar to document.body to get
+          around it. `clip` contains stray horizontal overflow the same way
+          without creating a scroll container. Tables scroll in their own
+          overflow-x-auto wrappers. */}
+      <main className="admin-main flex-1 min-w-0 lg:ml-64 p-4 sm:p-6 lg:p-8 bg-background overflow-x-clip pt-18 lg:pt-8 min-h-screen">{children}</main>
     </div>
   );
 }

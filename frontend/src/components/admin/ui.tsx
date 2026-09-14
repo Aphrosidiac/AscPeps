@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
 /**
@@ -257,3 +258,96 @@ export function SaveBar({ children, className }: { children: React.ReactNode; cl
     </div>
   );
 }
+
+/* ---------- Page header ---------- */
+
+/**
+ * The page head: one 20px title, one line of fact under it, actions on the
+ * right, optional back arrow (an arrow, not a breadcrumb). Every admin page
+ * used to hand-roll this at a different size.
+ */
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  back,
+  icon: Icon,
+  className,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  actions?: React.ReactNode;
+  back?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  className?: string;
+}) {
+  return (
+    <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3', className)}>
+      <div className="flex min-w-0 items-center gap-2">
+        {back ? (
+          <Link
+            href={back}
+            aria-label="Back"
+            className="-ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] text-text-secondary hover:bg-surface-elevated hover:text-text-primary"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M12.5 4.5 7 10l5.5 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        ) : null}
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 truncate font-display text-[20px] leading-7 font-semibold tracking-[-0.01em] text-text-primary">
+            {Icon ? <Icon className="h-5 w-5 shrink-0 text-text-secondary" /> : null}
+            {title}
+          </h1>
+          {subtitle ? <p className="text-[13px] leading-[18px] text-text-secondary">{subtitle}</p> : null}
+        </div>
+      </div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
+/* ---------- Checkbox ---------- */
+
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  description,
+  disabled,
+  className,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: React.ReactNode;
+  description?: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={cn('flex min-h-6 cursor-pointer items-start gap-2.5', disabled && 'cursor-not-allowed opacity-60', className)}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-[3px]" />
+      <span className="min-w-0">
+        <span className="block text-[15px] leading-[22px] text-text-primary">{label}</span>
+        {description ? <span className="block text-[13px] leading-[18px] text-text-secondary">{description}</span> : null}
+      </span>
+    </label>
+  );
+}
+
+/* ---------- Textarea ---------- */
+
+export const TextArea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }>(
+  function TextArea({ className, invalid, rows = 4, ...props }, ref) {
+    return (
+      <textarea
+        ref={ref}
+        rows={rows}
+        aria-invalid={invalid || undefined}
+        className={cn(control, 'py-2 leading-6 resize-y', invalid ? 'border-danger' : 'border-border focus:border-primary', className)}
+        {...props}
+      />
+    );
+  }
+);

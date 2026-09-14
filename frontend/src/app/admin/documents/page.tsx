@@ -11,6 +11,8 @@ import { Animate } from '@/components/ui/Animate';
 import type { Document } from '@/types';
 import { UploadDocumentDialog } from './UploadDocumentDialog';
 import { DocumentDetail } from './DocumentDetail';
+import { PageHeader } from '@/components/admin/ui';
+import { Button } from '@/components/ui/Button';
 
 /**
  * The filing cabinet.
@@ -160,25 +162,18 @@ export default function AdminDocumentsPage() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <Animate variant="fadeUp">
-          <div>
-            <h1 className="font-display text-2xl font-bold">Documents</h1>
-            <p className="text-xs text-text-muted mt-0.5">
+      <Animate variant="fadeUp">
+        <PageHeader
+          title="Documents"
+          subtitle={
+            <>
               {total} document{total === 1 ? '' : 's'}
               {totals.value > 0 && <> · {formatPrice(totals.value)} of recorded amounts</>}
-            </p>
-          </div>
-        </Animate>
-        <Animate variant="fadeUp" delay={0.05}>
-          <button
-            onClick={() => setUploading(true)}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Upload
-          </button>
-        </Animate>
-      </div>
+            </>
+          }
+          actions={<Button onClick={() => setUploading(true)}><Plus className="w-4 h-4" /> Upload</Button>}
+        />
+      </Animate>
 
       {/* Filters */}
       <Animate variant="fadeUp" delay={0.1}>

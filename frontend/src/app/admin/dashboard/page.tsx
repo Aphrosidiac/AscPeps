@@ -8,6 +8,7 @@ import { adminGetDashboard } from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@/lib/constants';
+import { PageHeader } from '@/components/admin/ui';
 
 interface DashboardStats {
   todayOrders: number;
@@ -73,7 +74,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-bold mb-6">Dashboard</h1>
+      <PageHeader title="Dashboard" />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
         {statCards.map((card, i) => (

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Animate } from '@/components/ui/Animate';
+import { PageHeader } from '@/components/admin/ui';
+import { Button } from '@/components/ui/Button';
 import {
   Bot,
   Link2,
@@ -222,22 +224,13 @@ export default function AgentPage() {
     // No padding of its own — the admin <main> already pads every page, and
     // doubling it cost this one 48px of a 375px screen.
     <div className="space-y-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold text-text-primary">
-            <Bot className="h-6 w-6" /> WhatsApp Agent
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            An admin assistant on WhatsApp. It can do anything you can do in this dashboard.
-          </p>
-        </div>
-        <button
-          onClick={refresh}
-          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-elevated active:scale-[0.98]"
-        >
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </button>
-      </header>
+      <PageHeader
+        icon={Bot}
+        title="WhatsApp Agent"
+        subtitle="An admin assistant on WhatsApp. It can do anything you can do in this dashboard."
+        actions={<Button variant="outline" onClick={refresh}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
+        className="mb-0"
+      />
 
       {/* The kill switch is env-controlled, so surface it prominently rather
           than letting someone wonder why a paired number never replies. */}
@@ -408,7 +401,7 @@ export default function AgentPage() {
 
         <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
           <div>
-            <label className="block text-xs text-text-muted">Phone</label>
+            <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Phone</label>
             <input
               value={newOp.phone}
               onChange={(e) => setNewOp({ ...newOp, phone: e.target.value })}
@@ -417,7 +410,7 @@ export default function AgentPage() {
             />
           </div>
           <div>
-            <label className="block text-xs text-text-muted">Name</label>
+            <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Name</label>
             <input
               value={newOp.name}
               onChange={(e) => setNewOp({ ...newOp, name: e.target.value })}
