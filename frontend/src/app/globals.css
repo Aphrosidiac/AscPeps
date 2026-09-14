@@ -168,10 +168,19 @@ h1, h2, h3, h4, h5, h6 {
 .chart-area-fade {
   animation: chart-area-fade 0.6s ease-out 0.5s both;
 }
+/* The endpoint marker's halo: expands and fades from the dot, on repeat. */
+@keyframes chart-marker-pulse {
+  0% { transform: translate(-50%, 50%) scale(0.4); opacity: 0.35; }
+  100% { transform: translate(-50%, 50%) scale(1.4); opacity: 0; }
+}
+.chart-marker-pulse {
+  animation: chart-marker-pulse 2.4s ease-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .chart-bar-rise,
   .chart-line-draw,
-  .chart-area-fade {
+  .chart-area-fade,
+  .chart-marker-pulse {
     animation: none;
   }
 

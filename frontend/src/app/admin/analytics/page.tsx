@@ -62,6 +62,11 @@ const SERIES_OPTIONS = [
 type SeriesKey = (typeof SERIES_OPTIONS)[number]['key'];
 
 const CHART_HEIGHT = 220;
+/* Growth gets its own colour. The site's primary is near-black, and a black
+   line over a grey fill reads as a mountain silhouette, not a metric.
+   Emerald-600 rather than the lighter success token: it has to hold a
+   2.5px stroke and a hover dot against white. */
+const GROWTH_COLOR = '#16A34A';
 const TICK_COUNT = 4;
 /** Roughly how many dated labels fit under the x axis without colliding. */
 const MAX_X_LABELS = 6;
@@ -77,6 +82,43 @@ function niceCeil(value: number): number {
   const normalised = value / magnitude;
   const step = normalised <= 1 ? 1 : normalised <= 2 ? 2 : normalised <= 2.5 ? 2.5 : normalised <= 5 ? 5 : 10;
   return step * magnitude;
+}
+
+/**
+ * A smooth path through evenly spaced points that never overshoots them
+ * (Fritsch–Carlson monotone cubic). Every segment between two points stays
+ * between their y values, which is the property a running-total line needs:
+ * a spline that dips below the previous day's total would be drawing a
+ * refund that never happened.
+ */
+function monotonePath(pts: readonly (readonly [number, number])[]): string {
+  const n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return `M ${pts[0][0]} ${pts[0][1]}`;
+  const d = Array.from({ length: n - 1 }, (_, i) => pts[i + 1][1] - pts[i][1]);
+  const m = new Array<number>(n);
+  m[0] = d[0];
+  m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i];
+    const b = m[i + 1] / d[i];
+    const h = a * a + b * b;
+    if (h > 9) {
+      const t = 3 / Math.sqrt(h);
+      m[i] = t * a * d[i];
+      m[i + 1] = t * b * d[i];
+    }
+  }
+  let path = `M ${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const dx = (x1 - x0) / 3;
+    path += ` C ${x0 + dx} ${y0 + m[i] / 3}, ${x1 - dx} ${y1 - m[i + 1] / 3}, ${x1} ${y1}`;
+  }
+  return path;
 }
 
 /** Compact axis money — "RM1.2k" rather than "RM1200.00" on a cramped axis. */
@@ -221,21 +263,25 @@ export default function AdminAnalyticsPage() {
   const isLine = series === 'growth';
   const rawMax = Math.max(...chartPoints.map((p) => p.value), 0);
   const rawMin = Math.min(...chartPoints.map((p) => p.value), 0);
-  const axisTop = niceCeil(rawMax);
-  const axisBottom = rawMin < 0 ? -niceCeil(-rawMin) : 0;
+  /* Ticks are chosen as a nice step first and the axis is the smallest
+     multiple of that step that clears the data — so a RM12.2k total gets
+     0/5k/10k/15k, not a RM20k axis with the top third empty. */
+  const tickStep = niceCeil(Math.max(rawMax, -rawMin, 1) / TICK_COUNT);
+  const axisTop = Math.max(tickStep, Math.ceil(rawMax / tickStep) * tickStep);
+  const axisBottom = rawMin < 0 ? -Math.ceil(-rawMin / tickStep) * tickStep : 0;
   const span = axisTop - axisBottom || 1;
   const zeroPct = ((0 - axisBottom) / span) * 100;
 
   // Growth line in slot units: x is the centre of the day's slot, y is the
   // running total as a percentage of the axis, flipped for SVG's downward y.
-  const linePath = chartPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${i + 0.5} ${100 - (p.cumulative / span) * 100}`)
-    .join(' ');
+  const lineXY = chartPoints.map((p, i) => [i + 0.5, 100 - ((p.cumulative - axisBottom) / span) * 100] as const);
+  const linePath = monotonePath(lineXY);
+  const lastXY = lineXY[lineXY.length - 1] ?? ([0.5, 100] as const);
 
-  const ticks = Array.from({ length: TICK_COUNT + 1 }, (_, i) => {
-    const value = axisBottom + (span / TICK_COUNT) * i;
-    return { value: Math.round(value), pct: ((value - axisBottom) / span) * 100 };
-  });
+  const ticks: { value: number; pct: number }[] = [];
+  for (let value = axisBottom; value <= axisTop + 1e-6; value += tickStep) {
+    ticks.push({ value: Math.round(value), pct: ((value - axisBottom) / span) * 100 });
+  }
 
   // Left-to-right stagger, but budgeted: the whole sweep finishes in ~350ms
   // whether that's 7 bars or 90, so the 90d view doesn't crawl in.
@@ -438,32 +484,57 @@ export default function AdminAnalyticsPage() {
                       places the hover dot; the stroke is non-scaling so the
                       stretched viewBox does not fatten it sideways. */}
                   {isLine && chartPoints.length > 1 && (
-                    <svg
-                      key={`line-${days}`}
-                      className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
-                      viewBox={`0 0 ${chartPoints.length} 100`}
-                      preserveAspectRatio="none"
-                      aria-hidden="true"
-                    >
-                      <defs>
-                        <linearGradient id="growth-fill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.18" />
-                          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0" />
-                        </linearGradient>
-                      </defs>
-                      <path d={`${linePath} L ${chartPoints.length - 0.5} 100 L 0.5 100 Z`} fill="url(#growth-fill)" className="chart-area-fade" />
-                      <path
-                        d={linePath}
-                        fill="none"
-                        stroke="var(--color-primary)"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                        vectorEffect="non-scaling-stroke"
-                        pathLength={1}
-                        className="chart-line-draw"
-                      />
-                    </svg>
+                    <>
+                      <svg
+                        key={`line-${days}`}
+                        className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
+                        viewBox={`0 0 ${chartPoints.length} 100`}
+                        preserveAspectRatio="none"
+                        aria-hidden="true"
+                      >
+                        <defs>
+                          <linearGradient id="growth-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={GROWTH_COLOR} stopOpacity="0.28" />
+                            <stop offset="60%" stopColor={GROWTH_COLOR} stopOpacity="0.06" />
+                            <stop offset="100%" stopColor={GROWTH_COLOR} stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path
+                          d={`${linePath} L ${lastXY[0]} ${100 - zeroPct} L 0.5 ${100 - zeroPct} Z`}
+                          fill="url(#growth-fill)"
+                          className="chart-area-fade"
+                        />
+                        <path
+                          d={linePath}
+                          fill="none"
+                          stroke={GROWTH_COLOR}
+                          strokeWidth="2.5"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                          vectorEffect="non-scaling-stroke"
+                          pathLength={1}
+                          className="chart-line-draw"
+                        />
+                      </svg>
+                      {/* Where the line is now: a marker on the last point,
+                          pulsing gently — the chart's own "you are here". */}
+                      <div
+                        className="absolute pointer-events-none chart-area-fade"
+                        style={{
+                          left: `${(lastXY[0] / chartPoints.length) * 100}%`,
+                          bottom: `${100 - lastXY[1]}%`,
+                        }}
+                      >
+                        <span
+                          className="absolute block w-6 h-6 rounded-full chart-marker-pulse"
+                          style={{ background: GROWTH_COLOR }}
+                        />
+                        <span
+                          className="absolute block w-2.5 h-2.5 -translate-x-1/2 translate-y-1/2 rounded-full ring-2 ring-surface"
+                          style={{ background: GROWTH_COLOR }}
+                        />
+                      </div>
+                    </>
                   )}
 
                   {/* Bars. The key is what replays the grow-in animation:
@@ -487,16 +558,16 @@ export default function AdminAnalyticsPage() {
                           <div
                             className={cn(
                               'absolute inset-0 transition-colors',
-                              isHovered ? 'bg-surface-elevated' : 'bg-transparent'
+                              isHovered && !isLine ? 'bg-surface-elevated' : 'bg-transparent'
                             )}
                           />
                           {isLine ? (
                             isHovered && (
                               <>
-                                <div className="absolute inset-y-0 left-1/2 w-px bg-primary/30" />
+                                <div className="absolute inset-y-0 left-1/2 w-px bg-border-hover" />
                                 <div
-                                  className="absolute left-1/2 w-2.5 h-2.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-primary ring-2 ring-surface"
-                                  style={{ bottom: `${heightPct}%` }}
+                                  className="absolute left-1/2 w-3 h-3 -translate-x-1/2 translate-y-1/2 rounded-full ring-[3px] ring-surface shadow-sm"
+                                  style={{ bottom: `${heightPct}%`, background: GROWTH_COLOR }}
                                 />
                               </>
                             )
@@ -524,7 +595,7 @@ export default function AdminAnalyticsPage() {
                               <div className="bg-primary text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
                                 <p className="font-semibold">{formatFullDate(point.date)}</p>
                                 {isLine && (
-                                  <p className="mt-1">Total to date {formatPrice(point.cumulative)}</p>
+                                  <p className="mt-1 text-sm font-semibold tabular-nums">{formatPrice(point.cumulative)}</p>
                                 )}
                                 <p className={isLine ? 'opacity-80' : 'mt-1'}>
                                   {isLine ? 'That day' : 'Revenue'} {formatPrice(point.revenue)} &middot; {point.orders} order
@@ -571,8 +642,8 @@ export default function AdminAnalyticsPage() {
 
               {series === 'growth' && (
                 <p className="text-xs text-text-muted mt-4 pt-4 border-t border-border">
-                  Running total of paid revenue. The line always rises — read the slope: steeper means
-                  faster sales.
+                  Running total of paid revenue. The line only ever rises — the slope is the reading:
+                  steeper means faster sales.
                 </p>
               )}
 
