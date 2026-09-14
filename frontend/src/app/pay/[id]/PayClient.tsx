@@ -18,8 +18,8 @@ export function PayClient({ session: initial, config }: { session: PublicSession
       session={session}
       config={config}
       navigate={(url) => router.push(url)}
-      onSubmitProof={async (file, note) => {
-        const updated = await client.submitProof(session.id, file, note);
+      onSubmitProof={async (file, note, email) => {
+        const updated = await client.submitProof(session.id, file, note, email);
         setSession(updated);
         posthog.capture('manual_payment_proof_submitted', { order_number: updated.reference, retry: initial.status === 'REJECTED' });
         return updated;
