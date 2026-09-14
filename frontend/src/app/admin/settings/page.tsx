@@ -1,41 +1,153 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Save, Check } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Save, Check, Store, CreditCard, Truck, Building2, Mail, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ManualPaySettings, MANUALPAY_CONFIG_KEY } from './ManualPaySettings';
 
+/**
+ * Settings is one flat key/value bag on the server, saved in one PUT. The
+ * page used to render it as one column of twelve cards with a single Save at
+ * the very bottom — every new feature added another card, and by the time
+ * the hosted checkout landed the form was a 4,000px scroll with the button
+ * off-screen. Now: five tabs that group by what the admin is trying to do,
+ * each key belonging to exactly one tab (so the tab list can show where the
+ * unsaved edits are), and a save bar that follows the viewport instead of
+ * hiding under the last card. The save itself is unchanged — still the whole
+ * bag, still one request — so switching tabs never loses an edit.
+ */
+type TabId = 'storefront' | 'payments' | 'shipping' | 'business' | 'emails';
+
+const TABS: { id: TabId; label: string; blurb: string; icon: typeof Store; keys: string[] }[] = [
+  {
+    id: 'storefront',
+    label: 'Storefront',
+    blurb: 'Announcement bar, homepage promo, newsletter popup',
+    icon: Store,
+    keys: [
+      'announcement_enabled', 'announcement_text',
+      'hardsell_enabled', 'hardsell_product_slug', 'hardsell_headline', 'hardsell_subheadline',
+      'hardsell_slide2_enabled', 'hardsell_slide2_product_slug', 'hardsell_slide2_headline', 'hardsell_slide2_subheadline',
+      'newsletter_popup_enabled', 'newsletter_popup_heading', 'newsletter_popup_body',
+    ],
+  },
+  {
+    id: 'payments',
+    label: 'Payments',
+    blurb: 'Which ways a customer can pay at checkout',
+    icon: CreditCard,
+    keys: ['online_payment_enabled', 'payment_gateway', 'crypto_payment_enabled', 'manual_payment_enabled', MANUALPAY_CONFIG_KEY],
+  },
+  {
+    id: 'shipping',
+    label: 'Shipping',
+    blurb: 'Fees and the East Malaysia rules',
+    icon: Truck,
+    keys: ['shipping_fee', 'east_malaysia_shipping_fee', 'east_malaysia_min_order'],
+  },
+  {
+    id: 'business',
+    label: 'Business',
+    blurb: 'Name, WhatsApp number, receipt details',
+    icon: Building2,
+    keys: [
+      'business_name', 'business_tagline', 'whatsapp_number',
+      'receipt_company_name', 'receipt_company_reg', 'receipt_address', 'receipt_phone', 'receipt_email', 'receipt_footer_note',
+    ],
+  },
+  {
+    id: 'emails',
+    label: 'Emails',
+    blurb: 'Welcome discount, campaigns, payment reminders',
+    icon: Mail,
+    keys: ['marketing_emails_enabled', 'welcome_discount_percent', 'welcome_discount_days', 'abandoned_checkout_enabled'],
+  },
+];
+
+const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
+
+function tabFromHash(): TabId {
+  if (typeof window === 'undefined') return 'storefront';
+  const h = window.location.hash.replace(/^#/, '');
+  return TAB_IDS.has(h) ? (h as TabId) : 'storefront';
+}
+
 export default function AdminSettingsPage() {
   const { token } = useAuth();
   const [settings, setSettings] = useState<Record<string, string>>({});
+  // What the server last gave us — the baseline "unsaved changes" is measured against.
+  const [saved, setSavedSnapshot] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<TabId>('storefront');
+
+  useEffect(() => {
+    setTab(tabFromHash());
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const selectTab = (id: TabId) => {
+    setTab(id);
+    // replaceState rather than assigning location.hash: no scroll jump, no
+    // history entry per click, but the URL still deep-links and survives reload.
+    window.history.replaceState(null, '', `#${id}`);
+  };
 
   useEffect(() => {
     if (!token) return;
     adminGetSettings(token)
-      .then(setSettings)
+      .then((s) => {
+        setSettings(s);
+        setSavedSnapshot(s);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token) return;
+  const dirtyKeys = useMemo(
+    () => Object.keys(settings).filter((k) => (settings[k] ?? '') !== (saved[k] ?? '')),
+    [settings, saved]
+  );
+  const dirtyTabs = useMemo(() => {
+    const set = new Set<TabId>();
+    for (const t of TABS) if (t.keys.some((k) => dirtyKeys.includes(k))) set.add(t.id);
+    return set;
+  }, [dirtyKeys]);
+  const isDirty = dirtyKeys.length > 0;
+
+  // Leaving with edits pending is the one way the tabbed layout could lose
+  // work that the old single scroll couldn't (the Save was always in view
+  // down there) — so the browser asks first.
+  useEffect(() => {
+    if (!isDirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isDirty]);
+
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!token || saving) return;
     setSaving(true);
     setError('');
-    setSaved(false);
+    setJustSaved(false);
 
     try {
       const updated = await adminUpdateSettings(token, settings);
       setSettings(updated);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      setSavedSnapshot(updated);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
     } catch (err: unknown) {
       // Show the server's own reason when it has one. A rejected setting is
       // usually rejected for a specific, actionable reason — "BTCPay is not
@@ -52,10 +164,28 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const updateSetting = (key: string, value: string) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-    setSaved(false);
-  };
+  // Cmd/Ctrl+S saves from anywhere on the page, since the button may be in
+  // the sticky bar rather than under the field being edited.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (isDirty) void handleSave();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty, settings, token, saving]);
+
+  const set = useCallback((key: string, value: string) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+    setJustSaved(false);
+  }, []);
+  const get = (key: string) => settings[key] || '';
+  const on = (key: string) => settings[key] === 'true';
+  const setBool = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => set(key, e.target.checked ? 'true' : 'false');
+  const setText = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => set(key, e.target.value);
 
   if (loading) {
     return (
@@ -66,445 +196,319 @@ export default function AdminSettingsPage() {
     );
   }
 
+  const current = TABS.find((t) => t.id === tab)!;
+
   return (
-    <div>
+    <div className="pb-24">
       <h1 className="font-display text-2xl font-bold mb-6">Settings</h1>
 
-      <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
-        {/* Announcement Bar */}
-        <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Announcement Bar</h2>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="announcement_enabled"
-              checked={settings.announcement_enabled === 'true'}
-              onChange={(e) => updateSetting('announcement_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded"
-            />
-            <label htmlFor="announcement_enabled" className="text-sm font-medium text-text-secondary">
-              Show announcement bar on the website
-            </label>
-          </div>
-          <Input
-            label="Announcement Text"
-            id="announcement_text"
-            value={settings.announcement_text || ''}
-            onChange={(e) => updateSetting('announcement_text', e.target.value)}
-            placeholder="e.g. Free shipping on all orders across Peninsular Malaysia 🇲🇾"
-          />
-          <p className="text-xs text-text-muted">This text appears in a bar above the navigation on every page.</p>
-        </div>
+      <form onSubmit={handleSave} className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-8 max-w-5xl">
+        {/* Tab list: a column on desktop, a scrolling strip on smaller screens. */}
+        <nav
+          role="tablist"
+          aria-label="Settings sections"
+          className="flex lg:flex-col gap-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-5 lg:mb-0 lg:sticky lg:top-8 lg:self-start"
+        >
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = t.id === tab;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => selectTab(t.id)}
+                className={cn(
+                  'flex items-center gap-2.5 shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-left transition-colors cursor-pointer',
+                  active ? 'bg-primary text-white' : 'text-text-secondary hover:bg-surface-elevated hover:text-text-primary'
+                )}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="flex-1">{t.label}</span>
+                {dirtyTabs.has(t.id) && (
+                  <span
+                    aria-label="Unsaved changes"
+                    className={cn('w-1.5 h-1.5 rounded-full shrink-0', active ? 'bg-white' : 'bg-warning')}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
-        {/* Homepage Hardsell Section */}
-        <div style={{ animationDelay: `45ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Homepage Hardsell Section</h2>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="hardsell_enabled"
-              checked={settings.hardsell_enabled === 'true'}
-              onChange={(e) => updateSetting('hardsell_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded"
-            />
-            <label htmlFor="hardsell_enabled" className="text-sm font-medium text-text-secondary">
-              Show a promotional section on the homepage, above &quot;Shop by Category&quot;
-            </label>
-          </div>
-          <Input
-            label="Product Slug"
-            id="hardsell_product_slug"
-            value={settings.hardsell_product_slug || ''}
-            onChange={(e) => updateSetting('hardsell_product_slug', e.target.value)}
-            placeholder="retatrutide"
-          />
-          <Input
-            label="Headline"
-            id="hardsell_headline"
-            value={settings.hardsell_headline || ''}
-            onChange={(e) => updateSetting('hardsell_headline', e.target.value)}
-            placeholder="Leave blank to just show the product name"
-          />
-          <Input
-            label="Subheadline"
-            id="hardsell_subheadline"
-            value={settings.hardsell_subheadline || ''}
-            onChange={(e) => updateSetting('hardsell_subheadline', e.target.value)}
-            placeholder="Leave blank to omit"
-          />
-          <p className="text-xs text-text-muted">
-            The product slug must match a real, active product (e.g. the URL at /products/retatrutide). Section renders nothing if the slug doesn&apos;t match a product.
-          </p>
-        </div>
-
-        {/* Homepage Hardsell Section — Slide 2 */}
-        <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Homepage Hardsell Section — Slide 2</h2>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="hardsell_slide2_enabled"
-              checked={settings.hardsell_slide2_enabled === 'true'}
-              onChange={(e) => updateSetting('hardsell_slide2_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded"
-            />
-            <label htmlFor="hardsell_slide2_enabled" className="text-sm font-medium text-text-secondary">
-              Add a second slide to the carousel
-            </label>
-          </div>
-          <Input
-            label="Product Slug"
-            id="hardsell_slide2_product_slug"
-            value={settings.hardsell_slide2_product_slug || ''}
-            onChange={(e) => updateSetting('hardsell_slide2_product_slug', e.target.value)}
-            placeholder="ghk-cu"
-          />
-          <Input
-            label="Headline"
-            id="hardsell_slide2_headline"
-            value={settings.hardsell_slide2_headline || ''}
-            onChange={(e) => updateSetting('hardsell_slide2_headline', e.target.value)}
-            placeholder="Leave blank to just show the product name"
-          />
-          <Input
-            label="Subheadline"
-            id="hardsell_slide2_subheadline"
-            value={settings.hardsell_slide2_subheadline || ''}
-            onChange={(e) => updateSetting('hardsell_slide2_subheadline', e.target.value)}
-            placeholder="Leave blank to omit"
-          />
-        </div>
-
-        {/* Online Payment */}
-        <div style={{ animationDelay: `135ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Online Payment</h2>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="online_payment_enabled"
-              checked={settings.online_payment_enabled === 'true'}
-              onChange={(e) => updateSetting('online_payment_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded"
-            />
-            <label htmlFor="online_payment_enabled" className="text-sm font-medium text-text-secondary">
-              Enable online payment at checkout
-            </label>
-          </div>
+        <div key={tab} className="row-rise space-y-5 min-w-0">
           <div>
-            <label htmlFor="payment_gateway" className="block text-sm font-medium text-text-secondary mb-1">Payment Gateway</label>
-            <select
-              id="payment_gateway"
-              value={settings.payment_gateway || 'billplz'}
-              onChange={(e) => updateSetting('payment_gateway', e.target.value)}
-              className="w-full max-w-xs px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            >
-              <option value="billplz">Billplz (FPX, eWallets, Cards)</option>
-              <option value="toyyibpay">ToyyibPay (FPX, Cards)</option>
-            </select>
+            <h2 className="font-display font-semibold text-xl">{current.label}</h2>
+            <p className="text-sm text-text-muted">{current.blurb}</p>
           </div>
-          <p className="text-xs text-text-muted">Choose which payment gateway to use for online payments. Make sure the gateway credentials are configured in the server environment variables.</p>
-        </div>
 
-        {/* Crypto — deliberately its own card and its own toggle, not a third
-            option in the gateway dropdown above. That dropdown is store-wide,
-            so putting BTCPay in it would have made Bitcoin the only online
-            method and switched FPX off for every customer. */}
-        <div style={{ animationDelay: `150ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Crypto Payment</h2>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="crypto_payment_enabled"
-              checked={settings.crypto_payment_enabled === 'true'}
-              onChange={(e) => updateSetting('crypto_payment_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded"
-            />
-            <label htmlFor="crypto_payment_enabled" className="text-sm font-medium text-text-secondary">
-              Enable crypto payment at checkout
-            </label>
-          </div>
-          <p className="text-xs text-text-muted">
-            Adds Bitcoin as a separate payment option alongside WhatsApp and online payment — it does not replace either. Settled through the self-hosted BTCPay Server; requires <code className="font-mono">BTCPAY_URL</code>, <code className="font-mono">BTCPAY_API_KEY</code>, <code className="font-mono">BTCPAY_STORE_ID</code> and <code className="font-mono">BTCPAY_WEBHOOK_SECRET</code> in the server environment.
-          </p>
-        </div>
+          {tab === 'storefront' && (
+            <>
+              <Section title="Announcement bar" hint="One line above the navigation on every page.">
+                <Toggle id="announcement_enabled" checked={on('announcement_enabled')} onChange={setBool('announcement_enabled')} label="Show the announcement bar" />
+                <Input
+                  label="Text"
+                  id="announcement_text"
+                  value={get('announcement_text')}
+                  onChange={setText('announcement_text')}
+                  placeholder="e.g. Free shipping on all orders across Peninsular Malaysia 🇲🇾"
+                />
+              </Section>
 
-        {/* Hosted manual checkout (ManualPayGate). Its own flag beside the
-            other two — the three methods are independent switches — and the
-            page config underneath it: each method has its own on/off, so a
-            bank account can be paused without turning the whole thing off. */}
-        <div style={{ animationDelay: `165ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Bank Transfer / DuitNow Checkout</h2>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="manual_payment_enabled"
-              checked={settings.manual_payment_enabled === 'true'}
-              onChange={(e) => updateSetting('manual_payment_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded"
-            />
-            <label htmlFor="manual_payment_enabled" className="text-sm font-medium text-text-secondary">
-              Enable the hosted bank-transfer checkout
-            </label>
-          </div>
-          <p className="text-xs text-text-muted">
-            Adds a &ldquo;Bank Transfer / DuitNow&rdquo; option at checkout that sends the customer to a payment page with the QR and account details below, where they upload a screenshot of the transfer. The order is confirmed when you approve the screenshot on the order page. The WhatsApp option stays as it is.
-          </p>
-          <ManualPaySettings raw={settings[MANUALPAY_CONFIG_KEY]} onChange={(json) => updateSetting(MANUALPAY_CONFIG_KEY, json)} />
-        </div>
+              <Section
+                title="Homepage promo"
+                hint="A product carousel above “Shop by Category”. Each slide needs the slug of a real, active product (the URL at /products/…); a slide whose slug doesn’t match renders nothing."
+              >
+                <Toggle id="hardsell_enabled" checked={on('hardsell_enabled')} onChange={setBool('hardsell_enabled')} label="Show the promo section" />
+                <SlideFields prefix="hardsell" label="Slide 1" get={get} setText={setText} placeholderSlug="retatrutide" />
+                <div className="border-t border-border pt-4 space-y-4">
+                  <Toggle id="hardsell_slide2_enabled" checked={on('hardsell_slide2_enabled')} onChange={setBool('hardsell_slide2_enabled')} label="Add a second slide" />
+                  {on('hardsell_slide2_enabled') && (
+                    <SlideFields prefix="hardsell_slide2" label="Slide 2" get={get} setText={setText} placeholderSlug="ghk-cu" />
+                  )}
+                </div>
+              </Section>
 
-        {/* Business Info */}
-        <div style={{ animationDelay: `180ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Business Information</h2>
-          <Input
-            label="Business Name"
-            id="business_name"
-            value={settings.business_name || ''}
-            onChange={(e) => updateSetting('business_name', e.target.value)}
-            placeholder="Ascend MY"
-          />
-          <Input
-            label="Tagline"
-            id="business_tagline"
-            value={settings.business_tagline || ''}
-            onChange={(e) => updateSetting('business_tagline', e.target.value)}
-            placeholder="Premium Peptides Malaysia"
-          />
-        </div>
+              <Section
+                title="Newsletter popup"
+                hint="Exit intent on desktop, half-page scroll or 15 seconds on mobile. Never on cart, checkout or order pages, never twice in a session, silent for 30 days after someone closes it. The discount is deliberately not mentioned here — it arrives in the welcome email, so the storefront never trains people to wait for a code."
+              >
+                <Toggle id="newsletter_popup_enabled" checked={on('newsletter_popup_enabled')} onChange={setBool('newsletter_popup_enabled')} label="Show the signup popup" />
+                <Input label="Heading" id="newsletter_popup_heading" value={get('newsletter_popup_heading')} onChange={setText('newsletter_popup_heading')} placeholder="Reconstitution reference, free" />
+                <Input label="Body" id="newsletter_popup_body" value={get('newsletter_popup_body')} onChange={setText('newsletter_popup_body')} placeholder="Dosing calculator, storage and handling guide, and batch COAs." />
+              </Section>
+            </>
+          )}
 
-        {/* Receipt / Invoice */}
-        <div style={{ animationDelay: `225ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Receipt / Invoice</h2>
-          <p className="text-xs text-text-muted">These details appear on customer receipts and PDF invoices.</p>
-          <Input
-            label="Company Name"
-            id="receipt_company_name"
-            value={settings.receipt_company_name || ''}
-            onChange={(e) => updateSetting('receipt_company_name', e.target.value)}
-            placeholder="Ascend Peptides"
-          />
-          <Input
-            label="Registration Number (optional)"
-            id="receipt_company_reg"
-            value={settings.receipt_company_reg || ''}
-            onChange={(e) => updateSetting('receipt_company_reg', e.target.value)}
-            placeholder="e.g. SA0012345-X"
-          />
-          <Input
-            label="Company Address"
-            id="receipt_address"
-            value={settings.receipt_address || ''}
-            onChange={(e) => updateSetting('receipt_address', e.target.value)}
-            placeholder="e.g. Johor Bahru, Malaysia"
-          />
-          <Input
-            label="Company Phone"
-            id="receipt_phone"
-            value={settings.receipt_phone || ''}
-            onChange={(e) => updateSetting('receipt_phone', e.target.value)}
-            placeholder="e.g. 011-6109 2723"
-          />
-          <Input
-            label="Company Email"
-            id="receipt_email"
-            value={settings.receipt_email || ''}
-            onChange={(e) => updateSetting('receipt_email', e.target.value)}
-            placeholder="e.g. hello@ascendpeptides.my"
-          />
-          <Input
-            label="Receipt Footer Note"
-            id="receipt_footer_note"
-            value={settings.receipt_footer_note || ''}
-            onChange={(e) => updateSetting('receipt_footer_note', e.target.value)}
-            placeholder="All products are for research and laboratory use only."
-          />
-        </div>
+          {tab === 'payments' && (
+            <>
+              {/* Three independent switches on purpose: online, crypto and the
+                  hosted bank-transfer page each add an option at checkout
+                  without replacing the others (WhatsApp is always there). */}
+              <Section title="Online payment" hint="Card, FPX and e-wallets through a gateway. Credentials live in the server environment, not here.">
+                <Toggle id="online_payment_enabled" checked={on('online_payment_enabled')} onChange={setBool('online_payment_enabled')} label="Enable online payment at checkout" />
+                <div>
+                  <label htmlFor="payment_gateway" className="block text-sm font-medium text-text-secondary mb-1">Gateway</label>
+                  <select
+                    id="payment_gateway"
+                    value={settings.payment_gateway || 'billplz'}
+                    onChange={setText('payment_gateway')}
+                    className="w-full max-w-xs px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="billplz">Billplz (FPX, eWallets, Cards)</option>
+                    <option value="toyyibpay">ToyyibPay (FPX, Cards)</option>
+                  </select>
+                </div>
+              </Section>
 
-        {/* WhatsApp */}
-        <div style={{ animationDelay: `270ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">WhatsApp Configuration</h2>
-          <Input
-            label="WhatsApp Number"
-            id="whatsapp_number"
-            value={settings.whatsapp_number || ''}
-            onChange={(e) => updateSetting('whatsapp_number', e.target.value)}
-            placeholder="601161092723"
-            pattern="[0-9]{10,15}"
-          />
-          <p className="text-xs text-text-muted">
-            Use international format without + sign (e.g. 601161092723 for Malaysian number 011-6109 2723). Numbers only, 10-15 digits.
-          </p>
-        </div>
+              <Section title="Crypto">
+                <Toggle
+                  id="crypto_payment_enabled"
+                  checked={on('crypto_payment_enabled')}
+                  onChange={setBool('crypto_payment_enabled')}
+                  label="Enable Bitcoin at checkout"
+                  description={
+                    <>
+                      Settled through the self-hosted BTCPay Server; needs <code className="font-mono">BTCPAY_URL</code>, <code className="font-mono">BTCPAY_API_KEY</code>, <code className="font-mono">BTCPAY_STORE_ID</code> and <code className="font-mono">BTCPAY_WEBHOOK_SECRET</code> in the server environment.
+                    </>
+                  }
+                />
+              </Section>
 
-        {/* Shipping */}
-        <div style={{ animationDelay: `300ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Shipping & Payments</h2>
-          <Input
-            label="Shipping Fee (RM)"
-            id="shipping_fee"
-            type="number"
-            min="0"
-            step="0.01"
-            value={settings.shipping_fee || ''}
-            onChange={(e) => updateSetting('shipping_fee', e.target.value)}
-            placeholder="0 for free shipping"
-          />
-          <div className="space-y-1.5">
-            <Input
-              label="East Malaysia Shipping Fee (RM)"
-              id="east_malaysia_shipping_fee"
-              type="number"
-              min="0"
-              step="0.01"
-              value={settings.east_malaysia_shipping_fee || ''}
-              onChange={(e) => updateSetting('east_malaysia_shipping_fee', e.target.value)}
-              placeholder="Leave blank to use the standard fee"
-            />
-            <p className="text-xs text-text-muted">
-              Charged instead of the standard fee on orders to <strong>Sabah, Sarawak and Labuan</strong>.
-              Leave blank and those orders pay the standard fee above; set 0 to ship them free.
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            <Input
-              label="East Malaysia Minimum Order (RM)"
-              id="east_malaysia_min_order"
-              type="number"
-              min="0"
-              step="0.01"
-              value={settings.east_malaysia_min_order || ''}
-              onChange={(e) => updateSetting('east_malaysia_min_order', e.target.value)}
-              placeholder="0 for no minimum"
-            />
-            <p className="text-xs text-text-muted">
-              Orders to <strong>Sabah, Sarawak and Labuan</strong> must reach this amount in products
-              (before discount and shipping) or checkout blocks them. Leave blank or set 0 to accept
-              East Malaysia orders of any size.
-            </p>
-          </div>
-          <Input
-            label="Minimum Order (RM)"
-            id="minimum_order"
-            value={settings.minimum_order || ''}
-            onChange={(e) => updateSetting('minimum_order', e.target.value)}
-            placeholder="0 for no minimum"
-          />
-          <Input
-            label="Bank Account (for manual transfer)"
-            id="bank_account"
-            value={settings.bank_account || ''}
-            onChange={(e) => updateSetting('bank_account', e.target.value)}
-            placeholder="e.g. Maybank 1234567890 (Your Name)"
-          />
-        </div>
+              <Section
+                title="Bank transfer / DuitNow"
+                hint="Sends the customer to a hosted payment page with the QR and account details below, where they upload a screenshot of the transfer. The order is confirmed when you approve the screenshot on the order page. Each method has its own switch, so one account can be paused without turning the page off."
+              >
+                <Toggle id="manual_payment_enabled" checked={on('manual_payment_enabled')} onChange={setBool('manual_payment_enabled')} label="Enable the hosted bank-transfer checkout" />
+                <ManualPaySettings raw={settings[MANUALPAY_CONFIG_KEY]} onChange={(json) => set(MANUALPAY_CONFIG_KEY, json)} />
+              </Section>
+            </>
+          )}
 
-        {/* Marketing email */}
-        <div style={{ animationDelay: `345ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Marketing Email</h2>
-          <div className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="marketing_emails_enabled"
-              checked={settings.marketing_emails_enabled === 'true'}
-              onChange={(e) => updateSetting('marketing_emails_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded mt-0.5"
-            />
-            <label htmlFor="marketing_emails_enabled" className="text-sm font-medium text-text-secondary">
-              Send welcome emails and campaigns
-              <span className="block text-xs font-normal text-text-muted mt-0.5">
-                Separate from order emails on purpose — turning this off pauses all newsletters while
-                confirmations and receipts keep going out. Needs the Emails switch on as well.
-              </span>
-            </label>
-          </div>
-          <Input
-            label="Welcome discount (%)"
-            id="welcome_discount_percent"
-            type="number"
-            min="0"
-            max="100"
-            value={settings.welcome_discount_percent || ''}
-            onChange={(e) => updateSetting('welcome_discount_percent', e.target.value)}
-            placeholder="0 to send the welcome email without a code"
-          />
-          <Input
-            label="Welcome discount valid for (days)"
-            id="welcome_discount_days"
-            type="number"
-            min="1"
-            value={settings.welcome_discount_days || ''}
-            onChange={(e) => updateSetting('welcome_discount_days', e.target.value)}
-            placeholder="30"
-          />
-          <p className="text-xs text-text-muted">
-            Each subscriber gets their own single-use code, so one leaking can only ever discount one order.
-          </p>
+          {tab === 'shipping' && (
+            <Section title="Fees">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Input label="Standard shipping (RM)" id="shipping_fee" type="number" min="0" step="0.01" value={get('shipping_fee')} onChange={setText('shipping_fee')} placeholder="0 for free shipping" />
+                <Input label="East Malaysia shipping (RM)" id="east_malaysia_shipping_fee" type="number" min="0" step="0.01" value={get('east_malaysia_shipping_fee')} onChange={setText('east_malaysia_shipping_fee')} placeholder="Blank = standard fee" />
+              </div>
+              <Hint>
+                East Malaysia means <strong>Sabah, Sarawak and Labuan</strong>. Leave the second fee blank and those orders pay the standard fee; set 0 to ship them free.
+              </Hint>
+              <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-border">
+                <Input label="East Malaysia minimum order (RM)" id="east_malaysia_min_order" type="number" min="0" step="0.01" value={get('east_malaysia_min_order')} onChange={setText('east_malaysia_min_order')} placeholder="0 for no minimum" />
+              </div>
+              <Hint>
+                Products total (before discount and shipping) an East Malaysia order must reach, or checkout blocks it. Blank or 0 accepts any size.
+              </Hint>
+            </Section>
+          )}
 
-          <div className="flex items-start gap-3 pt-2 border-t border-border">
-            <input
-              type="checkbox"
-              id="abandoned_checkout_enabled"
-              checked={settings.abandoned_checkout_enabled === 'true'}
-              onChange={(e) => updateSetting('abandoned_checkout_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded mt-0.5"
-            />
-            <label htmlFor="abandoned_checkout_enabled" className="text-sm font-medium text-text-secondary">
-              Remind customers who didn&apos;t finish paying
-              <span className="block text-xs font-normal text-text-muted mt-0.5">
-                One email, ~45 minutes after an unpaid order, with a link back to the still-open payment page.
-                Never sent twice, and never after the order is paid or cancelled.
-              </span>
-            </label>
-          </div>
-        </div>
+          {tab === 'business' && (
+            <>
+              <Section title="Store">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Input label="Business name" id="business_name" value={get('business_name')} onChange={setText('business_name')} placeholder="Ascend MY" />
+                  <Input label="Tagline" id="business_tagline" value={get('business_tagline')} onChange={setText('business_tagline')} placeholder="Premium Peptides Malaysia" />
+                </div>
+                <Input
+                  label="WhatsApp number"
+                  id="whatsapp_number"
+                  value={get('whatsapp_number')}
+                  onChange={setText('whatsapp_number')}
+                  placeholder="601161092723"
+                  pattern="[0-9]{10,15}"
+                  className="max-w-xs"
+                />
+                <Hint>International format, digits only, no + (011-6109 2723 → 601161092723). Used for WhatsApp checkout and the chat button.</Hint>
+              </Section>
 
-        {/* Newsletter popup */}
-        <div style={{ animationDelay: `390ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
-          <h2 className="font-display font-semibold text-lg">Newsletter Popup</h2>
-          <div className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="newsletter_popup_enabled"
-              checked={settings.newsletter_popup_enabled === 'true'}
-              onChange={(e) => updateSetting('newsletter_popup_enabled', e.target.checked ? 'true' : 'false')}
-              className="rounded mt-0.5"
-            />
-            <label htmlFor="newsletter_popup_enabled" className="text-sm font-medium text-text-secondary">
-              Show the signup popup on the storefront
-              <span className="block text-xs font-normal text-text-muted mt-0.5">
-                Exit intent on desktop, half-page scroll or 15 seconds on mobile. Never on cart, checkout or
-                order pages, never twice in a session, and silent for 30 days after someone closes it.
-              </span>
-            </label>
-          </div>
-          <Input
-            label="Popup heading"
-            id="newsletter_popup_heading"
-            value={settings.newsletter_popup_heading || ''}
-            onChange={(e) => updateSetting('newsletter_popup_heading', e.target.value)}
-            placeholder="Reconstitution reference, free"
-          />
-          <Input
-            label="Popup body"
-            id="newsletter_popup_body"
-            value={settings.newsletter_popup_body || ''}
-            onChange={(e) => updateSetting('newsletter_popup_body', e.target.value)}
-            placeholder="Dosing calculator, storage and handling guide, and batch COAs."
-          />
-          <p className="text-xs text-text-muted">
-            The discount is deliberately not mentioned here — it arrives in the welcome email, so the storefront
-            never trains people to wait for a code.
-          </p>
-        </div>
+              <Section title="Receipts & invoices" hint="Printed on customer receipts and PDF invoices.">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Input label="Company name" id="receipt_company_name" value={get('receipt_company_name')} onChange={setText('receipt_company_name')} placeholder="Ascend Peptides" />
+                  <Input label="Registration number" id="receipt_company_reg" value={get('receipt_company_reg')} onChange={setText('receipt_company_reg')} placeholder="Optional, e.g. SA0012345-X" />
+                  <Input label="Phone" id="receipt_phone" value={get('receipt_phone')} onChange={setText('receipt_phone')} placeholder="e.g. 011-6109 2723" />
+                  <Input label="Email" id="receipt_email" value={get('receipt_email')} onChange={setText('receipt_email')} placeholder="e.g. hello@ascendpeptides.my" />
+                </div>
+                <Input label="Address" id="receipt_address" value={get('receipt_address')} onChange={setText('receipt_address')} placeholder="e.g. Johor Bahru, Malaysia" />
+                <Input label="Footer note" id="receipt_footer_note" value={get('receipt_footer_note')} onChange={setText('receipt_footer_note')} placeholder="All products are for research and laboratory use only." />
+              </Section>
+            </>
+          )}
 
-        {error && <p className="text-sm text-danger">{error}</p>}
+          {tab === 'emails' && (
+            <>
+              <Section title="Marketing">
+                <Toggle
+                  id="marketing_emails_enabled"
+                  checked={on('marketing_emails_enabled')}
+                  onChange={setBool('marketing_emails_enabled')}
+                  label="Send welcome emails and campaigns"
+                  description="Separate from order emails on purpose — turning this off pauses all newsletters while confirmations and receipts keep going out. Needs the Emails switch on as well."
+                />
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Input label="Welcome discount (%)" id="welcome_discount_percent" type="number" min="0" max="100" value={get('welcome_discount_percent')} onChange={setText('welcome_discount_percent')} placeholder="0 = no code" />
+                  <Input label="Valid for (days)" id="welcome_discount_days" type="number" min="1" value={get('welcome_discount_days')} onChange={setText('welcome_discount_days')} placeholder="30" />
+                </div>
+                <Hint>Each subscriber gets their own single-use code, so one leaking can only ever discount one order.</Hint>
+              </Section>
 
-        <div className="flex items-center gap-3">
-          <Button type="submit" disabled={saving} size="lg">
-            {saving ? 'Saving...' : saved ? <><Check className="w-4 h-4" /> Saved</> : <><Save className="w-4 h-4" /> Save Settings</>}
-          </Button>
-          {saved && <span className="text-sm text-success font-medium">Settings saved successfully</span>}
+              <Section title="Payment reminders">
+                <Toggle
+                  id="abandoned_checkout_enabled"
+                  checked={on('abandoned_checkout_enabled')}
+                  onChange={setBool('abandoned_checkout_enabled')}
+                  label="Remind customers who didn’t finish paying"
+                  description="One email, ~45 minutes after an unpaid order, with a link back to the still-open payment page. Never sent twice, and never after the order is paid or cancelled."
+                />
+              </Section>
+            </>
+          )}
         </div>
       </form>
+
+      {/* Save bar: pinned to the viewport bottom, only when there is
+          something to save, so it never covers content for no reason and
+          the admin never has to hunt for the button. */}
+      <div
+        className={cn(
+          'fixed bottom-0 left-0 right-0 lg:left-64 z-30 transition-transform duration-200',
+          isDirty || justSaved || error ? 'translate-y-0' : 'translate-y-full'
+        )}
+        aria-hidden={!(isDirty || justSaved || error)}
+      >
+        <div className="mx-4 sm:mx-6 lg:mx-8 mb-4 max-w-5xl">
+          <div className="bg-surface border border-border shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+            <p className="text-sm flex-1 min-w-[12rem]">
+              {error ? (
+                <span className="text-danger">{error}</span>
+              ) : justSaved && !isDirty ? (
+                <span className="text-success font-medium inline-flex items-center gap-1.5"><Check className="w-4 h-4" /> Saved</span>
+              ) : (
+                <>
+                  <span className="font-medium">{dirtyKeys.length} unsaved {dirtyKeys.length === 1 ? 'change' : 'changes'}</span>
+                  {dirtyTabs.size > 0 && (
+                    <span className="text-text-muted"> in {TABS.filter((t) => dirtyTabs.has(t.id)).map((t) => t.label).join(', ')}</span>
+                  )}
+                </>
+              )}
+            </p>
+            {isDirty && (
+              <Button type="button" variant="outline" size="sm" onClick={() => { setSettings(saved); setError(''); }} disabled={saving}>
+                <RotateCcw className="w-3.5 h-3.5" /> Discard
+              </Button>
+            )}
+            <Button type="button" size="sm" onClick={() => void handleSave()} disabled={saving || !isDirty}>
+              {saving ? 'Saving…' : <><Save className="w-4 h-4" /> Save</>}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <section className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
+      <div className="space-y-1">
+        <h3 className="font-display font-semibold text-base">{title}</h3>
+        {hint && <p className="text-xs text-text-muted leading-relaxed">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Hint({ children }: { children: ReactNode }) {
+  return <p className="text-xs text-text-muted leading-relaxed">{children}</p>;
+}
+
+function Toggle({
+  id,
+  checked,
+  onChange,
+  label,
+  description,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  label: string;
+  description?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <input type="checkbox" id={id} checked={checked} onChange={onChange} className="rounded mt-0.5" />
+      <label htmlFor={id} className="text-sm font-medium text-text-secondary">
+        {label}
+        {description && <span className="block text-xs font-normal text-text-muted mt-0.5 leading-relaxed">{description}</span>}
+      </label>
+    </div>
+  );
+}
+
+function SlideFields({
+  prefix,
+  label,
+  get,
+  setText,
+  placeholderSlug,
+}: {
+  prefix: string;
+  label: string;
+  get: (k: string) => string;
+  setText: (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholderSlug: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+      <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+        <Input label="Product slug" id={`${prefix}_product_slug`} value={get(`${prefix}_product_slug`)} onChange={setText(`${prefix}_product_slug`)} placeholder={placeholderSlug} />
+        <Input label="Headline" id={`${prefix}_headline`} value={get(`${prefix}_headline`)} onChange={setText(`${prefix}_headline`)} placeholder="Blank = product name" />
+      </div>
+      <Input label="Subheadline" id={`${prefix}_subheadline`} value={get(`${prefix}_subheadline`)} onChange={setText(`${prefix}_subheadline`)} placeholder="Blank to omit" />
     </div>
   );
 }
