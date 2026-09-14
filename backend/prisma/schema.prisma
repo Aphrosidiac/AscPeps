@@ -1504,6 +1504,7 @@ model CheckoutSession {
   successUrl     String
   cancelUrl      String?
   paymentLinkUrl String?
+  paymentLinkProvider String?           // which link method the override belongs to
   metadata       Json?
   status         String   @default("OPEN")    // OPEN | PROOF_SUBMITTED | PAID | REJECTED | EXPIRED | CANCELLED
   expiresAt      DateTime

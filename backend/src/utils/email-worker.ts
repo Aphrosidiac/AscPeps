@@ -32,6 +32,10 @@ export function reconstructPaymentUrl(order: { paymentGateway: string | null; pa
     const host = env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com' : 'https://www.billplz.com';
     return `${host}/bills/${order.paymentRef}`;
   }
+  // The hosted manual checkout is ours, so its page is always re-openable.
+  if (order.paymentGateway === 'manualpaygate') {
+    return `${env.FRONTEND_URL}/pay/${order.paymentRef}`;
+  }
   return undefined;
 }
 
@@ -87,7 +91,7 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
       ({ subject, html } = renderAbandonedCheckout(order, reconstructPaymentUrl(order), settings));
     } else {
       const paymentUrl =
-        order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
+        (order.paymentMethod === 'WHATSAPP' && order.paymentGateway !== 'manualpaygate') || order.paymentStatus === 'PAID'
           ? undefined
           : reconstructPaymentUrl(order);
       ({ subject, html } = renderOrderConfirmation(order, paymentUrl, settings));

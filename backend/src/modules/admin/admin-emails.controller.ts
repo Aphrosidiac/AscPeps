@@ -87,7 +87,7 @@ export async function adminPreviewEmail(fastify: FastifyInstance, query: Record<
     return renderPaymentReceipt(order, order.updatedAt, settings);
   }
   const paymentUrl =
-    order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
+    (order.paymentMethod === 'WHATSAPP' && order.paymentGateway !== 'manualpaygate') || order.paymentStatus === 'PAID'
       ? undefined
       : reconstructPaymentUrl(order);
   return renderOrderConfirmation(order, paymentUrl, settings);
@@ -131,7 +131,7 @@ export async function adminSendTestEmail(fastify: FastifyInstance, body: unknown
     attachments = [{ filename: `receipt-${order.orderNumber}.pdf`, content: pdf }];
   } else {
     const paymentUrl =
-      order.paymentMethod === 'WHATSAPP' || order.paymentStatus === 'PAID'
+      (order.paymentMethod === 'WHATSAPP' && order.paymentGateway !== 'manualpaygate') || order.paymentStatus === 'PAID'
         ? undefined
         : reconstructPaymentUrl(order);
     ({ subject, html } = renderOrderConfirmation(order, paymentUrl, settings));

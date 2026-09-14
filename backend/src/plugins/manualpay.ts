@@ -8,6 +8,7 @@ import { env } from '../config/env.js';
 import { DOCUMENTS_DIR } from '../utils/document-store.js';
 import { applyPaid } from '../utils/payment-reconcile.js';
 import { restoreOrderInventory } from '../utils/order-inventory.js';
+import { enqueueEmail } from '../utils/email-outbox.js';
 
 /**
  * ManualPayGate — the hosted "pay by DuitNow QR / bank transfer, then upload
@@ -89,10 +90,17 @@ export function buildManualPayGate(fastify: FastifyInstance): ManualPayGate {
         // without one gets it now, so the receipt email has somewhere to go.
         const email = session.customer?.email;
         if (email) {
-          await fastify.prisma.order.updateMany({
+          const { count } = await fastify.prisma.order.updateMany({
             where: { orderNumber: session.reference, paymentGateway: MANUALPAY_GATEWAY, email: null },
             data: { email },
           });
+          // The order was placed without an address, so no confirmation was
+          // queued at checkout. Queue it now that there is somewhere to send
+          // it — the (orderId, type) unique key keeps this a one-off.
+          if (count > 0) {
+            const order = await orderForSession(fastify, session.reference);
+            if (order) await fastify.prisma.$transaction((tx) => enqueueEmail(tx, order, 'ORDER_CONFIRMATION'));
+          }
         }
       },
       // The one transition that touches money: the same guarded UNPAID → PAID

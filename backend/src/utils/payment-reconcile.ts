@@ -217,8 +217,10 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
       paymentMethod: 'WHATSAPP',
       // Hosted-checkout (ManualPayGate) orders are released by their own
       // session expiry instead — a customer whose proof is waiting for review
-      // must never have the order cancelled out from under them here.
-      paymentGateway: null,
+      // must never have the order cancelled out from under them here. Written
+      // as "not manualpaygate" rather than "gateway is null" so any legacy
+      // WhatsApp row that happens to carry a gateway string is still swept.
+      OR: [{ paymentGateway: null }, { paymentGateway: { not: 'manualpaygate' } }],
       status: 'PENDING',
       paymentStatus: 'UNPAID',
       createdAt: { lt: new Date(now - WHATSAPP_RELEASE_AFTER_MS) },

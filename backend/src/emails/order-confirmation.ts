@@ -90,6 +90,14 @@ export function renderOrderConfirmation(
             <strong class="ink" style="color:${INK};">Payment:</strong> Received in full via ${escapeHtml(order.paymentGateway || 'our payment gateway')} — nothing further to do. If anything about this order doesn&#39;t look right, message us and we&#39;ll sort it out.
           </p>
           ${renderButton('MESSAGE US ON WHATSAPP', whatsappHref)}`;
+  } else if (order.paymentGateway === 'manualpaygate' && paymentUrl) {
+    // Hosted bank-transfer checkout: the QR, the account details and the
+    // proof upload all live on the payment page, so that is the one link.
+    paymentBlock = `
+          <p class="body-text" style="margin:26px 0 14px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
+            <strong class="ink" style="color:${INK};">Payment:</strong> Bank transfer or DuitNow QR. If you haven&#39;t sent it yet, the payment page has the account details for the exact amount — and it is also where you upload the transfer screenshot so we can confirm your order.
+          </p>
+          ${renderButton('OPEN PAYMENT PAGE', paymentUrl)}`;
   } else if (order.paymentMethod === 'WHATSAPP') {
     const instructions = escapeHtml(settings.email_whatsapp_instructions || DEFAULT_WHATSAPP_INSTRUCTIONS);
     paymentBlock = `
