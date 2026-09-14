@@ -83,8 +83,17 @@ export function buildManualPayGate(fastify: FastifyInstance): ManualPayGate {
       error: (...a) => fastify.log.error(a.map(String).join(' ')),
     },
     hooks: {
-      onProofSubmitted: (session) => {
+      onProofSubmitted: async (session) => {
         fastify.log.info(`ManualPay: proof submitted for ${session.reference} (${session.id})`);
+        // The page asks for an email (Stripe does too). An order placed
+        // without one gets it now, so the receipt email has somewhere to go.
+        const email = session.customer?.email;
+        if (email) {
+          await fastify.prisma.order.updateMany({
+            where: { orderNumber: session.reference, paymentGateway: MANUALPAY_GATEWAY, email: null },
+            data: { email },
+          });
+        }
       },
       // The one transition that touches money: the same guarded UNPAID → PAID
       // path every gateway uses, so the receipt email, CONFIRMED status and
