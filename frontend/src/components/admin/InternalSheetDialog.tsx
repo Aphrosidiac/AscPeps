@@ -1,17 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { X, Download, AlertTriangle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalA11y } from '@/hooks/useModalA11y';
 import {
+  adminAssignShadowMapping,
   adminDownloadShadowSummary,
   adminFetchShadowSummaryBlob,
+  adminGetShadowSkus,
   adminGetShadowSummary,
 } from '@/lib/api';
 import { formatPrice, formatShortDate } from '@/lib/utils';
-import type { ShadowSummary } from '@/types';
+import type { ShadowSku, ShadowSummary } from '@/types';
 
 /**
  * One order's internal sheet: the mapping being applied, and the rendered PDF.
@@ -23,6 +25,12 @@ import type { ShadowSummary } from '@/types';
  * So the mapping is shown beside it, real product on the left, printed line on
  * the right.
  *
+ * An unmapped line is mapped *here*, with a dropdown in the slot where its
+ * shadow name would go. The gap is discovered in this dialog, so this is where
+ * it should be closable — sending someone to the mapping table to find the
+ * same SKU again by name, then come back, was the whole of the "there's
+ * nothing I can do" complaint. Once every line resolves, the sheet renders.
+ *
  * The preview is a blob rather than a src URL: the token lives in localStorage,
  * so the browser's own request for an <iframe src> would arrive unauthenticated.
  */
@@ -30,26 +38,51 @@ export function InternalSheetDialog({
   orderId,
   orderNumber,
   onClose,
+  onMapped,
+  onGoToCodes,
 }: {
   orderId: string;
   orderNumber: string;
   onClose: () => void;
+  /** A mapping changed here — parents holding per-order counts should refetch. */
+  onMapped?: () => void;
+  /**
+   * Where to send someone who has no active shadow code to pick. On the Shadow
+   * SKUs page this switches to the Codes tab in place; elsewhere the dialog
+   * falls back to a link to that page.
+   */
+  onGoToCodes?: () => void;
 }) {
   const { token } = useAuth();
   const panelRef = useModalA11y({ onClose });
 
   const [summary, setSummary] = useState<ShadowSummary | null>(null);
+  const [shadows, setShadows] = useState<ShadowSku[]>([]);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [savingVariant, setSavingVariant] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!token) return;
     adminGetShadowSummary(token, orderId)
       .then(setSummary)
       .catch(() => setPreviewFailed(true))
       .finally(() => setLoading(false));
   }, [token, orderId]);
+
+  useEffect(load, [load]);
+
+  // The pick-list for unmapped lines. Only active codes are offered — the same
+  // rule as the mapping table — which is why the empty case is spelled out
+  // below rather than left as a dropdown with nothing in it.
+  useEffect(() => {
+    if (!token) return;
+    adminGetShadowSkus(token, { limit: '100' })
+      .then((r) => setShadows(r.data.filter((s) => s.active)))
+      .catch(() => {});
+  }, [token]);
 
   // Only render the PDF once we know every line resolves — asking for it while
   // a SKU is unmapped is a guaranteed 400.
@@ -75,6 +108,24 @@ export function InternalSheetDialog({
   const download = () => {
     if (token) adminDownloadShadowSummary(token, orderId, orderNumber).catch(() => setPreviewFailed(true));
   };
+
+  const mapLine = async (variantId: string, shadowSkuId: string) => {
+    if (!token || !shadowSkuId) return;
+    setSavingVariant(variantId);
+    setError('');
+    try {
+      await adminAssignShadowMapping(token, { variantIds: [variantId], shadowSkuId });
+      load();
+      onMapped?.();
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string } } };
+      setError(err.response?.data?.error ?? 'Could not map that SKU.');
+    } finally {
+      setSavingVariant(null);
+    }
+  };
+
+  const noCodes = shadows.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
@@ -164,26 +215,63 @@ export function InternalSheetDialog({
                         <span className="block text-xs text-text-muted font-mono">{u.realCode}</span>
                       </span>
                       <ArrowRight className="hidden sm:block w-4 h-4 text-warning shrink-0 mt-1" />
-                      <span className="min-w-0 sm:flex-1 mt-1.5 pl-3 border-l-2 border-warning/40 sm:mt-0 sm:pl-0 sm:border-0 inline-flex items-center gap-1 text-xs text-warning">
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> not mapped
+                      <span className="min-w-0 sm:flex-1 mt-1.5 pl-3 border-l-2 border-warning/40 sm:mt-0 sm:pl-0 sm:border-0">
+                        {noCodes ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-warning">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> not mapped
+                          </span>
+                        ) : (
+                          <>
+                            <label className="sr-only" htmlFor={`map-${u.variantId}`}>
+                              Shadow code for {u.realName}
+                            </label>
+                            <select
+                              id={`map-${u.variantId}`}
+                              value=""
+                              disabled={savingVariant === u.variantId}
+                              onChange={(e) => mapLine(u.variantId, e.target.value)}
+                              className="w-full px-2 py-1.5 border border-warning/50 rounded-lg text-xs bg-surface text-warning cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="">
+                                {savingVariant === u.variantId ? 'Saving…' : '⚠ not mapped — choose a code'}
+                              </option>
+                              {shadows.map((s) => (
+                                <option key={s.id} value={s.id}>{s.code} — {s.name}</option>
+                              ))}
+                            </select>
+                          </>
+                        )}
                       </span>
                     </div>
                   </li>
                 ))}
               </ul>
 
+              {error && (
+                <p className="mt-3 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs">{error}</p>
+              )}
+
               <div className="mt-4 pt-3 border-t border-border flex justify-between text-sm">
                 <span className="text-text-secondary">Total — same as the real order</span>
                 <span className="font-semibold">{formatPrice(summary.order.total)}</span>
               </div>
 
-              {!summary.complete && (
-                <Link
-                  href="/admin/shadow-skus"
-                  className="inline-block mt-4 text-xs font-medium text-primary underline"
-                >
-                  Map the missing SKUs →
-                </Link>
+              {!summary.complete && noCodes && (
+                <p className="mt-4 text-xs text-text-secondary">
+                  There is no active shadow code to map these to.{' '}
+                  {onGoToCodes ? (
+                    <button
+                      onClick={() => { onClose(); onGoToCodes(); }}
+                      className="font-medium text-primary underline cursor-pointer"
+                    >
+                      Add or reactivate one →
+                    </button>
+                  ) : (
+                    <Link href="/admin/shadow-skus?view=codes" className="font-medium text-primary underline">
+                      Add or reactivate one →
+                    </Link>
+                  )}
+                </p>
               )}
             </div>
 
@@ -192,7 +280,8 @@ export function InternalSheetDialog({
               {!summary.complete ? (
                 <p className="p-5 text-sm text-warning">
                   No sheet can be produced while {summary.unmapped.length} item
-                  {summary.unmapped.length === 1 ? ' has' : 's have'} no shadow code.
+                  {summary.unmapped.length === 1 ? ' has' : 's have'} no shadow code
+                  {noCodes ? '.' : ' — pick one on the left and it renders here.'}
                 </p>
               ) : previewFailed ? (
                 <p className="p-5 text-sm text-danger">Could not render the sheet.</p>
