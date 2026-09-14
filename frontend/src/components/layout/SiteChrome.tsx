@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { AnnouncementBar } from './AnnouncementBar';
+import { PendingPaymentBar } from './PendingPaymentBar';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { WhatsAppButton } from './WhatsAppButton';
@@ -42,6 +43,7 @@ export function SiteChrome({
   return (
     <>
       <AnnouncementBar enabled={announcementEnabled} text={announcementText} />
+      <PendingPaymentBar />
       <Navbar />
       <main className="flex-1">{children}</main>
       <Footer />

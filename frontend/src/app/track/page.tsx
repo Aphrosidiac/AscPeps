@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Search, Package, Truck, FileText } from 'lucide-react';
+import { Search, Package, Truck, FileText, Clock } from 'lucide-react';
 import posthog from 'posthog-js';
 import { lookupOrders } from '@/lib/api';
 import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
@@ -12,10 +12,15 @@ import { Badge } from '@/components/ui/Badge';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import type { Order } from '@/types';
 
+// The lookup endpoint adds a route back to the hosted payment page for
+// unpaid bank-transfer orders — the one thing a customer can't otherwise
+// recover once they've left it.
+type TrackedOrder = Order & { paymentUrl?: string };
+
 export default function TrackPage() {
   const [phone, setPhone] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
-  const [orders, setOrders] = useState<Order[] | null>(null);
+  const [orders, setOrders] = useState<TrackedOrder[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
@@ -100,6 +105,20 @@ export default function TrackPage() {
                     {ORDER_STATUS_LABELS[order.status]}
                   </Badge>
                 </div>
+                {order.paymentUrl && (
+                  <div className="flex items-center justify-between gap-3 bg-warning/10 border border-warning/40 rounded-lg px-4 py-2.5 mb-4">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Clock className="w-4 h-4 text-warning shrink-0" />
+                      <p className="text-sm">Waiting for your bank transfer</p>
+                    </div>
+                    <a
+                      href={order.paymentUrl}
+                      className="shrink-0 inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-light transition-colors"
+                    >
+                      Complete payment
+                    </a>
+                  </div>
+                )}
                 {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
                   <div className="flex items-center gap-2 bg-surface-elevated rounded-lg px-4 py-2.5 mb-4">
                     <Truck className="w-4 h-4 text-primary shrink-0" />

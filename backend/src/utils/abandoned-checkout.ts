@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { MANUALPAY_GATEWAY } from '../plugins/manualpay.js';
 import { enqueueEmail } from './email-outbox.js';
 
 // The window this reminder is allowed to fire in.
@@ -49,7 +50,15 @@ export async function sweepAbandonedCheckouts(fastify: FastifyInstance): Promise
       // BTCPay reports Settled. Nagging someone whose Bitcoin is already in
       // flight is worse than not chasing an abandoned crypto cart at all.
       // Revisit with a later, crypto-specific band if the volume justifies it.
-      paymentMethod: { notIn: ['WHATSAPP', 'CRYPTO'] },
+      //
+      // Hosted bank-transfer orders are stored as WHATSAPP + gateway
+      // 'manualpaygate' (see orders.controller), but they DO have a page to
+      // return to — the /pay/cs_… session — and losing that URL is exactly
+      // the case this email exists for. Let them through by gateway.
+      OR: [
+        { paymentMethod: { notIn: ['WHATSAPP', 'CRYPTO'] } },
+        { paymentGateway: MANUALPAY_GATEWAY },
+      ],
       email: { not: null },
       createdAt: {
         gte: new Date(now - REMIND_BEFORE_MS),

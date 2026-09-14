@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
+import { rememberPendingPayment } from '@/lib/pending-payment';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
 
@@ -327,6 +328,9 @@ export default function CheckoutPage() {
         // to rebuild the whole order, which reserves a second lot of stock and
         // can hard-block them on a low-stock variant. The success page clears
         // it once the payment is actually confirmed.
+        if (paymentMethod === 'MANUAL') {
+          rememberPendingPayment({ url: result.paymentUrl, orderNumber: result.order.orderNumber });
+        }
         redirectTo(result.paymentUrl);
         return;
       }
@@ -410,7 +414,11 @@ export default function CheckoutPage() {
     if (!form.phone.trim()) errors.phone = 'Please enter your phone number';
     else if (phoneDigits.length < 9 || phoneDigits.length > 12) errors.phone = 'Please enter a valid phone number, e.g. 012-3456789';
     const email = form.email.trim();
-    if (isOnlinePayment && !email) errors.email = 'Email is required for online payment';
+    // The hosted bank-transfer page lives at a /pay/cs_… URL the customer can
+    // lose the moment they switch to their banking app. The confirmation
+    // email is the one link back to it that survives a closed tab, so it is
+    // required there exactly as it is for the card gateways.
+    if (isRedirectPayment && !email) errors.email = paymentMethod === 'MANUAL' ? 'Email is required — we send you the link to your payment page' : 'Email is required for online payment';
     else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Please enter a valid email address';
     if (!form.address.trim()) errors.address = 'Please enter your shipping address';
     if (!form.city.trim()) errors.city = 'Please enter your city';
@@ -455,14 +463,16 @@ export default function CheckoutPage() {
                   // after the customer has closed the tab, so email is the
                   // only way to tell them it cleared.
                   ? 'Email (required — we send your payment confirmation here)'
-                  : isOnlinePayment ? 'Email (required for online payment)' : 'Email (optional)'
+                  : paymentMethod === 'MANUAL'
+                    ? 'Email (required — we send you a link back to your payment page)'
+                    : isOnlinePayment ? 'Email (required for online payment)' : 'Email (optional)'
               }
               id="email"
               type="email"
               value={form.email}
               onChange={(e) => updateField('email', e.target.value)}
               error={fieldErrors.email}
-              required={isOnlinePayment}
+              required={isRedirectPayment}
             />
           </div>
           </Animate>

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { forgetPendingPayment } from '@/lib/pending-payment';
 import { CheckCircle, Clock } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
@@ -34,7 +35,12 @@ function CheckoutSuccessContent() {
     if (!sessionId || !/^cs_[A-Za-z0-9]{24}$/.test(sessionId)) return;
     fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/v1/pay/sessions/${sessionId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((s: { status?: string } | null) => s?.status && setSessionStatus(s.status))
+      .then((s: { status?: string } | null) => {
+        if (!s?.status) return;
+        setSessionStatus(s.status);
+        // Proof is in (or the order is paid): nothing left to come back for.
+        if (s.status !== 'OPEN' && s.status !== 'REJECTED') forgetPendingPayment();
+      })
       .catch(() => {});
   }, [sessionId]);
   const manual = params.get('manual') === '1' && sessionStatus !== 'PAID';
