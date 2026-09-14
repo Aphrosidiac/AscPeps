@@ -627,7 +627,8 @@ export interface ShadowSummary {
     paymentStatus: string;
   };
   lines: ShadowSummaryLine[];
-  unmapped: { itemId: string; quantity: number; realName: string; realCode: string }[];
+  /** `variantId` is the SKU to map — the dialog closes the gap in place. */
+  unmapped: { itemId: string; variantId: string; quantity: number; realName: string; realCode: string }[];
   complete: boolean;
 }
 

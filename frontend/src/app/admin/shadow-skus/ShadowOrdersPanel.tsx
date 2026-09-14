@@ -30,7 +30,14 @@ const FILTERS: { key: State; label: string }[] = [
   { key: 'blocked', label: 'Blocked' },
 ];
 
-export function ShadowOrdersPanel() {
+export function ShadowOrdersPanel({
+  onMapped,
+  onGoToCodes,
+}: {
+  /** A SKU was mapped from inside a sheet dialog — coverage and the table above need refetching. */
+  onMapped?: () => void;
+  onGoToCodes?: () => void;
+}) {
   const { token } = useAuth();
   const [rows, setRows] = useState<ShadowOrderRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -208,6 +215,10 @@ export function ShadowOrdersPanel() {
           orderId={open.id}
           orderNumber={open.orderNumber}
           onClose={() => setOpen(null)}
+          // The row's "N unmapped" badge is server-counted, so it only moves
+          // when the list is refetched.
+          onMapped={() => { load(); onMapped?.(); }}
+          onGoToCodes={onGoToCodes}
         />
       )}
     </div>

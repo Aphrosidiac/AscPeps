@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Search, AlertTriangle, Tags, Layers, FileText, Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -109,10 +110,29 @@ function CoverageStrip({
   );
 }
 
-export default function AdminShadowSkusPage() {
-  const { token } = useAuth();
+type View = 'mapping' | 'orders' | 'codes';
 
-  const [view, setView] = useState<'mapping' | 'orders' | 'codes'>('mapping');
+// useSearchParams needs a Suspense boundary for this route to prerender —
+// the same wrapping the admin Orders and Emails pages use.
+export default function AdminShadowSkusPage() {
+  return (
+    <Suspense fallback={<div className="h-40 rounded-xl bg-surface-elevated animate-pulse" />}>
+      <ShadowSkusContent />
+    </Suspense>
+  );
+}
+
+function ShadowSkusContent() {
+  const { token } = useAuth();
+  const searchParams = useSearchParams();
+  // The order page links here as ?unmapped=1 ("Map them on Shadow SKUs →")
+  // and the sheet dialog as ?view=codes. Read once on arrival; the tabs own
+  // the state after that.
+  const viewParam = searchParams.get('view');
+  const initialView: View =
+    viewParam === 'orders' || viewParam === 'codes' ? viewParam : 'mapping';
+
+  const [view, setView] = useState<View>(initialView);
   const [coverage, setCoverage] = useState<ShadowCoverage | null>(null);
   const [shadows, setShadows] = useState<ShadowSku[]>([]);
 
@@ -124,7 +144,7 @@ export default function AdminShadowSkusPage() {
   const [loadFailed, setLoadFailed] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [unmappedOnly, setUnmappedOnly] = useState(false);
+  const [unmappedOnly, setUnmappedOnly] = useState(searchParams.get('unmapped') === '1');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [assignTo, setAssignTo] = useState('');
   const [assigning, setAssigning] = useState(false);
@@ -290,7 +310,10 @@ export default function AdminShadowSkusPage() {
       {view === 'codes' ? (
         <ShadowCodesPanel shadows={shadows} onChanged={() => { refreshSide(); load(); }} />
       ) : view === 'orders' ? (
-        <ShadowOrdersPanel />
+        <ShadowOrdersPanel
+          onMapped={() => { refreshSide(); load(); }}
+          onGoToCodes={() => setView('codes')}
+        />
       ) : (
         <>
           <div className="mb-4 flex flex-col sm:flex-row gap-2">
@@ -316,6 +339,41 @@ export default function AdminShadowSkusPage() {
               Unmapped only
             </button>
           </div>
+
+          {/* The dropdowns only list active codes, so with none of them every
+              row offers exactly one option — "not mapped" — and the page
+              looks broken rather than empty. Say what is missing and where
+              it is fixed. */}
+          {shadows.length > 0 && activeShadows.length === 0 && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-warning/10 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 text-warning font-medium">
+                <AlertTriangle className="w-4 h-4 shrink-0" /> Every shadow code is inactive
+              </span>
+              <span className="text-text-secondary">
+                Inactive codes are hidden from these dropdowns, so nothing can be mapped until one is turned back on.
+              </span>
+              <button
+                onClick={() => setView('codes')}
+                className="font-medium text-primary underline cursor-pointer"
+              >
+                Reactivate a code →
+              </button>
+            </div>
+          )}
+          {shadows.length === 0 && !loading && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-warning/10 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 text-warning font-medium">
+                <AlertTriangle className="w-4 h-4 shrink-0" /> No shadow codes yet
+              </span>
+              <span className="text-text-secondary">A SKU is mapped to a code, so one has to exist first.</span>
+              <button
+                onClick={() => setView('codes')}
+                className="font-medium text-primary underline cursor-pointer"
+              >
+                Add a code →
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <p className="text-sm text-text-muted">Loading…</p>
@@ -402,13 +460,16 @@ export default function AdminShadowSkusPage() {
                             <select
                               id={`shadow-${row.id}`}
                               value={row.shadowSkuId ?? ''}
+                              disabled={activeShadows.length === 0 && !row.shadowSkuId}
                               onChange={(e) => setRowShadow(row.id, e.target.value || null)}
                               className={cn(
-                                'px-2 py-1.5 border border-border rounded-lg text-xs bg-surface max-w-[20rem] w-full cursor-pointer',
+                                'px-2 py-1.5 border border-border rounded-lg text-xs bg-surface max-w-[20rem] w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
                                 !row.shadowSkuId && 'text-text-muted',
                               )}
                             >
-                              <option value="">— not mapped —</option>
+                              <option value="">
+                                {activeShadows.length === 0 ? '— no active code to map to —' : '— not mapped —'}
+                              </option>
                               {activeShadows.map((s) => (
                                 <option key={s.id} value={s.id}>{s.code} — {s.name}</option>
                               ))}

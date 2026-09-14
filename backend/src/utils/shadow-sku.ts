@@ -29,6 +29,7 @@ export interface ShadowResolvableItem {
   quantity: number;
   unitPrice: number;
   variant: {
+    id: string;
     code: string;
     size: string | null;
     product: { name: string };
@@ -40,6 +41,7 @@ export interface ShadowResolvableItem {
 export const SHADOW_ITEM_INCLUDE = {
   variant: {
     select: {
+      id: true,
       code: true,
       size: true,
       product: { select: { name: true } },
@@ -65,6 +67,12 @@ export interface ResolvedShadowLine {
 
 export interface UnmappedShadowLine {
   itemId: string;
+  /**
+   * The SKU that needs a shadow. Carried so the admin can close the gap from
+   * the sheet dialog itself, instead of being sent to the mapping table to
+   * find the same row again by name.
+   */
+  variantId: string;
   quantity: number;
   realName: string;
   realCode: string;
@@ -92,6 +100,7 @@ export function resolveShadowLines(items: ShadowResolvableItem[]): ShadowResolut
     if (!shadow) {
       unmapped.push({
         itemId: item.id,
+        variantId: item.variant.id,
         quantity: item.quantity,
         realName,
         realCode: item.variant.code,

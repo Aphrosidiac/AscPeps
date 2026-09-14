@@ -50,12 +50,18 @@ export function InternalSummaryCard({ order }: { order: Order }) {
             Generalised item names. Not a receipt — the customer&apos;s receipt is unchanged.
           </p>
         </div>
-        {summary?.complete && (
+        {/* The same dialog either way: it shows the sheet when every line
+            resolves, and lets the missing lines be mapped when they don't. */}
+        {summary && (
           <button
             onClick={() => setViewing(true)}
             className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-light transition-colors cursor-pointer shrink-0"
           >
-            <Eye className="w-3.5 h-3.5" /> View sheet
+            {summary.complete ? (
+              <><Eye className="w-3.5 h-3.5" /> View sheet</>
+            ) : (
+              <><Tags className="w-3.5 h-3.5" /> Map items</>
+            )}
           </button>
         )}
       </div>
@@ -116,6 +122,7 @@ export function InternalSummaryCard({ order }: { order: Order }) {
           orderId={order.id}
           orderNumber={order.orderNumber}
           onClose={() => setViewing(false)}
+          onMapped={load}
         />
       )}
     </div>
