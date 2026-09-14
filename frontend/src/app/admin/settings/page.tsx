@@ -1,33 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Save, Check, Store, CreditCard, Truck, Building2, Mail, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Card, CardHeader, CardBody, Field, TextInput, SelectInput, Affixed, Toggle, TabBar, SaveBar } from '@/components/admin/settings-ui';
 import { ManualPaySettings, MANUALPAY_CONFIG_KEY } from './ManualPaySettings';
 
 /**
  * Settings is one flat key/value bag on the server, saved in one PUT. The
- * page used to render it as one column of twelve cards with a single Save at
- * the very bottom — every new feature added another card, and by the time
- * the hosted checkout landed the form was a 4,000px scroll with the button
- * off-screen. Now: five tabs that group by what the admin is trying to do,
- * each key belonging to exactly one tab (so the tab list can show where the
- * unsaved edits are), and a save bar that follows the viewport instead of
- * hiding under the last card. The save itself is unchanged — still the whole
- * bag, still one request — so switching tabs never loses an edit.
+ * page groups it into five tabs by what the admin is trying to do; each key
+ * belongs to exactly one tab so the tab strip can show where the unsaved
+ * edits are. Layout and controls follow the SmoothSail admin (see
+ * components/admin/settings-ui.tsx). The save is the whole bag, always, so
+ * switching tabs never loses an edit.
  */
 type TabId = 'storefront' | 'payments' | 'shipping' | 'business' | 'emails';
 
-const TABS: { id: TabId; label: string; blurb: string; icon: typeof Store; keys: string[] }[] = [
+const TABS: { id: TabId; label: string; blurb: string; keys: string[] }[] = [
   {
     id: 'storefront',
     label: 'Storefront',
-    blurb: 'Announcement bar, homepage promo, newsletter popup',
-    icon: Store,
+    blurb: 'Announcement bar, homepage promo and the newsletter popup.',
     keys: [
       'announcement_enabled', 'announcement_text',
       'hardsell_enabled', 'hardsell_product_slug', 'hardsell_headline', 'hardsell_subheadline',
@@ -38,22 +33,19 @@ const TABS: { id: TabId; label: string; blurb: string; icon: typeof Store; keys:
   {
     id: 'payments',
     label: 'Payments',
-    blurb: 'Which ways a customer can pay at checkout',
-    icon: CreditCard,
+    blurb: 'How customers can pay at checkout. WhatsApp is always on.',
     keys: ['online_payment_enabled', 'payment_gateway', 'crypto_payment_enabled', 'manual_payment_enabled', MANUALPAY_CONFIG_KEY],
   },
   {
     id: 'shipping',
     label: 'Shipping',
-    blurb: 'Fees and the East Malaysia rules',
-    icon: Truck,
+    blurb: 'What delivery costs, and the East Malaysia rules.',
     keys: ['shipping_fee', 'east_malaysia_shipping_fee', 'east_malaysia_min_order'],
   },
   {
     id: 'business',
     label: 'Business',
-    blurb: 'Name, WhatsApp number, receipt details',
-    icon: Building2,
+    blurb: 'Store name, WhatsApp number and what appears on receipts.',
     keys: [
       'business_name', 'business_tagline', 'whatsapp_number',
       'receipt_company_name', 'receipt_company_reg', 'receipt_address', 'receipt_phone', 'receipt_email', 'receipt_footer_note',
@@ -62,8 +54,7 @@ const TABS: { id: TabId; label: string; blurb: string; icon: typeof Store; keys:
   {
     id: 'emails',
     label: 'Emails',
-    blurb: 'Welcome discount, campaigns, payment reminders',
-    icon: Mail,
+    blurb: 'Welcome discount, campaigns and payment reminders.',
     keys: ['marketing_emails_enabled', 'welcome_discount_percent', 'welcome_discount_days', 'abandoned_checkout_enabled'],
   },
 ];
@@ -79,8 +70,8 @@ function tabFromHash(): TabId {
 export default function AdminSettingsPage() {
   const { token } = useAuth();
   const [settings, setSettings] = useState<Record<string, string>>({});
-  // What the server last gave us — the baseline "unsaved changes" is measured against.
-  const [saved, setSavedSnapshot] = useState<Record<string, string>>({});
+  // What the server last gave us — "unsaved changes" is measured against this.
+  const [baseline, setBaseline] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -96,8 +87,8 @@ export default function AdminSettingsPage() {
 
   const selectTab = (id: TabId) => {
     setTab(id);
-    // replaceState rather than assigning location.hash: no scroll jump, no
-    // history entry per click, but the URL still deep-links and survives reload.
+    // replaceState, not location.hash: no scroll jump and no history entry
+    // per click, but the URL still deep-links and survives a reload.
     window.history.replaceState(null, '', `#${id}`);
   };
 
@@ -106,15 +97,15 @@ export default function AdminSettingsPage() {
     adminGetSettings(token)
       .then((s) => {
         setSettings(s);
-        setSavedSnapshot(s);
+        setBaseline(s);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
 
   const dirtyKeys = useMemo(
-    () => Object.keys(settings).filter((k) => (settings[k] ?? '') !== (saved[k] ?? '')),
-    [settings, saved]
+    () => Object.keys(settings).filter((k) => (settings[k] ?? '') !== (baseline[k] ?? '')),
+    [settings, baseline]
   );
   const dirtyTabs = useMemo(() => {
     const set = new Set<TabId>();
@@ -123,9 +114,8 @@ export default function AdminSettingsPage() {
   }, [dirtyKeys]);
   const isDirty = dirtyKeys.length > 0;
 
-  // Leaving with edits pending is the one way the tabbed layout could lose
-  // work that the old single scroll couldn't (the Save was always in view
-  // down there) — so the browser asks first.
+  // The old single scroll always had Save in view at the bottom; tabs make
+  // it possible to wander off with edits pending, so the browser asks first.
   useEffect(() => {
     if (!isDirty) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -137,7 +127,7 @@ export default function AdminSettingsPage() {
 
   const handleSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!token || saving) return;
+    if (!token || saving || !isDirty) return;
     setSaving(true);
     setError('');
     setJustSaved(false);
@@ -145,7 +135,7 @@ export default function AdminSettingsPage() {
     try {
       const updated = await adminUpdateSettings(token, settings);
       setSettings(updated);
-      setSavedSnapshot(updated);
+      setBaseline(updated);
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 3000);
     } catch (err: unknown) {
@@ -164,13 +154,12 @@ export default function AdminSettingsPage() {
     }
   };
 
-  // Cmd/Ctrl+S saves from anywhere on the page, since the button may be in
-  // the sticky bar rather than under the field being edited.
+  // Cmd/Ctrl+S saves from anywhere on the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        if (isDirty) void handleSave();
+        void handleSave();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -184,14 +173,15 @@ export default function AdminSettingsPage() {
   }, []);
   const get = (key: string) => settings[key] || '';
   const on = (key: string) => settings[key] === 'true';
-  const setBool = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => set(key, e.target.checked ? 'true' : 'false');
+  const setBool = (key: string) => (v: boolean) => set(key, v ? 'true' : 'false');
   const setText = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => set(key, e.target.value);
 
   if (loading) {
     return (
-      <div className="animate-pulse space-y-4">
-        <div className="h-8 bg-surface-elevated rounded w-32" />
-        <div className="h-48 bg-surface-elevated rounded-xl" />
+      <div className="animate-pulse space-y-4 max-w-[920px]">
+        <div className="h-7 bg-surface-elevated rounded w-32" />
+        <div className="h-10 bg-surface-elevated rounded" />
+        <div className="h-64 bg-surface-elevated rounded-[10px]" />
       </div>
     );
   }
@@ -199,316 +189,299 @@ export default function AdminSettingsPage() {
   const current = TABS.find((t) => t.id === tab)!;
 
   return (
-    <div className="pb-24">
-      <h1 className="font-display text-2xl font-bold mb-6">Settings</h1>
+    <div className="max-w-[920px]">
+      <div className="mb-5">
+        <h1 className="font-display text-[20px] leading-7 font-semibold tracking-[-0.01em]">Settings</h1>
+        <p className="text-[13px] leading-[18px] text-text-secondary">{current.blurb}</p>
+      </div>
 
-      <form onSubmit={handleSave} className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-8 max-w-5xl">
-        {/* Tab list: a column on desktop, a scrolling strip on smaller screens. */}
-        <nav
-          role="tablist"
-          aria-label="Settings sections"
-          className="flex lg:flex-col gap-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-5 lg:mb-0 lg:sticky lg:top-8 lg:self-start"
-        >
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = t.id === tab;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => selectTab(t.id)}
-                className={cn(
-                  'flex items-center gap-2.5 shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-left transition-colors cursor-pointer',
-                  active ? 'bg-primary text-white' : 'text-text-secondary hover:bg-surface-elevated hover:text-text-primary'
-                )}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="flex-1">{t.label}</span>
-                {dirtyTabs.has(t.id) && (
-                  <span
-                    aria-label="Unsaved changes"
-                    className={cn('w-1.5 h-1.5 rounded-full shrink-0', active ? 'bg-white' : 'bg-warning')}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </nav>
+      <TabBar
+        tabs={TABS.map((t) => ({ id: t.id, label: t.label, dot: dirtyTabs.has(t.id) }))}
+        current={tab}
+        onSelect={selectTab}
+        className="mb-6"
+      />
 
-        <div key={tab} className="row-rise space-y-5 min-w-0">
-          <div>
-            <h2 className="font-display font-semibold text-xl">{current.label}</h2>
-            <p className="text-sm text-text-muted">{current.blurb}</p>
-          </div>
-
+      <form onSubmit={handleSave} noValidate className="space-y-6">
+        <div key={tab} className="row-rise space-y-6">
           {tab === 'storefront' && (
             <>
-              <Section title="Announcement bar" hint="One line above the navigation on every page.">
-                <Toggle id="announcement_enabled" checked={on('announcement_enabled')} onChange={setBool('announcement_enabled')} label="Show the announcement bar" />
-                <Input
-                  label="Text"
-                  id="announcement_text"
-                  value={get('announcement_text')}
-                  onChange={setText('announcement_text')}
-                  placeholder="e.g. Free shipping on all orders across Peninsular Malaysia 🇲🇾"
+              <Card>
+                <CardHeader title="Announcement bar" description="One line above the navigation on every page." />
+                <CardBody className="space-y-5">
+                  <Toggle checked={on('announcement_enabled')} onChange={setBool('announcement_enabled')} label="Show the announcement bar" />
+                  <Field label="Text" htmlFor="announcement_text">
+                    <TextInput id="announcement_text" value={get('announcement_text')} onChange={setText('announcement_text')} placeholder="Free shipping on all orders across Peninsular Malaysia 🇲🇾" />
+                  </Field>
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader
+                  title="Homepage promo"
+                  description="A product carousel above “Shop by Category”. A slide whose slug doesn’t match an active product renders nothing."
                 />
-              </Section>
+                <CardBody className="space-y-5">
+                  <Toggle checked={on('hardsell_enabled')} onChange={setBool('hardsell_enabled')} label="Show the promo section" />
+                  <SlideFields prefix="hardsell" get={get} setText={setText} placeholderSlug="retatrutide" />
+                  <div className="border-t border-border pt-5 space-y-5">
+                    <Toggle checked={on('hardsell_slide2_enabled')} onChange={setBool('hardsell_slide2_enabled')} label="Add a second slide" />
+                    {on('hardsell_slide2_enabled') && <SlideFields prefix="hardsell_slide2" get={get} setText={setText} placeholderSlug="ghk-cu" />}
+                  </div>
+                </CardBody>
+              </Card>
 
-              <Section
-                title="Homepage promo"
-                hint="A product carousel above “Shop by Category”. Each slide needs the slug of a real, active product (the URL at /products/…); a slide whose slug doesn’t match renders nothing."
-              >
-                <Toggle id="hardsell_enabled" checked={on('hardsell_enabled')} onChange={setBool('hardsell_enabled')} label="Show the promo section" />
-                <SlideFields prefix="hardsell" label="Slide 1" get={get} setText={setText} placeholderSlug="retatrutide" />
-                <div className="border-t border-border pt-4 space-y-4">
-                  <Toggle id="hardsell_slide2_enabled" checked={on('hardsell_slide2_enabled')} onChange={setBool('hardsell_slide2_enabled')} label="Add a second slide" />
-                  {on('hardsell_slide2_enabled') && (
-                    <SlideFields prefix="hardsell_slide2" label="Slide 2" get={get} setText={setText} placeholderSlug="ghk-cu" />
-                  )}
-                </div>
-              </Section>
-
-              <Section
-                title="Newsletter popup"
-                hint="Exit intent on desktop, half-page scroll or 15 seconds on mobile. Never on cart, checkout or order pages, never twice in a session, silent for 30 days after someone closes it. The discount is deliberately not mentioned here — it arrives in the welcome email, so the storefront never trains people to wait for a code."
-              >
-                <Toggle id="newsletter_popup_enabled" checked={on('newsletter_popup_enabled')} onChange={setBool('newsletter_popup_enabled')} label="Show the signup popup" />
-                <Input label="Heading" id="newsletter_popup_heading" value={get('newsletter_popup_heading')} onChange={setText('newsletter_popup_heading')} placeholder="Reconstitution reference, free" />
-                <Input label="Body" id="newsletter_popup_body" value={get('newsletter_popup_body')} onChange={setText('newsletter_popup_body')} placeholder="Dosing calculator, storage and handling guide, and batch COAs." />
-              </Section>
+              <Card>
+                <CardHeader
+                  title="Newsletter popup"
+                  description="Exit intent on desktop, half-page scroll or 15 seconds on mobile. Never on cart, checkout or order pages, never twice a session, and silent for 30 days after it’s closed."
+                />
+                <CardBody className="space-y-5">
+                  <Toggle checked={on('newsletter_popup_enabled')} onChange={setBool('newsletter_popup_enabled')} label="Show the signup popup" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Heading" htmlFor="newsletter_popup_heading">
+                      <TextInput id="newsletter_popup_heading" value={get('newsletter_popup_heading')} onChange={setText('newsletter_popup_heading')} placeholder="Reconstitution reference, free" />
+                    </Field>
+                    <Field label="Body" htmlFor="newsletter_popup_body" help="The discount isn’t mentioned here on purpose — it arrives in the welcome email, so the storefront never trains people to wait for a code.">
+                      <TextInput id="newsletter_popup_body" value={get('newsletter_popup_body')} onChange={setText('newsletter_popup_body')} placeholder="Dosing calculator, storage guide, and batch COAs." />
+                    </Field>
+                  </div>
+                </CardBody>
+              </Card>
             </>
           )}
 
           {tab === 'payments' && (
             <>
-              {/* Three independent switches on purpose: online, crypto and the
-                  hosted bank-transfer page each add an option at checkout
-                  without replacing the others (WhatsApp is always there). */}
-              <Section title="Online payment" hint="Card, FPX and e-wallets through a gateway. Credentials live in the server environment, not here.">
-                <Toggle id="online_payment_enabled" checked={on('online_payment_enabled')} onChange={setBool('online_payment_enabled')} label="Enable online payment at checkout" />
-                <div>
-                  <label htmlFor="payment_gateway" className="block text-sm font-medium text-text-secondary mb-1">Gateway</label>
-                  <select
-                    id="payment_gateway"
-                    value={settings.payment_gateway || 'billplz'}
-                    onChange={setText('payment_gateway')}
-                    className="w-full max-w-xs px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  >
-                    <option value="billplz">Billplz (FPX, eWallets, Cards)</option>
-                    <option value="toyyibpay">ToyyibPay (FPX, Cards)</option>
-                  </select>
-                </div>
-              </Section>
+              {/* Three independent switches on purpose: each adds an option at
+                  checkout without replacing the others. */}
+              <Card>
+                <CardHeader title="Online payment" description="Card, FPX and e-wallets through a gateway. Credentials live in the server environment, not here." />
+                <CardBody className="space-y-5">
+                  <Toggle checked={on('online_payment_enabled')} onChange={setBool('online_payment_enabled')} label="Accept online payment at checkout" />
+                  <Field label="Gateway" htmlFor="payment_gateway" className="max-w-xs">
+                    <SelectInput id="payment_gateway" value={settings.payment_gateway || 'billplz'} onChange={setText('payment_gateway')}>
+                      <option value="billplz">Billplz — FPX, e-wallets, cards</option>
+                      <option value="toyyibpay">ToyyibPay — FPX, cards</option>
+                    </SelectInput>
+                  </Field>
+                </CardBody>
+              </Card>
 
-              <Section title="Crypto">
-                <Toggle
-                  id="crypto_payment_enabled"
-                  checked={on('crypto_payment_enabled')}
-                  onChange={setBool('crypto_payment_enabled')}
-                  label="Enable Bitcoin at checkout"
-                  description={
-                    <>
-                      Settled through the self-hosted BTCPay Server; needs <code className="font-mono">BTCPAY_URL</code>, <code className="font-mono">BTCPAY_API_KEY</code>, <code className="font-mono">BTCPAY_STORE_ID</code> and <code className="font-mono">BTCPAY_WEBHOOK_SECRET</code> in the server environment.
-                    </>
-                  }
+              <Card>
+                <CardHeader title="Crypto" description="Bitcoin, settled through the self-hosted BTCPay Server." />
+                <CardBody>
+                  <Toggle
+                    checked={on('crypto_payment_enabled')}
+                    onChange={setBool('crypto_payment_enabled')}
+                    label="Accept Bitcoin at checkout"
+                    description={
+                      <>
+                        Needs <code className="font-mono text-[12px]">BTCPAY_URL</code>, <code className="font-mono text-[12px]">BTCPAY_API_KEY</code>, <code className="font-mono text-[12px]">BTCPAY_STORE_ID</code> and <code className="font-mono text-[12px]">BTCPAY_WEBHOOK_SECRET</code> in the server environment.
+                      </>
+                    }
+                  />
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader
+                  title="Bank transfer / DuitNow"
+                  description="A hosted payment page with your QR and account details, where the customer uploads a screenshot of the transfer. You confirm the order by approving it on the order page."
                 />
-              </Section>
+                <CardBody>
+                  <Toggle
+                    checked={on('manual_payment_enabled')}
+                    onChange={setBool('manual_payment_enabled')}
+                    label="Offer bank transfer at checkout"
+                    description="Each account below has its own switch, so one can be paused without turning the page off."
+                  />
+                </CardBody>
+              </Card>
 
-              <Section
-                title="Bank transfer / DuitNow"
-                hint="Sends the customer to a hosted payment page with the QR and account details below, where they upload a screenshot of the transfer. The order is confirmed when you approve the screenshot on the order page. Each method has its own switch, so one account can be paused without turning the page off."
-              >
-                <Toggle id="manual_payment_enabled" checked={on('manual_payment_enabled')} onChange={setBool('manual_payment_enabled')} label="Enable the hosted bank-transfer checkout" />
-                <ManualPaySettings raw={settings[MANUALPAY_CONFIG_KEY]} onChange={(json) => set(MANUALPAY_CONFIG_KEY, json)} />
-              </Section>
+              {/* Renders its own cards (branding, one per method) at the same
+                  level as the ones above — not nested inside a card. */}
+              <ManualPaySettings raw={settings[MANUALPAY_CONFIG_KEY]} onChange={(json) => set(MANUALPAY_CONFIG_KEY, json)} />
             </>
           )}
 
           {tab === 'shipping' && (
-            <Section title="Fees">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Input label="Standard shipping (RM)" id="shipping_fee" type="number" min="0" step="0.01" value={get('shipping_fee')} onChange={setText('shipping_fee')} placeholder="0 for free shipping" />
-                <Input label="East Malaysia shipping (RM)" id="east_malaysia_shipping_fee" type="number" min="0" step="0.01" value={get('east_malaysia_shipping_fee')} onChange={setText('east_malaysia_shipping_fee')} placeholder="Blank = standard fee" />
-              </div>
-              <Hint>
-                East Malaysia means <strong>Sabah, Sarawak and Labuan</strong>. Leave the second fee blank and those orders pay the standard fee; set 0 to ship them free.
-              </Hint>
-              <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-border">
-                <Input label="East Malaysia minimum order (RM)" id="east_malaysia_min_order" type="number" min="0" step="0.01" value={get('east_malaysia_min_order')} onChange={setText('east_malaysia_min_order')} placeholder="0 for no minimum" />
-              </div>
-              <Hint>
-                Products total (before discount and shipping) an East Malaysia order must reach, or checkout blocks it. Blank or 0 accepts any size.
-              </Hint>
-            </Section>
+            <>
+              <Card>
+                <CardHeader title="Delivery fee" description="East Malaysia means Sabah, Sarawak and Labuan." />
+                <CardBody>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Peninsular Malaysia" htmlFor="shipping_fee" help="0 for free shipping.">
+                      <Affixed prefix="RM">
+                        <input id="shipping_fee" type="number" min="0" step="0.01" value={get('shipping_fee')} onChange={setText('shipping_fee')} placeholder="0.00" />
+                      </Affixed>
+                    </Field>
+                    <Field label="East Malaysia" htmlFor="east_malaysia_shipping_fee" help="Blank charges the Peninsular fee; 0 ships free.">
+                      <Affixed prefix="RM">
+                        <input id="east_malaysia_shipping_fee" type="number" min="0" step="0.01" value={get('east_malaysia_shipping_fee')} onChange={setText('east_malaysia_shipping_fee')} placeholder="Same as Peninsular" />
+                      </Affixed>
+                    </Field>
+                  </div>
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader title="East Malaysia minimum order" description="Checkout blocks an East Malaysia order whose products total, before discount and shipping, is under this." />
+                <CardBody>
+                  <Field label="Minimum" htmlFor="east_malaysia_min_order" help="Blank or 0 accepts any size." className="max-w-xs">
+                    <Affixed prefix="RM">
+                      <input id="east_malaysia_min_order" type="number" min="0" step="0.01" value={get('east_malaysia_min_order')} onChange={setText('east_malaysia_min_order')} placeholder="0.00" />
+                    </Affixed>
+                  </Field>
+                </CardBody>
+              </Card>
+            </>
           )}
 
           {tab === 'business' && (
             <>
-              <Section title="Store">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Input label="Business name" id="business_name" value={get('business_name')} onChange={setText('business_name')} placeholder="Ascend MY" />
-                  <Input label="Tagline" id="business_tagline" value={get('business_tagline')} onChange={setText('business_tagline')} placeholder="Premium Peptides Malaysia" />
-                </div>
-                <Input
-                  label="WhatsApp number"
-                  id="whatsapp_number"
-                  value={get('whatsapp_number')}
-                  onChange={setText('whatsapp_number')}
-                  placeholder="601161092723"
-                  pattern="[0-9]{10,15}"
-                  className="max-w-xs"
-                />
-                <Hint>International format, digits only, no + (011-6109 2723 → 601161092723). Used for WhatsApp checkout and the chat button.</Hint>
-              </Section>
+              <Card>
+                <CardHeader title="Store" />
+                <CardBody className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Business name" htmlFor="business_name">
+                      <TextInput id="business_name" value={get('business_name')} onChange={setText('business_name')} placeholder="Ascend MY" />
+                    </Field>
+                    <Field label="Tagline" htmlFor="business_tagline">
+                      <TextInput id="business_tagline" value={get('business_tagline')} onChange={setText('business_tagline')} placeholder="Premium Peptides Malaysia" />
+                    </Field>
+                  </div>
+                  <Field
+                    label="WhatsApp number"
+                    htmlFor="whatsapp_number"
+                    help="International format, digits only, no plus: 011-6109 2723 becomes 601161092723. Used for WhatsApp checkout and the chat button."
+                    className="max-w-xs"
+                  >
+                    <TextInput id="whatsapp_number" inputMode="numeric" value={get('whatsapp_number')} onChange={setText('whatsapp_number')} placeholder="601161092723" />
+                  </Field>
+                </CardBody>
+              </Card>
 
-              <Section title="Receipts & invoices" hint="Printed on customer receipts and PDF invoices.">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Input label="Company name" id="receipt_company_name" value={get('receipt_company_name')} onChange={setText('receipt_company_name')} placeholder="Ascend Peptides" />
-                  <Input label="Registration number" id="receipt_company_reg" value={get('receipt_company_reg')} onChange={setText('receipt_company_reg')} placeholder="Optional, e.g. SA0012345-X" />
-                  <Input label="Phone" id="receipt_phone" value={get('receipt_phone')} onChange={setText('receipt_phone')} placeholder="e.g. 011-6109 2723" />
-                  <Input label="Email" id="receipt_email" value={get('receipt_email')} onChange={setText('receipt_email')} placeholder="e.g. hello@ascendpeptides.my" />
-                </div>
-                <Input label="Address" id="receipt_address" value={get('receipt_address')} onChange={setText('receipt_address')} placeholder="e.g. Johor Bahru, Malaysia" />
-                <Input label="Footer note" id="receipt_footer_note" value={get('receipt_footer_note')} onChange={setText('receipt_footer_note')} placeholder="All products are for research and laboratory use only." />
-              </Section>
+              <Card>
+                <CardHeader title="Receipts and invoices" description="Printed on customer receipts and PDF invoices." />
+                <CardBody className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Company name" htmlFor="receipt_company_name">
+                      <TextInput id="receipt_company_name" value={get('receipt_company_name')} onChange={setText('receipt_company_name')} placeholder="Ascend Peptides" />
+                    </Field>
+                    <Field label="Registration number" htmlFor="receipt_company_reg" help="Optional.">
+                      <TextInput id="receipt_company_reg" value={get('receipt_company_reg')} onChange={setText('receipt_company_reg')} placeholder="SA0012345-X" />
+                    </Field>
+                    <Field label="Phone" htmlFor="receipt_phone">
+                      <TextInput id="receipt_phone" value={get('receipt_phone')} onChange={setText('receipt_phone')} placeholder="011-6109 2723" />
+                    </Field>
+                    <Field label="Email" htmlFor="receipt_email">
+                      <TextInput id="receipt_email" type="email" value={get('receipt_email')} onChange={setText('receipt_email')} placeholder="hello@ascendpeptides.my" />
+                    </Field>
+                  </div>
+                  <Field label="Address" htmlFor="receipt_address">
+                    <TextInput id="receipt_address" value={get('receipt_address')} onChange={setText('receipt_address')} placeholder="Johor Bahru, Malaysia" />
+                  </Field>
+                  <Field label="Footer note" htmlFor="receipt_footer_note">
+                    <TextInput id="receipt_footer_note" value={get('receipt_footer_note')} onChange={setText('receipt_footer_note')} placeholder="All products are for research and laboratory use only." />
+                  </Field>
+                </CardBody>
+              </Card>
             </>
           )}
 
           {tab === 'emails' && (
             <>
-              <Section title="Marketing">
-                <Toggle
-                  id="marketing_emails_enabled"
-                  checked={on('marketing_emails_enabled')}
-                  onChange={setBool('marketing_emails_enabled')}
-                  label="Send welcome emails and campaigns"
-                  description="Separate from order emails on purpose — turning this off pauses all newsletters while confirmations and receipts keep going out. Needs the Emails switch on as well."
-                />
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Input label="Welcome discount (%)" id="welcome_discount_percent" type="number" min="0" max="100" value={get('welcome_discount_percent')} onChange={setText('welcome_discount_percent')} placeholder="0 = no code" />
-                  <Input label="Valid for (days)" id="welcome_discount_days" type="number" min="1" value={get('welcome_discount_days')} onChange={setText('welcome_discount_days')} placeholder="30" />
-                </div>
-                <Hint>Each subscriber gets their own single-use code, so one leaking can only ever discount one order.</Hint>
-              </Section>
+              <Card>
+                <CardHeader title="Marketing" description="Separate from order emails on purpose: turning this off pauses newsletters while confirmations and receipts keep going out." />
+                <CardBody className="space-y-5">
+                  <Toggle
+                    checked={on('marketing_emails_enabled')}
+                    onChange={setBool('marketing_emails_enabled')}
+                    label="Send welcome emails and campaigns"
+                    description="Needs the Emails switch on as well."
+                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Welcome discount" htmlFor="welcome_discount_percent" help="0 sends the welcome email without a code. Every subscriber gets their own single-use code.">
+                      <Affixed suffix="%">
+                        <input id="welcome_discount_percent" type="number" min="0" max="100" value={get('welcome_discount_percent')} onChange={setText('welcome_discount_percent')} placeholder="0" />
+                      </Affixed>
+                    </Field>
+                    <Field label="Code valid for" htmlFor="welcome_discount_days">
+                      <Affixed suffix="days">
+                        <input id="welcome_discount_days" type="number" min="1" value={get('welcome_discount_days')} onChange={setText('welcome_discount_days')} placeholder="30" />
+                      </Affixed>
+                    </Field>
+                  </div>
+                </CardBody>
+              </Card>
 
-              <Section title="Payment reminders">
-                <Toggle
-                  id="abandoned_checkout_enabled"
-                  checked={on('abandoned_checkout_enabled')}
-                  onChange={setBool('abandoned_checkout_enabled')}
-                  label="Remind customers who didn’t finish paying"
-                  description="One email, ~45 minutes after an unpaid order, with a link back to the still-open payment page. Never sent twice, and never after the order is paid or cancelled."
-                />
-              </Section>
+              <Card>
+                <CardHeader title="Payment reminders" />
+                <CardBody>
+                  <Toggle
+                    checked={on('abandoned_checkout_enabled')}
+                    onChange={setBool('abandoned_checkout_enabled')}
+                    label="Remind customers who didn’t finish paying"
+                    description="One email, about 45 minutes after an unpaid order, with a link back to the still-open payment page. Never twice, and never after the order is paid or cancelled."
+                  />
+                </CardBody>
+              </Card>
             </>
           )}
         </div>
-      </form>
 
-      {/* Save bar: pinned to the viewport bottom, only when there is
-          something to save, so it never covers content for no reason and
-          the admin never has to hunt for the button. */}
-      <div
-        className={cn(
-          'fixed bottom-0 left-0 right-0 lg:left-64 z-30 transition-transform duration-200',
-          isDirty || justSaved || error ? 'translate-y-0' : 'translate-y-full'
-        )}
-        aria-hidden={!(isDirty || justSaved || error)}
-      >
-        <div className="mx-4 sm:mx-6 lg:mx-8 mb-4 max-w-5xl">
-          <div className="bg-surface border border-border shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
-            <p className="text-sm flex-1 min-w-[12rem]">
-              {error ? (
-                <span className="text-danger">{error}</span>
-              ) : justSaved && !isDirty ? (
-                <span className="text-success font-medium inline-flex items-center gap-1.5"><Check className="w-4 h-4" /> Saved</span>
-              ) : (
-                <>
-                  <span className="font-medium">{dirtyKeys.length} unsaved {dirtyKeys.length === 1 ? 'change' : 'changes'}</span>
-                  {dirtyTabs.size > 0 && (
-                    <span className="text-text-muted"> in {TABS.filter((t) => dirtyTabs.has(t.id)).map((t) => t.label).join(', ')}</span>
-                  )}
-                </>
-              )}
-            </p>
-            {isDirty && (
-              <Button type="button" variant="outline" size="sm" onClick={() => { setSettings(saved); setError(''); }} disabled={saving}>
-                <RotateCcw className="w-3.5 h-3.5" /> Discard
-              </Button>
+        <SaveBar>
+          <p className="flex-1 min-w-[10rem] px-1 text-[13px] leading-[18px]">
+            {error ? (
+              <span className="text-danger">{error}</span>
+            ) : justSaved && !isDirty ? (
+              <span className="inline-flex items-center gap-1.5 text-success font-medium"><Check className="w-4 h-4" /> Saved</span>
+            ) : isDirty ? (
+              <span className="text-text-secondary">
+                <span className="font-medium text-text-primary">{dirtyKeys.length} unsaved {dirtyKeys.length === 1 ? 'change' : 'changes'}</span>
+                {' '}in {TABS.filter((t) => dirtyTabs.has(t.id)).map((t) => t.label).join(', ')}
+              </span>
+            ) : (
+              <span className="text-text-secondary">No unsaved changes</span>
             )}
-            <Button type="button" size="sm" onClick={() => void handleSave()} disabled={saving || !isDirty}>
-              {saving ? 'Saving…' : <><Save className="w-4 h-4" /> Save</>}
+          </p>
+          {isDirty && (
+            <Button type="button" variant="outline" size="sm" onClick={() => { setSettings(baseline); setError(''); }} disabled={saving}>
+              Discard
             </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  return (
-    <section className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-      <div className="space-y-1">
-        <h3 className="font-display font-semibold text-base">{title}</h3>
-        {hint && <p className="text-xs text-text-muted leading-relaxed">{hint}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Hint({ children }: { children: ReactNode }) {
-  return <p className="text-xs text-text-muted leading-relaxed">{children}</p>;
-}
-
-function Toggle({
-  id,
-  checked,
-  onChange,
-  label,
-  description,
-}: {
-  id: string;
-  checked: boolean;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  label: string;
-  description?: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <input type="checkbox" id={id} checked={checked} onChange={onChange} className="rounded mt-0.5" />
-      <label htmlFor={id} className="text-sm font-medium text-text-secondary">
-        {label}
-        {description && <span className="block text-xs font-normal text-text-muted mt-0.5 leading-relaxed">{description}</span>}
-      </label>
+          )}
+          <Button type="submit" size="sm" disabled={saving || !isDirty}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </SaveBar>
+      </form>
     </div>
   );
 }
 
 function SlideFields({
   prefix,
-  label,
   get,
   setText,
   placeholderSlug,
 }: {
   prefix: string;
-  label: string;
   get: (k: string) => string;
   setText: (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholderSlug: string;
 }) {
   return (
-    <div className="space-y-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</p>
-      <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
-        <Input label="Product slug" id={`${prefix}_product_slug`} value={get(`${prefix}_product_slug`)} onChange={setText(`${prefix}_product_slug`)} placeholder={placeholderSlug} />
-        <Input label="Headline" id={`${prefix}_headline`} value={get(`${prefix}_headline`)} onChange={setText(`${prefix}_headline`)} placeholder="Blank = product name" />
-      </div>
-      <Input label="Subheadline" id={`${prefix}_subheadline`} value={get(`${prefix}_subheadline`)} onChange={setText(`${prefix}_subheadline`)} placeholder="Blank to omit" />
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="Product slug" htmlFor={`${prefix}_product_slug`} help={`The URL at /products/${placeholderSlug}.`}>
+        <TextInput id={`${prefix}_product_slug`} value={get(`${prefix}_product_slug`)} onChange={setText(`${prefix}_product_slug`)} placeholder={placeholderSlug} />
+      </Field>
+      <Field label="Headline" htmlFor={`${prefix}_headline`} help="Blank shows the product name.">
+        <TextInput id={`${prefix}_headline`} value={get(`${prefix}_headline`)} onChange={setText(`${prefix}_headline`)} />
+      </Field>
+      <Field label="Subheadline" htmlFor={`${prefix}_subheadline`} className="sm:col-span-2">
+        <TextInput id={`${prefix}_subheadline`} value={get(`${prefix}_subheadline`)} onChange={setText(`${prefix}_subheadline`)} placeholder="Optional" />
+      </Field>
     </div>
   );
 }
