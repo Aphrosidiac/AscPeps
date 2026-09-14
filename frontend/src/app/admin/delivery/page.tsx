@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Animate } from '@/components/ui/Animate';
 import { DeliveryCalendar } from './DeliveryCalendar';
+import { PageHeader } from '@/components/admin/ui';
+import { Button } from '@/components/ui/Button';
 import {
   CalendarDays,
   CheckCircle2,
@@ -163,22 +165,13 @@ export default function DeliveryPage() {
     // adding p-6 on top left this one with 295px of a 375px screen while every
     // sibling page got 343.
     <div className="space-y-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold text-text-primary">
-            <Truck className="h-6 w-6" /> Delivery Schedule
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Asywa&apos;s delivery diary. Pick a day, put an order on it — all times are Malaysia time.
-          </p>
-        </div>
-        <button
-          onClick={refresh}
-          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-elevated active:scale-[0.98]"
-        >
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </button>
-      </header>
+      <PageHeader
+        icon={Truck}
+        title="Delivery Schedule"
+        subtitle="Asywa’s delivery diary. Pick a day, put an order on it — all times are Malaysia time."
+        actions={<Button variant="outline" onClick={refresh}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
+        className="mb-0"
+      />
 
       {/* ---- The calendar runs the page: month on the left, the chosen day's
            run sheet and booking form on the right. ---- */}
@@ -227,7 +220,7 @@ export default function DeliveryPage() {
             {/* Booking form, in place on the day it books into. */}
             {adding && (
               <div className="slot-column mt-4 rounded-xl border border-border bg-surface-elevated/60 p-4">
-                <label className="block text-xs text-text-muted">Order</label>
+                <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Order</label>
                 <select
                   value={orderId}
                   onChange={(e) => setOrderId(e.target.value)}
@@ -244,7 +237,7 @@ export default function DeliveryPage() {
                   <p className="mt-1 text-xs text-text-muted">Every live order already has a delivery booked.</p>
                 )}
 
-                <label className="mt-3 block text-xs text-text-muted">Time</label>
+                <label className="mt-4 block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Time</label>
                 <input
                   type="time"
                   value={pickedTime}
@@ -269,7 +262,7 @@ export default function DeliveryPage() {
                   ))}
                 </div>
 
-                <label className="mt-3 block text-xs text-text-muted">Note for the driver</label>
+                <label className="mt-4 block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Note for the driver</label>
                 <input
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}

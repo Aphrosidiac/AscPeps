@@ -11,6 +11,8 @@ import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 import { RecordMoneyDialog } from './RecordMoneyDialog';
 import type { FinanceOverview, FinanceActivityKind } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
+import { Button } from '@/components/ui/Button';
 
 const ACTIVITY_STYLES: Record<FinanceActivityKind, { label: string; chip: string }> = {
   EXPENSE: { label: 'Spending', chip: 'bg-surface-elevated text-text-secondary' },
@@ -118,30 +120,18 @@ export default function AdminFinancePage() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <Animate variant="fadeUp">
-          <div>
-            <h1 className="font-display text-2xl font-bold">Finance</h1>
-            <p className="text-xs text-text-muted mt-0.5">Lifetime totals across every order and expense</p>
-          </div>
-        </Animate>
-        <Animate variant="fadeUp" delay={0.05}>
-          <div className="flex gap-2">
-            <Link
-              href="/admin/finance/expenses"
-              className="inline-flex items-center gap-1.5 px-3 py-2 border border-border bg-surface rounded-lg text-sm font-medium hover:bg-surface-elevated transition-colors"
-            >
-              <Receipt className="w-4 h-4" /> Expenses
-            </Link>
-            <button
-              onClick={() => setDialogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Record money
-            </button>
-          </div>
-        </Animate>
-      </div>
+      <Animate variant="fadeUp">
+        <PageHeader
+          title="Finance"
+          subtitle="Lifetime totals across every order and expense"
+          actions={
+            <>
+              <Link href="/admin/finance/expenses"><Button variant="outline"><Receipt className="w-4 h-4" /> Expenses</Button></Link>
+              <Button onClick={() => setDialogOpen(true)}><Plus className="w-4 h-4" /> Record money</Button>
+            </>
+          }
+        />
+      </Animate>
 
       {/* Company position */}
       <Animate variant="fadeUp" delay={0.1}>

@@ -9,6 +9,7 @@ import { formatShortDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import type { Insight } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 type StatusFilter = 'all' | 'published' | 'draft';
 
@@ -41,10 +42,11 @@ export default function AdminInsightsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-2xl font-bold">Insights</h1>
-        <Link href="/admin/insights/new"><Button><Plus className="w-4 h-4" /> New Insight</Button></Link>
-      </div>
+      <PageHeader
+        title="Insights"
+        subtitle="Research and product-update articles on the storefront."
+        actions={<Link href="/admin/insights/new"><Button><Plus className="w-4 h-4" /> New Insight</Button></Link>}
+      />
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="relative w-full max-w-sm">

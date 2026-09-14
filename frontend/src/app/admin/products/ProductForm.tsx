@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Trash2, Upload, ImageIcon, ChevronDown,
@@ -14,6 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { CheckboxList } from '@/components/ui/CheckboxList';
 import { Animate } from '@/components/ui/Animate';
+import { Card, CardHeader, CardBody, Checkbox, SaveBar } from '@/components/admin/ui';
 import type { Product, Category } from '@/types';
 
 interface VariantFormData {
@@ -202,21 +202,19 @@ function FormSection({
 }) {
   return (
     <Animate variant="fadeUp" delay={delay} duration={0.4}>
-      <div className="bg-surface rounded-xl border border-border p-6">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Icon className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <h2 className="font-display font-semibold text-base">{title}</h2>
-              {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
-            </div>
-          </div>
-          {action}
-        </div>
-        {children}
-      </div>
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2.5">
+              <Icon className="w-4 h-4 text-text-secondary shrink-0" />
+              {title}
+            </span>
+          }
+          description={description}
+          actions={action}
+        />
+        <CardBody>{children}</CardBody>
+      </Card>
     </Animate>
   );
 }
@@ -364,12 +362,10 @@ export function ProductForm({ productId }: { productId?: string }) {
   const [form, setForm] = useState<ProductFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [mounted, setMounted] = useState(false);
   // Keyed by variant.key — tracks each variant image upload independently
   // so uploading one photo doesn't affect another row's indicator.
   const [uploadStatus, setUploadStatus] = useState<Record<string, UploadState>>({});
 
-  useEffect(() => { setMounted(true); }, []);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
 
   useEffect(() => {
@@ -603,7 +599,7 @@ export function ProductForm({ productId }: { productId?: string }) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto pb-28">
+    <div className="max-w-4xl mx-auto pb-6">
       <Animate variant="fadeDown" duration={0.4}>
         <div className="flex items-center gap-3 mb-6">
           <button
@@ -615,8 +611,8 @@ export function ProductForm({ productId }: { productId?: string }) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="font-display text-2xl font-bold">{isEdit ? (product ? `Edit ${product.name}` : 'Edit Product') : 'Add New Product'}</h1>
-            <p className="text-sm text-text-muted">{isEdit ? 'Update details, sizes, and add-ons' : 'Create a new product line with its sizes'}</p>
+            <h1 className="font-display text-[20px] leading-7 font-semibold tracking-[-0.01em]">{isEdit ? (product ? `Edit ${product.name}` : 'Edit Product') : 'Add New Product'}</h1>
+            <p className="text-[13px] leading-[18px] text-text-secondary">{isEdit ? 'Update details, sizes, and add-ons' : 'Create a new product line with its sizes'}</p>
           </div>
         </div>
       </Animate>
@@ -640,19 +636,15 @@ export function ProductForm({ productId }: { productId?: string }) {
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 required
               />
-              <div className="flex items-center gap-6 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={form.featured} onChange={(e) => updateField('featured', e.target.checked)} className="rounded accent-yellow-500" />
-                  <span className="text-sm font-medium text-text-secondary">Featured</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={form.active} onChange={(e) => updateField('active', e.target.checked)} className="rounded" />
-                  <span className="text-sm font-medium text-text-secondary">Active (visible on store)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer" title="Hides this from the catalog and its own product page, but keeps it usable as another product's required/optional add-on">
-                  <input type="checkbox" checked={form.addOnOnly} onChange={(e) => updateField('addOnOnly', e.target.checked)} className="rounded" />
-                  <span className="text-sm font-medium text-text-secondary">Add-on only (hide from storefront)</span>
-                </label>
+              <div className="grid sm:grid-cols-3 gap-4 pt-1">
+                <Checkbox checked={form.featured} onChange={(v) => updateField('featured', v)} label="Featured" description="Shown in the homepage carousel." />
+                <Checkbox checked={form.active} onChange={(v) => updateField('active', v)} label="Active" description="Visible on the store." />
+                <Checkbox
+                  checked={form.addOnOnly}
+                  onChange={(v) => updateField('addOnOnly', v)}
+                  label="Add-on only"
+                  description="Hidden from the catalog and its own page, but usable as another product’s add-on."
+                />
               </div>
             </div>
           </FormSection>
@@ -782,7 +774,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 placeholder="https://verify.janoshik.com/tests/..."
               />
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Description</label>
+                <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Description</label>
                 <textarea
                   value={form.description}
                   onChange={(e) => updateField('description', e.target.value)}
@@ -792,7 +784,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Benefits (one per line)</label>
+                <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Benefits (one per line)</label>
                 <textarea
                   value={form.benefits}
                   onChange={(e) => updateField('benefits', e.target.value)}
@@ -802,7 +794,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Dosage Info</label>
+                <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Dosage Info</label>
                 <textarea
                   value={form.dosageInfo}
                   onChange={(e) => updateField('dosageInfo', e.target.value)}
@@ -828,24 +820,22 @@ export function ProductForm({ productId }: { productId?: string }) {
           long scroll. An error appearing only at the bottom of the form
           (past Variants/Add-Ons/Content) was easy to miss entirely and
           looked like clicking Update Product silently did nothing. */}
-      {mounted && !loading &&
-        createPortal(
-          <div className="fixed bottom-0 inset-x-0 lg:left-64 bg-surface/95 backdrop-blur-sm border-t border-border p-4 flex items-center justify-end gap-3 z-30">
-            {formError && (
-              <Animate variant="fade" duration={0.2} className="mr-auto">
-                <p className="text-sm text-danger">{formError}</p>
-              </Animate>
-            )}
-            <Button type="button" variant="outline" onClick={() => router.push('/admin/products')}>Cancel</Button>
-            {/* Portal'd outside the <form> DOM tree, so it submits via the
-                form attribute — this keeps the browser's `required` field
-                validation, which a direct handleSubmit() call would bypass. */}
-            <Button form="product-form" type="submit" disabled={saving}>
-              {saving ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
-            </Button>
-          </div>,
-          document.body
-        )}
+      {!loading && (
+        <SaveBar className="mt-6">
+          {formError && (
+            <Animate variant="fade" duration={0.2} className="mr-auto">
+              <p className="text-sm text-danger">{formError}</p>
+            </Animate>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push('/admin/products')}>Cancel</Button>
+          {/* Outside the <form> element, so it submits via the form
+              attribute — this keeps the browser's `required` field
+              validation, which a direct handleSubmit() call would bypass. */}
+          <Button form="product-form" type="submit" size="sm" disabled={saving}>
+            {saving ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
+          </Button>
+        </SaveBar>
+      )}
     </div>
   );
 }

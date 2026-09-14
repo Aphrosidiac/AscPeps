@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, X, Check } from 'lucide-react';
+import { Plus, X, Check } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import {
   adminGetPartner, adminCreateRepayment, adminDeleteFunding,
@@ -12,6 +12,7 @@ import {
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import { RecordMoneyDialog } from '../../RecordMoneyDialog';
 import type { PartnerDetail, PartnerFunding } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 const bpsToPercent = (bps: number) => (bps / 100).toFixed(2).replace(/\.00$/, '');
 const outstandingOf = (f: PartnerFunding) =>
@@ -35,7 +36,6 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: 'goo
 
 export function PartnerLedger({ partnerId }: { partnerId: string }) {
   const { token } = useAuth();
-  const router = useRouter();
   const [data, setData] = useState<PartnerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -148,29 +148,12 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="flex items-start gap-3 min-w-0">
-          <button
-            onClick={() => router.push('/admin/finance')}
-            aria-label="Back to finance"
-            className="mt-1 p-1 -ml-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer shrink-0"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="min-w-0">
-            <h1 className="font-display text-2xl font-bold truncate">{partner.name}</h1>
-            <p className="text-sm text-text-muted mt-0.5">
-              {partner.active ? 'Active partner' : 'Inactive'}
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => setDialogOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" /> Record money
-        </button>
-      </div>
+      <PageHeader
+        back="/admin/finance"
+        title={partner.name}
+        subtitle={partner.active ? 'Active partner' : 'Inactive'}
+        actions={<Button onClick={() => setDialogOpen(true)}><Plus className="w-4 h-4" /> Record money</Button>}
+      />
 
       {error && <p className="text-sm text-danger mb-4">{error}</p>}
 

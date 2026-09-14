@@ -320,3 +320,51 @@ h1, h2, h3, h4, h5, h6 {
 .mpg-admin .mpg-order-buttons button:hover:not(:disabled) { background: var(--color-surface-elevated); color: var(--color-text-primary); }
 .mpg-admin .mpg-btn-ghost { border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; font-weight: 500; }
 .mpg-admin .mpg-btn-ghost:hover:not(:disabled) { background: var(--color-surface-elevated); filter: none; }
+
+/* Admin form controls — the house look (SmoothSail's field.tsx) applied to
+   every native control inside the admin so list filters, dialogs and inline
+   editors match the form primitives in components/admin/ui.tsx without each
+   file restyling its own <select>. Scoped to the admin main so the storefront
+   is untouched. */
+.admin-main {
+  /* #A3A3A3 on white is 2.4:1 — fine for a decorative timestamp, unreadable
+     as a hint. Admin muted text is #737373 (4.7:1); text-secondary stays the
+     step above it. */
+  --color-text-muted: #737373;
+}
+.admin-main select {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 6px;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6.5 8 10.5 12 6.5' stroke='%23525252' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px 16px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.admin-main select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.admin-main input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.admin-main input[type="radio"] { accent-color: var(--color-primary); cursor: pointer; }
+.admin-main input[type="text"], .admin-main input[type="email"], .admin-main input[type="number"],
+.admin-main input[type="tel"], .admin-main input[type="url"], .admin-main input[type="password"],
+.admin-main input[type="date"], .admin-main input[type="search"], .admin-main textarea {
+  border-radius: 6px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.admin-main input:not([type="checkbox"]):not([type="radio"]):focus, .admin-main textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}

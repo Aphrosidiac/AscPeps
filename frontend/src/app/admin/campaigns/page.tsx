@@ -10,6 +10,7 @@ import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Animate } from '@/components/ui/Animate';
+import { PageHeader } from '@/components/admin/ui';
 
 interface CampaignRow {
   id: string;
@@ -78,15 +79,11 @@ export default function AdminCampaignsPage() {
       <Animate variant="fadeUp">
         {/* Stacks below sm — beside the heading the button had to wrap its own
             label onto two lines and squeezed the subtitle. */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-          <div>
-            <h1 className="font-display text-2xl font-bold">Campaigns</h1>
-            <p className="text-sm text-text-muted mt-0.5">Newsletters and announcements to the list</p>
-          </div>
-          <Button onClick={handleCreate} disabled={creating} className="self-start shrink-0 whitespace-nowrap">
-            <Plus className="w-4 h-4" /> New campaign
-          </Button>
-        </div>
+        <PageHeader
+          title="Campaigns"
+          subtitle="Newsletters and announcements to the list"
+          actions={<Button onClick={handleCreate} disabled={creating}><Plus className="w-4 h-4" /> New campaign</Button>}
+        />
       </Animate>
 
       {loading ? (

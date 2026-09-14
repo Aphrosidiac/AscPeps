@@ -201,7 +201,7 @@ export default function AdminCampaignDetailPage() {
 
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <h1 className="font-display text-2xl font-bold">{campaign.name}</h1>
+            <h1 className="font-display text-[20px] leading-7 font-semibold tracking-[-0.01em]">{campaign.name}</h1>
             <p className="text-sm text-text-muted mt-0.5">
               {isDraft
                 ? 'Draft — nothing has been sent'
@@ -240,7 +240,7 @@ export default function AdminCampaignDetailPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-text-secondary mb-1.5">
+                <label htmlFor="name" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                   Internal name
                 </label>
                 <input
@@ -254,7 +254,7 @@ export default function AdminCampaignDetailPage() {
               </div>
 
               <div>
-                <label htmlFor="subject" className="block text-sm font-medium text-text-secondary mb-1.5">
+                <label htmlFor="subject" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                   Subject line
                 </label>
                 <input
@@ -267,7 +267,7 @@ export default function AdminCampaignDetailPage() {
               </div>
 
               <div>
-                <label htmlFor="preheader" className="block text-sm font-medium text-text-secondary mb-1.5">
+                <label htmlFor="preheader" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                   Preview text <span className="font-normal text-text-muted">(optional)</span>
                 </label>
                 <input
@@ -283,7 +283,7 @@ export default function AdminCampaignDetailPage() {
               </div>
 
               <div>
-                <label htmlFor="body" className="block text-sm font-medium text-text-secondary mb-1.5">
+                <label htmlFor="body" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                   Body
                 </label>
                 <textarea
@@ -301,7 +301,7 @@ export default function AdminCampaignDetailPage() {
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="ctaLabel" className="block text-sm font-medium text-text-secondary mb-1.5">
+                  <label htmlFor="ctaLabel" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                     Button label <span className="font-normal text-text-muted">(optional)</span>
                   </label>
                   <input
@@ -314,7 +314,7 @@ export default function AdminCampaignDetailPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="ctaUrl" className="block text-sm font-medium text-text-secondary mb-1.5">
+                  <label htmlFor="ctaUrl" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                     Button link
                   </label>
                   <input

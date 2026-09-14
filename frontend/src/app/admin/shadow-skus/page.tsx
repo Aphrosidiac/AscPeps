@@ -14,6 +14,7 @@ import { Animate } from '@/components/ui/Animate';
 import type { ShadowCoverage, ShadowMappingRow, ShadowSku } from '@/types';
 import { ShadowCodesPanel } from './ShadowCodesPanel';
 import { ShadowOrdersPanel } from './ShadowOrdersPanel';
+import { PageHeader } from '@/components/admin/ui';
 
 /**
  * Shadow SKUs — what each product is called on internal paperwork.
@@ -247,14 +248,11 @@ export default function AdminShadowSkusPage() {
   return (
     <div className="pb-24">
       <Animate variant="fadeUp">
-        <div className="mb-5">
-          <h1 className="font-display text-2xl font-bold">Shadow SKUs</h1>
-          <p className="text-xs text-text-muted mt-1 max-w-2xl">
-            The generalised name each product is listed under on internal paperwork. The storefront,
-            cart, checkout, customer receipt and confirmation email are untouched and always show the
-            real product — this vocabulary never reaches a customer.
-          </p>
-        </div>
+        <PageHeader
+          title="Shadow SKUs"
+          subtitle="The generalised name each product is listed under on internal paperwork. The storefront, cart, checkout, receipt and confirmation email always show the real product — this vocabulary never reaches a customer."
+          className="mb-5"
+        />
       </Animate>
 
       <Animate variant="fadeUp" delay={0.05}>

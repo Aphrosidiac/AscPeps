@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { adminGetAnalytics } from '@/lib/api';
 import { formatPrice, cn } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
+import { PageHeader } from '@/components/admin/ui';
 
 interface AnalyticsData {
   period: { days: number; since: string };
@@ -270,7 +271,7 @@ export default function AdminAnalyticsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <Animate variant="fadeUp">
-          <h1 className="font-display text-2xl font-bold">Analytics</h1>
+          <PageHeader title="Analytics" className="mb-0" />
         </Animate>
 
         <Animate variant="fadeUp" delay={0.05}>

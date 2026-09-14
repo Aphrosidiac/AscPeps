@@ -20,6 +20,7 @@ import { formatDate, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Animate } from '@/components/ui/Animate';
+import { PageHeader } from '@/components/admin/ui';
 
 type WelcomeStatus = 'PENDING' | 'SENT' | 'FAILED' | 'DELIVERED' | 'BOUNCED' | 'COMPLAINED';
 
@@ -163,24 +164,24 @@ export default function AdminSubscribersPage() {
   return (
     <div>
       <Animate variant="fadeUp">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="font-display text-2xl font-bold">Subscribers</h1>
-            <p className="text-sm text-text-muted mt-0.5">The marketing email list</p>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (!token) return;
-              const params: Record<string, string> = {};
-              if (search) params.search = search;
-              if (statusFilter) params.status = statusFilter;
-              adminExportSubscribers(token, params);
-            }}
-          >
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
-        </div>
+        <PageHeader
+          title="Subscribers"
+          subtitle="The marketing email list"
+          actions={
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!token) return;
+                const params: Record<string, string> = {};
+                if (search) params.search = search;
+                if (statusFilter) params.status = statusFilter;
+                adminExportSubscribers(token, params);
+              }}
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </Button>
+          }
+        />
       </Animate>
 
       <Animate variant="fadeUp" delay={0.05}>

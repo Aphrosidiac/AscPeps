@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, ImageIcon, Info, FileText, Quote, PackagePlus, Images, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { CheckboxList } from '@/components/ui/CheckboxList';
 import { Animate } from '@/components/ui/Animate';
+import { Card, CardHeader, CardBody, Checkbox, SaveBar } from '@/components/admin/ui';
 import type { Insight, InsightFigureInput, Product } from '@/types';
 
 interface InsightFormData {
@@ -62,18 +62,18 @@ function FormSection({
 }) {
   return (
     <Animate variant="fadeUp" delay={delay} duration={0.4}>
-      <div className="bg-surface rounded-xl border border-border p-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <Icon className="w-4.5 h-4.5" />
-          </div>
-          <div>
-            <h2 className="font-display font-semibold text-base">{title}</h2>
-            {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
-          </div>
-        </div>
-        {children}
-      </div>
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2.5">
+              <Icon className="w-4 h-4 text-text-secondary shrink-0" />
+              {title}
+            </span>
+          }
+          description={description}
+        />
+        <CardBody>{children}</CardBody>
+      </Card>
     </Animate>
   );
 }
@@ -91,9 +91,7 @@ export function InsightForm({ insightId }: { insightId?: string }) {
   const [form, setForm] = useState<InsightFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -274,7 +272,7 @@ export function InsightForm({ insightId }: { insightId?: string }) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto pb-28">
+    <div className="max-w-3xl mx-auto pb-6">
       <Animate variant="fadeDown" duration={0.4}>
         <div className="flex items-center gap-3 mb-6">
           <button
@@ -286,8 +284,8 @@ export function InsightForm({ insightId }: { insightId?: string }) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="font-display text-2xl font-bold">{isEdit ? (insight ? `Edit "${insight.title}"` : 'Edit Insight') : 'New Insight'}</h1>
-            <p className="text-sm text-text-muted">{isEdit ? 'Update this article' : 'Write a new research or product-update article'}</p>
+            <h1 className="font-display text-[20px] leading-7 font-semibold tracking-[-0.01em]">{isEdit ? (insight ? `Edit "${insight.title}"` : 'Edit Insight') : 'New Insight'}</h1>
+            <p className="text-[13px] leading-[18px] text-text-secondary">{isEdit ? 'Update this article' : 'Write a new research or product-update article'}</p>
           </div>
         </div>
       </Animate>
@@ -345,17 +343,14 @@ export function InsightForm({ insightId }: { insightId?: string }) {
                 <Input label="Author name" value={form.authorName} onChange={(e) => updateField('authorName', e.target.value)} />
                 <Input label="Author role" value={form.authorRole} onChange={(e) => updateField('authorRole', e.target.value)} />
               </div>
-              <label className="flex items-center gap-2 cursor-pointer pt-1">
-                <input type="checkbox" checked={form.published} onChange={(e) => updateField('published', e.target.checked)} className="rounded" />
-                <span className="text-sm font-medium text-text-secondary">Published (visible on the storefront)</span>
-              </label>
+              <Checkbox checked={form.published} onChange={(v) => updateField('published', v)} label="Published" description="Visible on the storefront." className="pt-1" />
             </div>
           </FormSection>
 
           <FormSection title="Content" icon={FileText} delay={0.05}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Excerpt</label>
+                <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Excerpt</label>
                 <textarea
                   value={form.excerpt}
                   onChange={(e) => updateField('excerpt', e.target.value)}
@@ -366,7 +361,7 @@ export function InsightForm({ insightId }: { insightId?: string }) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Body</label>
+                <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Body</label>
                 <textarea
                   value={form.content}
                   onChange={(e) => updateField('content', e.target.value)}
@@ -521,16 +516,14 @@ export function InsightForm({ insightId }: { insightId?: string }) {
       {/* Portal to document.body — the admin layout's <main> has overflow-auto,
           which would otherwise trap this fixed bar inside its own box instead
           of the real viewport (see ProductForm.tsx for the same fix). */}
-      {mounted && !loading &&
-        createPortal(
-          <div className="fixed bottom-0 inset-x-0 lg:left-64 bg-surface/95 backdrop-blur-sm border-t border-border p-4 flex justify-end gap-3 z-30">
-            <Button type="button" variant="outline" onClick={() => router.push('/admin/insights')}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Saving...' : isEdit ? 'Update Insight' : 'Create Insight'}
-            </Button>
-          </div>,
-          document.body
-        )}
+      {!loading && (
+        <SaveBar className="mt-6">
+          <Button type="button" variant="outline" size="sm" onClick={() => router.push('/admin/insights')}>Cancel</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Saving...' : isEdit ? 'Update Insight' : 'Create Insight'}
+          </Button>
+        </SaveBar>
+      )}
     </div>
   );
 }

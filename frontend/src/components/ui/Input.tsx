@@ -11,7 +11,7 @@ export function Input({ label, error, icon: Icon, className, id, ...props }: Inp
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={id} className="block text-sm font-medium text-text-secondary">
+        <label htmlFor={id} className="block text-[14px] leading-5 font-medium text-text-primary">
           {label}
         </label>
       )}

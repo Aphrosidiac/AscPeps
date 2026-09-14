@@ -10,6 +10,7 @@ import { formatDate } from '@/lib/utils';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { Animate } from '@/components/ui/Animate';
 import type { AdminEmailsResponse, AdminEmailRow } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 const PAGE_SIZE = 50;
 
@@ -174,7 +175,7 @@ function AdminEmailsContent() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-bold mb-6">Emails</h1>
+      <PageHeader title="Emails" subtitle="Order confirmations, receipts and the reminders the store sends on its own." />
 
       {/* Automated sending toggle — the real switch lives in this
           environment's database (see backend/src/utils/email.ts), so this
@@ -540,7 +541,7 @@ function EmailContentSettings({ token, onSaved }: { token: string | null; onSave
         <div className="space-y-3">
           {EMAIL_CONTENT_FIELDS.map((f) => (
             <div key={f.key}>
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1">{f.label}</label>
+              <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">{f.label}</label>
               <input
                 type="text"
                 value={values[f.key] ?? ''}

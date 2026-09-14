@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus, X, Receipt, Paperclip } from 'lucide-react';
+import { Plus, X, Receipt, Paperclip } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import {
   adminGetExpenses, adminCreateExpense, adminUpdateExpense, adminDeleteExpense, adminGetFinanceOverview,
@@ -10,6 +11,7 @@ import {
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import type { CompanyExpense, PartnerBalance, FundingType, ExpenseKind } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -165,44 +167,29 @@ export default function AdminExpensesPage() {
       {/* Stacks on phones: "Company Spending" plus the back arrow plus the
           button need more than 375px, and squeezing them onto one row clipped
           the button. */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
-        <div className="flex items-start gap-3 min-w-0">
-          <Link
-            href="/admin/finance"
-            aria-label="Back to finance"
-            className="mt-1 p-1 -ml-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="font-display text-2xl font-bold">Company Spending</h1>
-            <p className="text-xs text-text-muted mt-0.5">
-              {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(operatingTotal)} operating
-              {stockTotal > 0 && <> · {formatPrice(stockTotal)} stock</>}
-            </p>
-          </div>
-        </div>
-        {!adding && (
-          <button
-            onClick={() => { setAdding(true); setError(''); }}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer shrink-0 self-start"
-          >
-            <Plus className="w-4 h-4" /> Add expense
-          </button>
-        )}
-      </div>
+      <PageHeader
+        back="/admin/finance"
+        title="Company Spending"
+        subtitle={
+          <>
+            {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(operatingTotal)} operating
+            {stockTotal > 0 && <> · {formatPrice(stockTotal)} stock</>}
+          </>
+        }
+        actions={!adding && <Button onClick={() => { setAdding(true); setError(''); }}><Plus className="w-4 h-4" /> Add expense</Button>}
+      />
 
       {adding && (
         <div className={cn('panel-reveal bg-surface border border-border rounded-xl p-5 mb-6', closingForm && 'is-closing')}>
           <h2 className="font-display font-semibold mb-4">New expense</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="e-date" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Date</label>
+              <label htmlFor="e-date" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Date</label>
               <input id="e-date" type="date" value={form.occurredAt} onChange={(e) => setForm((f) => ({ ...f, occurredAt: e.target.value }))}
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
             </div>
             <div>
-              <label htmlFor="e-amount" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Amount</label>
+              <label htmlFor="e-amount" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Amount</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">RM</span>
                 <input id="e-amount" type="number" min="0" step="0.01" value={form.amount}
@@ -211,7 +198,7 @@ export default function AdminExpensesPage() {
               </div>
             </div>
             <div>
-              <label htmlFor="e-category" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Category</label>
+              <label htmlFor="e-category" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Category</label>
               <input id="e-category" list="expense-categories" value={form.category}
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder="e.g. Marketing"
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
@@ -222,13 +209,13 @@ export default function AdminExpensesPage() {
               </datalist>
             </div>
             <div>
-              <label htmlFor="e-desc" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Description</label>
+              <label htmlFor="e-desc" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Description</label>
               <input id="e-desc" type="text" value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="e.g. Meta ads, July"
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
             </div>
             <div>
-              <label htmlFor="e-kind" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+              <label htmlFor="e-kind" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                 What kind of spending
               </label>
               <select id="e-kind" value={form.kind}
@@ -244,7 +231,7 @@ export default function AdminExpensesPage() {
               </p>
             </div>
             <div>
-              <label htmlFor="e-paidby" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Who paid</label>
+              <label htmlFor="e-paidby" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Who paid</label>
               <select id="e-paidby" value={form.paidByPartnerId}
                 onChange={(e) => setForm((f) => ({ ...f, paidByPartnerId: e.target.value }))}
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface">
@@ -254,7 +241,7 @@ export default function AdminExpensesPage() {
             </div>
             {form.paidByPartnerId && (
               <div>
-                <label htmlFor="e-funding" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+                <label htmlFor="e-funding" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                   Do they get it back?
                 </label>
                 <select id="e-funding" value={form.paidByFundingType}

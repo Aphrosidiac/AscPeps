@@ -181,7 +181,7 @@ export function UploadDocumentDialog({
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label htmlFor="d-title" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Title</label>
+              <label htmlFor="d-title" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Title</label>
               <input
                 id="d-title" type="text" value={title} maxLength={160}
                 onChange={(e) => setTitle(e.target.value)}
@@ -191,7 +191,7 @@ export function UploadDocumentDialog({
             </div>
 
             <div>
-              <label htmlFor="d-kind" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Kind</label>
+              <label htmlFor="d-kind" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Kind</label>
               <input
                 id="d-kind" list="document-kinds" value={kind}
                 onChange={(e) => setKind(e.target.value)}
@@ -208,7 +208,7 @@ export function UploadDocumentDialog({
             </div>
 
             <div>
-              <label htmlFor="d-date" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+              <label htmlFor="d-date" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                 Date on the document
               </label>
               <input
@@ -219,7 +219,7 @@ export function UploadDocumentDialog({
             </div>
 
             <div>
-              <label htmlFor="d-amount" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+              <label htmlFor="d-amount" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                 Amount <span className="normal-case tracking-normal text-text-muted">(optional)</span>
               </label>
               <div className="relative">
@@ -233,7 +233,7 @@ export function UploadDocumentDialog({
             </div>
 
             <div className="sm:col-span-2">
-              <label htmlFor="d-desc" className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">
+              <label htmlFor="d-desc" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">
                 Description <span className="normal-case tracking-normal text-text-muted">(optional)</span>
               </label>
               <textarea

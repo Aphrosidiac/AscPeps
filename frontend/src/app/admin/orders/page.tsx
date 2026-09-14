@@ -13,6 +13,7 @@ import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress } from '@/lib/order-progress';
 import { paymentFailureCopy } from '@/lib/payment-failure';
 import type { Order, OrderEmail } from '@/types';
+import { PageHeader } from '@/components/admin/ui';
 
 // "DELETED" is a pseudo-status (not a real OrderStatus value) — it's a
 // dedicated filter tab showing only soft-deleted orders, which every other
@@ -225,10 +226,7 @@ function AdminOrdersContent() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-2xl font-bold">Orders</h1>
-        <p className="text-sm text-text-muted">{orders.length} order{orders.length !== 1 ? 's' : ''}</p>
-      </div>
+      <PageHeader title="Orders" subtitle={`${orders.length} order${orders.length !== 1 ? 's' : ''}`} />
 
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-sm">
@@ -585,7 +583,7 @@ function AdminOrdersContent() {
                     {/* Tracking Number */}
                     {order.status !== 'CANCELLED' && (
                       <div className="pt-3 border-t border-border">
-                        <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Tracking Number</label>
+                        <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Tracking Number</label>
                         <div className="flex gap-2 items-center max-w-md">
                           <div className="relative flex-1">
                             <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
@@ -638,7 +636,7 @@ function AdminOrdersContent() {
                     ) : (
                       <div className="flex flex-wrap gap-4 pt-3 border-t border-border">
                         <div>
-                          <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Order Status</label>
+                          <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Order Status</label>
                           <select
                             value={order.status}
                             onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
@@ -651,7 +649,7 @@ function AdminOrdersContent() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1.5">Payment Status</label>
+                          <label className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Payment Status</label>
                           <select
                             value={order.paymentStatus}
                             onChange={(e) => handlePaymentUpdate(order.id, e.target.value, order.paymentGateway)}
