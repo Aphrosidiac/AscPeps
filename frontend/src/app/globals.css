@@ -271,3 +271,52 @@ h1, h2, h3, h4, h5, h6 {
     animation: none;
   }
 }
+
+/* ManualPayGate's admin editor (Settings → Payments) ships its own neutral
+   card styling; skin it to the house Card so its cards sit as siblings of
+   the ones on the page rather than as a visibly foreign block. */
+.mpg-admin { font-family: var(--font-body), system-ui, sans-serif; }
+.mpg-admin .mpg-settings { gap: 24px; }
+.mpg-admin .mpg-settings-card {
+  border-color: var(--color-border);
+  border-radius: 10px;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.mpg-admin .mpg-settings-head {
+  margin: 0;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+.mpg-admin .mpg-settings-head h3 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-text-primary);
+}
+.mpg-admin .mpg-settings-head small { color: var(--color-text-secondary); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+.mpg-admin .mpg-settings-grid { padding: 20px 24px 24px; gap: 16px; }
+.mpg-admin .mpg-label { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 6px; }
+.mpg-admin .mpg-input, .mpg-admin .mpg-textarea {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+.mpg-admin .mpg-input { height: 38px; }
+.mpg-admin .mpg-input:focus, .mpg-admin .mpg-textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.mpg-admin .mpg-help { color: var(--color-text-secondary); }
+.mpg-admin .mpg-switch { font-size: 14px; color: var(--color-text-primary); }
+.mpg-admin .mpg-switch-track { width: 44px; height: 24px; background: var(--color-border-hover); }
+.mpg-admin .mpg-switch-track::after { width: 20px; height: 20px; }
+.mpg-admin .mpg-switch input:checked + .mpg-switch-track { background: var(--color-primary); }
+.mpg-admin .mpg-switch input:checked + .mpg-switch-track::after { transform: translateX(20px); }
+.mpg-admin .mpg-switch input:focus-visible + .mpg-switch-track { outline-color: var(--color-primary); }
+.mpg-admin .mpg-order-buttons button { border-color: var(--color-border); color: var(--color-text-secondary); border-radius: 6px; }
+.mpg-admin .mpg-order-buttons button:hover:not(:disabled) { background: var(--color-surface-elevated); color: var(--color-text-primary); }
+.mpg-admin .mpg-btn-ghost { border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; font-weight: 500; }
+.mpg-admin .mpg-btn-ghost:hover:not(:disabled) { background: var(--color-surface-elevated); filter: none; }
