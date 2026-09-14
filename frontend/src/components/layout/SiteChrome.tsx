@@ -30,8 +30,12 @@ export function SiteChrome({
 }: SiteChromeProps) {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith('/admin');
+  // The hosted payment page (/pay/cs_…) is a Stripe-style standalone page:
+  // no header, footer, announcement bar or newsletter popup between the
+  // customer and the bank details.
+  const isPayPage = pathname?.startsWith('/pay/');
 
-  if (isAdmin) {
+  if (isAdmin || isPayPage) {
     return <>{children}</>;
   }
 

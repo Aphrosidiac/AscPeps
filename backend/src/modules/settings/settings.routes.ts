@@ -11,6 +11,9 @@ const PUBLIC_KEYS = [
   // online_payment_enabled — turning FPX off must not turn Bitcoin off too,
   // and vice versa.
   'crypto_payment_enabled',
+  // Hosted manual checkout (DuitNow QR / bank transfer + proof upload) — its
+  // own flag, next to the other two, so the three can be mixed freely.
+  'manual_payment_enabled',
   'hardsell_enabled', 'hardsell_product_slug', 'hardsell_headline', 'hardsell_subheadline',
   'hardsell_slide2_enabled', 'hardsell_slide2_product_slug', 'hardsell_slide2_headline', 'hardsell_slide2_subheadline',
   // Newsletter capture. Only the popup's on/off flag and its copy are public —

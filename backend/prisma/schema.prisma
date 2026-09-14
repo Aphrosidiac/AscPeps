@@ -1483,3 +1483,62 @@ model ShadowSku {
   @@index([active])
   @@map("shadow_skus")
 }
+
+// ---------------------------------------------------------------------------
+// ManualPayGate — paste into the host's schema.prisma, then `prisma migrate dev`.
+//
+// Status columns are plain String rather than Prisma enums on purpose: adding a
+// value to a Postgres enum needs `ALTER TYPE`, which needs type ownership and
+// has broken `migrate deploy` on shared databases before. The valid values are
+// enforced by the package's state machine, not the column.
+// ---------------------------------------------------------------------------
+
+model CheckoutSession {
+  id             String   @id                 // "cs_" + 24 random chars — the URL is the credential
+  reference      String                       // host's order number / invoice id
+  amount         Int                          // minor units
+  currency       String
+  lineItems      Json
+  amounts        Json?
+  customer       Json?
+  successUrl     String
+  cancelUrl      String?
+  paymentLinkUrl String?
+  metadata       Json?
+  status         String   @default("OPEN")    // OPEN | PROOF_SUBMITTED | PAID | REJECTED | EXPIRED | CANCELLED
+  expiresAt      DateTime
+  paidAt         DateTime?
+  cancelledAt    DateTime?
+  rejectReason   String?
+  reviewedBy     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  proofs PaymentProof[]
+
+  @@index([reference])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@map("mpg_checkout_sessions")
+}
+
+model PaymentProof {
+  id           String    @id                  // "pf_" + 16 random chars
+  sessionId    String
+  filename     String                          // "<uuid>.<ext>" on disk — never the uploaded name
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  note         String?
+  status       String    @default("PENDING")   // PENDING | ACCEPTED | REJECTED
+  rejectReason String?
+  submittedAt  DateTime  @default(now())
+  reviewedAt   DateTime?
+  reviewedBy   String?
+
+  session CheckoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([status])
+  @@map("mpg_payment_proofs")
+}

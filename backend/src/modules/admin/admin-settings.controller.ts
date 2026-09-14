@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
 import { notifyRevalidate } from '../../utils/revalidate.js';
+import { checkoutConfigSchema } from 'manualpaygate/core';
+import { MANUALPAY_CONFIG_KEY, MANUALPAY_ENABLED_KEY, loadManualPayConfig } from '../../plugins/manualpay.js';
 
 export async function getSettings(fastify: FastifyInstance) {
   const settings = await fastify.prisma.setting.findMany();
@@ -56,6 +58,30 @@ export async function updateSettings(fastify: FastifyInstance, body: unknown) {
     // no BTCPAY_* env vars shows customers a Bitcoin option that reserves
     // their stock and then 503s — a live checkout wired to nothing.
     // Switching it OFF is always allowed, whatever the server config.
+    // The hosted manual checkout's whole config travels as one JSON setting.
+    // Parse it here so a malformed save is refused with the field that is
+    // wrong, instead of being stored and silently replaced by defaults on read.
+    if (key === MANUALPAY_CONFIG_KEY) {
+      try {
+        checkoutConfigSchema.parse(JSON.parse(value));
+      } catch (err) {
+        const issue = (err as { issues?: { path: (string | number)[]; message: string }[] }).issues?.[0];
+        throw {
+          statusCode: 400,
+          message: issue ? `Manual payment config: ${issue.path.join('.')} — ${issue.message}` : 'Manual payment config is not valid JSON',
+        };
+      }
+    }
+    // Same shape of guard as crypto below: switching the hosted checkout ON
+    // with no enabled method would send customers to a page that can only
+    // say "contact us". The config being saved in the same request counts.
+    if (key === MANUALPAY_ENABLED_KEY && value === 'true') {
+      const cfg = data[MANUALPAY_CONFIG_KEY] ? checkoutConfigSchema.safeParse(JSON.parse(data[MANUALPAY_CONFIG_KEY])) : null;
+      const methods = cfg?.success ? cfg.data.methods : (await loadManualPayConfig(fastify)).methods;
+      if (!methods.some((m) => m.enabled)) {
+        throw { statusCode: 400, message: 'Enable at least one manual payment method (DuitNow QR, bank transfer or a payment link) before switching manual payment on.' };
+      }
+    }
     if (key === 'crypto_payment_enabled' && value === 'true' && !getActiveGateway('btcpay')) {
       throw {
         statusCode: 400,

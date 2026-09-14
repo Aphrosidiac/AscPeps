@@ -215,6 +215,10 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
   const staleWhatsapp = await fastify.prisma.order.findMany({
     where: {
       paymentMethod: 'WHATSAPP',
+      // Hosted-checkout (ManualPayGate) orders are released by their own
+      // session expiry instead — a customer whose proof is waiting for review
+      // must never have the order cancelled out from under them here.
+      paymentGateway: null,
       status: 'PENDING',
       paymentStatus: 'UNPAID',
       createdAt: { lt: new Date(now - WHATSAPP_RELEASE_AFTER_MS) },

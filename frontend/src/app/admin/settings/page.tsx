@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ManualPaySettings, MANUALPAY_CONFIG_KEY } from './ManualPaySettings';
 
 export default function AdminSettingsPage() {
   const { token } = useAuth();
@@ -225,6 +226,30 @@ export default function AdminSettingsPage() {
           <p className="text-xs text-text-muted">
             Adds Bitcoin as a separate payment option alongside WhatsApp and online payment — it does not replace either. Settled through the self-hosted BTCPay Server; requires <code className="font-mono">BTCPAY_URL</code>, <code className="font-mono">BTCPAY_API_KEY</code>, <code className="font-mono">BTCPAY_STORE_ID</code> and <code className="font-mono">BTCPAY_WEBHOOK_SECRET</code> in the server environment.
           </p>
+        </div>
+
+        {/* Hosted manual checkout (ManualPayGate). Its own flag beside the
+            other two — the three methods are independent switches — and the
+            page config underneath it: each method has its own on/off, so a
+            bank account can be paused without turning the whole thing off. */}
+        <div style={{ animationDelay: `165ms` }} className="row-rise bg-surface rounded-xl border border-border p-6 space-y-4">
+          <h2 className="font-display font-semibold text-lg">Bank Transfer / DuitNow Checkout</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="manual_payment_enabled"
+              checked={settings.manual_payment_enabled === 'true'}
+              onChange={(e) => updateSetting('manual_payment_enabled', e.target.checked ? 'true' : 'false')}
+              className="rounded"
+            />
+            <label htmlFor="manual_payment_enabled" className="text-sm font-medium text-text-secondary">
+              Enable the hosted bank-transfer checkout
+            </label>
+          </div>
+          <p className="text-xs text-text-muted">
+            Adds a &ldquo;Bank Transfer / DuitNow&rdquo; option at checkout that sends the customer to a payment page with the QR and account details below, where they upload a screenshot of the transfer. The order is confirmed when you approve the screenshot on the order page. The WhatsApp option stays as it is.
+          </p>
+          <ManualPaySettings raw={settings[MANUALPAY_CONFIG_KEY]} onChange={(json) => updateSetting(MANUALPAY_CONFIG_KEY, json)} />
         </div>
 
         {/* Business Info */}
