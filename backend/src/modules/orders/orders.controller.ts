@@ -508,6 +508,10 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
       // Fetched only for the ownership check below — stripped before returning.
       phone: true,
       status: true,
+      paymentStatus: true,
+      // Only to rebuild the hosted payment page URL below — never returned raw.
+      paymentGateway: true,
+      paymentRef: true,
       total: true,
       trackingNumber: true,
       createdAt: true,
@@ -530,5 +534,14 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
   // no oracle for probing which order numbers exist.
   return orders
     .filter((o) => normalizePhone(o.phone) === normalizedPhone)
-    .map(({ phone: _phone, ...rest }) => rest);
+    .map(({ phone: _phone, paymentGateway, paymentRef, ...rest }) => ({
+      ...rest,
+      // The hosted bank-transfer page is the only place an unpaid order can
+      // be paid, and its URL is easy to lose. Order number + phone is the
+      // same proof of ownership the receipt page accepts, so hand it back.
+      paymentUrl:
+        paymentGateway === MANUALPAY_GATEWAY && rest.paymentStatus === 'UNPAID' && rest.status !== 'CANCELLED'
+          ? reconstructPaymentUrl({ paymentGateway, paymentRef })
+          : undefined,
+    }));
 }
