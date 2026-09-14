@@ -56,6 +56,7 @@ const PERIOD_OPTIONS: readonly { label: string; days: PeriodValue }[] = [
 const SERIES_OPTIONS = [
   { key: 'revenue', label: 'Revenue' },
   { key: 'profit', label: 'Profit' },
+  { key: 'growth', label: 'Growth' },
 ] as const;
 
 type SeriesKey = (typeof SERIES_OPTIONS)[number]['key'];
@@ -202,13 +203,34 @@ export default function AdminAnalyticsPage() {
      day ran at a loss) so ticks land on whole numbers and bars share one
      baseline. Profit can legitimately go negative, hence the explicit zero
      line rather than assuming everything grows up from the floor. */
-  const chartPoints = dailyRevenue.map((d) => ({ ...d, value: series === 'revenue' ? d.revenue : d.profit }));
+  /* Growth is the running total of revenue. Daily bars answer "what did
+     Tuesday do?"; they cannot answer "are we growing?", because a good month
+     and a bad month have the same jagged shape. A cumulative line has one
+     readable property — its slope — and a steepening slope IS growth. */
+  const chartPoints = dailyRevenue.reduce<
+    (AnalyticsData['dailyRevenue'][number] & { cumulative: number; value: number })[]
+  >((acc, d) => {
+    const cumulative = (acc[acc.length - 1]?.cumulative ?? 0) + d.revenue;
+    acc.push({
+      ...d,
+      cumulative,
+      value: series === 'revenue' ? d.revenue : series === 'profit' ? d.profit : cumulative,
+    });
+    return acc;
+  }, []);
+  const isLine = series === 'growth';
   const rawMax = Math.max(...chartPoints.map((p) => p.value), 0);
   const rawMin = Math.min(...chartPoints.map((p) => p.value), 0);
   const axisTop = niceCeil(rawMax);
   const axisBottom = rawMin < 0 ? -niceCeil(-rawMin) : 0;
   const span = axisTop - axisBottom || 1;
   const zeroPct = ((0 - axisBottom) / span) * 100;
+
+  // Growth line in slot units: x is the centre of the day's slot, y is the
+  // running total as a percentage of the axis, flipped for SVG's downward y.
+  const linePath = chartPoints
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${i + 0.5} ${100 - (p.cumulative / span) * 100}`)
+    .join(' ');
 
   const ticks = Array.from({ length: TICK_COUNT + 1 }, (_, i) => {
     const value = axisBottom + (span / TICK_COUNT) * i;
@@ -331,7 +353,7 @@ export default function AdminAnalyticsPage() {
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
             <div>
               <h2 className="font-display font-semibold text-lg">
-                Daily {series === 'revenue' ? 'Revenue' : 'Profit'}
+                {series === 'growth' ? 'Revenue Growth' : `Daily ${series === 'revenue' ? 'Revenue' : 'Profit'}`}
               </h2>
               <p className="text-xs text-text-muted mt-0.5">
                 {formatShortDate(data.period.since)}{' '}&mdash;{' '}Today
@@ -340,14 +362,16 @@ export default function AdminAnalyticsPage() {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="font-display text-lg font-bold">
-                  {series === 'revenue'
-                    ? formatPrice(summary.totalRevenue)
-                    : hasProfit ? formatPrice(summary.netProfit) : '—'}
+                  {series === 'profit'
+                    ? hasProfit ? formatPrice(summary.netProfit) : '—'
+                    : formatPrice(summary.totalRevenue)}
                 </p>
                 <p className="text-xs text-text-muted">
-                  {series === 'revenue'
-                    ? `${summary.paidOrders} paid order${summary.paidOrders === 1 ? '' : 's'}`
-                    : `${summary.costedOrders} costed order${summary.costedOrders === 1 ? '' : 's'}`}
+                  {series === 'profit'
+                    ? `${summary.costedOrders} costed order${summary.costedOrders === 1 ? '' : 's'}`
+                    : series === 'growth'
+                      ? 'cumulative, paid orders'
+                      : `${summary.paidOrders} paid order${summary.paidOrders === 1 ? '' : 's'}`}
                 </p>
               </div>
               {/* Series toggle rather than a second chart — same axes, same
@@ -409,6 +433,39 @@ export default function AdminAnalyticsPage() {
                     />
                   ))}
 
+                  {/* The growth line. One SVG unit per day horizontally and
+                      0–100 vertically, so the same slot maths as the bars
+                      places the hover dot; the stroke is non-scaling so the
+                      stretched viewBox does not fatten it sideways. */}
+                  {isLine && chartPoints.length > 1 && (
+                    <svg
+                      key={`line-${days}`}
+                      className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
+                      viewBox={`0 0 ${chartPoints.length} 100`}
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                    >
+                      <defs>
+                        <linearGradient id="growth-fill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.18" />
+                          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <path d={`${linePath} L ${chartPoints.length - 0.5} 100 L 0.5 100 Z`} fill="url(#growth-fill)" className="chart-area-fade" />
+                      <path
+                        d={linePath}
+                        fill="none"
+                        stroke="var(--color-primary)"
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                        pathLength={1}
+                        className="chart-line-draw"
+                      />
+                    </svg>
+                  )}
+
                   {/* Bars. The key is what replays the grow-in animation:
                       remounting on a series or period change restarts the CSS
                       keyframes, which a plain class toggle would not. */}
@@ -433,7 +490,17 @@ export default function AdminAnalyticsPage() {
                               isHovered ? 'bg-surface-elevated' : 'bg-transparent'
                             )}
                           />
-                          {point.value !== 0 && (
+                          {isLine ? (
+                            isHovered && (
+                              <>
+                                <div className="absolute inset-y-0 left-1/2 w-px bg-primary/30" />
+                                <div
+                                  className="absolute left-1/2 w-2.5 h-2.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-primary ring-2 ring-surface"
+                                  style={{ bottom: `${heightPct}%` }}
+                                />
+                              </>
+                            )
+                          ) : point.value !== 0 && (
                             <div
                               className={cn(
                                 'absolute inset-x-0 sm:inset-x-[1px] rounded-t-[2px] transition-colors chart-bar-rise',
@@ -456,11 +523,14 @@ export default function AdminAnalyticsPage() {
                             <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
                               <div className="bg-primary text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
                                 <p className="font-semibold">{formatFullDate(point.date)}</p>
-                                <p className="mt-1">
-                                  Revenue {formatPrice(point.revenue)} &middot; {point.orders} order
+                                {isLine && (
+                                  <p className="mt-1">Total to date {formatPrice(point.cumulative)}</p>
+                                )}
+                                <p className={isLine ? 'opacity-80' : 'mt-1'}>
+                                  {isLine ? 'That day' : 'Revenue'} {formatPrice(point.revenue)} &middot; {point.orders} order
                                   {point.orders !== 1 ? 's' : ''}
                                 </p>
-                                {point.costedRevenue > 0 && (
+                                {!isLine && point.costedRevenue > 0 && (
                                   <p className="opacity-80">
                                     Profit {formatPrice(point.profit)} on {formatPrice(point.costedRevenue)} costed
                                   </p>
@@ -498,6 +568,13 @@ export default function AdminAnalyticsPage() {
                   </div>
                 ))}
               </div>
+
+              {series === 'growth' && (
+                <p className="text-xs text-text-muted mt-4 pt-4 border-t border-border">
+                  Running total of paid revenue. The line always rises — read the slope: steeper means
+                  faster sales.
+                </p>
+              )}
 
               {series === 'profit' && summary.uncostedOrders > 0 && (
                 <p className="text-xs text-text-muted mt-4 pt-4 border-t border-border">

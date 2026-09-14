@@ -150,8 +150,28 @@ h1, h2, h3, h4, h5, h6 {
 .chart-bar-rise {
   animation: chart-bar-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+/* The growth line draws itself left to right (pathLength=1 on the path, so
+   the dash is the whole line regardless of its real length), then the area
+   under it fades in behind. */
+@keyframes chart-line-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.chart-line-draw {
+  stroke-dasharray: 1;
+  animation: chart-line-draw 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes chart-area-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.chart-area-fade {
+  animation: chart-area-fade 0.6s ease-out 0.5s both;
+}
 @media (prefers-reduced-motion: reduce) {
-  .chart-bar-rise {
+  .chart-bar-rise,
+  .chart-line-draw,
+  .chart-area-fade {
     animation: none;
   }
 
