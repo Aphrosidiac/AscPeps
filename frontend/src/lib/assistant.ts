@@ -10,6 +10,24 @@ const BASE = `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/v1/admin/assistant`;
 const http = axios.create({ baseURL: BASE, timeout: 30_000 });
 const auth = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
 
+function onUnauthorized() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('ascend-admin-token');
+  if (window.location.pathname.startsWith('/admin')) window.location.href = '/admin/login';
+}
+
+// Same rule as api.ts: an expired or invalid admin token sends you to the
+// login page instead of leaving an "Unauthorized" toast over an empty page —
+// which is what a three-day-old token in the browser produced the first time
+// this page was opened in a real Chrome.
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) onUnauthorized();
+    return Promise.reject(error);
+  }
+);
+
 export type ThreadKind = 'chat' | 'whatsapp' | 'reflect' | 'digest';
 
 export interface Thread {
@@ -175,6 +193,12 @@ export function streamEvents(
           headers: { Authorization: `Bearer ${token}` },
           signal: ctrl.signal,
         });
+        if (res.status === 401) {
+          closed = true;
+          onUnauthorized();
+          onEnd('closed');
+          return;
+        }
         if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
         attempt = 0;
         const reader = res.body.getReader();
