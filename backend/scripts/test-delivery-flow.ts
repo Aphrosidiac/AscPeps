@@ -11,7 +11,7 @@
 import Fastify from 'fastify';
 import prismaPlugin from '../src/plugins/prisma.js';
 import { getTool } from '../src/modules/ai-agent/registry.js';
-import type { ToolContext } from '../src/modules/ai-agent/tool-kit.js';
+import { unwrap, type ToolContext } from '../src/modules/ai-agent/tool-kit.js';
 import { toMytParts } from '../src/utils/delivery-slots.js';
 
 const fastify = Fastify({ logger: false });
@@ -22,7 +22,7 @@ const ctx: ToolContext = {
   actor: { phone: '0123456789', name: 'Delivery Test', canWrite: true },
   revalidate: () => {},
 };
-const run = (tool: string, input: any) => getTool(tool)!.run(ctx, input);
+const run = (tool: string, input: any) => getTool(tool)!.run(ctx, input).then(unwrap);
 
 let pass = 0, fail = 0;
 const failures: string[] = [];

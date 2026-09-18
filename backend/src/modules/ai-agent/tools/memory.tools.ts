@@ -1,4 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
+import { audited } from '../tool-kit.js';
 import { appendToBlock, memoryBlockKeys, replaceBlock } from '../memory.js';
 
 /**
@@ -37,18 +38,24 @@ export const memoryTools: AgentTool[] = [
     },
     write: true,
     run: async (ctx, input) => {
-      const result = await appendToBlock(
-        ctx.prisma,
-        String(input.block ?? '').trim().toLowerCase(),
-        String(input.fact ?? ''),
-        ctx.actor.name
+      const key = String(input.block ?? '').trim().toLowerCase();
+      const was = await ctx.prisma.memoryBlock.findUnique({ where: { key }, select: { content: true, updatedBy: true } });
+      const result = await appendToBlock(ctx.prisma, key, String(input.fact ?? ''), ctx.actor.name);
+      return audited(
+        {
+          ...result,
+          // The model tends to narrate a write it did not verify. Handing back
+          // the block's new content gives it something true to report.
+          remembered: true,
+        },
+        { content: was?.content ?? '', updatedBy: was?.updatedBy ?? 'seed' },
+        { content: result.content }
       );
-      return {
-        ...result,
-        // The model tends to narrate a write it did not verify. Handing back
-        // the block's new content gives it something true to report.
-        remembered: true,
-      };
+    },
+    undo: async (ctx, { input, before }) => {
+      const b = before as { content: string; updatedBy: string };
+      await ctx.prisma.memoryBlock.update({ where: { key: String(input.block).trim().toLowerCase() }, data: { content: b.content, updatedBy: b.updatedBy } });
+      return `Memory block "${input.block}" restored to what it held before`;
     },
   },
   {
@@ -69,13 +76,15 @@ export const memoryTools: AgentTool[] = [
     },
     write: true,
     run: async (ctx, input) => {
-      const result = await replaceBlock(
-        ctx.prisma,
-        String(input.block ?? '').trim().toLowerCase(),
-        String(input.content ?? ''),
-        ctx.actor.name
-      );
-      return { ...result, replaced: true };
+      const key = String(input.block ?? '').trim().toLowerCase();
+      const was = await ctx.prisma.memoryBlock.findUnique({ where: { key }, select: { content: true, updatedBy: true } });
+      const result = await replaceBlock(ctx.prisma, key, String(input.content ?? ''), ctx.actor.name);
+      return audited({ ...result, replaced: true }, { content: was?.content ?? '', updatedBy: was?.updatedBy ?? 'seed' }, { content: result.content });
+    },
+    undo: async (ctx, { input, before }) => {
+      const b = before as { content: string; updatedBy: string };
+      await ctx.prisma.memoryBlock.update({ where: { key: String(input.block).trim().toLowerCase() }, data: { content: b.content, updatedBy: b.updatedBy } });
+      return `Memory block "${input.block}" restored to what it held before`;
     },
   },
   {

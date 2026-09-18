@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { AgentTool } from './tool-kit.js';
 import { CORE_TOOL_NAMES, DOMAINS, type Domain } from './domains.js';
 import { catalogTools } from './tools/catalog.tools.js';
@@ -100,4 +101,64 @@ const seen = new Set<string>();
 for (const t of ALL_TOOLS) {
   if (seen.has(t.name)) throw new Error(`Duplicate agent tool name: ${t.name}`);
   seen.add(t.name);
+}
+
+// ---------------------------------------------------------------- validation
+//
+// Tool inputs used to reach `run` exactly as the model wrote them, and every
+// tool re-checked its own arguments by hand (or did not). The schemas are
+// already there — they are what the model is shown — so they are compiled
+// once here and every call is checked against them before a tool sees it. A
+// call that fails becomes an error result naming the field, which the model
+// corrects on its next step; two steps in a row of that hand the turn to the
+// escalation model (see core/run.ts).
+//
+// A schema zod cannot express is a schema that simply is not enforced — the
+// tool still runs, as it always did — and the name is logged at boot so it can
+// be fixed rather than silently skipped.
+const validators = new Map<string, z.ZodTypeAny>();
+export const UNVALIDATED_TOOLS: string[] = [];
+for (const t of ALL_TOOLS) {
+  try {
+    validators.set(t.name, z.fromJSONSchema(t.input_schema as any));
+  } catch {
+    UNVALIDATED_TOOLS.push(t.name);
+  }
+}
+
+export interface ValidationOutcome {
+  ok: boolean;
+  value: unknown;
+  error?: string;
+}
+
+// A model that writes `"limit": "5"` or `"active": "true"` meant the number
+// and the boolean; bouncing the whole call for that would be pedantry paid
+// for in latency. Top-level scalars are nudged to the declared type before
+// validation — anything deeper, or anything that does not parse cleanly, is
+// left for the schema to reject.
+function coerceScalars(schema: Record<string, any>, input: Record<string, unknown>): Record<string, unknown> {
+  const props = schema?.properties;
+  if (!props || typeof props !== 'object') return input;
+  const out: Record<string, unknown> = { ...input };
+  for (const [k, v] of Object.entries(out)) {
+    const want = props[k]?.type;
+    if (typeof v !== 'string') continue;
+    if ((want === 'number' || want === 'integer') && /^-?\d+(\.\d+)?$/.test(v.trim())) out[k] = Number(v);
+    else if (want === 'boolean' && /^(true|false)$/i.test(v.trim())) out[k] = v.trim().toLowerCase() === 'true';
+  }
+  return out;
+}
+
+export function validateToolInput(name: string, input: unknown): ValidationOutcome {
+  const schema = validators.get(name);
+  const tool = byName.get(name);
+  const raw = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  const value = tool ? coerceScalars(tool.input_schema, raw) : raw;
+  if (!schema) return { ok: true, value };
+  const parsed = schema.safeParse(value);
+  if (parsed.success) return { ok: true, value: parsed.data };
+  const issue = parsed.error.issues[0];
+  const at = issue?.path?.length ? ` at "${issue.path.join('.')}"` : '';
+  return { ok: false, value, error: `Invalid arguments${at}: ${issue?.message ?? 'schema mismatch'}. Read the tool's schema and call it again with exactly the fields it defines.` };
 }

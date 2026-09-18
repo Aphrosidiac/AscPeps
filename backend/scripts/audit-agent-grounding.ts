@@ -10,15 +10,16 @@
  * from fixtures. A guard that cries wolf gets switched off, so this number
  * decides whether `enforce` is safe.
  *
- * After rollout it is a monitor. `agent_messages` and `agent_tool_calls`
+ * After rollout it is a monitor. `agent_messages` and `agent_actions`
  * already record what was asked, what ran and what was said, so the next NEW
  * failure class is visible here the day it appears — instead of on the day an
  * operator happens to notice and push back, which for the two incidents this
  * guard was built from took three minutes and twelve days respectively.
  *
  * KNOWN LIMITATION, and it only ever errs toward over-reporting: the audit
- * table truncates `result` at 2000 characters (runTool, agent.service.ts) while
- * the model itself was given up to 6000. A turn whose payload was clipped may
+ * transcript stores tool results in full since the move to agent_messages JSON
+ * rows (2026-09-18); rows migrated from the old audit table were truncated at
+ * 2000 characters while the model was given up to 6000, so a clipped turn may
  * show facts as ungrounded that the model could legitimately see. Those turns
  * are counted and reported separately rather than silently mixed in.
  */
@@ -28,13 +29,10 @@ import { checkGrounding, type ToolResultRecord } from '../src/modules/ai-agent/g
 
 const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL!) });
 
-/** Matches the truncation cap in runTool's audit write. */
-const AUDIT_RESULT_CAP = 2000;
-
 const days = parseInt(process.argv[2] || '30', 10);
 
 interface Turn {
-  conversation: string;
+  thread: string;
   at: Date;
   operatorText: string;
   reply: string;
@@ -43,57 +41,61 @@ interface Turn {
   clipped: boolean;
 }
 
+interface Row {
+  seq: number;
+  role: string;
+  content: any;
+  actorPhone: string | null;
+  actorName: string | null;
+  createdAt: Date;
+}
+
+// A turn runs from a user row to the next FINAL assistant row — one with text
+// and no tool calls, not a draft the guard sent back. Everything in between
+// is the evidence the reply was written from: tool rows carry the results in
+// full, serialised the way the model saw them (core/run.ts caps each at 6000
+// characters on both sides). Rows migrated from the old audit table were
+// truncated at 2000 and are marked clipped, since they may over-report.
 async function collectTurns(): Promise<Turn[]> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-  const conversations = await prisma.agentConversation.findMany({ select: { id: true, title: true } });
+  const threads = await prisma.agentThread.findMany({ where: { kind: { in: ['whatsapp', 'chat'] } }, select: { id: true, title: true } });
   const turns: Turn[] = [];
 
-  for (const convo of conversations) {
-    const messages = await prisma.agentMessage.findMany({
-      where: { conversationId: convo.id, createdAt: { gte: since } },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    });
-    const calls = await prisma.agentToolCall.findMany({
-      where: { conversationId: convo.id, createdAt: { gte: since } },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      if (msg.role !== 'assistant') continue;
-
-      // The turn opens at the most recent user message before this reply. Tool
-      // calls in that window are the evidence the reply was written from.
-      let opened = new Date(msg.createdAt.getTime() - 120_000);
-      let operatorText = '';
-      const trustedContext: string[] = [];
-      for (let j = i - 1; j >= 0; j--) {
-        if (messages[j].role === 'user') {
-          opened = messages[j].createdAt;
-          operatorText = messages[j].content;
-          // The system prompt names the operator and their number, so the
-          // agent knows both without a tool call. Mirrors what handleMessage
-          // passes as trustedContext at runtime.
-          if (messages[j].senderPhone) trustedContext.push(messages[j].senderPhone!);
-          if (messages[j].senderName) trustedContext.push(messages[j].senderName!);
-          break;
+  for (const thread of threads) {
+    const rows: Row[] = await prisma.agentMessage.findMany({ where: { threadId: thread.id }, orderBy: { seq: 'asc' } });
+    // Turns from before the transcript carried tool rows: the old audit table
+    // migrated into agent_actions with no call id, so those are matched to
+    // their turn by time, exactly as this script always did.
+    const legacy = await prisma.agentAction.findMany({ where: { threadId: thread.id, callId: null, status: { in: ['done', 'failed'] } }, orderBy: { createdAt: 'asc' } });
+    let open: { operatorText: string; trustedContext: string[]; tools: ToolResultRecord[]; clipped: boolean; at: Date } | null = null;
+    for (const r of rows) {
+      const c = r.content ?? {};
+      if (r.role === 'user') {
+        open = { operatorText: String(c.text ?? ''), trustedContext: [r.actorPhone, r.actorName].filter(Boolean) as string[], tools: [], clipped: false, at: r.createdAt };
+      } else if (r.role === 'tool' && open) {
+        for (const t of c.toolResults ?? []) {
+          if (t.name === 'load_context') continue;
+          const serialised = JSON.stringify(t.output);
+          open.tools.push({ tool: t.name, result: serialised.length > 6000 ? serialised.slice(0, 6000) : serialised });
+          if (t.output && typeof t.output === 'object' && 'raw' in t.output) open.clipped = true;
         }
+      } else if (r.role === 'assistant' && open && c.text && !c.toolCalls?.length && !c.retracted) {
+        if (!open.tools.length && legacy.length) {
+          const from = open.at.getTime();
+          const to = r.createdAt.getTime();
+          for (const l of legacy) {
+            const t = l.createdAt.getTime();
+            if (t < from || t > to) continue;
+            const serialised = JSON.stringify(l.output ?? { error: l.error });
+            open.tools.push({ tool: l.tool, result: serialised });
+            if (l.output && typeof l.output === 'object' && 'raw' in (l.output as object)) open.clipped = true;
+          }
+        }
+        if (r.createdAt >= since) turns.push({ ...open, thread: thread.title, at: r.createdAt, reply: String(c.text) });
+        open = null;
       }
-
-      const window = calls.filter((c) => c.createdAt >= opened && c.createdAt <= msg.createdAt);
-      turns.push({
-        conversation: convo.title,
-        at: msg.createdAt,
-        operatorText,
-        reply: msg.content,
-        tools: window.map((c) => ({ tool: c.toolName, result: c.result })),
-        trustedContext,
-        clipped: window.some((c) => c.result.length >= AUDIT_RESULT_CAP),
-      });
     }
   }
-
   return turns.sort((a, b) => a.at.getTime() - b.at.getTime());
 }
 
@@ -126,7 +128,7 @@ async function main() {
 
     console.log(`${'-'.repeat(74)}`);
     console.log(
-      `${kl(turn.at)}  ${turn.conversation}${turn.clipped ? '  \x1b[33m[payload clipped in audit — may over-report]\x1b[0m' : ''}`
+      `${kl(turn.at)}  ${turn.thread}${turn.clipped ? '  \x1b[33m[payload clipped in audit — may over-report]\x1b[0m' : ''}`
     );
     console.log(`  operator: ${turn.operatorText.replace(/\n/g, ' ').slice(0, 90)}`);
     console.log(`  tools:    ${verdict.toolsRan.join(', ') || '\x1b[31mNONE\x1b[0m'}`);

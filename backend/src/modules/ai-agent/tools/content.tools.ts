@@ -1,5 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
-import { clampLimit, money, parseDate, rm, toCents, truncate } from '../tool-kit.js';
+import { audited, clampLimit, money, parseDate, rm, toCents, truncate } from '../tool-kit.js';
 import {
   adminCreateInsight,
   adminDeleteInsight,
@@ -146,9 +146,20 @@ export const contentTools: AgentTool[] = [
     run: async ({ fastify, revalidate }, input) => {
       const { insightId, ...body } = input;
       if (!Object.keys(body).length) throw new Error('Nothing to update — pass at least one field.');
+      const fields = Object.keys(body).filter((k) => k !== 'relatedProductIds');
+      const was = await fastify.prisma.insight.findUnique({ where: { id: insightId } });
+      if (!was) throw new Error(`No article with id ${insightId}.`);
       const i: any = await adminUpdateInsight(fastify, insightId, body);
       revalidate(['insights']);
-      return { insightId: i.id, title: i.title, published: i.published, changed: Object.keys(body) };
+      const pick = (o: any) => Object.fromEntries(fields.map((k) => [k, o[k]]));
+      // Related products go through the controller's own relation handling
+      // and are not part of the undo record; every scalar field is.
+      return audited({ insightId: i.id, title: i.title, published: i.published, changed: Object.keys(body) }, fields.length ? pick(was) : undefined, fields.length ? pick(i) : undefined);
+    },
+    undo: async ({ fastify, revalidate }, { input, before }) => {
+      const i: any = await adminUpdateInsight(fastify, input.insightId, before);
+      revalidate(['insights']);
+      return `Article "${i.title}" restored: ${Object.keys(before).join(', ')}`;
     },
   },
 
@@ -269,8 +280,18 @@ export const contentTools: AgentTool[] = [
       if (input.expiresAt !== undefined) data.expiresAt = parseDate(input.expiresAt, true);
       if (input.description !== undefined) data.description = input.description;
       if (!Object.keys(data).length) throw new Error('Nothing to update — pass at least one field.');
+      const was = await prisma.discountCode.findUnique({ where: { id: input.discountId } });
+      if (!was) throw new Error(`No discount code with id ${input.discountId}.`);
       const d = await prisma.discountCode.update({ where: { id: input.discountId }, data });
-      return { discountId: d.id, code: d.code, active: d.isActive, expiresAt: d.expiresAt };
+      const fields = Object.keys(data);
+      const pick = (o: any) => Object.fromEntries(fields.map((k) => [k, o[k]]));
+      return audited({ discountId: d.id, code: d.code, active: d.isActive, expiresAt: d.expiresAt, changed: fields }, pick(was), pick(d));
+    },
+    undo: async ({ prisma }, { input, before }) => {
+      const b = { ...(before as Record<string, unknown>) };
+      if (typeof b.expiresAt === 'string') b.expiresAt = new Date(b.expiresAt);
+      const d = await prisma.discountCode.update({ where: { id: input.discountId }, data: b });
+      return `Discount ${d.code} restored: ${Object.keys(b).join(', ')}`;
     },
   },
 

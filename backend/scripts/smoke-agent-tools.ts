@@ -14,7 +14,7 @@
 import Fastify from 'fastify';
 import prismaPlugin from '../src/plugins/prisma.js';
 import { ALL_TOOLS, getTool } from '../src/modules/ai-agent/registry.js';
-import type { ToolContext } from '../src/modules/ai-agent/tool-kit.js';
+import { unwrap, type ToolContext } from '../src/modules/ai-agent/tool-kit.js';
 
 const fastify = Fastify({ logger: false });
 await fastify.register(prismaPlugin);
@@ -79,7 +79,7 @@ for (const tool of ALL_TOOLS) {
     continue;
   }
   try {
-    const result = await getTool(tool.name)!.run(ctx, input);
+    const result = unwrap(await getTool(tool.name)!.run(ctx, input));
     // Serialization is part of the contract: the result is JSON.stringify'd
     // into the model's context, and a stray BigInt from a raw aggregate throws
     // there rather than here if it isn't checked.

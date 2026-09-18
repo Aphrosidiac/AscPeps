@@ -80,7 +80,11 @@ partner_funding(id, "partnerId", type, amount, "occurredAt", description,
 partner_repayments(id, "fundingId", amount, "occurredAt")
 profit_payouts(id, "partnerId", amount, "occurredAt")
 
-agent_tool_calls(id, "actorPhone", "toolName", ok, destructive, "createdAt")
+agent_threads(id, kind, title, "chatKey", model, "costUsd", turns, "lastMessageAt")
+       -- kind: chat|whatsapp|reflect|digest
+agent_messages(id, "threadId", seq, role, content jsonb, "actorName", "createdAt")
+agent_actions(id, "threadId", tool, tier, status, summary, ok, "actorName", "createdAt")
+       -- tier: read|write|destructive; status: done|pending|declined|undone|failed|expired
 
 Postgres. Identifiers are camelCase and MUST be double-quoted.
 `.trim();
@@ -403,20 +407,24 @@ export const reportTools: AgentTool[] = [
     run: async ({ prisma }, input) => {
       const where: any = {};
       if (input.failedOnly) where.ok = false;
-      if (input.toolName) where.toolName = input.toolName;
-      const rows = await prisma.agentToolCall.findMany({
+      if (input.toolName) where.tool = input.toolName;
+      const rows = await prisma.agentAction.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         take: clampLimit(input.limit, 25),
+        include: { thread: { select: { title: true, kind: true } } },
       });
-      return rows.map((r) => ({
+      return rows.map((r: (typeof rows)[number]) => ({
         at: r.createdAt,
-        tool: r.toolName,
-        by: r.actorPhone,
+        tool: r.tool,
+        tier: r.tier,
+        status: r.status,
+        by: r.actorName ?? r.actorPhone,
+        where: r.thread.title,
         ok: r.ok,
-        destructive: r.destructive,
-        durationMs: r.durationMs,
-        result: truncate(r.result, 200),
+        durationMs: r.latencyMs,
+        summary: r.summary,
+        result: truncate(JSON.stringify(r.output ?? r.error ?? null), 200),
       }));
     },
   },

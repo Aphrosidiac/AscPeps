@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { Animate } from '@/components/ui/Animate';
 import { PageHeader } from '@/components/admin/ui';
@@ -22,7 +23,6 @@ import {
 } from 'lucide-react';
 import {
   adminAgentBindSender,
-  adminAgentConversation,
   adminAgentConversations,
   adminAgentDismissSender,
   adminAgentDeleteOperator,
@@ -70,8 +70,14 @@ interface GroupRow {
 
 interface ToolCall {
   id: string;
+  threadId: string;
+  threadTitle: string;
   toolName: string;
-  actorPhone: string;
+  tier: 'read' | 'write' | 'destructive';
+  status: string;
+  summary: string | null;
+  actorPhone: string | null;
+  actorName: string | null;
   ok: boolean;
   destructive: boolean;
   durationMs: number;
@@ -86,6 +92,7 @@ interface Conversation {
   title: string;
   messageCount: number;
   lastMessageAt: string;
+  costUsd: number;
 }
 
 interface UnknownSender {
@@ -96,18 +103,6 @@ interface UnknownSender {
   lastMessage: string | null;
   messageCount: number;
   lastSeenAt: string;
-}
-
-interface ConversationMessage {
-  id: string;
-  role: string;
-  content: string;
-  senderName: string | null;
-  createdAt: string;
-}
-
-interface ConversationDetail extends Conversation {
-  messages: ConversationMessage[];
 }
 
 // Axios rejects with an error carrying the server's JSON body; this is the
@@ -144,7 +139,6 @@ export default function AgentPage() {
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [openConversation, setOpenConversation] = useState<ConversationDetail | null>(null);
   const [unknown, setUnknown] = useState<UnknownSender[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [newOp, setNewOp] = useState({ phone: '', name: '', canWrite: true });
@@ -226,8 +220,8 @@ export default function AgentPage() {
     <div className="space-y-8">
       <PageHeader
         icon={Bot}
-        title="WhatsApp Agent"
-        subtitle="An admin assistant on WhatsApp. It can do anything you can do in this dashboard."
+        title="WhatsApp link"
+        subtitle="The assistant's phone number: who may command it, where, and the pairing. Its conversations live on the Assistant page."
         actions={<Button variant="outline" onClick={refresh}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
         className="mb-0"
       />
@@ -613,7 +607,9 @@ export default function AgentPage() {
                 style={{ animationDelay: `${Math.min(i * 25, 300)}ms` }}
                 className="row-rise flex items-start gap-2 rounded-lg bg-surface-elevated px-3 py-2 text-sm transition-colors hover:bg-border/40"
               >
-                {t.ok ? (
+                {t.status === 'pending' ? (
+                  <Loader2 className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                ) : t.ok ? (
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 ) : (
                   <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
@@ -621,13 +617,14 @@ export default function AgentPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="text-text-primary">{t.toolName}</code>
-                    {t.destructive && (
-                      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">confirmed</span>
+                    {t.tier !== 'read' && (
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase ${t.tier === 'destructive' ? 'bg-red-50 text-danger' : 'bg-amber-50 text-amber-700'}`}>{t.status === 'done' ? t.tier : t.status}</span>
                     )}
-                    <span className="text-xs text-text-muted">{t.actorPhone}</span>
+                    <span className="text-xs text-text-muted">{t.actorName ?? t.actorPhone}</span>
                     <span className="text-xs text-text-muted">{t.durationMs}ms</span>
                   </div>
-                  {!t.ok && <p className="mt-0.5 truncate text-xs text-danger">{t.result}</p>}
+                  {t.summary && <p className="mt-0.5 truncate text-xs text-text-secondary">{t.summary}</p>}
+                  {!t.ok && t.status !== 'pending' && <p className="mt-0.5 truncate text-xs text-danger">{t.result}</p>}
                 </div>
                 <span className="shrink-0 text-xs text-text-muted">
                   {new Date(t.createdAt).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}
@@ -642,27 +639,25 @@ export default function AgentPage() {
           <h2 className="flex items-center gap-2 text-lg font-medium text-text-primary">
             <MessageSquare className="h-5 w-5" /> Conversations
           </h2>
-          <p className="mt-1 text-sm text-text-secondary">Click one to read the thread.</p>
+          <p className="mt-1 text-sm text-text-secondary">Each opens in the Assistant, with every tool call and its result.</p>
           <div className="mt-4 max-h-96 space-y-1.5 overflow-y-auto">
             {conversations.map((c, i) => (
-              <button
+              <Link
                 key={c.id}
-                onClick={() => {
-                  adminAgentConversation(token, c.id).then(setOpenConversation).catch(() => {});
-                }}
+                href={`/admin/assistant/${c.id}`}
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
                 className="row-rise flex w-full items-center justify-between rounded-lg bg-surface-elevated px-3 py-2 text-left text-sm transition-colors hover:bg-border"
               >
                 <div className="min-w-0">
                   <p className="truncate text-text-primary">{c.title}</p>
                   <p className="text-xs text-text-muted">
-                    {c.kind} · {c.messageCount} messages
+                    {c.kind} · {c.messageCount} messages · ${c.costUsd.toFixed(2)}
                   </p>
                 </div>
                 <span className="shrink-0 text-xs text-text-muted">
                   {new Date(c.lastMessageAt).toLocaleDateString('en-MY')}
                 </span>
-              </button>
+              </Link>
             ))}
             {!conversations.length && <p className="py-6 text-center text-sm text-text-muted">Nothing yet.</p>}
           </div>
@@ -670,41 +665,6 @@ export default function AgentPage() {
       </div>
       </Animate>
 
-      {openConversation && (
-        <div
-          className="dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setOpenConversation(null)}
-        >
-          <div
-            className="dialog-panel max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-surface p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-medium text-text-primary">{openConversation.title}</h3>
-              <button onClick={() => setOpenConversation(null)} className="text-text-muted hover:text-text-primary">
-                ✕
-              </button>
-            </div>
-            <div className="space-y-3">
-              {openConversation.messages?.map((m, i) => (
-                <div
-                  key={m.id}
-                  style={{ animationDelay: `${Math.min(i * 30, 400)}ms` }}
-                  className={`row-rise rounded-lg px-3 py-2 text-sm ${
-                    m.role === 'assistant' ? 'bg-surface-elevated text-text-primary' : 'bg-surface-elevated text-text-primary'
-                  }`}
-                >
-                  <p className="mb-1 text-xs text-text-muted">
-                    {m.role === 'assistant' ? 'Agent' : (m.senderName ?? 'Operator')} ·{' '}
-                    {new Date(m.createdAt).toLocaleString('en-MY')}
-                  </p>
-                  <p className="whitespace-pre-line">{m.content}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

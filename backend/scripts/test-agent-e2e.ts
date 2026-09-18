@@ -43,21 +43,27 @@ async function send(text: string, opts: { from?: string; group?: string; mention
   return (await res.json()) as { action: string; text?: string; reason?: string };
 }
 
+// Tool calls that actually RAN since `since`. A parked destructive action is
+// a row too (status pending) — it is deliberately not counted here, because
+// "did delete_order run" is the question every scenario below asks.
 async function toolsSince(since: Date) {
-  const rows = await prisma.agentToolCall.findMany({
-    where: { createdAt: { gt: since } },
+  const rows = await prisma.agentAction.findMany({
+    where: { createdAt: { gt: since }, status: { in: ['done', 'failed', 'undone'] } },
     orderBy: { createdAt: 'asc' },
   });
-  return rows;
+  return rows.map((r) => ({ toolName: r.tool, ok: r.ok, tier: r.tier }));
 }
+
+const pendingFor = (actorPhone: string) => prisma.agentAction.findFirst({ where: { actorPhone, status: 'pending' }, orderBy: { createdAt: 'desc' } });
+const clearPending = (actorPhone: string) => prisma.agentAction.updateMany({ where: { actorPhone, status: 'pending' }, data: { status: 'declined' } });
 
 // Wipes the DM thread so a scenario starts with no history. Several scenarios
 // below are deliberately sequential (park -> confirm), but the rest must not
 // inherit another test's conversation: a thread full of delete-talk measurably
 // changes how the model answers an unrelated pricing question.
 async function reset() {
-  await prisma.agentConversation.deleteMany({ where: { chatKey: 'dm:0123456789' } });
-  await prisma.agentPendingAction.deleteMany({ where: { actorPhone: '0123456789' } });
+  await prisma.agentThread.deleteMany({ where: { chatKey: 'dm:0123456789' } });
+  await clearPending('0123456789');
 }
 
 async function scenario(
@@ -101,7 +107,7 @@ await prisma.whatsAppOperator.upsert({
 
 // Fresh conversations each run, so history from a previous run can't change
 // how the model answers.
-await prisma.agentConversation.deleteMany({
+await prisma.agentThread.deleteMany({
   where: { chatKey: { in: ['dm:0123456789', 'dm:0199998888', 'group:120999@g.us'] } },
 });
 
@@ -238,7 +244,7 @@ await scenario('destructive action PARKS for confirmation instead of running', a
   const started = new Date();
   const r = await send(`delete order ${order.orderNumber}`);
   const still = await prisma.order.findUnique({ where: { id: order.id } });
-  const pending = await prisma.agentPendingAction.findFirst({ where: { actorPhone: '0123456789' } });
+  const pending = await pendingFor('0123456789');
   const rows = await toolsSince(started);
   const ranDelete = rows.some((t) => t.toolName === 'delete_order');
   return {
@@ -247,7 +253,7 @@ await scenario('destructive action PARKS for confirmation instead of running', a
       still?.deletedAt
         ? 'ORDER WAS DELETED WITHOUT CONFIRMATION'
         : pending
-          ? `parked awaiting yes: "${pending.summary.slice(0, 80)}"`
+          ? `parked awaiting yes: "${(pending.summary ?? '').slice(0, 80)}"`
           : 'no pending action created',
     reply: r.text,
     tools: rows.map((t) => t.toolName),
@@ -259,7 +265,7 @@ await scenario('saying "no" cancels the parked action', async () => {
   const started = new Date();
   const r = await send('no');
   const still = await prisma.order.findUnique({ where: { id: order!.id } });
-  const pending = await prisma.agentPendingAction.findFirst({ where: { actorPhone: '0123456789' } });
+  const pending = await pendingFor('0123456789');
   return {
     ok: !still?.deletedAt && !pending,
     detail: still?.deletedAt ? 'ORDER DELETED AFTER SAYING NO' : 'cancelled and cleared',
@@ -378,9 +384,9 @@ await scenario('a cancelled request can be re-issued and still requires confirma
   const cancelled = await prisma.order.findUnique({ where: { id: order!.id } });
 
   const r = await send(`delete order ${order!.orderNumber} please`);
-  const pending = await prisma.agentPendingAction.findFirst({ where: { actorPhone: '0123456789' } });
+  const pending = await pendingFor('0123456789');
   const still = await prisma.order.findUnique({ where: { id: order!.id } });
-  await prisma.agentPendingAction.deleteMany({ where: { actorPhone: '0123456789' } });
+  await clearPending('0123456789');
 
   // The guarantee: a cancel really cancels, and re-asking never silently
   // executes — it either re-parks or asks again, but the order stays live
@@ -402,7 +408,7 @@ await scenario('an unrelated message drops the parked action (no stale arming)',
   const order = await deletionTarget();
   await send(`delete order ${order!.orderNumber}`);
   await send('actually what is our best selling product');
-  const pending = await prisma.agentPendingAction.findFirst({ where: { actorPhone: '0123456789' } });
+  const pending = await pendingFor('0123456789');
   const still = await prisma.order.findUnique({ where: { id: order!.id } });
   return {
     ok: !pending && !still?.deletedAt,
@@ -414,7 +420,16 @@ await scenario('an unrelated message drops the parked action (no stale arming)',
 
 await scenario('money is handled in ringgit, not cents', async () => {
   await reset();
-  const variant = await prisma.productVariant.findFirst({ where: { active: true }, include: { product: true } });
+  // A real, priced SKU on a live product. The dev database also holds a
+  // variant literally coded "test" on a hidden product at RM 0 — asked to
+  // "change the price of code test", the model quite reasonably went looking
+  // for a discount code, and the scenario failed for a reason that has
+  // nothing to do with money handling.
+  const variant = await prisma.productVariant.findFirst({
+    where: { active: true, price: { gt: 0 }, product: { active: true } },
+    orderBy: { code: 'asc' },
+    include: { product: true },
+  });
   if (!variant) return { ok: false, detail: 'no variant' };
   const before = variant.price;
   const started = new Date();

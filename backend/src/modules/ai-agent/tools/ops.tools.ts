@@ -1,5 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
-import { clampLimit, truncate } from '../tool-kit.js';
+import { audited, clampLimit, truncate } from '../tool-kit.js';
 
 // Store settings, email outbox, and the agent's own operator/group allowlists.
 //
@@ -65,7 +65,15 @@ export const opsTools: AgentTool[] = [
         update: { value },
       });
       revalidate(['settings']);
-      return { key: row.key, from: before?.value ?? null, to: row.value };
+      return audited({ key: row.key, from: before?.value ?? null, to: row.value }, { value: before?.value ?? null }, { value: row.value });
+    },
+    undo: async ({ prisma, revalidate }, { input, before }) => {
+      const key = String(input.key).trim();
+      const b = before as { value: string | null };
+      if (b.value === null) await prisma.setting.deleteMany({ where: { key } });
+      else await prisma.setting.upsert({ where: { key }, create: { key, value: b.value }, update: { value: b.value } });
+      revalidate(['settings']);
+      return b.value === null ? `Setting "${key}" removed again` : `Setting "${key}" back to "${b.value}"`;
     },
   },
 

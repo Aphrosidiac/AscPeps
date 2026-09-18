@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Sparkles } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  // Second, not last: it can do everything below it, and it is where a
+  // question about any of it gets asked.
+  { href: '/admin/assistant', label: 'Assistant', icon: Sparkles },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/finance', label: 'Finance', icon: Wallet },
   // Beside Finance, not off with Settings: a document is almost always the
@@ -26,7 +29,7 @@ const navItems = [
   { href: '/admin/subscribers', label: 'Subscribers', icon: Users },
   { href: '/admin/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/admin/discounts', label: 'Discounts', icon: Tag },
-  { href: '/admin/agent', label: 'Agent', icon: Bot },
+  { href: '/admin/agent', label: 'WhatsApp', icon: Bot },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -104,7 +107,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
               style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               className={cn(
                 'row-rise flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                pathname === item.href
+                pathname === item.href || (item.href === '/admin/assistant' && pathname.startsWith('/admin/assistant/'))
                   ? 'bg-primary text-white'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated hover:translate-x-0.5'
               )}

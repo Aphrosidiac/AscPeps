@@ -5,6 +5,9 @@ import type { PrismaClient } from '@prisma/client';
 // before a single token is spent on the model — an unknown sender never
 // reaches a tool, or an LLM call, at all.
 export interface AgentActor {
+  // Digits-only for a WhatsApp operator. EMPTY for an admin on the dashboard,
+  // who has no number the agent could address — tools that want to reach
+  // "me" over WhatsApp must check for that and ask for an operator instead.
   phone: string;
   name: string;
   canWrite: boolean;
@@ -12,11 +15,50 @@ export interface AgentActor {
 
 /** Where a conversation is happening — see ToolContext.origin. */
 export interface ChatOrigin {
-  kind: 'dm' | 'group';
-  /** AgentConversation.chatKey: "dm:0123456789" or "group:120…@g.us". */
+  kind: 'dm' | 'group' | 'web';
+  /** AgentThread.chatKey: "dm:0123456789" or "group:120…@g.us"; "web:<threadId>" on the dashboard. */
   chatKey: string;
-  /** How it reads to a human: "this group — Ops" / "your DM". */
+  /** How it reads to a human: "this group — Ops" / "your DM" / "the dashboard". */
   label: string;
+}
+
+// What a tool is allowed to do, and therefore how the harness treats a call.
+//
+//   read        — runs freely, in parallel with other reads.
+//   write       — runs, is recorded with before/after, can be undone when the
+//                 tool says how.
+//   destructive — hard to undo (deletes, money, mail to real customers, many
+//                 rows at once): parks for the operator's explicit yes first.
+export type Tier = 'read' | 'write' | 'destructive';
+
+export function tierOf(tool: Pick<AgentTool, 'write' | 'destructive'>): Tier {
+  if (tool.destructive) return 'destructive';
+  if (tool.write) return 'write';
+  return 'read';
+}
+
+// What a write tool hands back when it wants its change to be reversible: the
+// result the model reads, plus the before/after the audit keeps and undo
+// needs. Plain results are still fine — they are audited, just not undoable.
+export interface Audited {
+  result: unknown;
+  before?: unknown;
+  after?: unknown;
+}
+
+const AUDITED = Symbol('audited');
+
+export function audited(result: unknown, before?: unknown, after?: unknown): Audited {
+  return { result, before, after, [AUDITED]: true } as Audited;
+}
+
+export function isAudited(v: unknown): v is Audited {
+  return !!v && typeof v === 'object' && (v as Record<symbol, unknown>)[AUDITED] === true;
+}
+
+/** The model-facing result, whether or not the tool wrapped it in audited(). */
+export function unwrap(v: unknown): unknown {
+  return isAudited(v) ? v.result : v;
 }
 
 export interface ToolContext {
@@ -34,7 +76,7 @@ export interface ToolContext {
   prisma: PrismaClient;
   actor: AgentActor;
   // Where this conversation is happening, so a tool can address something back
-  // to it later. Carries AgentConversation.chatKey verbatim ("dm:0123456789" /
+  // to it later. Carries AgentThread.chatKey verbatim ("dm:0123456789" /
   // "group:120…@g.us") rather than a second addressing scheme, so "send it
   // where we are talking" cannot drift out of step with where the thread
   // actually lives. Optional so the write-tool tests can build a context
@@ -63,6 +105,11 @@ export interface AgentTool {
   // confirmation step confirms nothing useful.
   summarize?: (ctx: ToolContext, input: any) => Promise<string>;
   run: (ctx: ToolContext, input: any) => Promise<unknown>;
+  // Reverses a completed call from its audit record. Only offered when `run`
+  // returned `audited(...)` with a `before`; returns one line saying what was
+  // restored. Absent = the change is recorded but not reversible from the
+  // transcript.
+  undo?: (ctx: ToolContext, action: { input: any; before: any; after: any }) => Promise<string>;
 }
 
 // ---------------------------------------------------------------- money

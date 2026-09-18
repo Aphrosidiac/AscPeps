@@ -11,7 +11,7 @@
 import Fastify from 'fastify';
 import prismaPlugin from '../src/plugins/prisma.js';
 import { ALL_TOOLS, getTool } from '../src/modules/ai-agent/registry.js';
-import type { ToolContext } from '../src/modules/ai-agent/tool-kit.js';
+import { unwrap, type ToolContext } from '../src/modules/ai-agent/tool-kit.js';
 
 const fastify = Fastify({ logger: false });
 await fastify.register(prismaPlugin);
@@ -45,7 +45,7 @@ const run = (tool: string, input: any) => {
   exercised.add(tool);
   const t = getTool(tool);
   if (!t) throw new Error(`no such tool: ${tool}`);
-  return t.run(ctx, input);
+  return t.run(ctx, input).then(unwrap);
 };
 
 const assert = (cond: unknown, msg: string) => {

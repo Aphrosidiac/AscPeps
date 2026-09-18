@@ -221,30 +221,53 @@ export async function dismissUnknownSender(fastify: FastifyInstance, identifier:
 
 // ---- conversation + audit views ------------------------------------------
 
+// WhatsApp conversations are threads like any other now; the Assistant page
+// shows them in full. This list stays for the WhatsApp page's summary.
 export async function listConversations(fastify: FastifyInstance) {
-  return fastify.prisma.agentConversation.findMany({
+  const threads = await fastify.prisma.agentThread.findMany({
+    where: { kind: 'whatsapp' },
     orderBy: { lastMessageAt: 'desc' },
     take: 50,
+    include: { _count: { select: { messages: true } } },
   });
+  return threads.map((t) => ({
+    id: t.id,
+    chatKey: t.chatKey,
+    kind: t.chatKey?.startsWith('group:') ? 'group' : 'dm',
+    title: t.title,
+    messageCount: t._count.messages,
+    lastMessageAt: t.lastMessageAt,
+    costUsd: t.costUsd,
+  }));
 }
 
-export async function getConversation(fastify: FastifyInstance, id: string) {
-  const conversation = await fastify.prisma.agentConversation.findUnique({
-    where: { id },
-    include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
-  });
-  if (!conversation) throw { statusCode: 404, message: 'Conversation not found' };
-  return conversation;
-}
-
+// The audit trail. Every tool call, from every channel, newest first.
 export async function listToolCalls(fastify: FastifyInstance, query: Record<string, string>) {
   const where: any = {};
   if (query.failedOnly === 'true') where.ok = false;
-  if (query.destructiveOnly === 'true') where.destructive = true;
-  if (query.toolName) where.toolName = query.toolName;
-  return fastify.prisma.agentToolCall.findMany({
+  if (query.destructiveOnly === 'true') where.tier = 'destructive';
+  if (query.toolName) where.tool = query.toolName;
+  const rows = await fastify.prisma.agentAction.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     take: Math.min(parseInt(query.limit ?? '100', 10) || 100, 200),
+    include: { thread: { select: { title: true, kind: true } } },
   });
+  return rows.map((r) => ({
+    id: r.id,
+    threadId: r.threadId,
+    threadTitle: r.thread.title,
+    threadKind: r.thread.kind,
+    toolName: r.tool,
+    tier: r.tier,
+    status: r.status,
+    summary: r.summary,
+    actorPhone: r.actorPhone,
+    actorName: r.actorName,
+    ok: r.ok,
+    destructive: r.tier === 'destructive',
+    durationMs: r.latencyMs,
+    result: JSON.stringify(r.output ?? r.error ?? null).slice(0, 2000),
+    createdAt: r.createdAt,
+  }));
 }

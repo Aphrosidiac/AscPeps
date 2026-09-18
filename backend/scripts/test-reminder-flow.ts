@@ -11,7 +11,7 @@
 import Fastify from 'fastify';
 import prismaPlugin from '../src/plugins/prisma.js';
 import { getTool } from '../src/modules/ai-agent/registry.js';
-import type { ToolContext } from '../src/modules/ai-agent/tool-kit.js';
+import { unwrap, type ToolContext } from '../src/modules/ai-agent/tool-kit.js';
 import { processDueReminders } from '../src/utils/reminder-sweep.js';
 
 const fastify = Fastify({ logger: false });
@@ -27,7 +27,7 @@ const ctx: ToolContext = {
   origin: { kind: 'group', chatKey: GROUP_KEY, label: 'this group — Ops' },
   revalidate: () => {},
 };
-const run = (tool: string, input: any) => getTool(tool)!.run(ctx, input);
+const run = (tool: string, input: any) => getTool(tool)!.run(ctx, input).then(unwrap);
 
 let pass = 0;
 let fail = 0;

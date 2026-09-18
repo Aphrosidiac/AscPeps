@@ -1,5 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
-import { clampLimit, listResult, money, toCents, parseDate, rm } from '../tool-kit.js';
+import { audited, clampLimit, listResult, money, toCents, parseDate, rm } from '../tool-kit.js';
 import { getEffectivePrice, isSaleActive } from '../../../utils/product-pricing.js';
 
 // Catalogue tools. The parent/variant split matters here and the descriptions
@@ -187,9 +187,22 @@ export const catalogTools: AgentTool[] = [
         if (rest[k] !== undefined) data[k] = rest[k];
       }
       if (!Object.keys(data).length) throw new Error('Nothing to update — pass at least one field.');
+      const before = await prisma.product.findUnique({ where: { id: productId } });
+      if (!before) throw new Error(`No product with id ${productId}.`);
       const p = await prisma.product.update({ where: { id: productId }, data });
       revalidate(['products']);
-      return { productId: p.id, name: p.name, updated: Object.keys(data) };
+      const fields = Object.keys(data);
+      const pick = (o: any) => Object.fromEntries(fields.map((k) => [k, o[k]]));
+      return audited(
+        { productId: p.id, name: p.name, changes: fields.map((k) => ({ field: k, from: (before as any)[k], to: (p as any)[k] })) },
+        pick(before),
+        pick(p)
+      );
+    },
+    undo: async ({ prisma, revalidate }, { input, before }) => {
+      await prisma.product.update({ where: { id: input.productId }, data: before });
+      revalidate(['products']);
+      return `Product fields restored: ${Object.keys(before).join(', ')}`;
     },
   },
 
@@ -227,16 +240,27 @@ export const catalogTools: AgentTool[] = [
         include: { product: true },
       });
       revalidate(['products']);
-      return {
-        variantId: v.id,
-        product: v.product.name,
-        code: v.code,
-        changes: Object.keys(data).map((k) => ({
-          field: k,
-          from: k === 'price' ? rm((before as any)[k]) : (before as any)[k],
-          to: k === 'price' ? rm((v as any)[k]) : (v as any)[k],
-        })),
-      };
+      const fields = Object.keys(data);
+      const pick = (o: any) => Object.fromEntries(fields.map((k) => [k, o[k]]));
+      return audited(
+        {
+          variantId: v.id,
+          product: v.product.name,
+          code: v.code,
+          changes: fields.map((k) => ({
+            field: k,
+            from: k === 'price' ? rm((before as any)[k]) : (before as any)[k],
+            to: k === 'price' ? rm((v as any)[k]) : (v as any)[k],
+          })),
+        },
+        pick(before),
+        pick(v)
+      );
+    },
+    undo: async ({ prisma, revalidate }, { input, before }) => {
+      const v = await prisma.productVariant.update({ where: { id: input.variantId }, data: before, include: { product: true } });
+      revalidate(['products']);
+      return `${v.product.name} ${v.code} restored: ${Object.entries(before).map(([k, val]) => `${k} = ${k === 'price' ? rm(val as number) : String(val)}`).join(', ')}`;
     },
   },
 
@@ -267,12 +291,29 @@ export const catalogTools: AgentTool[] = [
       // An oversell or a bad delta can drive this negative; clamp rather than
       // leave a negative stock level that the storefront would treat as
       // "in stock" in some comparisons.
+      const unclamped = v.stock;
       if (v.stock < 0) {
         await prisma.productVariant.update({ where: { id: v.id }, data: { stock: 0 } });
         v.stock = 0;
       }
       revalidate(['products']);
-      return { variantId: v.id, product: v.product.name, code: v.code, delta, newStock: v.stock, reason: input.reason ?? null };
+      // Undo reverses what actually LANDED, not the level: a sale that happens
+      // in between must survive the undo, and a -50 clamped at zero on a stock
+      // of 3 only ever removed 3.
+      const stockBefore = unclamped - delta;
+      const applied = v.stock - stockBefore;
+      return audited(
+        { variantId: v.id, product: v.product.name, code: v.code, delta, newStock: v.stock, reason: input.reason ?? null },
+        { stockBefore, applied },
+        { stock: v.stock }
+      );
+    },
+    undo: async ({ prisma, revalidate }, { input, before }) => {
+      const applied = Number((before as { applied: number }).applied);
+      const v = await prisma.productVariant.update({ where: { id: input.variantId }, data: { stock: { increment: -applied } }, include: { product: true } });
+      if (v.stock < 0) await prisma.productVariant.update({ where: { id: v.id }, data: { stock: 0 } });
+      revalidate(['products']);
+      return `${v.product.name} ${v.code}: stock ${applied > 0 ? 'reduced' : 'raised'} by ${Math.abs(applied)} back to ${Math.max(v.stock, 0)}`;
     },
   },
 
@@ -293,14 +334,21 @@ export const catalogTools: AgentTool[] = [
       required: ['variantId'],
     },
     run: async ({ prisma, revalidate }, input) => {
+      const saleFields = (v: { salePrice: number | null; saleStartsAt: Date | null; saleEndsAt: Date | null }) => ({
+        salePrice: v.salePrice,
+        saleStartsAt: v.saleStartsAt,
+        saleEndsAt: v.saleEndsAt,
+      });
       if (input.clear) {
+        const was = await prisma.productVariant.findUnique({ where: { id: input.variantId } });
+        if (!was) throw new Error(`No variant with id ${input.variantId}.`);
         const v = await prisma.productVariant.update({
           where: { id: input.variantId },
           data: { salePrice: null, saleStartsAt: null, saleEndsAt: null },
           include: { product: true },
         });
         revalidate(['products']);
-        return { variantId: v.id, product: v.product.name, sale: 'cleared', price: money(v.price) };
+        return audited({ variantId: v.id, product: v.product.name, sale: 'cleared', price: money(v.price) }, saleFields(was), saleFields(v));
       }
 
       if (input.salePriceRm === undefined) throw new Error('Pass salePriceRm, or clear:true to end the sale.');
@@ -325,16 +373,30 @@ export const catalogTools: AgentTool[] = [
         include: { product: true },
       });
       revalidate(['products']);
-      return {
-        variantId: v.id,
-        product: v.product.name,
-        code: v.code,
-        was: money(v.price),
-        now: money(salePrice),
-        from: starts,
-        to: ends,
-        liveNow: isSaleActive(v),
-      };
+      return audited(
+        {
+          variantId: v.id,
+          product: v.product.name,
+          code: v.code,
+          was: money(v.price),
+          now: money(salePrice),
+          from: starts,
+          to: ends,
+          liveNow: isSaleActive(v),
+        },
+        saleFields(current),
+        saleFields(v)
+      );
+    },
+    undo: async ({ prisma, revalidate }, { input, before }) => {
+      const b = before as { salePrice: number | null; saleStartsAt: string | null; saleEndsAt: string | null };
+      const v = await prisma.productVariant.update({
+        where: { id: input.variantId },
+        data: { salePrice: b.salePrice, saleStartsAt: b.saleStartsAt ? new Date(b.saleStartsAt) : null, saleEndsAt: b.saleEndsAt ? new Date(b.saleEndsAt) : null },
+        include: { product: true },
+      });
+      revalidate(['products']);
+      return b.salePrice == null ? `${v.product.name} ${v.code}: sale removed again` : `${v.product.name} ${v.code}: sale at ${rm(b.salePrice)} restored`;
     },
   },
 

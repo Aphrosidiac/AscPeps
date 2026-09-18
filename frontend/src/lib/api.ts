@@ -443,9 +443,6 @@ export const adminAgentSaveGroup = (token: string, data: Record<string, unknown>
 export const adminAgentConversations = (token: string) =>
   api.get('/api/v1/admin/whatsapp/conversations', auth(token)).then((r) => r.data);
 
-export const adminAgentConversation = (token: string, id: string) =>
-  api.get(`/api/v1/admin/whatsapp/conversations/${id}`, auth(token)).then((r) => r.data);
-
 export const adminAgentToolCalls = (token: string, params?: Record<string, string>) =>
   api.get('/api/v1/admin/whatsapp/tool-calls', { ...auth(token), params }).then((r) => r.data);
 

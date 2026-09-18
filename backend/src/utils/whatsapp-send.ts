@@ -55,7 +55,7 @@ export async function sendWhatsAppMessage(target: SendTarget, message: string): 
  * Resolve a conversation key ("dm:0123456789" / "group:120…@g.us") into
  * something the worker can address.
  *
- * Deliberately the same key format AgentConversation uses, so "send it back to
+ * Deliberately the same key format AgentThread uses, so "send it back to
  * where we are talking" is a straight copy rather than a second addressing
  * scheme that can drift out of step with the first.
  */

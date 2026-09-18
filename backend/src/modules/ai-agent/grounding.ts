@@ -391,7 +391,16 @@ function addressLines(reply: string): { text: string; at: number }[] {
   const out: { text: string; at: number }[] = [];
   let offset = 0;
   for (const line of reply.split('\n')) {
-    const trimmed = line.trim();
+    // The label is the reply's, not the record's. "- Address: 12, Jalan…" on
+    // the dashboard (where the model writes markdown lists) must be judged on
+    // the address, not on the bullet and the word "address" — both of which
+    // are guaranteed to be absent from any tool result and were diluting the
+    // token ratio below the bar on short addresses.
+    const trimmed = line
+      .trim()
+      .replace(/^[-*•]\s*/, '')
+      .replace(/^\*{0,2}_{0,2}(?:delivery |shipping |customer )?(?:address|alamat)\*{0,2}_{0,2}\s*[:\-–—]\s*/i, '')
+      .trim();
 
     // A postcode or a unit number, NOT merely a state name. Production replay
     // showed the state trigger auditing ordinary commentary — "That's a Johor

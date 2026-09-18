@@ -66,18 +66,18 @@ async function send(text: string) {
 }
 
 async function resetThread() {
-  await prisma.agentConversation.deleteMany({ where: { chatKey: CHAT_KEY } });
-  await prisma.agentPendingAction.deleteMany({ where: { actorPhone: '0123456789' } });
+  await prisma.agentThread.deleteMany({ where: { chatKey: CHAT_KEY } });
+  await prisma.agentAction.updateMany({ where: { actorPhone: '0123456789', status: 'pending' }, data: { status: 'declined' } });
 }
 
 async function toolsSince(since: Date): Promise<{ names: string[]; results: { tool: string; result: string }[] }> {
-  const rows = await prisma.agentToolCall.findMany({
-    where: { createdAt: { gt: since } },
+  const rows = await prisma.agentAction.findMany({
+    where: { createdAt: { gt: since }, status: { in: ['done', 'failed'] } },
     orderBy: { createdAt: 'asc' },
   });
   return {
-    names: rows.map((r) => r.toolName),
-    results: rows.map((r) => ({ tool: r.toolName, result: r.result })),
+    names: rows.map((r) => r.tool),
+    results: rows.map((r) => ({ tool: r.tool, result: JSON.stringify(r.output ?? { error: r.error }) })),
   };
 }
 
@@ -178,9 +178,16 @@ async function main() {
   const [a, b] = await Promise.all([send('how many orders today'), send('and what is our lowest stock item')]);
   const bothAnswered = !!a.text && !!b.text && a.text !== b.text;
   check('both concurrent messages got their own reply', bothAnswered);
-  const stored = await prisma.agentMessage.count({
-    where: { conversation: { chatKey: CHAT_KEY }, createdAt: { gt: started }, role: 'assistant' },
+  // Final answers only: an assistant row that carries tool calls is a step
+  // inside a turn, and a retracted draft is one the guard sent back.
+  const assistantRows = await prisma.agentMessage.findMany({
+    where: { thread: { chatKey: CHAT_KEY }, createdAt: { gt: started }, role: 'assistant' },
+    select: { content: true },
   });
+  const stored = assistantRows.filter((m) => {
+    const c = m.content as { text?: string; toolCalls?: unknown[]; retracted?: boolean };
+    return !!c.text && !c.toolCalls?.length && !c.retracted;
+  }).length;
   check('exactly two assistant turns were stored, not a race', stored === 2, `stored ${stored}`);
 
   // ---- 5. Whatever else happened, nothing ungrounded reached the operator.

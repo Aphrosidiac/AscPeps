@@ -28,16 +28,28 @@ async function resolveTarget(
   to: string | undefined
 ): Promise<{ chatKey: string; label: string }> {
   const origin = ctx.origin;
-  const here = origin
+  const raw = String(to ?? '').trim();
+
+  // From the dashboard there is no WhatsApp chat to send "here" to, and an
+  // admin has no number the agent knows — so the reminder must name an
+  // operator. Refusing beats storing a target the sweep can never deliver to.
+  const onDashboard = origin?.kind === 'web' || !ctx.actor.phone;
+  const wantsHere = !raw || /^(here|this chat|this group|same place|us)$/i.test(raw);
+  const wantsMe = /^(me|myself|my dm)$/i.test(raw);
+  if (onDashboard && (wantsHere || wantsMe)) {
+    throw new Error(
+      'Reminders are delivered over WhatsApp, and this conversation is on the dashboard — say which operator should get it (by name or number, from the allowlist).'
+    );
+  }
+
+  const here = origin && origin.kind !== 'web'
     ? { chatKey: origin.chatKey, label: origin.label }
     : { chatKey: `dm:${ctx.actor.phone}`, label: `${ctx.actor.name} (DM)` };
-
-  const raw = String(to ?? '').trim();
-  if (!raw || /^(here|this chat|this group|same place|us)$/i.test(raw)) return here;
+  if (wantsHere) return here;
 
   // "me" always means the requester's own DM, even when asked from a group —
   // that is the whole point of saying "me" rather than "here".
-  if (/^(me|myself|my dm)$/i.test(raw)) {
+  if (wantsMe) {
     return { chatKey: `dm:${ctx.actor.phone}`, label: `${ctx.actor.name} (DM)` };
   }
 

@@ -3,7 +3,6 @@ import {
   connectWhatsApp,
   deleteOperator,
   disconnectWhatsApp,
-  getConversation,
   getWhatsAppQR,
   getWhatsAppStatus,
   listConversations,
@@ -51,10 +50,8 @@ export default async function whatsappRoutes(fastify: FastifyInstance) {
     dismissUnknownSender(fastify, decodeURIComponent(request.params.id))
   );
 
-  // Conversations + audit
+  // Conversations + audit. A conversation's transcript is read through the
+  // Assistant API (/api/v1/admin/assistant/threads/:id) — same thread.
   fastify.get('/conversations', async () => listConversations(fastify));
-  fastify.get<{ Params: { id: string } }>('/conversations/:id', async (request) =>
-    getConversation(fastify, request.params.id)
-  );
   fastify.get('/tool-calls', async (request) => listToolCalls(fastify, request.query as Record<string, string>));
 }

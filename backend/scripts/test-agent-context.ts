@@ -50,8 +50,7 @@ async function send(text: string) {
 }
 
 async function resetThread() {
-  const convo = await prisma.agentConversation.findUnique({ where: { chatKey: CHAT_KEY } });
-  if (convo) await prisma.agentConversation.delete({ where: { id: convo.id } });
+  await prisma.agentThread.deleteMany({ where: { chatKey: CHAT_KEY } });
 }
 
 // A distinctive fact planted early in the thread, far enough back that it is
@@ -60,9 +59,15 @@ async function resetThread() {
 // truncation were still in place, this is precisely what would be lost.
 const PLANTED = 'our courier is Skynet and the account number is SKY-7781';
 
+// Compaction is triggered by SIZE, not row count (COMPACT_AT_CHARS in
+// core/run.ts): a month of short WhatsApp turns and an afternoon of report
+// dumps should compact on the same rule. The filler replies are padded so a
+// modest number of turns crosses the threshold.
+const PADDING = ' Full report follows. ' + 'Lorem ipsum stock levels and order notes. '.repeat(70);
+
 async function seedLongThread(turns: number) {
-  const convo = await prisma.agentConversation.create({
-    data: { chatKey: CHAT_KEY, kind: 'dm', title: 'Test Operator' },
+  const thread = await prisma.agentThread.create({
+    data: { chatKey: CHAT_KEY, kind: 'whatsapp', title: 'Test Operator · WhatsApp' },
   });
 
   const filler = [
@@ -74,32 +79,33 @@ async function seedLongThread(turns: number) {
     'got it',
   ];
 
-  // Written one at a time rather than createMany so createdAt ordering is
-  // stable — the compaction skip/keep boundary depends on it.
-  await prisma.agentMessage.create({
-    data: { conversationId: convo.id, role: 'user', content: `note for later: ${PLANTED}`, senderPhone: WRITER, senderName: 'Test Operator' },
-  });
-  await prisma.agentMessage.create({
-    data: { conversationId: convo.id, role: 'assistant', content: `Noted — ${PLANTED}. I'll keep that in mind.` },
-  });
-
-  for (let i = 0; i < turns; i++) {
-    await prisma.agentMessage.create({
+  let seq = 0;
+  const row = (role: string, text: string) =>
+    prisma.agentMessage.create({
       data: {
-        conversationId: convo.id,
-        role: 'user',
-        content: filler[i % filler.length],
-        senderPhone: WRITER,
-        senderName: 'Test Operator',
+        threadId: thread.id,
+        seq: ++seq,
+        role,
+        content: { text },
+        actorPhone: role === 'user' ? '0123456789' : null,
+        actorName: role === 'user' ? 'Test Operator' : null,
       },
     });
-    await prisma.agentMessage.create({
-      data: { conversationId: convo.id, role: 'assistant', content: `Sure — ${filler[i % filler.length]} handled.` },
-    });
-  }
 
-  return convo.id;
+  await row('user', `note for later: ${PLANTED}`);
+  await row('assistant', `Noted — ${PLANTED}. I'll keep that in mind.`);
+  for (let i = 0; i < turns; i++) {
+    await row('user', filler[i % filler.length]);
+    await row('assistant', `Sure — ${filler[i % filler.length]} handled.${PADDING}`);
+  }
+  return { threadId: thread.id, rows: seq };
 }
+
+const summaryRow = async (threadId: string) => {
+  const rows = await prisma.agentMessage.findMany({ where: { threadId, role: 'system' }, orderBy: { seq: 'asc' } });
+  const summaries = rows.filter((r) => r.content && typeof r.content === 'object' && 'replaces' in (r.content as object) && (r.content as any).summary !== '(superseded)');
+  return { count: summaries.length, latest: summaries.at(-1)?.content as { summary: string; replaces: [number, number] } | undefined };
+};
 
 async function main() {
   // Sending as an operator that does not exist means the agent never runs at
@@ -122,25 +128,17 @@ async function main() {
   // ------------------------------------------------------------- compaction
   console.log('\n▸ a long thread compacts instead of silently truncating');
   await resetThread();
-  const convoId = await seedLongThread(18); // 38 messages — past COMPACT_TRIGGER (30)
-  const before = await prisma.agentMessage.count({ where: { conversationId: convoId } });
+  const seeded = await seedLongThread(40); // ~120k chars — past COMPACT_AT_CHARS (100k)
 
   const r1 = await send('what courier do we use and whats the account number?');
-  const convo = await prisma.agentConversation.findUnique({
-    where: { id: convoId },
-    select: { summary: true, summarizedCount: true },
-  });
+  const first = await summaryRow(seeded.threadId);
 
-  console.log(`   seeded ${before} messages; summarizedCount=${convo?.summarizedCount}`);
-  check('a summary was written', !!convo?.summary && convo.summary.length > 20);
-  check('the summarised watermark advanced', (convo?.summarizedCount ?? 0) > 0, String(convo?.summarizedCount));
-  check(
-    'messages after the watermark are still the recent ones',
-    (convo?.summarizedCount ?? 0) < before,
-    `${convo?.summarizedCount} of ${before}`
-  );
+  console.log(`   seeded ${seeded.rows} rows; summary rows=${first.count}; replaces=${JSON.stringify(first.latest?.replaces)}`);
+  check('a summary row was written', first.count === 1 && (first.latest?.summary.length ?? 0) > 20);
+  check('the summary stands in for the oldest rows only', !!first.latest && first.latest.replaces[0] === 1 && first.latest.replaces[1] < seeded.rows, JSON.stringify(first.latest?.replaces));
+  check('the planted row is inside the compacted range', !!first.latest && first.latest.replaces[1] >= 2);
 
-  if (convo?.summary) console.log(`   summary: ${convo.summary.slice(0, 220).replace(/\n/g, ' ')}…`);
+  if (first.latest) console.log(`   summary: ${first.latest.summary.slice(0, 220).replace(/\n/g, ' ')}…`);
   console.log(`   reply: ${String(r1.text ?? r1.reason).slice(0, 200).replace(/\n/g, ' ')}`);
 
   // The real point of compaction: a fact from the dropped region survives.
@@ -149,14 +147,11 @@ async function main() {
 
   console.log('\n▸ compaction is not redone on every turn');
   const r2 = await send('thanks');
-  const after = await prisma.agentConversation.findUnique({
-    where: { id: convoId },
-    select: { summarizedCount: true },
-  });
+  const second = await summaryRow(seeded.threadId);
   check(
-    'watermark held steady on the next turn',
-    after?.summarizedCount === convo?.summarizedCount,
-    `${convo?.summarizedCount} -> ${after?.summarizedCount}`
+    'the summary held steady on the next turn',
+    second.count === 1 && JSON.stringify(second.latest?.replaces) === JSON.stringify(first.latest?.replaces),
+    `${JSON.stringify(first.latest?.replaces)} -> ${JSON.stringify(second.latest?.replaces)}`
   );
   void r2;
 
@@ -173,23 +168,19 @@ async function main() {
   const routed = routeDomains(probe);
   check('the router genuinely misses ops here', !routed.includes('ops'), routed.join(','));
 
-  // Scoped to this send. AgentToolCall rows are an audit trail with no cascade,
-  // so they outlive the conversations they belong to — an unscoped query picks
-  // up whatever the previous suite happened to run.
   const since = new Date();
   const r3 = await send(probe);
-  const calls = await prisma.agentToolCall.findMany({
+  const calls = await prisma.agentAction.findMany({
     where: { actorPhone: '0123456789', createdAt: { gte: since } },
     orderBy: { createdAt: 'asc' },
-    select: { toolName: true, ok: true },
+    select: { tool: true, ok: true },
   });
-  const names = calls.map((c) => c.toolName);
+  const names = calls.map((c) => c.tool);
   console.log(`   routed to: [${routed.join(',')}]`);
   console.log(`   tools ran: ${names.join(', ') || '(none)'}`);
   console.log(`   reply: ${String(r3.text ?? r3.reason).slice(0, 200).replace(/\n/g, ' ')}`);
-  // load_context is handled inside the turn loop and never reaches runTool, so
-  // it leaves no audit row by design. The proof it fired is that a tool it had
-  // not been given ran anyway.
+  // load_context is handled inside the turn loop and leaves no action row by
+  // design. The proof it fired is that a tool it had not been given ran anyway.
   check(
     'reached an ops tool despite the miss',
     names.includes('list_operators'),

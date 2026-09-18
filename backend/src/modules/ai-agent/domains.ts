@@ -1,10 +1,10 @@
 // Which slice of the business a turn is about — and therefore which tools and
 // which rules the model needs in front of it.
 //
-// The agent has 62 tools. Sent flat on every turn they cost roughly 7,800
+// The agent has 75 tools. Sent flat on every turn they cost roughly 9,000
 // tokens of schema before the operator has said anything, and they make the
 // model's job harder rather than easier: picking `record_payout` out of a list
-// of 62 is a materially worse decision than picking it out of a list of 12.
+// of 75 is a materially worse decision than picking it out of a list of 12.
 // Tool-selection accuracy is the thing operators experience as "the agent is
 // dumb", so the list is narrowed per turn.
 //

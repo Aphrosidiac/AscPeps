@@ -40,6 +40,9 @@ import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
 import btcpayWebhookRoutes from './modules/webhooks/btcpay-webhook.routes.js';
 import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
+import assistantRoutes from './modules/ai-agent/assistant.routes.js';
+import { maybeReflect } from './modules/ai-agent/reflect.js';
+import { maybeDigest } from './modules/ai-agent/digest.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 import manualPayPlugin from './plugins/manualpay.js';
 import { manualPayGatePlugin } from 'manualpaygate/server/fastify';
@@ -193,6 +196,9 @@ await fastify.register(resendWebhookRoutes, { prefix: '/api/v1/webhooks/resend' 
 await fastify.register(btcpayWebhookRoutes, { prefix: '/api/v1/webhooks/btcpay' });
 // Admin-authenticated control of the WhatsApp worker and the agent's allowlists.
 await fastify.register(whatsappRoutes, { prefix: '/api/v1/admin/whatsapp' });
+// The assistant from the dashboard: threads, streamed turns, approvals, undo,
+// memory. Same loop and tools as the WhatsApp door above.
+await fastify.register(assistantRoutes, { prefix: '/api/v1/admin/assistant' });
 // The WhatsApp worker's callback into the agent. Guarded by loopback source
 // address + the shared worker token rather than the admin JWT — the caller is a
 // sibling process, not a signed-in human. Registered last so nothing above can
@@ -286,6 +292,16 @@ try {
     );
   }, REMINDER_INTERVAL_MS);
   reminderTimer.unref();
+
+  // The assistant's scheduled jobs: the nightly memory reflection and the
+  // morning brief. Both are off until switched on in settings, and each runs
+  // at most once per Malaysian day — the tick only asks whether it is time.
+  const ASSISTANT_TICK_MS = 5 * 60 * 1000;
+  const assistantTimer = setInterval(() => {
+    maybeReflect(fastify).catch((err) => fastify.log.error({ err }, 'nightly reflection failed'));
+    maybeDigest(fastify).catch((err) => fastify.log.error({ err }, 'morning brief failed'));
+  }, ASSISTANT_TICK_MS);
+  assistantTimer.unref();
 } catch (err) {
   fastify.log.error(err);
   process.exit(1);

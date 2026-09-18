@@ -874,111 +874,123 @@ model WhatsAppGroup {
   @@map("whatsapp_groups")
 }
 
-// One running conversation. A group is a single shared conversation (so two
-// operators in the same group see one coherent thread), while each DM is its
-// own — hence a synthetic `chatKey` rather than a phone number as the identity.
-model AgentConversation {
-  id      String @id @default(cuid())
-  // "dm:60123456789" or "group:120363...@g.us"
-  chatKey String @unique
-  kind    String
-  title   String
+// One assistant conversation, whichever door it came through.
+//
+//   chat      — opened from the admin dashboard (Assistant page).
+//   whatsapp  — a DM or group over the linked number. One thread per chatKey:
+//               a group is a single shared thread (two operators in the same
+//               group see one coherent history), each DM is its own.
+//   reflect   — the nightly memory tidy-up, in a thread of its own so it shows
+//               on the Assistant page and never mixes with an operator's.
+//   digest    — the morning brief.
+//
+// The transcript (AgentMessage) is append-only and provider-neutral; every
+// tool call (AgentAction) is the audit trail and, for writes, the undo record.
+model AgentThread {
+  id        String  @id @default(cuid())
+  kind      String  @default("chat")
+  title     String  @default("New conversation")
+  // WhatsApp threads only: "dm:60123456789" or "group:120363...@g.us".
+  chatKey   String? @unique
+  // idle, or running — one run at a time per thread.
+  status    String  @default("idle")
+  // Dashboard threads: the admin who opened it. Null for the other kinds.
+  createdBy String?
+
+  model        String?
+  inputTokens  Int     @default(0)
+  outputTokens Int     @default(0)
+  costUsd      Float   @default(0)
+  turns        Int     @default(0)
 
   lastMessageAt DateTime @default(now())
-  messageCount  Int      @default(0)
-
-  // Rolling compaction of the thread. `summary` is a prose recap of the oldest
-  // `summarizedCount` messages, which are then no longer sent to the model; the
-  // newest turns are still sent verbatim. See context.ts.
-  //
-  // `summarizedCount` is a count rather than a timestamp watermark on purpose:
-  // the user and assistant rows of one turn are written milliseconds apart and
-  // can share a createdAt, so a `createdAt >` filter can silently drop or
-  // double-count a message at the boundary. A count paired with a deterministic
-  // (createdAt, id) ordering cannot.
-  summary         String?
-  summarizedCount Int     @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   messages AgentMessage[]
-  pending  AgentPendingAction[]
+  actions  AgentAction[]
 
+  @@index([kind, lastMessageAt])
   @@index([lastMessageAt])
-  @@map("agent_conversations")
+  @@map("agent_threads")
 }
 
+// A transcript row. `content` is one of:
+//   { text, sender? }                                     user (sender = name, for group threads)
+//   { text?, reasoning?, toolCalls?: [{ id, name, input, raw? }], reasoningDetails? }   assistant
+//   { toolResults: [{ id, name, output, isError, ms }] }  tool
+//   { text }                                              system (an approval, a decline, an undo)
+//   { summary, replaces: [seq, seq] }                     compaction — stands in for that range in the model's view
+//
+// Tool results ARE stored, in full, unlike the previous table. What the model
+// saw is what a reader of the transcript sees, and what the grounding audit
+// replays — the old 2000-character audit truncation made that replay
+// over-report. Old results leave the model's view (run.ts trims them) without
+// leaving the table.
 model AgentMessage {
-  id             String  @id @default(cuid())
-  conversationId String
-  // 'user' | 'assistant'. Tool traffic is NOT stored here — it lives in
-  // AgentToolCall below. Replaying raw tool payloads back into the model on
-  // every turn would blow the context window on a long-running ops thread,
-  // and the tool results are stale by then anyway.
-  role           String
-  content        String
-  // Who actually spoke. Meaningful in groups, where one conversation carries
-  // several operators; null on assistant rows.
-  senderPhone    String?
-  senderName     String?
+  id         String  @id @default(cuid())
+  threadId   String
+  seq        Int
+  // user | assistant | tool | system
+  role       String
+  content    Json
+  // Who spoke, on user rows. A group thread carries several operators; a
+  // dashboard thread carries the admin's name.
+  actorPhone String?
+  actorName  String?
 
   createdAt DateTime @default(now())
 
-  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  thread AgentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  @@index([conversationId, createdAt])
+  @@unique([threadId, seq])
   @@map("agent_messages")
 }
 
-// Every tool invocation, successful or not. This is the accountability record
-// for a system that can delete an order or move money: `AgentMessage` says what
-// was asked, this says what was actually done, by whom, and whether it worked.
-model AgentToolCall {
-  id             String  @id @default(cuid())
-  conversationId String?
-  actorPhone     String
-  toolName       String
-  // JSON. Truncated on write — a bulk tool's arguments can be large and this
-  // table is an audit trail, not a backup.
-  input          String
-  ok             Boolean
-  result         String
-  // Whether this tool required an explicit confirmation before running.
-  destructive    Boolean @default(false)
-  durationMs     Int     @default(0)
+// Every tool call the assistant made, with what it changed. This is the
+// accountability record for a system that can delete an order or move money:
+// the transcript says what was asked, this says what was actually done, by
+// whom, whether it worked — and for writes, what it found and what it left,
+// so the operator can undo it.
+model AgentAction {
+  id        String  @id @default(cuid())
+  threadId  String
+  // The model's tool_call id, so a card in the transcript finds its action.
+  callId    String?
+  tool      String
+  // read · write · destructive (parks for the operator's yes before running)
+  tier      String
+  // done · pending (destructive, awaiting the operator) · declined · undone ·
+  // failed · expired (a WhatsApp confirmation nobody answered in time)
+  status    String  @default("done")
+  // One line a person can read, built from the RESOLVED arguments: "Delete
+  // order ASC2507/0042 (Nurul, RM 480.00)". This is what they agree to.
+  summary   String?
+  input     Json
+  output    Json?
+  before    Json?
+  after     Json?
+  ok        Boolean @default(true)
+  error     String?
+  latencyMs Int     @default(0)
 
-  createdAt DateTime @default(now())
+  actorPhone String?
+  actorName  String?
+  // WhatsApp confirmations only: a parked action stays answerable this long.
+  // Long enough to walk away and come back, short enough that a stray "yes"
+  // tomorrow can't fire it. Dashboard cards do not expire — the button is
+  // right there, tied to the exact action.
+  expiresAt  DateTime?
+  undoneAt   DateTime?
+  createdAt  DateTime  @default(now())
 
+  thread AgentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
   @@index([createdAt])
-  @@index([toolName])
-  @@index([actorPhone])
-  @@map("agent_tool_calls")
-}
-
-// A destructive tool call parked awaiting a yes. Stored rather than held in
-// memory so a worker restart mid-confirmation can't resurrect a stale
-// "delete everything" the operator has since walked away from — and so the
-// pending action survives long enough to actually be answered.
-model AgentPendingAction {
-  id             String   @id @default(cuid())
-  conversationId String
-  actorPhone     String
-  toolName       String
-  input          String
-  // Human-readable description of exactly what will happen, echoed back to
-  // the operator. This is what they are agreeing to, so it is generated from
-  // the resolved arguments, never from the raw request text.
-  summary        String
-  expiresAt      DateTime
-
-  createdAt DateTime @default(now())
-
-  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId])
-  @@index([expiresAt])
-  @@map("agent_pending_actions")
+  @@index([tool])
+  @@index([status])
+  @@map("agent_actions")
 }
 
 // A "remind me about X at Y" set through the agent.
@@ -996,7 +1008,7 @@ model AgentPendingAction {
 // Every turn where the read-side grounding guard found the reply asserting
 // something this turn's tool results did not support. See grounding.ts.
 //
-// A row here is the counterpart to AgentToolCall: that table records what the
+// A row here is the counterpart to AgentAction: that table records what the
 // agent DID, this one records what it nearly SAID and could not back up. Both
 // August incidents were invisible until an operator happened to push back —
 // this makes the next one visible the moment it happens, whether or not anyone
@@ -1005,14 +1017,14 @@ model AgentPendingAction {
 // Written in shadow mode too, where nothing is blocked. That is the whole point
 // of shadow mode: measure the rate on real traffic before it can affect anyone.
 model AgentGroundingEvent {
-  id             String  @id @default(cuid())
-  conversationId String?
-  actorPhone     String
+  id         String  @id @default(cuid())
+  threadId   String?
+  actorPhone String
 
   // 'shadow' — logged only. 'enforce' — repair was attempted.
   mode String
 
-  // JSON array of GroundingViolation. Truncated on write, like AgentToolCall:
+  // JSON array of GroundingViolation. Truncated on write:
   // this is a signal, not a backup.
   violations String
 
@@ -1049,7 +1061,7 @@ model AgentReminder {
   dueAt DateTime
 
   // WHERE it goes, in the same "dm:<phone>" / "group:<jid>" form as
-  // AgentConversation.chatKey, so "send it back to this conversation" is a
+  // AgentThread.chatKey, so "send it back to this conversation" is a
   // straight copy of the key rather than a second addressing scheme that can
   // disagree with the first.
   targetChatKey String
@@ -1494,26 +1506,26 @@ model ShadowSku {
 // ---------------------------------------------------------------------------
 
 model CheckoutSession {
-  id             String   @id                 // "cs_" + 24 random chars — the URL is the credential
-  reference      String                       // host's order number / invoice id
-  amount         Int                          // minor units
-  currency       String
-  lineItems      Json
-  amounts        Json?
-  customer       Json?
-  successUrl     String
-  cancelUrl      String?
-  paymentLinkUrl String?
-  paymentLinkProvider String?           // which link method the override belongs to
-  metadata       Json?
-  status         String   @default("OPEN")    // OPEN | PROOF_SUBMITTED | PAID | REJECTED | EXPIRED | CANCELLED
-  expiresAt      DateTime
-  paidAt         DateTime?
-  cancelledAt    DateTime?
-  rejectReason   String?
-  reviewedBy     String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                  String    @id // "cs_" + 24 random chars — the URL is the credential
+  reference           String // host's order number / invoice id
+  amount              Int // minor units
+  currency            String
+  lineItems           Json
+  amounts             Json?
+  customer            Json?
+  successUrl          String
+  cancelUrl           String?
+  paymentLinkUrl      String?
+  paymentLinkProvider String? // which link method the override belongs to
+  metadata            Json?
+  status              String    @default("OPEN") // OPEN | PROOF_SUBMITTED | PAID | REJECTED | EXPIRED | CANCELLED
+  expiresAt           DateTime
+  paidAt              DateTime?
+  cancelledAt         DateTime?
+  rejectReason        String?
+  reviewedBy          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   proofs PaymentProof[]
 
@@ -1524,14 +1536,14 @@ model CheckoutSession {
 }
 
 model PaymentProof {
-  id           String    @id                  // "pf_" + 16 random chars
+  id           String    @id // "pf_" + 16 random chars
   sessionId    String
-  filename     String                          // "<uuid>.<ext>" on disk — never the uploaded name
+  filename     String // "<uuid>.<ext>" on disk — never the uploaded name
   originalName String
   mimeType     String
   sizeBytes    Int
   note         String?
-  status       String    @default("PENDING")   // PENDING | ACCEPTED | REJECTED
+  status       String    @default("PENDING") // PENDING | ACCEPTED | REJECTED
   rejectReason String?
   submittedAt  DateTime  @default(now())
   reviewedAt   DateTime?

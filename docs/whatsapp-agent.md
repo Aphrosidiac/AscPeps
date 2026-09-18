@@ -8,19 +8,31 @@ screen in the dashboard offers.
 It is **not** a customer-facing chatbot. It only ever answers people on an
 explicit allowlist, and it ignores everyone else in silence.
 
+Since 2026-09-18 the same assistant is also on the dashboard (**Assistant**),
+and both doors share one harness — the loop, the tools, the transcript, the
+guards, approvals and undo. That harness is documented in
+[assistant.md](assistant.md); this file is the WhatsApp half: pairing, the
+allowlist, LIDs, groups, and the history behind the guards. Every WhatsApp
+conversation shows on the Assistant page, read-only, with each tool call and
+its result.
+
 ---
 
 ## How it fits together
 
 ```
 WhatsApp ──► ascend-wa (worker, PM2)            ascend-api (PM2)
-             • holds the baileys socket          • the agent + 62 tools
+             • holds the baileys socket          • the assistant: core/run.ts + 75 tools
              • QR / reconnect / dedup            • all admin business logic
              • NO business logic                 • Prisma, PostHog, email outbox
                     │                                     ▲
                     └── POST /api/v1/internal/agent/inbound ┘
                         (127.0.0.1 + shared bearer token)
 ```
+
+`agent.service.ts` is the WhatsApp door onto that loop: it gates the sender,
+turns a "yes"/"no" into an approval or a decline of the parked action, waits
+for the turn, and formats the answer for a phone.
 
 **Why two processes.** The worker is a port of HarvestGrow's WhatsApp connection
 layer, which has been hardened through real outages — the reconnect strategy,
@@ -51,10 +63,12 @@ Four independent layers. None of them is the model being well-behaved.
 3. **What** — operators are full-access or read-only. Read-only operators are
    never even *shown* the write tools, so the model cannot propose an action it
    is not allowed to take.
-4. **Confirmation** — destructive tools never run on the first call. They park,
-   the operator sees a summary built from the *resolved arguments* ("delete
-   order ASC2507/0042 (Nurul, RM 480.00)"), and nothing happens without an
-   explicit yes. Parked actions expire after 5 minutes.
+4. **Confirmation** — destructive tools never run on the first call. They park
+   as a pending `agent_actions` row, the operator sees a summary built from the
+   *resolved arguments* ("delete order ASC2507/0042 (Nurul, RM 480.00)"), and
+   nothing happens without an explicit yes. Over WhatsApp a parked action
+   expires after 5 minutes; the same action can also be approved or declined
+   from its card on the Assistant page, and the outcome is sent to the chat.
 
 Plus three things learned from production:
 
@@ -71,8 +85,9 @@ Plus three things learned from production:
   guard has existed since day one; the read side had nothing, and the same class
   of failure appeared there instead.
 
-Everything the agent does is written to `agent_tool_calls` — tool, arguments,
-actor, success, duration — and shown on the admin page. Everything it nearly
+Everything the agent does is written to `agent_actions` — tool, tier,
+arguments, actor, result, duration, and for undoable writes what it found and
+what it left — and shown as a card in the transcript. Everything it nearly
 *said* but could not support is written to `agent_grounding_events`.
 
 ## Grounding
@@ -93,7 +108,11 @@ did not hold, exactly as the markdown-formatting instruction did not hold until
 `toWhatsAppText` fixed it in code. So this is fixed in code.
 
 `grounding.ts` runs two independent checks on every draft reply, because they
-fail in opposite directions:
+fail in opposite directions. Its evidence is this turn's tool results plus the
+last three turns' results still in the model's view — since the transcript
+carries tool results (2026-09-18), a fact the model can see is not an
+invention, and forcing a re-fetch of what it read two messages ago would only
+teach everyone to ignore the guard.
 
 1. **Grounding.** Every checkable entity in the reply — order numbers, phone
    numbers, SKU codes, product+size pairs, emails, address lines — must appear
@@ -129,15 +148,16 @@ and any unrecognised value also means `shadow`, never `off`.**
 ### Measuring it
 
 `npm run audit:agent:grounding [days]` replays the guard over conversations that
-have already happened, from `agent_messages` + `agent_tool_calls`. Use it to
+have already happened, from `agent_messages` + `agent_actions`. Use it to
 calibrate before enforcing, and on a schedule afterwards — it is how the *next*
 new failure class becomes visible on the day it appears rather than on the day
 an operator happens to push back.
 
-Note it over-reports slightly: the audit table truncates tool results at 2000
-characters while the model saw up to 6000, so a clipped turn can show facts as
-ungrounded that the model could legitimately see. Those turns are counted
-separately in the output.
+Turns from before 2026-09-18 over-report slightly: the old audit table
+truncated tool results at 2000 characters while the model saw up to 6000, so
+a clipped turn can show facts as ungrounded that the model could legitimately
+see. Those turns are counted separately in the output. Turns since then store
+results in full and replay exactly.
 
 At the time it was built, the replay over 40 days of production traffic flagged
 24 of 174 turns.
@@ -229,11 +249,13 @@ in the tool files and they inherit the confirmation flow with no other changes.
 OpenRouter (OpenAI-compatible), `deepseek/deepseek-v4-flash` by default, set via
 `OPENROUTER_MODEL`.
 
-**`reasoning: { effort: 'none' }` is pinned in `utils/openrouter.ts` and must
-stay.** DeepSeek V4 is reasoning-capable and, left at its default, can spend the
-entire `max_tokens` budget on internal chain-of-thought and return
+**`AGENT_REASONING_EFFORT` defaults to `none` and should stay there on
+DeepSeek.** DeepSeek V4 is reasoning-capable and, left at its default, can
+spend the entire `max_tokens` budget on internal chain-of-thought and return
 `content: null` — no error, just an empty reply. This was measured on
-HarvestGrow before being carried over here.
+HarvestGrow before being carried over here. The provider is now a streamed
+`fetch` in `core/provider.ts` (the `openai` package is gone); see
+[assistant.md](assistant.md) for the model, escalation and effort settings.
 
 ---
 
@@ -467,7 +489,7 @@ anyone should be visible rather than silently gone.
 **Where it goes** is the part worth understanding:
 
 - Default is the conversation it was set in. The target is stored as
-  `AgentConversation.chatKey` verbatim (`dm:<phone>` / `group:<jid>`), so
+  `AgentThread.chatKey` verbatim (`dm:<phone>` / `group:<jid>`), so
   "send it back here" is a copy of the key rather than a second addressing
   scheme that can drift out of step with the first. A group key becomes a
   `jid` at send time; a DM key becomes a `phone`.
@@ -492,10 +514,15 @@ as "6:26 PM".
 
 1. Add it to the right file in `src/modules/ai-agent/tools/`.
 2. Set `write: true` if it mutates, `destructive: true` if it is hard to undo —
-   destructive tools automatically inherit the confirmation flow and a note in
+   destructive tools automatically inherit the approval flow and a note in
    their description telling the model not to ask for confirmation itself.
-3. Give `summarize()` for anything destructive: the operator confirms *that*
+3. Give `summarize()` for anything destructive: the operator approves *that*
    text, so build it from resolved arguments, never from the request.
+3b. For a write that can be reversed, return `audited(result, before, after)`
+   and define `undo(ctx, { input, before, after })` — the transcript card then
+   offers **Undo this change**. Keep `before` to the fields you changed.
+3c. Its `input_schema` is enforced: the call is validated against it before
+   `run` sees anything, so declare types and enums honestly.
 4. Take money in **ringgit** (`amountRm`), never cents. `toCents()` converts.
    A model that has to remember to multiply by 100 will eventually forget, and a
    100x error on a payout is not recoverable.

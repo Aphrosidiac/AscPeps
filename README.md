@@ -26,6 +26,7 @@
 - [Bookkeeping & documents](#bookkeeping--documents)
 - [Shadow SKUs](#shadow-skus)
 - [Transactional email](#transactional-email)
+- [The assistant](#the-assistant)
 - [WhatsApp AI agent](#whatsapp-ai-agent)
 - [Product catalog](#product-catalog)
 - [Content & compliance governance](#content--compliance-governance)
@@ -72,7 +73,7 @@ AscPeps/
 │   │                         served statically, readable only via an authed route
 │   ├── uploads/               product images — public static mount
 │   └── prisma/                schema.prisma + migrations
-├── docs/                    bookkeeping.md, documents.md, whatsapp-agent.md, posthog.md
+├── docs/                    bookkeeping.md, documents.md, assistant.md, whatsapp-agent.md, posthog.md
 ├── deploy.sh                pull, build on the server, restart
 ├── deploy-frontend.sh       build LOCALLY and ship the output (see Deployment)
 └── README.md
@@ -253,15 +254,24 @@ Renders every template against real orders, reports each one's size against Gmai
 
 ---
 
+## The assistant
+
+Abby — an operator-facing assistant that can do anything the admin dashboard can, with 75 tools across catalog, orders, finance, promos, content, ops, reports, delivery, documents, shadow SKUs, reminders and memory. Two doors onto one harness (`backend/src/modules/ai-agent/core/`, see [docs/assistant.md](docs/assistant.md)):
+
+- **Assistant page** (`/admin/assistant`) — a thread list and a streamed transcript: the reply as it is written, every tool call as a card that fills in with its result, an approval card for anything destructive, and **Undo** on the changes that can be reversed. A Memory panel for the four memory blocks, and two switchable routines (morning brief to the operators' WhatsApp, nightly memory tidy-up).
+- **WhatsApp** — the same loop, gated by the operator allowlist; "yes"/"no" answer a parked action. WhatsApp conversations show on the Assistant page too, read-only.
+
+The harness owns reliability: an append-only provider-neutral transcript with tool results stored in full, schema validation of every tool call, step and token budgets, an escalation model, one run per thread with a Stop that stops, and two honesty guards on every reply — a claim of a change with no successful write is replaced, and a fact no tool result supports is sent back for repair.
+
 ## WhatsApp AI agent
 
-An operator-facing assistant ("Abby") that can do anything the admin dashboard can — 65 tools across catalog, orders, finance, promos, content, ops, reports, delivery, reminders and memory. Runs in the **API** process (the business logic lives there); `whatsapp-worker/worker.ts` is a separate PM2 process holding only the socket.
+Runs in the **API** process (the business logic lives there); `whatsapp-worker/worker.ts` is a separate PM2 process holding only the socket.
 
 Access is an allowlist: an unknown sender never reaches a tool, or an LLM call, at all. Groups are a restriction rather than a bypass — group allowlisted *and* sender resolving to an active operator, both required.
 
 ### Memory
 
-Conversations persist per chat, with rolling compaction folding older turns into a prose summary once a thread passes 30 messages. But every chat is an island, so the agent also has **four always-in-context memory blocks** — `business`, `people`, `suppliers`, `decisions` — rendered into their own system message on every turn, in every thread, for every operator. Roughly 400 tokens when populated.
+Conversations persist per chat as threads, with rolling compaction folding older turns into a stored summary once the model-visible transcript passes 100k characters. But every chat is an island, so the agent also has **four always-in-context memory blocks** — `business`, `people`, `suppliers`, `decisions` — rendered into their own system message on every turn, in every thread, for every operator. Roughly 400 tokens when populated.
 
 No vector store and no embeddings, deliberately: the problem was never retrieval, and the content is SKUs, product names, ringgit amounts and people's names — exactly where keyword matching beats semantic search.
 

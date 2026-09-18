@@ -96,6 +96,16 @@ const envSchema = z.object({
   // connects and records inbound messages.
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().default('deepseek/deepseek-v4-flash'),
+  // Where a turn goes when the main model fails: a provider error is retried
+  // here once, and two consecutive steps of schema-breaking tool calls hand
+  // the turn over. Unset = no escalation, the error reaches the operator.
+  OPENROUTER_ESCALATION_MODEL: z.string().optional(),
+  // Visible reasoning for the assistant. 'none' matches what production ran
+  // before the streamed harness: DeepSeek V4 with reasoning at its default
+  // can spend the whole max_tokens budget thinking and hand back nothing
+  // usable (verified on HarvestGrow with a 20-token budget). Raise it once
+  // the budget is generous and the Thinking disclosure is wanted.
+  AGENT_REASONING_EFFORT: z.enum(['none', 'low', 'medium', 'high']).default('none'),
   // Downtime alerting. A dropped baileys socket is invisible from outside:
   // PM2 stays green (the process never dies, only the socket does) and the
   // site keeps returning 200. These are the out-of-band signal.
