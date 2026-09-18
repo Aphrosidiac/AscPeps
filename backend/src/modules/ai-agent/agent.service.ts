@@ -130,6 +130,47 @@ const AFFIRMATIVE =
 const NEGATIVE =
   /^(n|no|nope|nah|cancel|stop|abort|jangan|tak|tidak|nevermind|never mind)(\s+(thanks|thank you|tq|please|pls|boss|ab|abby))?\s*[.!]*$/i;
 
+// ------------------------------------------------------------- mentions
+//
+// WhatsApp puts a mention into the message TEXT as "@" + the person's raw
+// identifier — the phone digits, or increasingly the LID — and the app
+// renders it as a name. The model sees the digits. Two failures followed in
+// production: it treated "@67615754068059" as something to look up, and it
+// wrote the same token back in its replies ("Right — @67615754068059, what
+// do you think?"), which on a phone is a string of digits, because a real
+// mention needs metadata the worker never sends.
+//
+// Both directions are fixed by naming people. Inbound, a mention of an
+// operator becomes "@Name"; anyone else keeps the number in brackets, since a
+// customer's phone tagged in a group can be a legitimate lookup target.
+// Outbound, any "@digits" the model still produces becomes the operator's
+// name, or is dropped.
+
+const MENTION = /@(\d{8,20})\b/g;
+
+type Directory = { digits: string; name: string }[];
+
+export async function operatorDirectory(fastify: FastifyInstance): Promise<Directory> {
+  const ops = await fastify.prisma.whatsAppOperator.findMany({ where: { active: true }, select: { name: true, phone: true, lid: true } });
+  const out: Directory = [];
+  for (const o of ops) {
+    const phone = o.phone.replace(/\D/g, '');
+    if (phone) out.push({ digits: phone, name: o.name });
+    // "0139078710" arrives from WhatsApp as "60139078710".
+    if (phone.startsWith('0')) out.push({ digits: `6${phone}`, name: o.name });
+    if (o.lid) out.push({ digits: o.lid, name: o.name });
+  }
+  return out;
+}
+
+export function humaniseMentions(text: string, dir: Directory, direction: 'in' | 'out'): string {
+  return text.replace(MENTION, (whole, digits: string) => {
+    const hit = dir.find((d) => d.digits === digits);
+    if (hit) return direction === 'in' ? `@${hit.name}` : hit.name;
+    return direction === 'in' ? `@someone (${digits})` : '';
+  }).replace(/[ \t]{2,}/g, ' ');
+}
+
 // Converts the markdown the model reaches for into WhatsApp's own formatting.
 //
 // WhatsApp uses *single* asterisks for bold; **double** renders as literal
@@ -329,7 +370,9 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
 async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, actor: AgentActor): Promise<AgentOutcome> {
   const thread = await whatsappThread(fastify, msg, actor);
   const opts = turnOptionsFor(msg, actor, thread.chatKey!, thread.title);
-  const text = msg.text.trim();
+  // Mentions become names before the model, or a reader, sees them.
+  const directory = await operatorDirectory(fastify);
+  const text = humaniseMentions(msg.text.trim(), directory, 'in');
 
   // A dashboard approval may have this thread mid-resume; a WhatsApp message
   // waits its turn rather than colliding with it.
@@ -350,7 +393,7 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
       } catch (err: any) {
         return { action: 'reply', text: `Couldn't do it: ${err?.message ?? String(err)}` };
       }
-      return { action: 'reply', text: await relay(thread.id) };
+      return { action: 'reply', text: await relay(thread.id, directory) };
     }
     if (NEGATIVE.test(text)) {
       // No model turn on a decline: "Cancelled" needs no narration, and the
@@ -382,19 +425,19 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
   } catch (err: any) {
     return { action: 'reply', text: `Something went wrong on my side: ${err?.message ?? 'unknown error'}. Nothing was changed by this message.` };
   }
-  return { action: 'reply', text: await relay(thread.id) };
+  return { action: 'reply', text: await relay(thread.id, directory) };
 }
 
 // Waits for the thread's run to finish and turns its outcome into one
 // WhatsApp message: the assistant's answer, then a confirmation prompt for
 // each action it parked. One place every reply passes through, so nothing
 // can bypass the formatter.
-export async function relay(threadId: string): Promise<string> {
+export async function relay(threadId: string, directory: Directory = []): Promise<string> {
   const outcome = await awaitTurn(threadId);
   const parts: string[] = [];
   if (outcome.error) parts.push(`Something went wrong on my side: ${outcome.error}. Nothing was changed by this message.`);
   else if (outcome.aborted) parts.push('Stopped before I could finish.');
-  else if (outcome.text) parts.push(toWhatsAppText(outcome.text));
+  else if (outcome.text) parts.push(humaniseMentions(toWhatsAppText(outcome.text), directory, 'out'));
   for (const p of outcome.pending) parts.push(confirmationPrompt(p.summary ?? p.tool));
   if (!parts.length) parts.push('I ran that but have nothing to report back — try asking again more specifically.');
   return parts.join('\n\n');

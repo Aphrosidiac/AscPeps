@@ -3,7 +3,7 @@ import { sendWhatsAppMessage, targetFromChatKey } from '../../utils/whatsapp-sen
 import { activeRun, actionView, approveAction, declineAction, startTurn, stopRun, subscribe, undoAction, type AgentEvent, type TurnOptions } from './core/run.js';
 import { providerConfigured } from './core/provider.js';
 import { AGENT_MODELS, EFFORTS, agentModelSettings, saveAgentModelSettings } from './core/models.js';
-import { relay } from './agent.service.js';
+import { relay, operatorDirectory } from './agent.service.js';
 import { ALL_TOOLS, toolsFor } from './registry.js';
 import { tierOf, type AgentActor } from './tool-kit.js';
 import { deleteMemory, listMemory, readMemory, writeMemory } from './memory.js';
@@ -169,7 +169,7 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
   async function relayIfWhatsApp(threadId: string) {
     const thread = await fastify.prisma.agentThread.findUnique({ where: { id: threadId }, select: { kind: true, chatKey: true } });
     if (thread?.kind !== 'whatsapp' || !thread.chatKey) return;
-    const text = await relay(threadId);
+    const text = await relay(threadId, await operatorDirectory(fastify));
     try {
       await sendWhatsAppMessage(targetFromChatKey(thread.chatKey), text);
     } catch (err) {
