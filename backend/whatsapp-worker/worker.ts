@@ -29,7 +29,7 @@ import * as QRCode from 'qrcode'
 import path from 'path'
 import fs from 'fs'
 import { config as loadEnv } from 'dotenv'
-import { mentionsBot, stripSelfMentions } from './mention.js'
+import { contentOf, mentionsBot, stripSelfMentions } from './mention.js'
 
 loadEnv()
 
@@ -434,14 +434,6 @@ async function connectWhatsApp() {
 
 // ─── Inbound → API agent → reply ───────────────────────────
 
-function extractText(msg: any): string {
-  return (
-    msg.message?.conversation ||
-    msg.message?.extendedTextMessage?.text ||
-    msg.message?.imageMessage?.caption ||
-    ''
-  )
-}
 
 async function handleInbound(msg: any) {
   const remoteJid: string = msg.key.remoteJid || ''
@@ -467,7 +459,13 @@ async function handleInbound(msg: any) {
   const senderPhone = isLid ? '' : senderJid.replace('@s.whatsapp.net', '').split(':')[0]
   if (!senderLid && !senderPhone) return
 
-  let text = extractText(msg)
+  // Unwrapped first: disappearing and view-once messages, captioned documents
+  // and edits carry the real content one level down, and reading the top
+  // level meant an operator in a disappearing-messages group was ignored.
+  const content = contentOf(msg.message)
+  // Reactions, deletes and protocol bookkeeping: nothing was said to us.
+  if (content.silent) return
+  let text = content.text
 
   // Media is not fed to the model, but an operator who sends the bot a
   // picture should hear that rather than be ignored. The NOTICE is the API's
@@ -476,13 +474,7 @@ async function handleInbound(msg: any) {
   // number sits in — and every stranger's voice note — got an answer from
   // the business number. The API runs the same gate it runs for text and
   // says nothing to anyone it would not have answered.
-  const media: 'image' | 'voice message' | 'file' | undefined = msg.message?.imageMessage
-    ? 'image'
-    : msg.message?.audioMessage
-      ? 'voice message'
-      : msg.message?.documentMessage
-        ? 'file'
-        : undefined
+  const media = content.media
   if (!text.trim() && !media) return
 
   // Computed on the RAW text — mentionsBot's JID matching doesn't touch the

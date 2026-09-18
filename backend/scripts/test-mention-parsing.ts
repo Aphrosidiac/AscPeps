@@ -11,7 +11,7 @@
  *
  *   npx tsx scripts/test-mention-parsing.ts
  */
-import { mentionsBot, stripSelfMentions } from '../whatsapp-worker/mention.js';
+import { contentOf, mentionsBot, stripSelfMentions } from '../whatsapp-worker/mention.js';
 
 let pass = 0;
 let fail = 0;
@@ -184,6 +184,66 @@ check('the exact production failure — clean text after stripping', () => {
   const msg = mentionMessage(raw);
   eq(mentionsBot(msg, raw, IDS), true, 'should still be treated as addressed to us:');
   eq(stripSelfMentions(raw, IDS), 'what time of my delivery for tonight again ?', 'model should now see a clean question:');
+});
+
+// -------------------------------------------------- what a message is
+
+check('plain text', () => {
+  const c = contentOf({ conversation: 'hi' });
+  eq(c.text, 'hi');
+  eq(c.media, undefined);
+  eq(c.silent, false);
+});
+
+check('a disappearing-messages group: text one level down', () => {
+  // The shape baileys delivers in a group with disappearing messages on. Read
+  // at the top level this is an empty message, and the operator was ignored.
+  const c = contentOf({ ephemeralMessage: { message: { extendedTextMessage: { text: 'ab how many orders today' } } } });
+  eq(c.text, 'ab how many orders today');
+});
+
+check('view-once image, no caption', () => {
+  const c = contentOf({ viewOnceMessageV2: { message: { imageMessage: { mimetype: 'image/jpeg' } } } });
+  eq(c.media, 'image');
+  eq(c.text, '');
+});
+
+check('a video with a caption is text, and still knows it was a video', () => {
+  const c = contentOf({ videoMessage: { caption: 'ab check this', seconds: 12 } });
+  eq(c.text, 'ab check this');
+  eq(c.media, 'video');
+});
+
+check('a voice note is not merely audio', () => {
+  eq(contentOf({ audioMessage: { ptt: true } }).media, 'voice message');
+  eq(contentOf({ audioMessage: { ptt: false } }).media, 'audio');
+});
+
+check('a document sent with a caption is unwrapped', () => {
+  const c = contentOf({ documentWithCaptionMessage: { message: { documentMessage: { caption: 'invoice for 0042', fileName: 'inv.pdf' } } } });
+  eq(c.text, 'invoice for 0042');
+  eq(c.media, 'file');
+});
+
+check('stickers, contacts, locations and polls are named', () => {
+  eq(contentOf({ stickerMessage: {} }).media, 'sticker');
+  eq(contentOf({ contactMessage: { displayName: 'X' } }).media, 'contact');
+  eq(contentOf({ locationMessage: { degreesLatitude: 1 } }).media, 'location');
+  eq(contentOf({ pollCreationMessageV3: { name: 'Lunch?' } }).media, 'poll');
+});
+
+check('reactions, deletes and protocol traffic are silent', () => {
+  eq(contentOf({ reactionMessage: { text: '👍' } }).silent, true);
+  eq(contentOf({ protocolMessage: { type: 0 } }).silent, true);
+  eq(contentOf({}).silent, true);
+  eq(contentOf(undefined).silent, true);
+});
+
+check('a caption that tags the bot counts as a mention', () => {
+  // The mention sits on imageMessage.contextInfo, not on an extendedTextMessage
+  // the message does not have.
+  const msg = { message: { imageMessage: { caption: `@${OWN_LID} is this the right label?`, contextInfo: { mentionedJid: [`${OWN_LID}@lid`] } } } };
+  eq(mentionsBot(msg, contentOf(msg.message).text, IDS), true);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../../config/env.js';
-import { handleMessage, type InboundMessage } from './agent.service.js';
+import { handleMessage, MEDIA_KINDS, type InboundMessage, type MediaKind } from './agent.service.js';
 import { sendEmail } from '../../utils/email.js';
 
 // The worker → API hop. This endpoint can run every tool the agent has, so it
@@ -28,7 +28,7 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
     if ((!body?.senderPhone && !body?.senderLid) || typeof body.text !== 'string') {
       return reply.status(400).send({ error: 'senderPhone or senderLid, plus text, are required' });
     }
-    const media = body.media === 'image' || body.media === 'voice message' || body.media === 'file' ? body.media : undefined;
+    const media = (MEDIA_KINDS as readonly string[]).includes(String(body.media)) ? (body.media as MediaKind) : undefined;
     if (!body.text.trim() && !media) return reply.status(400).send({ error: 'text or media is required' });
 
     const msg: InboundMessage = {

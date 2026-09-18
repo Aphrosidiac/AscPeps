@@ -5,11 +5,69 @@
  * strings) as a parameter rather than reaching into `sock` state itself.
  */
 
+// What a message IS, once the wrappers are off.
+//
+// WhatsApp nests the real content inside envelopes — disappearing messages
+// (ephemeralMessage), view-once (viewOnceMessage, V2, V2Extension), a document
+// sent with a caption (documentWithCaptionMessage), an edit (editedMessage).
+// Reading `msg.message.conversation` straight off the top misses all of them:
+// an operator in a group with disappearing messages on was ignored entirely,
+// because their text never surfaced at the top level.
+export type MediaKind = 'image' | 'video' | 'voice message' | 'audio' | 'file' | 'sticker' | 'contact' | 'location' | 'poll'
+
+export interface MessageContent {
+  text: string
+  media?: MediaKind
+  contextInfo?: any
+  // Something the agent should never react to: a reaction, a delete, an
+  // edit's bookkeeping, a protocol message.
+  silent: boolean
+}
+
+const WRAPPERS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage'] as const
+
+export function unwrapMessage(message: any): any {
+  let m = message
+  for (let i = 0; i < 6 && m; i++) {
+    const key = WRAPPERS.find((k) => m[k]?.message)
+    if (!key) break
+    m = m[key].message
+  }
+  return m ?? {}
+}
+
+export function contentOf(rawMessage: any): MessageContent {
+  const m = unwrapMessage(rawMessage)
+  const pick = (node: any, media?: MediaKind, text?: string): MessageContent => ({
+    text: (text ?? '').toString(),
+    media,
+    contextInfo: node?.contextInfo,
+    silent: false,
+  })
+  if (typeof m.conversation === 'string') return pick(m, undefined, m.conversation)
+  if (m.extendedTextMessage) return pick(m.extendedTextMessage, undefined, m.extendedTextMessage.text)
+  if (m.imageMessage) return pick(m.imageMessage, 'image', m.imageMessage.caption)
+  if (m.videoMessage) return pick(m.videoMessage, 'video', m.videoMessage.caption)
+  if (m.audioMessage) return pick(m.audioMessage, m.audioMessage.ptt ? 'voice message' : 'audio')
+  if (m.documentMessage) return pick(m.documentMessage, 'file', m.documentMessage.caption)
+  if (m.stickerMessage) return pick(m.stickerMessage, 'sticker')
+  if (m.contactMessage || m.contactsArrayMessage) return pick(m.contactMessage ?? m.contactsArrayMessage, 'contact')
+  if (m.locationMessage || m.liveLocationMessage) return pick(m.locationMessage ?? m.liveLocationMessage, 'location')
+  if (m.pollCreationMessage || m.pollCreationMessageV2 || m.pollCreationMessageV3) return pick(m.pollCreationMessage ?? m.pollCreationMessageV2 ?? m.pollCreationMessageV3, 'poll')
+  // Reactions, deletes, edits' protocol bookkeeping, poll votes, keep-alives:
+  // nothing a person said to us.
+  return { text: '', silent: true }
+}
+
 // Did this message address the bot? Three ways count: an explicit @-mention of
 // the connected number, a reply to one of the bot's own messages, or the text
 // opening with the trigger word. Groups with requireMention set act on nothing else.
+//
+// The contextInfo is read from whatever the content node is — an image with a
+// caption that tags the bot carries its mentions on imageMessage, not on an
+// extendedTextMessage it does not have.
 export function mentionsBot(msg: any, text: string, ids: string[]): boolean {
-  const ctx = msg.message?.extendedTextMessage?.contextInfo
+  const ctx = contentOf(msg.message).contextInfo ?? msg.message?.extendedTextMessage?.contextInfo
   const mentioned: string[] = ctx?.mentionedJid ?? []
   if (ids.length && mentioned.some((jid) => ids.some((id) => jid.startsWith(id)))) return true
 

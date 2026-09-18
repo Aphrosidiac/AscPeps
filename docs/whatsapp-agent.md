@@ -218,7 +218,7 @@ against the live deployment:
 | Unknown sender, group allowlisted | ignored |
 | Bound operator, allowlisted group, no mention | ignored |
 | Bound operator, allowlisted group, mentioned | acts |
-| Anyone, an image / voice note / file with no caption | gated exactly like text; an allowed sender gets "I can only read text right now", everyone else silence |
+| Anyone, media with no caption (image, video, voice note, audio, file, contact, location, poll) | gated exactly like text; an allowed sender gets a one-line "I can't read that" notice, everyone else silence. Stickers, reactions and deletes get silence from everyone. Text inside disappearing / view-once / captioned-document envelopes is unwrapped and handled as text |
 
 Unresolvable senders are recorded only *after* the group gate passes. Recording
 first meant every participant of every supplier and customer group the number

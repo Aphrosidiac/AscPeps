@@ -27,16 +27,40 @@ export interface InboundMessage {
   senderLid?: string;
   senderName: string | null;
   text: string;
-  // Set by the worker when the message was an image, voice note or file with
-  // no caption. Such a message is gated exactly like text and, if it passes,
-  // answered with a fixed notice — never shown to the model.
-  media?: 'image' | 'voice message' | 'file';
+  // Set by the worker when the message carried no text: what it was instead.
+  // Gated exactly like text and, if it passes, answered with a fixed notice
+  // (or, for a sticker, nothing) — never shown to the model.
+  media?: MediaKind;
   // Group only.
   groupJid?: string;
   groupSubject?: string;
   // Whether the message mentioned/replied to the bot. Groups with
   // requireMention set only act on messages where this is true.
   mentionsBot?: boolean;
+}
+
+export type MediaKind = 'image' | 'video' | 'voice message' | 'audio' | 'file' | 'sticker' | 'contact' | 'location' | 'poll';
+export const MEDIA_KINDS: readonly MediaKind[] = ['image', 'video', 'voice message', 'audio', 'file', 'sticker', 'contact', 'location', 'poll'];
+
+// What an allowed sender hears for something the assistant cannot read. A
+// sticker gets nothing: nobody sends a sticker expecting an answer, and a
+// reply to every sticker in an operators' group is noise.
+export function mediaNotice(kind: MediaKind): string | null {
+  switch (kind) {
+    case 'sticker':
+      return null;
+    case 'voice message':
+    case 'audio':
+      return "I can't listen to audio yet — type what you need and I'll act on it.";
+    case 'contact':
+      return "I can't read a shared contact — type the name or number and what to do with it.";
+    case 'location':
+      return "I can't read a shared location — type the address and what to do with it.";
+    case 'poll':
+      return "I can't read polls — ask me directly.";
+    default:
+      return `I can only read text right now — send that ${kind}'s details as a message and I'll act on it.`;
+  }
 }
 
 export type AgentOutcome =
@@ -292,7 +316,8 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
   // Media from someone the agent answers: say plainly that it cannot read it.
   // Nothing is stored and no model runs — there is nothing to read.
   if (msg.media && !msg.text.trim()) {
-    return { action: 'reply', text: `I can only read text right now — send that ${msg.media}'s details as a message and I'll act on it.` };
+    const notice = mediaNotice(msg.media);
+    return notice ? { action: 'reply', text: notice } : { action: 'ignore', reason: `${msg.media} — nothing to answer` };
   }
 
   // The gate is deliberately OUTSIDE the lock: an unknown sender must never be
