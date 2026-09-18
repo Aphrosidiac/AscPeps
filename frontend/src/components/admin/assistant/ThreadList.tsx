@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Loader2, MessageSquare, MoonStar, Plus, Sunrise, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePresence } from '@/hooks/usePresence';
 import type { Thread } from '@/lib/assistant';
 import { ago, money } from './format';
 
@@ -37,12 +38,17 @@ export function ThreadList({
   onNew: () => void;
   onDelete: (t: Thread) => void;
 }) {
+  // On a phone the list is a drawer that slides in and — kept mounted for the
+  // exit — slides back out. From lg it is a static column and the drawer
+  // classes are inert.
+  const drawer = usePresence(open, 160);
   return (
     <>
       <aside
         className={cn(
-          'absolute inset-y-0 left-0 z-20 flex w-72 shrink-0 flex-col border-r border-border bg-surface transition-transform lg:static lg:translate-x-0',
-          open ? 'translate-x-0' : '-translate-x-full'
+          'absolute inset-y-0 left-0 z-20 flex w-72 shrink-0 flex-col border-r border-border bg-surface lg:static lg:translate-x-0 lg:animate-none!',
+          drawer.mounted ? 'drawer-panel' : '-translate-x-full',
+          drawer.closing && 'is-closing'
         )}
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
@@ -50,7 +56,7 @@ export function ThreadList({
           <div className="flex items-center gap-1">
             <button
               onClick={onNew}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
+              className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} /> New
             </button>
@@ -61,7 +67,7 @@ export function ThreadList({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {!threads.length && <p className="px-4 py-6 text-[13px] leading-[18px] text-text-secondary">Nothing yet. Ask it what needs your attention.</p>}
-          {threads.map((t) => {
+          {threads.map((t, i) => {
             const Icon = KIND_ICON[t.kind as keyof typeof KIND_ICON];
             const active = t.id === activeId;
             return (
@@ -69,7 +75,14 @@ export function ThreadList({
                 key={t.id}
                 href={`/admin/assistant/${t.id}`}
                 onClick={onClose}
-                className={cn('group flex items-start gap-2 border-b border-border/60 px-4 py-3 hover:bg-surface-elevated', active && 'bg-surface-elevated')}
+                // Rows cascade in on first paint, capped so a long list never
+                // leaves the last one arriving noticeably late. A new thread
+                // inserted at the top plays the same rise on its own.
+                style={{ animationDelay: `${Math.min(i * 25, 250)}ms` }}
+                className={cn(
+                  'row-rise group flex items-start gap-2 border-b border-border/60 px-4 py-3 transition-colors duration-150 hover:bg-surface-elevated',
+                  active && 'bg-surface-elevated'
+                )}
               >
                 <div className="min-w-0 flex-1">
                   <p className={cn('flex items-center gap-1.5 text-[14px] leading-5', active ? 'font-medium text-text-primary' : 'text-text-primary')}>
@@ -99,7 +112,9 @@ export function ThreadList({
           })}
         </div>
       </aside>
-      {open && <div className="absolute inset-0 z-10 bg-black/30 lg:hidden" onClick={onClose} />}
+      {drawer.mounted && (
+        <div className={cn('drawer-backdrop absolute inset-0 z-10 bg-black/30 lg:hidden', drawer.closing && 'is-closing')} onClick={onClose} />
+      )}
     </>
   );
 }

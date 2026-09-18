@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, Cpu, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePresence } from '@/hooks/usePresence';
 import { SelectInput } from '@/components/admin/ui';
 import { errorMessage, getModelSettings, saveModelSettings, type ModelInfo, type ModelSettings } from '@/lib/assistant';
 
@@ -25,6 +26,7 @@ export function ModelMenu({ token, onNotice, onChanged }: { token: string; onNot
   const [settings, setSettings] = useState<ModelSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const wrap = useRef<HTMLDivElement | null>(null);
+  const pop = usePresence(open, 120);
 
   const load = useCallback(() => {
     getModelSettings(token)
@@ -80,7 +82,7 @@ export function ModelMenu({ token, onNotice, onChanged }: { token: string; onNot
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
+          'press inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
           open ? 'border-primary bg-primary text-white' : 'border-border text-text-primary hover:bg-surface-elevated'
         )}
         title={settings?.model}
@@ -90,11 +92,14 @@ export function ModelMenu({ token, onNotice, onChanged }: { token: string; onNot
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} strokeWidth={1.75} />
       </button>
 
-      {open && (
+      {pop.mounted && (
         <div
           role="dialog"
           aria-label="Model"
-          className="absolute right-0 top-10 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-[10px] border border-border bg-surface p-4 shadow-lg"
+          className={cn(
+            'pop-in absolute right-0 top-10 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-[10px] border border-border bg-surface p-4 shadow-lg',
+            pop.closing && 'is-closing'
+          )}
         >
           {!settings ? (
             <p className="text-[13px] text-text-secondary">Loading…</p>

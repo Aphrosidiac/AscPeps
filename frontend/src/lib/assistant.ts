@@ -76,6 +76,7 @@ export interface MessageContent {
   guard?: GuardNote;
   retracted?: boolean;
   transient?: boolean;
+  error?: boolean;
   summary?: string;
   replaces?: [number, number];
 }

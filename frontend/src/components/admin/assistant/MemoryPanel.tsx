@@ -110,7 +110,7 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
           <button
             onClick={() => (open ? setOpen(null) : setCreating(false))}
             aria-label="Back"
-            className="grid h-9 w-9 place-items-center rounded-lg text-text-secondary hover:text-text-primary"
+            className="press grid h-9 w-9 place-items-center rounded-lg text-text-secondary hover:bg-surface-elevated hover:text-text-primary"
           >
             <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
           </button>
@@ -119,7 +119,7 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
         {!open && !creating && (
           <button
             onClick={() => setCreating(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
+            className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
           >
             <Plus className="h-4 w-4" strokeWidth={1.75} /> New
           </button>
@@ -129,7 +129,7 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
             <button
               disabled={!open.dirty || busy !== ''}
               onClick={save}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-light disabled:opacity-50"
+              className="press inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-light disabled:opacity-50"
             >
               {busy === 'save' ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Save className="h-4 w-4" strokeWidth={1.75} />} Save
             </button>
@@ -138,20 +138,24 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
                 onClick={remove}
                 disabled={busy !== ''}
                 aria-label="Forget this file"
-                className="grid h-9 w-9 place-items-center rounded-lg text-text-muted hover:text-danger disabled:opacity-50"
+                className="press grid h-9 w-9 place-items-center rounded-lg text-text-muted hover:bg-red-50 hover:text-danger disabled:opacity-50"
               >
                 <Trash2 className="h-4 w-4" strokeWidth={1.5} />
               </button>
             )}
           </>
         )}
-        <button onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-lg text-text-secondary hover:text-text-primary">
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="press grid h-9 w-9 place-items-center rounded-lg text-text-secondary hover:bg-surface-elevated hover:text-text-primary"
+        >
           <X className="h-5 w-5" strokeWidth={1.5} />
         </button>
       </div>
 
       {open ? (
-        <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div key={open.path} className="view-in flex min-h-0 flex-1 flex-col p-4">
           <textarea
             value={open.content}
             onChange={(e) => setOpen({ ...open, content: e.target.value, dirty: true })}
@@ -174,7 +178,7 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
           </p>
         </div>
       ) : creating ? (
-        <div className="space-y-3 p-4">
+        <div className="view-in space-y-3 p-4">
           <label className="block text-[14px] font-medium text-text-primary" htmlFor="memory-new-path">
             Path under /memories
           </label>
@@ -195,20 +199,20 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
             <button
               disabled={!newPath.trim()}
               onClick={createFile}
-              className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-light disabled:opacity-50"
+              className="press inline-flex h-8 items-center rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-light disabled:opacity-50"
             >
               Create
             </button>
             <button
               onClick={() => setCreating(false)}
-              className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
+              className="press inline-flex h-8 items-center rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
             >
               Cancel
             </button>
           </div>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="view-in min-h-0 flex-1 overflow-y-auto">
           {!files.length && (
             <p className="px-4 py-6 text-[13px] leading-[18px] text-text-secondary">
               Nothing remembered yet. It writes here when an operator tells it something durable — how something is done, who handles what, what it learned
@@ -224,11 +228,12 @@ export function MemoryPanel({ token, onClose, onNotice }: { token: string; onClo
                   {g.folder === 'core' ? ` · ${coreChars}/${CORE_CAP}` : ''}
                 </span>
               </div>
-              {g.files.map((f) => (
+              {g.files.map((f, i) => (
                 <button
                   key={f.path}
                   onClick={() => view(f)}
-                  className="flex w-full items-center gap-3 border-b border-border/60 px-4 py-3 text-left hover:bg-surface-elevated"
+                  style={{ animationDelay: `${Math.min(i * 25, 200)}ms` }}
+                  className="row-rise press flex w-full items-center gap-3 border-b border-border/60 px-4 py-3 text-left transition-colors hover:bg-surface-elevated"
                 >
                   <FileText className="h-4 w-4 shrink-0 text-text-muted" strokeWidth={1.5} />
                   <span className="min-w-0 flex-1">

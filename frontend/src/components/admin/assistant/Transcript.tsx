@@ -74,6 +74,16 @@ export function Transcript({
           );
         }
         if (m.role === 'system') {
+          if (m.content.error) {
+            return (
+              <p
+                key={m.id}
+                className="msg-in mx-auto max-w-lg rounded-[10px] border border-danger/30 bg-red-50/60 px-3 py-2 text-center text-[13px] leading-[18px] text-danger"
+              >
+                {m.content.text}
+              </p>
+            );
+          }
           if (m.content.transient) return null;
           if (m.content.replaces) {
             if (m.content.summary === '(superseded)') return null;
@@ -121,7 +131,7 @@ export function Transcript({
                 <div className="prose-assistant text-[15px] leading-[22px] text-text-primary" dangerouslySetInnerHTML={{ __html: renderMarkdown(c.text) }} />
               ))}
             {c.guard && !c.retracted && <GuardBadge guard={c.guard} />}
-            {(c.toolCalls ?? []).map((call) => {
+            {(c.toolCalls ?? []).map((call, i) => {
               const action = actionFor.get(call.id);
               const result = resultFor.get(call.id);
               const liveTool = live?.tools.get(call.id);
@@ -130,9 +140,21 @@ export function Transcript({
               return (
                 <div
                   key={call.id}
-                  className={cn('rounded-[10px] border bg-surface text-[13px] leading-[18px]', pending ? 'border-danger/40' : 'border-border')}
+                  // Cards from one step arrive together; a short stagger keeps
+                  // them readable as a sequence. A pending one rings once.
+                  style={{ animationDelay: `${Math.min(i * 40, 200)}ms` }}
+                  className={cn(
+                    'msg-in rounded-[10px] border bg-surface text-[13px] leading-[18px] transition-colors duration-200',
+                    pending ? 'attention-ring border-danger/40' : 'border-border'
+                  )}
                 >
-                  <button className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => toggle(call.id)}>
+                  <button
+                    className={cn(
+                      'press flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-elevated/60',
+                      isOpen || pending ? 'rounded-t-[10px]' : 'rounded-[10px]'
+                    )}
+                    onClick={() => toggle(call.id)}
+                  >
                     {action?.tier === 'destructive' ? (
                       <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-danger" strokeWidth={1.75} />
                     ) : (
@@ -144,15 +166,23 @@ export function Transcript({
                     )}
                     <span className="min-w-0 flex-1 truncate text-text-secondary">{action?.summary || inputSummary(call.input)}</span>
                     {pending ? (
-                      <span className="shrink-0 text-danger">needs your approval</span>
+                      <span key="pending" className="fade-in shrink-0 text-danger">
+                        needs your approval
+                      </span>
                     ) : action?.status === 'declined' ? (
-                      <span className="shrink-0 text-text-secondary">declined</span>
+                      <span key="declined" className="fade-in shrink-0 text-text-secondary">
+                        declined
+                      </span>
                     ) : action?.status === 'expired' ? (
-                      <span className="shrink-0 text-text-secondary">expired</span>
+                      <span key="expired" className="fade-in shrink-0 text-text-secondary">
+                        expired
+                      </span>
                     ) : action?.status === 'undone' ? (
-                      <span className="shrink-0 text-text-secondary">undone</span>
+                      <span key="undone" className="fade-in shrink-0 text-text-secondary">
+                        undone
+                      </span>
                     ) : result ? (
-                      <span className={cn('shrink-0', result.isError ? 'text-danger' : 'text-text-secondary')}>
+                      <span key="result" className={cn('fade-in shrink-0', result.isError ? 'text-danger' : 'text-text-secondary')}>
                         {result.isError ? 'error' : 'ok'} · <span className="tabular-nums">{result.ms}</span> ms
                       </span>
                     ) : liveTool && !liveTool.done ? (
@@ -162,7 +192,7 @@ export function Transcript({
                   </button>
 
                   {pending && action && (
-                    <div className="border-t border-danger/20 bg-red-50/40 px-3 py-3">
+                    <div className="msg-in border-t border-danger/20 bg-red-50/40 px-3 py-3">
                       <p className="text-[14px] font-medium leading-5 text-text-primary">{action.summary}</p>
                       <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface px-3 py-2 text-[12px] leading-4 text-text-primary">
                         {pretty(call.input)}
@@ -171,7 +201,7 @@ export function Transcript({
                         <button
                           disabled={running || acting === action.id}
                           onClick={() => onDecide(action, 'approve')}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-light disabled:opacity-50"
+                          className="press inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-light disabled:opacity-50"
                         >
                           {acting === action.id ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Check className="h-4 w-4" strokeWidth={2} />}{' '}
                           Approve
@@ -179,7 +209,7 @@ export function Transcript({
                         <button
                           disabled={running || acting === action.id}
                           onClick={() => onDecide(action, 'decline')}
-                          className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                          className="press inline-flex h-8 items-center rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
                         >
                           Decline
                         </button>
@@ -193,44 +223,50 @@ export function Transcript({
                     </div>
                   )}
 
-                  {isOpen && (
-                    <div className="border-t border-border px-3 py-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">Input</p>
-                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[12px] leading-4 text-text-primary">{pretty(call.input)}</pre>
-                      {result && (
-                        <>
-                          <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-text-secondary">Result</p>
-                          <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap text-[12px] leading-4 text-text-primary">{pretty(result.output)}</pre>
-                        </>
-                      )}
-                      {action?.status === 'done' && action.output !== undefined && !result && (
-                        <>
-                          <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-text-secondary">Result (after approval)</p>
-                          <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap text-[12px] leading-4 text-text-primary">{pretty(action.output)}</pre>
-                        </>
-                      )}
-                      {action?.actorName && action.tier !== 'read' && (
-                        <p className="mt-2 text-[12px] leading-4 text-text-secondary">
-                          {action.status === 'pending' ? 'Asked' : action.status === 'declined' ? 'Declined' : action.status === 'undone' ? 'Undone' : 'Done'} ·{' '}
-                          {action.actorName}
-                        </p>
-                      )}
-                      {action?.undoable && (
-                        <button
-                          disabled={acting === action.id}
-                          onClick={() => onDecide(action, 'undo')}
-                          className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
-                        >
-                          {acting === action.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-                          ) : (
-                            <Undo2 className="h-4 w-4" strokeWidth={1.75} />
-                          )}{' '}
-                          Undo this change
-                        </button>
-                      )}
+                  <div className={cn('reveal', isOpen && 'is-open')} aria-hidden={!isOpen}>
+                    <div>
+                      <div className="border-t border-border px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">Input</p>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[12px] leading-4 text-text-primary">{pretty(call.input)}</pre>
+                        {result && (
+                          <>
+                            <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-text-secondary">Result</p>
+                            <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap text-[12px] leading-4 text-text-primary">
+                              {pretty(result.output)}
+                            </pre>
+                          </>
+                        )}
+                        {action?.status === 'done' && action.output !== undefined && !result && (
+                          <>
+                            <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-text-secondary">Result (after approval)</p>
+                            <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap text-[12px] leading-4 text-text-primary">
+                              {pretty(action.output)}
+                            </pre>
+                          </>
+                        )}
+                        {action?.actorName && action.tier !== 'read' && (
+                          <p className="mt-2 text-[12px] leading-4 text-text-secondary">
+                            {action.status === 'pending' ? 'Asked' : action.status === 'declined' ? 'Declined' : action.status === 'undone' ? 'Undone' : 'Done'}{' '}
+                            · {action.actorName}
+                          </p>
+                        )}
+                        {action?.undoable && (
+                          <button
+                            disabled={acting === action.id}
+                            onClick={() => onDecide(action, 'undo')}
+                            className="press mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                          >
+                            {acting === action.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                            ) : (
+                              <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+                            )}{' '}
+                            Undo this change
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
@@ -250,10 +286,13 @@ export function Transcript({
             </details>
           )}
           {live.text && (
-            <div className="prose-assistant text-[15px] leading-[22px] text-text-primary" dangerouslySetInnerHTML={{ __html: renderMarkdown(live.text) }} />
+            <div
+              className="prose-assistant stream-caret text-[15px] leading-[22px] text-text-primary"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(live.text) }}
+            />
           )}
           {[...live.tools.entries()].map(([id, t]) => (
-            <div key={id} className="flex items-center gap-2 rounded-[10px] border border-border bg-surface px-3 py-2 text-[13px] leading-[18px]">
+            <div key={id} className="msg-in flex items-center gap-2 rounded-[10px] border border-border bg-surface px-3 py-2 text-[13px] leading-[18px]">
               {!t.done ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" strokeWidth={2} />
               ) : (
@@ -262,7 +301,7 @@ export function Transcript({
               <span className="font-medium text-text-primary">{t.name}</span>
               <span className="min-w-0 flex-1 truncate text-text-secondary">{inputSummary(t.input)}</span>
               {t.done && (
-                <span className={t.ok ? 'text-text-secondary' : 'text-danger'}>
+                <span className={cn('fade-in', t.ok ? 'text-text-secondary' : 'text-danger')}>
                   {t.ok ? 'ok' : 'error'} · <span className="tabular-nums">{t.ms}</span> ms
                 </span>
               )}
@@ -270,11 +309,21 @@ export function Transcript({
           ))}
         </div>
       ) : running ? (
-        <p className="flex items-center gap-2 text-[13px] leading-[18px] text-text-secondary">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> Working…
-        </p>
+        <TypingDots />
       ) : null}
     </div>
+  );
+}
+
+// The assistant is working and has not said anything yet: three dots, the
+// way every messenger says it, instead of a spinner and a word.
+function TypingDots() {
+  return (
+    <p className="msg-in flex h-6 items-center gap-1 px-1" aria-label="The assistant is working" role="status">
+      <span className="typing-dot h-1.5 w-1.5 rounded-full bg-text-secondary" />
+      <span className="typing-dot h-1.5 w-1.5 rounded-full bg-text-secondary" />
+      <span className="typing-dot h-1.5 w-1.5 rounded-full bg-text-secondary" />
+    </p>
   );
 }
 

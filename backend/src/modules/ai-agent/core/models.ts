@@ -22,6 +22,11 @@ export interface ModelInfo {
   // Whether the model takes a reasoning effort at all. Sending `reasoning`
   // to one that does not is at best ignored; we omit it.
   effort: boolean;
+  // Some endpoints refuse to switch reasoning OFF ("Reasoning is mandatory
+  // for this endpoint and cannot be disabled" — GLM 5.3 Flash, found the
+  // first time it was picked from the menu). For these, `none` is sent as
+  // `low`, and the menu says so.
+  reasoningRequired?: boolean;
   // Sensible role: everyday, escalation, or both.
   role: 'everyday' | 'escalation' | 'both';
 }
@@ -29,7 +34,7 @@ export interface ModelInfo {
 export const AGENT_MODELS: ModelInfo[] = [
   { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash', fit: 'Recommended everyday model — cheap, quick, good with tools.', in: 0.09, out: 0.18, effort: true, role: 'everyday' },
   { id: 'qwen/qwen3.7-flash', label: 'Qwen3.7 Flash', fit: 'Cheapest; fine for lookups and short answers.', in: 0.03, out: 0.13, effort: true, role: 'everyday' },
-  { id: 'z-ai/glm-5.3-flash', label: 'GLM 5.3 Flash', fit: 'Cheap; strongest of the flash tier on Chinese.', in: 0.09, out: 0.3, effort: true, role: 'everyday' },
+  { id: 'z-ai/glm-5.3-flash', label: 'GLM 5.3 Flash', fit: 'Cheap; strongest of the flash tier on Chinese. Always thinks a little — it cannot switch reasoning off.', in: 0.09, out: 0.3, effort: true, reasoningRequired: true, role: 'everyday' },
   { id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash', fit: 'Newer flash; a little steadier on long multi-step turns.', in: 0.15, out: 0.6, effort: true, role: 'everyday' },
   { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash', fit: 'Fast with a very long context — for big reports and long WhatsApp threads.', in: 0.75, out: 3.75, effort: true, role: 'both' },
   { id: 'moonshotai/kimi-k2.5', label: 'Kimi K2.5', fit: 'Careful tool use at a mid price; a good escalation from a flash model.', in: 0.45, out: 2.25, effort: true, role: 'both' },
@@ -49,6 +54,11 @@ export const EFFORTS: { value: ReasoningEffort; label: string }[] = [
 
 export function modelInfo(id: string): ModelInfo | null {
   return AGENT_MODELS.find((m) => m.id === id) ?? null;
+}
+
+/** The effort actually sent for a model: `none` becomes `low` where the endpoint refuses to disable reasoning. */
+export function effortFor(id: string, effort: ReasoningEffort): ReasoningEffort {
+  return effort === 'none' && modelInfo(id)?.reasoningRequired ? 'low' : effort;
 }
 
 export function supportsEffort(id: string): boolean {

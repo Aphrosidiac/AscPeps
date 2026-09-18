@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Brain, CalendarClock, Loader2, MessagesSquare, SendHorizontal, Square, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePresence } from '@/hooks/usePresence';
 import { cn } from '@/lib/utils';
 import {
   createThread,
@@ -49,9 +50,21 @@ export default function AssistantPage() {
   const [listOpen, setListOpen] = useState(false);
   const [side, setSide] = useState<Side>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  // The panel and the toast are kept mounted through their exit; `side` and
+  // `notice` are already null by then, so the last open one is remembered
+  // for the closing frame.
+  const [lastSide, setLastSide] = useState<Exclude<Side, null>>('memory');
+  const [lastNotice, setLastNotice] = useState<Exclude<Notice, null> | null>(null);
+  const sidePresence = usePresence(side !== null, 160);
+  const noticePresence = usePresence(notice !== null, 160);
+  const openSide = (s: Side) => {
+    if (s) setLastSide(s);
+    setSide(s);
+  };
 
   const show = useCallback((kind: 'ok' | 'bad', text: string) => {
     setNotice({ kind, text });
+    setLastNotice({ kind, text });
     window.setTimeout(() => setNotice((n) => (n?.text === text ? null : n)), 4000);
   }, []);
 
@@ -107,7 +120,7 @@ export default function AssistantPage() {
         threadId={threadId}
         configured={configured}
         side={side}
-        setSide={setSide}
+        setSide={openSide}
         show={show}
         onThreadsChanged={loadThreads}
         onCreated={(t) => setThreads((ts) => [t, ...ts])}
@@ -116,9 +129,14 @@ export default function AssistantPage() {
 
       {/* An overlay until xl: with the admin sidebar, the thread list and this
           panel all static, a 1024px screen left the transcript 100px wide. */}
-      {side && (
-        <aside className="absolute inset-y-0 right-0 z-20 w-full max-w-md border-l border-border bg-surface shadow-lg xl:static xl:w-96 xl:shadow-none">
-          {side === 'memory' ? (
+      {sidePresence.mounted && (
+        <aside
+          className={cn(
+            'side-panel absolute inset-y-0 right-0 z-20 w-full max-w-md border-l border-border bg-surface shadow-lg xl:static xl:w-96 xl:shadow-none',
+            sidePresence.closing && 'is-closing'
+          )}
+        >
+          {(side ?? lastSide) === 'memory' ? (
             <MemoryPanel token={token} onClose={() => setSide(null)} onNotice={show} />
           ) : (
             <RoutinesPanel
@@ -134,15 +152,16 @@ export default function AssistantPage() {
         </aside>
       )}
 
-      {notice && (
+      {noticePresence.mounted && lastNotice && (
         <div
           role="status"
           className={cn(
-            'pointer-events-none absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-lg px-3 py-2 text-[13px] font-medium shadow-lg',
-            notice.kind === 'ok' ? 'bg-primary text-white' : 'bg-danger text-white'
+            'toast-in pointer-events-none absolute bottom-24 left-1/2 z-30 rounded-lg px-3 py-2 text-[13px] font-medium shadow-lg',
+            lastNotice.kind === 'ok' ? 'bg-primary text-white' : 'bg-danger text-white',
+            noticePresence.closing && 'is-closing'
           )}
         >
-          {notice.text}
+          {lastNotice.text}
         </div>
       )}
     </div>
@@ -344,6 +363,7 @@ function Conversation({
 
   const readOnly = thread?.kind === 'whatsapp' || thread?.kind === 'reflect' || thread?.kind === 'digest';
   const empty = !threadId || (!messages.length && !live);
+  const stopPresence = usePresence(running, 120);
 
   return (
     <section className="flex min-w-0 flex-1 flex-col">
@@ -364,10 +384,13 @@ function Conversation({
           )}
         </div>
         <ModelMenu token={token} onNotice={show} onChanged={onThreadsChanged} />
-        {running && (
+        {stopPresence.mounted && (
           <button
             onClick={stop}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
+            className={cn(
+              'press fade-in inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated',
+              stopPresence.closing && 'is-closing'
+            )}
           >
             <Square className="h-3.5 w-3.5" strokeWidth={2} /> Stop
           </button>
@@ -376,7 +399,7 @@ function Conversation({
           aria-pressed={side === 'routines'}
           onClick={() => setSide(side === 'routines' ? null : 'routines')}
           className={cn(
-            'inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
+            'press inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
             side === 'routines' ? 'border-primary bg-primary text-white' : 'border-border text-text-primary hover:bg-surface-elevated'
           )}
         >
@@ -386,7 +409,7 @@ function Conversation({
           aria-pressed={side === 'memory'}
           onClick={() => setSide(side === 'memory' ? null : 'memory')}
           className={cn(
-            'inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
+            'press inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
             side === 'memory' ? 'border-primary bg-primary text-white' : 'border-border text-text-primary hover:bg-surface-elevated'
           )}
         >
@@ -400,7 +423,7 @@ function Conversation({
         </div>
       )}
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 lg:px-6">
+      <div ref={scroller} className="view-in min-h-0 flex-1 overflow-y-auto px-4 py-6 lg:px-6">
         {empty ? (
           <div className="mx-auto max-w-3xl py-16 text-center">
             <p className="font-display text-[18px] font-semibold text-text-primary">What do you want to know?</p>
@@ -437,13 +460,13 @@ function Conversation({
                 rows={1}
                 disabled={running || !configured}
                 placeholder="Ask about anything in the shop…"
-                className="max-h-40 min-h-11 flex-1 resize-none rounded-[6px] border border-border bg-surface px-3 py-2.5 text-[15px] text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/15 disabled:bg-surface-elevated disabled:text-text-muted"
+                className="max-h-40 min-h-11 flex-1 resize-none rounded-[6px] border border-border bg-surface px-3 py-2.5 text-[15px] text-text-primary transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/15 disabled:bg-surface-elevated disabled:text-text-muted"
               />
               <button
                 onClick={() => void send()}
                 disabled={!draft.trim() || running || !configured}
                 aria-label="Send"
-                className="grid h-11 w-11 place-items-center rounded-lg bg-primary text-white hover:bg-primary-light disabled:opacity-50"
+                className="press grid h-11 w-11 place-items-center rounded-lg bg-primary text-white hover:bg-primary-light disabled:opacity-50"
               >
                 {running ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <SendHorizontal className="h-4 w-4" strokeWidth={1.75} />}
               </button>

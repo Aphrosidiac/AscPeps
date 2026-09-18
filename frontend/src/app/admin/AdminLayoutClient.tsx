@@ -3,15 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Headset } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   // Second, not last: it can do everything below it, and it is where a
-  // question about any of it gets asked.
-  { href: '/admin/assistant', label: 'Assistant', icon: Sparkles },
+  // question about any of it gets asked. A headset, not the sparkles every
+  // AI button wears: Abby is the secretary on the line, not a magic wand.
+  { href: '/admin/assistant', label: 'Assistant', icon: Headset },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/finance', label: 'Finance', icon: Wallet },
   // Beside Finance, not off with Settings: a document is almost always the

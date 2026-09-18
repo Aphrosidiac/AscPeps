@@ -422,12 +422,120 @@ h1, h2, h3, h4, h5, h6 {
 .prose-assistant th, .prose-assistant td { text-align: left; padding: 0.3em 0.8em 0.3em 0; border-bottom: 1px solid var(--color-border); vertical-align: top; white-space: nowrap; }
 .prose-assistant th { font-weight: 600; color: var(--color-text-primary); }
 
+/* ---- Assistant motion ----
+   One easing (the admin's 0.22,1,0.36,1 "settle"), short enters, shorter
+   exits, and every exit actually plays: anything that can disappear is kept
+   mounted through `.is-closing` by usePresence. */
+
 /* A new transcript row settling in. Short, and only on arrival. */
 @keyframes msg-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .msg-in { animation: msg-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* A whole view arriving — the transcript when the conversation changes, the
+   empty state. Slightly longer than a row; it is the page, not a line. */
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.view-in { animation: view-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Side panel (Memory, Routines): slides in from its edge, slides back out. */
+@keyframes side-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes side-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(16px); }
+}
+.side-panel { animation: side-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.side-panel.is-closing { animation: side-out 0.16s ease-in both; }
+
+/* The mobile thread drawer, from the left. */
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes drawer-out {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+.drawer-panel { animation: drawer-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.drawer-panel.is-closing { animation: drawer-out 0.16s ease-in both; }
+.drawer-backdrop { animation: dialog-backdrop-in 0.18s ease-out both; }
+.drawer-backdrop.is-closing { animation: dialog-backdrop-out 0.15s ease-in both; }
+
+/* A popover anchored to a button (the model menu): grows from its anchor. */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pop-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-3px) scale(0.98); }
+}
+.pop-in { transform-origin: top right; animation: pop-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.pop-in.is-closing { animation: pop-out 0.12s ease-in both; }
+
+/* Expanding detail inside a card (a tool call's input and result). Height is
+   animated with the grid-rows trick — no measuring, no jump — and the inner
+   fades a beat behind so the box opens before the text lands. */
+.reveal { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+.reveal > * { min-height: 0; overflow: hidden; opacity: 0; transition: opacity 0.16s ease-out; }
+.reveal.is-open { grid-template-rows: 1fr; }
+.reveal.is-open > * { opacity: 1; transition-delay: 0.06s; }
+
+/* A destructive call arriving for approval: one ring of attention, not a
+   blinking one. */
+@keyframes attention-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  100% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+}
+.attention-ring { animation: attention-ring 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s 1 both; }
+
+/* The toast: rises in, sinks out. */
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, 6px); }
+}
+.toast-in { animation: toast-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.toast-in.is-closing { animation: toast-out 0.16s ease-in both; }
+
+/* Something small fading in place — a status word on a card, the Stop button. */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+.fade-in { animation: fade-in 0.18s ease-out both; }
+.fade-in.is-closing { animation: fade-out 0.12s ease-in both; }
+
+/* The assistant is working: three dots, staggered. */
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30%           { opacity: 1; transform: translateY(-2px); }
+}
+.typing-dot { animation: typing-dot 1.1s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* The streaming caret after live text. */
+@keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.stream-caret::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: currentColor; animation: caret-blink 0.9s steps(1) infinite; }
+
+/* Pressable: every button on the page gives a hair on press. */
+.press { transition: transform 0.12s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, opacity 0.15s ease-out; }
+.press:active:not(:disabled) { transform: scale(0.97); }
+
 @media (prefers-reduced-motion: reduce) {
-  .msg-in { animation: none; }
+  .msg-in, .view-in, .side-panel, .side-panel.is-closing, .drawer-panel, .drawer-panel.is-closing,
+  .drawer-backdrop, .drawer-backdrop.is-closing, .pop-in, .pop-in.is-closing, .attention-ring,
+  .toast-in, .toast-in.is-closing, .fade-in, .fade-in.is-closing, .typing-dot, .row-rise { animation: none; }
+  .reveal, .reveal > * { transition: none; }
+  .stream-caret::after { animation: none; }
+  .press, .press:active:not(:disabled) { transition: none; transform: none; }
 }

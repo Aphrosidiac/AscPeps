@@ -81,7 +81,7 @@ export type MessageContent =
   | { text: string; sender?: string }
   | { text?: string; reasoning?: string; toolCalls?: { id: string; name: string; input: unknown; raw?: string }[]; reasoningDetails?: unknown[]; guard?: GuardNote; retracted?: boolean }
   | { toolResults: { id: string; name: string; output: unknown; isError: boolean; ms: number }[] }
-  | { text: string; transient?: boolean }
+  | { text: string; transient?: boolean; error?: boolean }
   | { summary: string; replaces: [number, number] };
 
 export interface TurnOptions {
@@ -287,10 +287,15 @@ async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOp
 
   const outcome: TurnOutcome = { text: '', pending: [], error: null, aborted: false };
   void runTurn(fastify, run, outcome)
-    .catch((err) => {
+    .catch(async (err) => {
       const message = err instanceof Error ? err.message : String(err);
       fastify.log.error({ err, threadId }, 'agent turn failed');
       outcome.error = message;
+      // Kept in the transcript, not only in the stream: a failure that shows
+      // for two seconds as a toast and then leaves an empty turn behind is
+      // indistinguishable from the assistant having said nothing.
+      const row = await append(fastify, threadId, 'system', { text: `The turn failed: ${message}`, error: true, transient: true }).catch(() => null);
+      if (row) emit(run, { type: 'message', message: row });
       emit(run, { type: 'error', message });
     })
     .finally(async () => {

@@ -37,9 +37,9 @@ interface Group {
 }
 
 // One row of the recipients list: a switch and a name.
-function Recipient({ on, label, detail, onChange }: { on: boolean; label: string; detail: string; onChange: (v: boolean) => void }) {
+function Recipient({ on, label, detail, onChange, index }: { on: boolean; label: string; detail: string; onChange: (v: boolean) => void; index: number }) {
   return (
-    <li className="flex items-center gap-3 px-3 py-2">
+    <li className="row-rise flex items-center gap-3 px-3 py-2" style={{ animationDelay: `${Math.min(index * 25, 200)}ms` }}>
       <button
         type="button"
         role="switch"
@@ -154,14 +154,18 @@ export function RoutinesPanel({
     <div className="flex h-full flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
         <p className="min-w-0 flex-1 truncate text-[15px] font-medium leading-5 text-text-primary">Routines</p>
-        <button onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-lg text-text-secondary hover:text-text-primary">
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="press grid h-9 w-9 place-items-center rounded-lg text-text-secondary hover:bg-surface-elevated hover:text-text-primary"
+        >
           <X className="h-5 w-5" strokeWidth={1.5} />
         </button>
       </div>
       {!settings ? (
         <p className="p-4 text-[13px] text-text-secondary">Loading…</p>
       ) : (
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+        <div className="view-in min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
           <section className="space-y-3">
             <Toggle
               checked={settings[KEYS.digest] === 'true'}
@@ -189,7 +193,7 @@ export function RoutinesPanel({
               <button
                 disabled={!!busy}
                 onClick={() => run('digest')}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
               >
                 {busy === 'digest' && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />} Send now
               </button>
@@ -205,9 +209,10 @@ export function RoutinesPanel({
                 <ul className="mt-1 divide-y divide-border/60 rounded-[8px] border border-border">
                   {operators
                     .filter((o) => o.active)
-                    .map((o) => (
+                    .map((o, i) => (
                       <Recipient
                         key={o.id}
+                        index={i}
                         on={o.morningBrief}
                         label={o.name}
                         detail={`${o.phone}${o.canWrite ? '' : ' · read-only'}`}
@@ -216,9 +221,10 @@ export function RoutinesPanel({
                     ))}
                   {groups
                     .filter((g) => g.active)
-                    .map((g) => (
+                    .map((g, i) => (
                       <Recipient
                         key={g.id}
+                        index={operators.filter((o) => o.active).length + i}
                         on={g.morningBrief}
                         label={g.subject}
                         detail="group · everyone in it reads it"
@@ -263,7 +269,7 @@ export function RoutinesPanel({
               <button
                 disabled={!!busy}
                 onClick={() => run('reflect')}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
               >
                 {busy === 'reflect' && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />} Run now
               </button>
