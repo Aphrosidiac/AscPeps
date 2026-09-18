@@ -17,14 +17,16 @@ import { malaysiaDay, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } fr
 // trusted; everything else it reads is data, and a write copied from it is
 // refused like any other. The audit trail names the job on every write.
 
-const HOUR = 3;
+const DEFAULT_HOUR = 3;
 const KEEP_THREADS = 14;
 
 export async function maybeReflect(fastify: FastifyInstance, now = new Date()): Promise<boolean> {
   if ((await readSetting(fastify, SETTING_KEYS.reflect)) !== 'true') return false;
   if (!env.OPENROUTER_API_KEY) return false;
+  const hourSetting = Number(await readSetting(fastify, SETTING_KEYS.reflectHour));
+  const at = Number.isFinite(hourSetting) && hourSetting >= 0 && hourSetting <= 23 ? hourSetting : DEFAULT_HOUR;
   const { day, hour } = malaysiaDay(now);
-  if (hour < HOUR) return false;
+  if (hour < at) return false;
   if ((await readSetting(fastify, SETTING_KEYS.reflectLast)) === day) return false;
   await writeSetting(fastify, SETTING_KEYS.reflectLast, day);
   await runReflection(fastify, SYSTEM_ACTOR, day);

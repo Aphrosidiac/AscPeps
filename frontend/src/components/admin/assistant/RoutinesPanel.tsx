@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Loader2, MoonStar, Sunrise, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toggle, SelectInput } from '@/components/admin/ui';
-import { adminAgentOperators, adminAgentSaveOperator, adminGetSettings, adminUpdateSettings } from '@/lib/api';
+import { adminAgentOperators, adminAgentSaveGroup, adminAgentSaveOperator, adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { runDigest, runReflection, errorMessage } from '@/lib/assistant';
 
 // The assistant's two scheduled jobs, switched here rather than in the
@@ -27,11 +27,50 @@ interface Operator {
   morningBrief: boolean;
 }
 
+interface Group {
+  id: string;
+  groupJid: string;
+  subject: string;
+  active: boolean;
+  requireMention: boolean;
+  morningBrief: boolean;
+}
+
+// One row of the recipients list: a switch and a name.
+function Recipient({ on, label, detail, onChange }: { on: boolean; label: string; detail: string; onChange: (v: boolean) => void }) {
+  return (
+    <li className="flex items-center gap-3 px-3 py-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={`Send the morning brief to ${label}`}
+        onClick={() => onChange(!on)}
+        className={cn('h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors duration-[180ms]', on ? 'bg-primary' : 'bg-border-hover')}
+      >
+        <span
+          className={cn(
+            'block h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform duration-[180ms]',
+            on ? 'translate-x-4' : 'translate-x-0'
+          )}
+        />
+      </button>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] leading-5 text-text-primary">{label}</span>
+        <span className="block truncate text-[12px] leading-4 text-text-secondary">{detail}</span>
+      </span>
+    </li>
+  );
+}
+
 const KEYS = {
   reflect: 'agent_nightly_reflection',
+  reflectHour: 'agent_nightly_reflection_hour',
   digest: 'agent_morning_brief',
   digestHour: 'agent_morning_brief_hour',
 } as const;
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 export function RoutinesPanel({
   token,
@@ -46,6 +85,7 @@ export function RoutinesPanel({
 }) {
   const [settings, setSettings] = useState<Record<string, string> | null>(null);
   const [operators, setOperators] = useState<Operator[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [busy, setBusy] = useState<string>('');
 
   const load = useCallback(() => {
@@ -53,7 +93,10 @@ export function RoutinesPanel({
       .then(setSettings)
       .catch((e) => onNotice('bad', errorMessage(e)));
     adminAgentOperators(token)
-      .then((r) => setOperators((r.operators ?? []) as Operator[]))
+      .then((r) => {
+        setOperators((r.operators ?? []) as Operator[]);
+        setGroups((r.groups ?? []) as Group[]);
+      })
       .catch((e) => onNotice('bad', errorMessage(e)));
   }, [token, onNotice]);
   useEffect(() => {
@@ -76,6 +119,16 @@ export function RoutinesPanel({
     });
   };
 
+  const setGroupRecipient = (g: Group, on: boolean) => {
+    setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, morningBrief: on } : x)));
+    adminAgentSaveGroup(token, { groupJid: g.groupJid, subject: g.subject, active: g.active, requireMention: g.requireMention, morningBrief: on }).catch(
+      (e) => {
+        onNotice('bad', errorMessage(e));
+        load();
+      }
+    );
+  };
+
   const run = (which: 'reflect' | 'digest') => {
     setBusy(which);
     const job =
@@ -95,6 +148,7 @@ export function RoutinesPanel({
   };
 
   const hour = Number(settings?.[KEYS.digestHour] ?? 8);
+  const reflectHour = Number(settings?.[KEYS.reflectHour] ?? 3);
 
   return (
     <div className="flex h-full flex-col">
@@ -125,7 +179,7 @@ export function RoutinesPanel({
               </label>
               <div className="w-28">
                 <SelectInput id="digest-hour" value={String(hour)} onChange={(e) => set({ [KEYS.digestHour]: e.target.value })}>
-                  {Array.from({ length: 24 }, (_, h) => (
+                  {HOURS.map((h) => (
                     <option key={h} value={h}>
                       {String(h).padStart(2, '0')}:00
                     </option>
@@ -143,45 +197,38 @@ export function RoutinesPanel({
 
             <div className="pl-14">
               <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
-              {!operators.filter((o) => o.active).length ? (
-                <p className="mt-1 text-[13px] leading-[18px] text-text-secondary">Nobody yet — the brief goes to people on the WhatsApp allowlist.</p>
+              {!operators.filter((o) => o.active).length && !groups.filter((g) => g.active).length ? (
+                <p className="mt-1 text-[13px] leading-[18px] text-text-secondary">
+                  Nobody yet — the brief goes to people and groups on the WhatsApp allowlist.
+                </p>
               ) : (
                 <ul className="mt-1 divide-y divide-border/60 rounded-[8px] border border-border">
                   {operators
                     .filter((o) => o.active)
                     .map((o) => (
-                      <li key={o.id} className="flex items-center gap-3 px-3 py-2">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={o.morningBrief}
-                          aria-label={`Send the morning brief to ${o.name}`}
-                          onClick={() => setRecipient(o, !o.morningBrief)}
-                          className={cn(
-                            'h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors duration-[180ms]',
-                            o.morningBrief ? 'bg-primary' : 'bg-border-hover'
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              'block h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform duration-[180ms]',
-                              o.morningBrief ? 'translate-x-4' : 'translate-x-0'
-                            )}
-                          />
-                        </button>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[14px] leading-5 text-text-primary">{o.name}</span>
-                          <span className="block text-[12px] leading-4 text-text-secondary">
-                            {o.phone}
-                            {!o.canWrite ? ' · read-only' : ''}
-                          </span>
-                        </span>
-                      </li>
+                      <Recipient
+                        key={o.id}
+                        on={o.morningBrief}
+                        label={o.name}
+                        detail={`${o.phone}${o.canWrite ? '' : ' · read-only'}`}
+                        onChange={(v) => setRecipient(o, v)}
+                      />
+                    ))}
+                  {groups
+                    .filter((g) => g.active)
+                    .map((g) => (
+                      <Recipient
+                        key={g.id}
+                        on={g.morningBrief}
+                        label={g.subject}
+                        detail="group · everyone in it reads it"
+                        onChange={(v) => setGroupRecipient(g, v)}
+                      />
                     ))}
                 </ul>
               )}
               <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
-                Only people on the WhatsApp allowlist can receive it — it is a message from the business number.{' '}
+                Only allowlisted operators and groups can receive it — it is a message from the business number. Groups are off until you switch them on.{' '}
                 <Link href="/admin/agent" className="font-medium text-text-primary underline underline-offset-2">
                   Manage the allowlist
                 </Link>
@@ -198,9 +245,21 @@ export function RoutinesPanel({
                   <MoonStar className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Nightly reflection
                 </span>
               }
-              description="At 3am it re-reads what operators said and tidies its memory — merges duplicates, drops what expired, moves detail out of core/."
+              description="Re-reads what operators said and tidies its memory — merges duplicates, drops what expired, moves detail out of core/. It sends nothing; every change it makes shows in its own conversation and can be undone there."
             />
-            <div className="pl-14">
+            <div className="flex items-center gap-3 pl-14">
+              <label className="text-[13px] text-text-secondary" htmlFor="reflect-hour">
+                At
+              </label>
+              <div className="w-28">
+                <SelectInput id="reflect-hour" value={String(reflectHour)} onChange={(e) => set({ [KEYS.reflectHour]: e.target.value })}>
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>
+                      {String(h).padStart(2, '0')}:00
+                    </option>
+                  ))}
+                </SelectInput>
+              </div>
               <button
                 disabled={!!busy}
                 onClick={() => run('reflect')}

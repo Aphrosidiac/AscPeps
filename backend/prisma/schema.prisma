@@ -869,6 +869,10 @@ model WhatsAppGroup {
   // this a busy ops group turns every passing remark into an LLM call — and,
   // worse, into a tool call.
   requireMention Boolean @default(true)
+  // Gets the morning brief posted into it. Off by default: a brief in a group
+  // reaches everyone in the room, so it is an explicit choice per group,
+  // unlike an operator's DM.
+  morningBrief   Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

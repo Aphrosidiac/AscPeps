@@ -63,16 +63,23 @@ async function deliverDigest(fastify: FastifyInstance, threadId: string): Promis
   for (const t of old) if (!activeRun(t.id)) await fastify.prisma.agentThread.delete({ where: { id: t.id } }).catch(() => {});
   if (!text) return { sent: 0, recipients: 0, text: '' };
 
-  const operators = await fastify.prisma.whatsAppOperator.findMany({ where: { active: true, morningBrief: true }, select: { phone: true, name: true } });
+  // Operators' DMs and allowlisted groups, each switched on individually on
+  // the Routines panel. Both sets are subsets of where the agent may already
+  // speak, so the brief can never reach anyone the allowlist does not.
+  const [operators, groups] = await Promise.all([
+    fastify.prisma.whatsAppOperator.findMany({ where: { active: true, morningBrief: true }, select: { phone: true, name: true } }),
+    fastify.prisma.whatsAppGroup.findMany({ where: { active: true, morningBrief: true }, select: { groupJid: true, subject: true } }),
+  ]);
+  const targets = [...operators.map((o) => ({ to: { phone: o.phone }, name: o.name })), ...groups.map((g) => ({ to: { jid: g.groupJid }, name: `group ${g.subject}` }))];
   let sent = 0;
-  for (const op of operators) {
+  for (const t of targets) {
     try {
-      await sendWhatsAppMessage({ phone: op.phone }, text.slice(0, 3500));
+      await sendWhatsAppMessage(t.to, text.slice(0, 3500));
       sent++;
     } catch (err) {
-      fastify.log.error({ err, to: op.name }, 'morning brief could not be sent');
+      fastify.log.error({ err, to: t.name }, 'morning brief could not be sent');
     }
   }
-  fastify.log.info({ threadId, sent, recipients: operators.length }, 'morning brief');
-  return { sent, recipients: operators.length, text };
+  fastify.log.info({ threadId, sent, recipients: targets.length }, 'morning brief');
+  return { sent, recipients: targets.length, text };
 }

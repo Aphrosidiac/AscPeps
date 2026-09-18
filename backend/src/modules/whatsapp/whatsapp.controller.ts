@@ -169,11 +169,13 @@ export async function upsertGroup(fastify: FastifyInstance, body: any) {
       subject: String(body.subject ?? body.groupJid),
       active: !!body.active,
       requireMention: body.requireMention !== false,
+      morningBrief: !!body.morningBrief,
     },
     update: {
       ...(body.subject ? { subject: String(body.subject) } : {}),
       active: !!body.active,
       requireMention: body.requireMention !== false,
+      ...(body.morningBrief !== undefined ? { morningBrief: !!body.morningBrief } : {}),
     },
   });
 }

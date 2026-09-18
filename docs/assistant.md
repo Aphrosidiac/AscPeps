@@ -243,8 +243,8 @@ in `settings`:
 
 | key | what |
 |---|---|
-| `agent_morning_brief` / `agent_morning_brief_hour` | once a day, after the hour: the assistant reads orders, stock, the outbox and reminders and writes one plain-text message, which the harness sends to the DM of every active operator with `morningBrief` on — chosen per operator on the Routines panel; recipients can only ever be people on the WhatsApp allowlist |
-| `agent_nightly_reflection` | at 3am: reads what operators said (`list_operator_messages`) and what it did, then consolidates the memory directory — merges, expires, moves detail out of core/, appends to log.md |
+| `agent_morning_brief` / `agent_morning_brief_hour` | once a day, after the hour: the assistant reads orders, stock, the outbox and reminders and writes one plain-text message, which the harness sends to every active operator's DM and every allowlisted group with `morningBrief` on — chosen per row on the Routines panel (operators default on, groups off); recipients can only ever be on the WhatsApp allowlist |
+| `agent_nightly_reflection` / `agent_nightly_reflection_hour` | once a day after the hour (3am by default): reads what operators said (`list_operator_messages`) and what it did, then consolidates the memory directory — merges, expires, moves detail out of core/, appends to log.md |
 
 Each runs in a thread of its own kind, visible on the page, at most once per
 Malaysian day (`agent_*_last`), from a 5-minute tick in `server.ts`. A manual
