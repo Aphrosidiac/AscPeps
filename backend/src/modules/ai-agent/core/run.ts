@@ -8,6 +8,7 @@ import { isAudited, tierOf, truncate, type AgentActor, type AgentTool, type Chat
 import { checkGrounding, parseGroundingMode, repairInstruction, GROUNDING_SUPPRESSED_REPLY, type GroundingViolation, type ToolResultRecord } from '../grounding.js';
 import { streamCompletion, type ToolCall, type WireMessage, type WireTool } from './provider.js';
 import { staticSystemPrompt, contextBlock, liveBrief, loadStoreState, type Channel } from './prompt.js';
+import { agentModelSettings } from './models.js';
 
 // The loop. One turn = the operator says something; the model reasons, calls
 // tools, reads results, and answers — every step persisted as it happens,
@@ -404,7 +405,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   let repairs = 0;
   let groundingEventId: string | null = null;
 
-  let model = env.OPENROUTER_MODEL;
+  const modelSettings = await agentModelSettings(fastify);
+  let model = modelSettings.model;
+  const escalationModel = modelSettings.escalationModel;
   let escalated = false;
   let invalidStreak = 0;
   let inputTokens = 0;
@@ -431,6 +434,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
         model,
         messages,
         tools: step === MAX_STEPS ? [] : wire,
+        effort: modelSettings.effort,
         maxTokens: MAX_TOKENS_PER_STEP,
         signal: run.abort.signal,
         handlers: {
@@ -443,9 +447,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       // One provider failure is a retry on the escalation model — it is a
       // different provider pool as often as not — and a second one is the
       // operator's to see.
-      if (!escalated && env.OPENROUTER_ESCALATION_MODEL && env.OPENROUTER_ESCALATION_MODEL !== model) {
-        fastify.log.warn({ err, step, model }, `agent step failed; retrying on ${env.OPENROUTER_ESCALATION_MODEL}`);
-        model = env.OPENROUTER_ESCALATION_MODEL;
+      if (!escalated && escalationModel && escalationModel !== model) {
+        fastify.log.warn({ err, step, model }, `agent step failed; retrying on ${escalationModel}`);
+        model = escalationModel;
         escalated = true;
         continue;
       }
@@ -606,9 +610,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     // so they read as instruction rather than as data the model may weigh.
     if (contextResults.some((r) => r.loadedContext)) messages.push({ role: 'system', content: contextBlock(activeDomains) });
 
-    if (invalidStreak >= 2 && !escalated && env.OPENROUTER_ESCALATION_MODEL && env.OPENROUTER_ESCALATION_MODEL !== model) {
-      fastify.log.warn({ threadId: run.threadId, model }, `two steps of invalid tool calls; escalating to ${env.OPENROUTER_ESCALATION_MODEL}`);
-      model = env.OPENROUTER_ESCALATION_MODEL;
+    if (invalidStreak >= 2 && !escalated && escalationModel && escalationModel !== model) {
+      fastify.log.warn({ threadId: run.threadId, model }, `two steps of invalid tool calls; escalating to ${escalationModel}`);
+      model = escalationModel;
       escalated = true;
       messages.push({ role: 'system', content: 'Your previous tool calls did not match the tool schemas. Read the schemas again and call the tools with exactly the fields they define.' });
     }
@@ -1029,7 +1033,7 @@ async function compactIfNeeded(fastify: FastifyInstance, threadId: string): Prom
   const previous = lastSummary ? (lastSummary.content as { summary: string }).summary : null;
   try {
     const out = await streamCompletion({
-      model: env.OPENROUTER_MODEL,
+      model: (await agentModelSettings(fastify)).model,
       tools: [],
       effort: 'none',
       maxTokens: 1500,

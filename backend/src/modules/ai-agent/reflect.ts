@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { env } from '../../config/env.js';
 import { startTurn, activeRun } from './core/run.js';
+import { agentModelSettings } from './core/models.js';
 import type { AgentActor } from './tool-kit.js';
 import { malaysiaDay, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } from './schedule.js';
 
@@ -32,7 +33,7 @@ export async function maybeReflect(fastify: FastifyInstance, now = new Date()): 
 
 export async function runReflection(fastify: FastifyInstance, by: AgentActor, day = malaysiaDay().day): Promise<string> {
   await writeSetting(fastify, SETTING_KEYS.reflectLast, day);
-  const thread = await fastify.prisma.agentThread.create({ data: { kind: 'reflect', title: `Nightly reflection · ${day}`, model: env.OPENROUTER_MODEL, createdBy: by.name } });
+  const thread = await fastify.prisma.agentThread.create({ data: { kind: 'reflect', title: `Nightly reflection · ${day}`, model: (await agentModelSettings(fastify)).model, createdBy: by.name } });
   const prompt = [
     `It is the nightly reflection for ${day}. Nobody is waiting on you; take the steps in order and keep the writing short.`,
     '',

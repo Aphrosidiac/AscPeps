@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { env } from '../../config/env.js';
 import { sendWhatsAppMessage } from '../../utils/whatsapp-send.js';
 import { startTurn, awaitTurn, activeRun } from './core/run.js';
+import { agentModelSettings } from './core/models.js';
 import type { AgentActor } from './tool-kit.js';
 import { malaysiaDay, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } from './schedule.js';
 
@@ -39,7 +40,7 @@ export async function runDigest(fastify: FastifyInstance, by: AgentActor, day = 
 export async function startDigest(fastify: FastifyInstance, by: AgentActor, day = malaysiaDay().day): Promise<{ threadId: string; finished: Promise<{ sent: number; recipients: number; text: string }> }> {
   // A manual run counts as today's, so the scheduler does not send a second.
   await writeSetting(fastify, SETTING_KEYS.digestLast, day);
-  const thread = await fastify.prisma.agentThread.create({ data: { kind: 'digest', title: `Morning brief · ${day}`, model: env.OPENROUTER_MODEL, createdBy: by.name } });
+  const thread = await fastify.prisma.agentThread.create({ data: { kind: 'digest', title: `Morning brief · ${day}`, model: (await agentModelSettings(fastify)).model, createdBy: by.name } });
   const prompt = [
     `Write the morning brief for ${day}, to be sent as one WhatsApp message to the operators.`,
     'Read core/ in your memory for how the operators want things; open procedures/ files only if one is about the brief. Check: orders placed since yesterday morning and any still unpaid or unshipped (list_orders), low or sold-out stock (list_low_stock), the email outbox (email_outbox_status), pending reminders (list_reminders), and yesterday\'s numbers (dashboard_stats). Load other areas only if something there needs attention.',

@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { env } from '../../config/env.js';
 import { sendWhatsAppMessage, targetFromChatKey } from '../../utils/whatsapp-send.js';
 import { activeRun, actionView, approveAction, declineAction, startTurn, stopRun, subscribe, undoAction, type AgentEvent, type TurnOptions } from './core/run.js';
 import { providerConfigured } from './core/provider.js';
+import { AGENT_MODELS, EFFORTS, agentModelSettings, saveAgentModelSettings } from './core/models.js';
 import { relay } from './agent.service.js';
 import { ALL_TOOLS, toolsFor } from './registry.js';
 import { tierOf, type AgentActor } from './tool-kit.js';
@@ -64,13 +64,13 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
         createdAt: t.createdAt,
       })),
       configured: providerConfigured(),
-      model: env.OPENROUTER_MODEL,
+      model: (await agentModelSettings(fastify)).model,
     };
   });
 
   fastify.post('/threads', async (request) => {
     const actor = await webActor(request);
-    const thread = await fastify.prisma.agentThread.create({ data: { kind: 'chat', model: env.OPENROUTER_MODEL, createdBy: actor.name } });
+    const thread = await fastify.prisma.agentThread.create({ data: { kind: 'chat', model: (await agentModelSettings(fastify)).model, createdBy: actor.name } });
     return { thread: { ...thread, running: false, pending: 0 } };
   });
 
@@ -249,6 +249,25 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
     const r = await deleteMemory(fastify.prisma, path);
     if (!r.deleted) return reply.status(404).send({ message: 'No such memory file' });
     return { ok: true };
+  });
+
+  // ── Model ──
+  //
+  // Which model answers, which one takes over when it fails, and how much it
+  // thinks. Stored in settings; the environment is the fallback.
+  fastify.get('/settings', async () => ({
+    settings: await agentModelSettings(fastify),
+    models: AGENT_MODELS,
+    efforts: EFFORTS,
+  }));
+
+  fastify.put('/settings', async (request, reply) => {
+    const body = (request.body ?? {}) as Partial<{ model: string; escalationModel: string | null; effort: string }>;
+    try {
+      return { settings: await saveAgentModelSettings(fastify, body) };
+    } catch (err) {
+      return fail(reply, err);
+    }
   });
 
   // ── Housekeeping ──

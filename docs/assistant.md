@@ -40,6 +40,7 @@ dashboard thread are the same table rows; the Assistant page shows both.
 src/modules/ai-agent/
   core/provider.ts     the one place the assistant talks to a model
   core/prompt.ts       who Abby is; the per-turn business rules; the live brief
+  core/models.ts       the model catalogue and the model/escalation/effort settings
   core/run.ts          the loop — read this file first
   registry.ts          the tools, domain buckets, compiled input validators
   tool-kit.ts          AgentTool, tiers, audited(), money/date helpers
@@ -251,14 +252,33 @@ run counts as the day's.
 
 ---
 
+## Model
+
+Chosen from the Assistant page (the **Model** menu in the header), stored in
+`settings` as `agent_model`, `agent_escalation_model`, `agent_effort`, and
+read at the start of every turn by `core/models.ts` — so one choice governs
+the dashboard, WhatsApp and both routines, and takes effect on the next turn
+with no restart. The environment (below) is the fallback for a fresh
+database.
+
+The catalogue (`AGENT_MODELS`) is OpenRouter ids with a one-line fit and
+list prices per million tokens for the dropdown; the thread's actual cost
+still comes from OpenRouter's own `usage.cost`. Everyday: DeepSeek V4 Flash
+(recommended), Qwen3.7 Flash (cheapest), GLM 5.3 Flash (Chinese), DeepSeek
+V4.1 Flash. Both roles: Gemini 3.8 Flash (long context), Kimi K2.5, MiniMax
+M3 (long written replies), Claude Haiku 4.5 (no reasoning parameter — the
+provider omits it), Claude Sonnet 5 (finance and customer-facing judgement).
+Escalation: DeepSeek V4 Pro, Claude Opus 5. Any other OpenRouter id can be
+saved through the API; it simply shows no price.
+
 ## Environment
 
 ```bash
 OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=deepseek/deepseek-v4-flash
-OPENROUTER_ESCALATION_MODEL=          # optional: retried on after a failure or two invalid steps
-AGENT_REASONING_EFFORT=none           # none | low | medium | high; see config/env.ts for why none
-AGENT_GROUNDING_MODE=shadow           # off | shadow | enforce
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash   # fallback when agent_model is unset
+OPENROUTER_ESCALATION_MODEL=                  # fallback when agent_escalation_model is unset
+AGENT_REASONING_EFFORT=none                   # fallback; none | low | medium | high
+AGENT_GROUNDING_MODE=shadow                   # off | shadow | enforce
 ```
 
 The `openai` package is gone; the provider is a streamed `fetch`.

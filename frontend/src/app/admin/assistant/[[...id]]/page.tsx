@@ -25,6 +25,7 @@ import { ThreadList } from '@/components/admin/assistant/ThreadList';
 import { Transcript, type LiveTurn } from '@/components/admin/assistant/Transcript';
 import { MemoryPanel } from '@/components/admin/assistant/MemoryPanel';
 import { RoutinesPanel } from '@/components/admin/assistant/RoutinesPanel';
+import { ModelMenu } from '@/components/admin/assistant/ModelMenu';
 import { money } from '@/components/admin/assistant/format';
 
 // The assistant, from the dashboard. A thread list and a transcript that
@@ -362,6 +363,7 @@ function Conversation({
             <p className="truncate text-[12px] leading-4 text-text-secondary">Abby, with every tool the dashboard has</p>
           )}
         </div>
+        <ModelMenu token={token} onNotice={show} onChanged={onThreadsChanged} />
         {running && (
           <button
             onClick={stop}

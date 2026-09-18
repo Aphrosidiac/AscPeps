@@ -1,4 +1,5 @@
 import { env } from '../../../config/env.js';
+import { supportsEffort } from './models.js';
 
 // The one place the assistant talks to a model. OpenRouter's chat completions,
 // streamed, with tools — the OpenAI wire shape every model on OpenRouter
@@ -91,8 +92,9 @@ export async function streamCompletion(opts: CompletionOptions): Promise<Complet
     stream: true,
     usage: { include: true },
     // `none` is the value the non-streaming agent always sent — see the note
-    // on AGENT_REASONING_EFFORT in config/env.ts.
-    reasoning: effort === 'none' ? { effort: 'none' } : { effort },
+    // on AGENT_REASONING_EFFORT in config/env.ts. A model that takes no
+    // reasoning parameter at all (Haiku) is not sent one.
+    ...(supportsEffort(opts.model) ? { reasoning: { effort } } : {}),
   };
 
   const res = await fetch(OPENROUTER_URL, {

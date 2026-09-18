@@ -155,6 +155,28 @@ export const saveMemory = (token: string, path: string, content: string) =>
 export const deleteMemory = (token: string, path: string) =>
   http.delete(`/memory/${encodeURIComponent(path).replace(/%2F/g, '/')}`, auth(token)).then((r) => r.data);
 
+export interface ModelInfo {
+  id: string;
+  label: string;
+  fit: string;
+  in: number;
+  out: number;
+  effort: boolean;
+  role: 'everyday' | 'escalation' | 'both';
+}
+
+export interface ModelSettings {
+  model: string;
+  escalationModel: string | null;
+  effort: 'none' | 'low' | 'medium' | 'high';
+}
+
+export const getModelSettings = (token: string) =>
+  http.get<{ settings: ModelSettings; models: ModelInfo[]; efforts: { value: string; label: string }[] }>('/settings', auth(token)).then((r) => r.data);
+
+export const saveModelSettings = (token: string, patch: Partial<{ model: string; escalationModel: string | null; effort: string }>) =>
+  http.put<{ settings: ModelSettings }>('/settings', patch, auth(token)).then((r) => r.data.settings);
+
 export const listTools = (token: string) => http.get<{ tools: ToolInfo[] }>('/tools', auth(token)).then((r) => r.data.tools);
 
 export const runReflection = (token: string) => http.post<{ threadId: string }>('/reflect', {}, auth(token)).then((r) => r.data);
