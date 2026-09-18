@@ -787,13 +787,13 @@ model ProfitPayout {
 // admin bot on the other end.
 
 model WhatsAppOperator {
-  id       String  @id @default(cuid())
+  id           String  @id @default(cuid())
   // Normalized to digits-only international form (60123456789) by
   // utils/phone.ts before storage AND before every lookup — a number stored
   // as "+60 12-345 6789" would never match an inbound JID and would silently
   // lock the operator out.
-  phone    String  @unique
-  name     String
+  phone        String  @unique
+  name         String
   // WhatsApp's privacy identifier for this person, e.g. "67615754068059".
   //
   // Load-bearing, not a nicety. WhatsApp now delivers many direct messages
@@ -807,14 +807,17 @@ model WhatsAppOperator {
   // operator. Deliberately never inferred from `pushName`: that is a display
   // name the sender chooses, so matching on it would let anyone claim an
   // operator's identity by renaming themselves.
-  lid      String? @unique
+  lid          String? @unique
   // Revoked rather than deleted, so the tool-call audit trail below keeps
   // resolving to a real name after someone leaves.
-  active   Boolean @default(true)
+  active       Boolean @default(true)
   // False = read-only operator: reports, lookups and summaries run, every
   // mutating tool is refused. Lets a partner query the business without
   // being able to change it.
-  canWrite Boolean @default(true)
+  canWrite     Boolean @default(true)
+  // Gets the morning brief. Off for someone who is on the allowlist to ask
+  // questions but does not run the day — a read-only partner, a tester.
+  morningBrief Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

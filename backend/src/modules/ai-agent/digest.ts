@@ -8,8 +8,9 @@ import { malaysiaDay, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } fr
 
 // The morning brief. Once a day, after the configured hour, the assistant
 // writes what needs the operators today — in its own thread, read-only in
-// practice because the prompt says so — and the text goes to every active
-// operator's WhatsApp DM. The send is the harness's, not the model's: no
+// practice because the prompt says so — and the text goes to the WhatsApp DM
+// of every active operator with the brief switched on (chosen per operator
+// on the Routines panel). The send is the harness's, not the model's: no
 // destructive tool is involved, so nothing waits for an approval nobody is
 // awake to give, and the recipients are the allowlist, never a customer.
 
@@ -62,7 +63,7 @@ async function deliverDigest(fastify: FastifyInstance, threadId: string): Promis
   for (const t of old) if (!activeRun(t.id)) await fastify.prisma.agentThread.delete({ where: { id: t.id } }).catch(() => {});
   if (!text) return { sent: 0, recipients: 0, text: '' };
 
-  const operators = await fastify.prisma.whatsAppOperator.findMany({ where: { active: true }, select: { phone: true, name: true } });
+  const operators = await fastify.prisma.whatsAppOperator.findMany({ where: { active: true, morningBrief: true }, select: { phone: true, name: true } });
   let sent = 0;
   for (const op of operators) {
     try {

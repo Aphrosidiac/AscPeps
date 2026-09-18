@@ -1,15 +1,31 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Loader2, MoonStar, Sunrise, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Toggle, SelectInput } from '@/components/admin/ui';
-import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
+import { adminAgentOperators, adminAgentSaveOperator, adminGetSettings, adminUpdateSettings } from '@/lib/api';
 import { runDigest, runReflection, errorMessage } from '@/lib/assistant';
 
 // The assistant's two scheduled jobs, switched here rather than in the
-// environment: the nightly memory tidy-up (3am) and the morning brief to
-// every operator's WhatsApp. Each can also be run now, into a thread of its
-// own that shows in the list.
+// environment: the nightly memory tidy-up (3am) and the morning brief. Each
+// can also be run now, into a thread of its own that shows in the list.
+//
+// Who receives the brief is decided here too, per operator. The recipients
+// can only ever be people on the WhatsApp allowlist — the brief is a message
+// from the business number, and that list is the whole set of people it may
+// speak to — so this shows the allowlist with a switch on each row, and
+// adding someone means adding them there.
+
+interface Operator {
+  id: string;
+  phone: string;
+  name: string;
+  active: boolean;
+  canWrite: boolean;
+  morningBrief: boolean;
+}
 
 const KEYS = {
   reflect: 'agent_nightly_reflection',
@@ -29,11 +45,15 @@ export function RoutinesPanel({
   onStarted: (threadId: string) => void;
 }) {
   const [settings, setSettings] = useState<Record<string, string> | null>(null);
+  const [operators, setOperators] = useState<Operator[]>([]);
   const [busy, setBusy] = useState<string>('');
 
   const load = useCallback(() => {
     adminGetSettings(token)
       .then(setSettings)
+      .catch((e) => onNotice('bad', errorMessage(e)));
+    adminAgentOperators(token)
+      .then((r) => setOperators((r.operators ?? []) as Operator[]))
       .catch((e) => onNotice('bad', errorMessage(e)));
   }, [token, onNotice]);
   useEffect(() => {
@@ -43,6 +63,14 @@ export function RoutinesPanel({
   const set = (patch: Record<string, string>) => {
     setSettings((s) => ({ ...(s ?? {}), ...patch }));
     adminUpdateSettings(token, patch).catch((e) => {
+      onNotice('bad', errorMessage(e));
+      load();
+    });
+  };
+
+  const setRecipient = (op: Operator, on: boolean) => {
+    setOperators((ops) => ops.map((o) => (o.id === op.id ? { ...o, morningBrief: on } : o)));
+    adminAgentSaveOperator(token, { phone: op.phone, name: op.name, active: op.active, canWrite: op.canWrite, morningBrief: on }).catch((e) => {
       onNotice('bad', errorMessage(e));
       load();
     });
@@ -89,7 +117,7 @@ export function RoutinesPanel({
                   <Sunrise className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Morning brief
                 </span>
               }
-              description="Once a day, to every operator's WhatsApp: new orders, anything unpaid or unshipped, low stock, the outbox."
+              description="Once a day, as a WhatsApp message: new orders, anything unpaid or unshipped, low stock, the outbox."
             />
             <div className="flex items-center gap-3 pl-14">
               <label className="text-[13px] text-text-secondary" htmlFor="digest-hour">
@@ -112,6 +140,53 @@ export function RoutinesPanel({
                 {busy === 'digest' && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />} Send now
               </button>
             </div>
+
+            <div className="pl-14">
+              <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
+              {!operators.filter((o) => o.active).length ? (
+                <p className="mt-1 text-[13px] leading-[18px] text-text-secondary">Nobody yet — the brief goes to people on the WhatsApp allowlist.</p>
+              ) : (
+                <ul className="mt-1 divide-y divide-border/60 rounded-[8px] border border-border">
+                  {operators
+                    .filter((o) => o.active)
+                    .map((o) => (
+                      <li key={o.id} className="flex items-center gap-3 px-3 py-2">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={o.morningBrief}
+                          aria-label={`Send the morning brief to ${o.name}`}
+                          onClick={() => setRecipient(o, !o.morningBrief)}
+                          className={cn(
+                            'h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors duration-[180ms]',
+                            o.morningBrief ? 'bg-primary' : 'bg-border-hover'
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'block h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform duration-[180ms]',
+                              o.morningBrief ? 'translate-x-4' : 'translate-x-0'
+                            )}
+                          />
+                        </button>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] leading-5 text-text-primary">{o.name}</span>
+                          <span className="block text-[12px] leading-4 text-text-secondary">
+                            {o.phone}
+                            {!o.canWrite ? ' · read-only' : ''}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              )}
+              <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
+                Only people on the WhatsApp allowlist can receive it — it is a message from the business number.{' '}
+                <Link href="/admin/agent" className="font-medium text-text-primary underline underline-offset-2">
+                  Manage the allowlist
+                </Link>
+              </p>
+            </div>
           </section>
 
           <section className="space-y-3">
@@ -123,7 +198,7 @@ export function RoutinesPanel({
                   <MoonStar className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Nightly reflection
                 </span>
               }
-              description="At 3am it re-reads the day's conversations and tidies its memory blocks — merges duplicates, drops what expired, keeps what an operator said."
+              description="At 3am it re-reads what operators said and tidies its memory — merges duplicates, drops what expired, moves detail out of core/."
             />
             <div className="pl-14">
               <button

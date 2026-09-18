@@ -145,8 +145,13 @@ export async function upsertOperator(fastify: FastifyInstance, body: any) {
   const phone = normalizePhone(String(body.phone));
   return fastify.prisma.whatsAppOperator.upsert({
     where: { phone },
-    create: { phone, name: String(body.name), active: body.active !== false, canWrite: body.canWrite !== false },
-    update: { name: String(body.name), active: body.active !== false, canWrite: body.canWrite !== false },
+    create: { phone, name: String(body.name), active: body.active !== false, canWrite: body.canWrite !== false, morningBrief: body.morningBrief !== false },
+    update: {
+      name: String(body.name),
+      active: body.active !== false,
+      canWrite: body.canWrite !== false,
+      ...(body.morningBrief !== undefined ? { morningBrief: body.morningBrief !== false } : {}),
+    },
   });
 }
 
