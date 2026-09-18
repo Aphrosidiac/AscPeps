@@ -9,6 +9,7 @@ import { tierOf, type AgentActor } from './tool-kit.js';
 import { deleteMemory, listMemory, readMemory, writeMemory } from './memory.js';
 import { runReflection } from './reflect.js';
 import { startDigest } from './digest.js';
+import { notifyNewOrder, orderNoticeText } from '../../utils/order-notify.js';
 
 // The Assistant page's API: threads, turns, and a stream of what a turn is
 // doing. The stream is plain SSE over a fetch with the normal auth header —
@@ -268,6 +269,22 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
     } catch (err) {
       return fail(reply, err);
     }
+  });
+
+  // ── New-order notice ──
+  //
+  // A preview of what the recipients would get for the latest order, and a
+  // test send of it to whoever is switched on — so the routine is checked
+  // before the first real order arrives at 2am.
+  fastify.get('/order-notify/preview', async () => {
+    const latest = await fastify.prisma.order.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+    return { text: latest ? await orderNoticeText(fastify, latest.id) : null };
+  });
+
+  fastify.post('/order-notify/test', async (_request, reply) => {
+    const latest = await fastify.prisma.order.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+    if (!latest) return reply.status(404).send({ message: 'No order to send a notice for' });
+    return notifyNewOrder(fastify, latest.id, { force: true });
   });
 
   // ── Housekeeping ──

@@ -238,12 +238,13 @@ marker must never appear in a memory file.
 
 ## Routines
 
-Two scheduled jobs, switched on from the Assistant page (**Routines**), stored
-in `settings`:
+Three routines, switched on from the Assistant page (**Routines**), stored in
+`settings`:
 
 | key | what |
 |---|---|
 | `agent_morning_brief` / `agent_morning_brief_hour` | once a day, after the hour: the assistant reads orders, stock, the outbox and reminders and writes one plain-text message, which the harness sends to every active operator's DM and every allowlisted group with `morningBrief` on — chosen per row on the Routines panel (operators default on, groups off); recipients can only ever be on the WhatsApp allowlist |
+| `agent_order_notify` | not scheduled — fires the moment an order is created (`utils/order-notify.ts`, hooked at the end of `createOrder`): one WhatsApp line with number, customer, items, total, payment method/status and the admin link, to every active operator and allowlisted group with `orderNotify` on. Written by code, not the model: immediate, identical, never wrong about the number. Preview and a test send on the panel |
 | `agent_nightly_reflection` / `agent_nightly_reflection_hour` | once a day after the hour (3am by default): reads what operators said (`list_operator_messages`) and what it did, then consolidates the memory directory — merges, expires, moves detail out of core/, appends to log.md |
 
 Each runs in a thread of its own kind, visible on the page, at most once per

@@ -11,6 +11,7 @@ export const SETTING_KEYS = {
   digest: 'agent_morning_brief',
   digestHour: 'agent_morning_brief_hour',
   reflectHour: 'agent_nightly_reflection_hour',
+  orderNotify: 'agent_order_notify',
   reflectLast: 'agent_nightly_reflection_last',
   digestLast: 'agent_morning_brief_last',
 } as const;

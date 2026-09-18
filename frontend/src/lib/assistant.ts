@@ -178,6 +178,11 @@ export const getModelSettings = (token: string) =>
 export const saveModelSettings = (token: string, patch: Partial<{ model: string; escalationModel: string | null; effort: string }>) =>
   http.put<{ settings: ModelSettings }>('/settings', patch, auth(token)).then((r) => r.data.settings);
 
+export const orderNoticePreview = (token: string) => http.get<{ text: string | null }>('/order-notify/preview', auth(token)).then((r) => r.data.text);
+
+export const orderNoticeTest = (token: string) =>
+  http.post<{ sent: number; recipients: number; text: string | null }>('/order-notify/test', {}, auth(token)).then((r) => r.data);
+
 export const listTools = (token: string) => http.get<{ tools: ToolInfo[] }>('/tools', auth(token)).then((r) => r.data.tools);
 
 export const runReflection = (token: string) => http.post<{ threadId: string }>('/reflect', {}, auth(token)).then((r) => r.data);

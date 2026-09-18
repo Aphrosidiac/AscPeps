@@ -818,6 +818,9 @@ model WhatsAppOperator {
   // Gets the morning brief. Off for someone who is on the allowlist to ask
   // questions but does not run the day — a read-only partner, a tester.
   morningBrief Boolean @default(true)
+  // Gets a WhatsApp line the moment an order is created. Off by default: it
+  // is a message per order, chosen per person on the Routines panel.
+  orderNotify  Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -873,6 +876,8 @@ model WhatsAppGroup {
   // reaches everyone in the room, so it is an explicit choice per group,
   // unlike an operator's DM.
   morningBrief   Boolean @default(false)
+  // Gets the new-order notice posted into it. Off by default, same reason.
+  orderNotify    Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, MoonStar, Sunrise, X } from 'lucide-react';
+import { Loader2, MoonStar, ShoppingBag, Sunrise, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toggle, SelectInput } from '@/components/admin/ui';
 import { adminAgentOperators, adminAgentSaveGroup, adminAgentSaveOperator, adminGetSettings, adminUpdateSettings } from '@/lib/api';
-import { runDigest, runReflection, errorMessage } from '@/lib/assistant';
+import { runDigest, runReflection, errorMessage, orderNoticePreview, orderNoticeTest } from '@/lib/assistant';
 
 // The assistant's two scheduled jobs, switched here rather than in the
 // environment: the nightly memory tidy-up (3am) and the morning brief. Each
@@ -25,6 +25,7 @@ interface Operator {
   active: boolean;
   canWrite: boolean;
   morningBrief: boolean;
+  orderNotify: boolean;
 }
 
 interface Group {
@@ -34,17 +35,34 @@ interface Group {
   active: boolean;
   requireMention: boolean;
   morningBrief: boolean;
+  orderNotify: boolean;
 }
 
+type Flag = 'morningBrief' | 'orderNotify';
+
 // One row of the recipients list: a switch and a name.
-function Recipient({ on, label, detail, onChange, index }: { on: boolean; label: string; detail: string; onChange: (v: boolean) => void; index: number }) {
+function Recipient({
+  on,
+  label,
+  detail,
+  onChange,
+  index,
+  what,
+}: {
+  on: boolean;
+  label: string;
+  detail: string;
+  onChange: (v: boolean) => void;
+  index: number;
+  what: string;
+}) {
   return (
     <li className="row-rise flex items-center gap-3 px-3 py-2" style={{ animationDelay: `${Math.min(index * 25, 200)}ms` }}>
       <button
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label={`Send the morning brief to ${label}`}
+        aria-label={`Send ${what} to ${label}`}
         onClick={() => onChange(!on)}
         className={cn('h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors duration-[180ms]', on ? 'bg-primary' : 'bg-border-hover')}
       >
@@ -68,6 +86,7 @@ const KEYS = {
   reflectHour: 'agent_nightly_reflection_hour',
   digest: 'agent_morning_brief',
   digestHour: 'agent_morning_brief_hour',
+  orderNotify: 'agent_order_notify',
 } as const;
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -111,22 +130,74 @@ export function RoutinesPanel({
     });
   };
 
-  const setRecipient = (op: Operator, on: boolean) => {
-    setOperators((ops) => ops.map((o) => (o.id === op.id ? { ...o, morningBrief: on } : o)));
-    adminAgentSaveOperator(token, { phone: op.phone, name: op.name, active: op.active, canWrite: op.canWrite, morningBrief: on }).catch((e) => {
+  const setRecipient = (op: Operator, flag: Flag, on: boolean) => {
+    setOperators((ops) => ops.map((o) => (o.id === op.id ? { ...o, [flag]: on } : o)));
+    adminAgentSaveOperator(token, { phone: op.phone, name: op.name, active: op.active, canWrite: op.canWrite, [flag]: on }).catch((e) => {
       onNotice('bad', errorMessage(e));
       load();
     });
   };
 
-  const setGroupRecipient = (g: Group, on: boolean) => {
-    setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, morningBrief: on } : x)));
-    adminAgentSaveGroup(token, { groupJid: g.groupJid, subject: g.subject, active: g.active, requireMention: g.requireMention, morningBrief: on }).catch(
-      (e) => {
-        onNotice('bad', errorMessage(e));
-        load();
-      }
+  const setGroupRecipient = (g: Group, flag: Flag, on: boolean) => {
+    setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, [flag]: on } : x)));
+    adminAgentSaveGroup(token, { groupJid: g.groupJid, subject: g.subject, active: g.active, requireMention: g.requireMention, [flag]: on }).catch((e) => {
+      onNotice('bad', errorMessage(e));
+      load();
+    });
+  };
+
+  // The recipients list, shared by the brief and the order notice: the
+  // allowlist's active operators and groups, each with a switch on `flag`.
+  const recipients = (flag: Flag, what: string) => {
+    const ops = operators.filter((o) => o.active);
+    const grps = groups.filter((g) => g.active);
+    if (!ops.length && !grps.length)
+      return <p className="mt-1 text-[13px] leading-[18px] text-text-secondary">Nobody yet — it goes to people and groups on the WhatsApp allowlist.</p>;
+    return (
+      <ul className="mt-1 divide-y divide-border/60 rounded-[8px] border border-border">
+        {ops.map((o, i) => (
+          <Recipient
+            key={o.id}
+            index={i}
+            what={what}
+            on={o[flag]}
+            label={o.name}
+            detail={`${o.phone}${o.canWrite ? '' : ' · read-only'}`}
+            onChange={(v) => setRecipient(o, flag, v)}
+          />
+        ))}
+        {grps.map((g, i) => (
+          <Recipient
+            key={g.id}
+            index={ops.length + i}
+            what={what}
+            on={g[flag]}
+            label={g.subject}
+            detail="group · everyone in it reads it"
+            onChange={(v) => setGroupRecipient(g, flag, v)}
+          />
+        ))}
+      </ul>
     );
+  };
+
+  const [preview, setPreview] = useState<string | null | undefined>(undefined);
+  const loadPreview = () => {
+    orderNoticePreview(token)
+      .then(setPreview)
+      .catch((e) => onNotice('bad', errorMessage(e)));
+  };
+  const testNotice = () => {
+    setBusy('notify');
+    orderNoticeTest(token)
+      .then((r) =>
+        onNotice(
+          r.sent ? 'ok' : 'bad',
+          r.sent ? `Sent to ${r.sent} of ${r.recipients}` : r.recipients ? 'Nothing sent — is WhatsApp connected?' : 'Switch on at least one recipient first'
+        )
+      )
+      .catch((e) => onNotice('bad', errorMessage(e)))
+      .finally(() => setBusy(''));
   };
 
   const run = (which: 'reflect' | 'digest') => {
@@ -201,44 +272,51 @@ export function RoutinesPanel({
 
             <div className="pl-14">
               <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
-              {!operators.filter((o) => o.active).length && !groups.filter((g) => g.active).length ? (
-                <p className="mt-1 text-[13px] leading-[18px] text-text-secondary">
-                  Nobody yet — the brief goes to people and groups on the WhatsApp allowlist.
-                </p>
-              ) : (
-                <ul className="mt-1 divide-y divide-border/60 rounded-[8px] border border-border">
-                  {operators
-                    .filter((o) => o.active)
-                    .map((o, i) => (
-                      <Recipient
-                        key={o.id}
-                        index={i}
-                        on={o.morningBrief}
-                        label={o.name}
-                        detail={`${o.phone}${o.canWrite ? '' : ' · read-only'}`}
-                        onChange={(v) => setRecipient(o, v)}
-                      />
-                    ))}
-                  {groups
-                    .filter((g) => g.active)
-                    .map((g, i) => (
-                      <Recipient
-                        key={g.id}
-                        index={operators.filter((o) => o.active).length + i}
-                        on={g.morningBrief}
-                        label={g.subject}
-                        detail="group · everyone in it reads it"
-                        onChange={(v) => setGroupRecipient(g, v)}
-                      />
-                    ))}
-                </ul>
-              )}
+              {recipients('morningBrief', 'the morning brief')}
               <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
                 Only allowlisted operators and groups can receive it — it is a message from the business number. Groups are off until you switch them on.{' '}
                 <Link href="/admin/agent" className="font-medium text-text-primary underline underline-offset-2">
                   Manage the allowlist
                 </Link>
               </p>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <Toggle
+              checked={settings[KEYS.orderNotify] === 'true'}
+              onChange={(v) => set({ [KEYS.orderNotify]: v ? 'true' : 'false' })}
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  <ShoppingBag className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> New order notice
+                </span>
+              }
+              description="The moment an order is placed: one WhatsApp line with the number, customer, items, total, how they are paying, and a link. Written by the system, not the assistant — instant and always right; ask Abby about the order after."
+            />
+            <div className="pl-14">
+              <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
+              {recipients('orderNotify', 'new-order notices')}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => (preview === undefined ? loadPreview() : setPreview(undefined))}
+                  className="press inline-flex h-8 items-center rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated"
+                >
+                  {preview === undefined ? 'Preview' : 'Hide preview'}
+                </button>
+                <button
+                  disabled={!!busy}
+                  onClick={testNotice}
+                  className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                >
+                  {busy === 'notify' && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />} Send a test
+                </button>
+              </div>
+              {preview !== undefined && (
+                <pre className="view-in mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[8px] border border-border bg-surface-elevated px-3 py-2 text-[12px] leading-4 text-text-primary">
+                  {preview ?? 'No order to preview yet.'}
+                </pre>
+              )}
+              <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">A test sends the notice for the latest order to whoever is switched on.</p>
             </div>
           </section>
 
@@ -277,7 +355,8 @@ export function RoutinesPanel({
           </section>
 
           <p className="text-[12px] leading-4 text-text-secondary">
-            Both run at most once per day (Malaysia time). A manual run counts as today’s. Neither changes orders, products or settings.
+            The brief and the reflection run at most once per day (Malaysia time); a manual run counts as today’s. None of these changes orders, products or
+            settings.
           </p>
         </div>
       )}
