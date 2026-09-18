@@ -42,7 +42,7 @@ export async function startDigest(fastify: FastifyInstance, by: AgentActor, day 
   const thread = await fastify.prisma.agentThread.create({ data: { kind: 'digest', title: `Morning brief · ${day}`, model: env.OPENROUTER_MODEL, createdBy: by.name } });
   const prompt = [
     `Write the morning brief for ${day}, to be sent as one WhatsApp message to the operators.`,
-    'Check: orders placed since yesterday morning and any still unpaid or unshipped (list_orders), low or sold-out stock (list_low_stock), the email outbox (email_outbox_status), pending reminders (list_reminders), and yesterday\'s numbers (dashboard_stats). Load other areas only if something there needs attention.',
+    'Read core/ in your memory for how the operators want things; open procedures/ files only if one is about the brief. Check: orders placed since yesterday morning and any still unpaid or unshipped (list_orders), low or sold-out stock (list_low_stock), the email outbox (email_outbox_status), pending reminders (list_reminders), and yesterday\'s numbers (dashboard_stats). Load other areas only if something there needs attention.',
     'Then write ONLY the message, nothing before or after it: under 1200 characters, plain text (no markdown, no headings, no tables), short lines, the most urgent thing first, each item on one line with what is needed. If nothing needs attention, say so in one line. Do not change anything and do not set reminders.',
   ].join('\n');
   try {

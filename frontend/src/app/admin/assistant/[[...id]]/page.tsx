@@ -113,8 +113,10 @@ export default function AssistantPage() {
         openList={() => setListOpen(true)}
       />
 
+      {/* An overlay until xl: with the admin sidebar, the thread list and this
+          panel all static, a 1024px screen left the transcript 100px wide. */}
       {side && (
-        <aside className="absolute inset-y-0 right-0 z-20 w-full max-w-md border-l border-border bg-surface shadow-lg lg:static lg:w-96 lg:shadow-none">
+        <aside className="absolute inset-y-0 right-0 z-20 w-full max-w-md border-l border-border bg-surface shadow-lg xl:static xl:w-96 xl:shadow-none">
           {side === 'memory' ? (
             <MemoryPanel token={token} onClose={() => setSide(null)} onNotice={show} />
           ) : (

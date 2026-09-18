@@ -1335,40 +1335,30 @@ model CampaignRecipient {
   @@map("campaign_recipients")
 }
 
-/// Always-in-context memory for the WhatsApp agent.
+/// The assistant's memory: a directory of short files under /memories.
 ///
-/// The agent already persists conversations, but every chatKey is an island:
-/// nothing learned in Fakhrul's DM is visible in Asywa's, or in a group, or in
-/// the same thread once compaction has folded it away. These blocks are the
-/// fix — a small, curated set of facts rendered into the system prompt on EVERY
-/// turn, so there is nothing to retrieve and no way to miss them.
+/// Every conversation is an island, so what the assistant learns about how
+/// this business runs has to live somewhere every turn can see. Files under
+/// `core/` are rendered into the system prompt on EVERY turn, in every thread
+/// (capped in total — see memory.ts); everything else is listed by path and
+/// read on demand through the memory tool, never placed in the prompt.
 ///
-/// Deliberately global rather than per-operator. The point is shared business
-/// memory; per-person facts live inside the `people` block.
-///
-/// `charLimit` is enforced in code, not asked for in the prompt. A block that
-/// can grow without bound quietly turns into the whole context window, and a
-/// model asked to "keep it under 1500 characters" will not.
-model MemoryBlock {
-  id        String @id @default(cuid())
-  /// Stable identifier used in the prompt and by the tools: business, people,
-  /// suppliers, decisions.
-  key       String @unique
-  /// Heading shown to the model, e.g. "How the business runs".
-  label     String
-  content   String @default("")
-  charLimit Int    @default(1500)
-  /// Who last wrote to it — an operator's name, or "seed". Provenance matters
-  /// here: block content is injected into the system prompt, so anything that
-  /// reaches it is effectively a standing instruction. See memory.ts.
-  updatedBy String @default("seed")
-  /// Display order in the prompt.
-  position  Int    @default(0)
-
+/// The provenance columns are not decoration. Core content is a standing
+/// instruction to the model, and the shop's data is typed by customers, so
+/// two rules are enforced in code (memory.ts): only an operator with write
+/// access, or the reflection job, may write; and a write whose text was lifted
+/// from a tool result this turn is refused. Every write is also an audited,
+/// undoable action.
+model AgentMemoryFile {
+  /// Relative to /memories: "core/business.md", "clients/nurul.md".
+  path      String   @id
+  content   String
+  createdBy String   @default("seed")
+  updatedBy String   @default("seed")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("memory_blocks")
+  @@map("agent_memory_files")
 }
 
 // ---------------------------------------------------------------- documents

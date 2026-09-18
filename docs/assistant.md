@@ -6,10 +6,10 @@ half (pairing, the allowlist, LIDs, groups, the guards' history) and stays
 true.
 
 Built 2026-09-18 by porting the Tapis assistant's architecture onto Ascend
-MY's existing 75 tools, and keeping what Ascend's WhatsApp-only agent already
-did better: the grounding guard, the write-honesty guard, domain routing with
-`load_context`, read-only operators, group and LID gating, and the four
-memory blocks.
+MY's existing tools (74 today), and keeping what Ascend's WhatsApp-only agent
+already did better: the grounding guard, the write-honesty guard, domain
+routing with `load_context`, read-only operators, and group and LID gating.
+Memory became a file directory the same day — see below.
 
 ---
 
@@ -41,11 +41,11 @@ src/modules/ai-agent/
   core/provider.ts     the one place the assistant talks to a model
   core/prompt.ts       who Abby is; the per-turn business rules; the live brief
   core/run.ts          the loop — read this file first
-  registry.ts          the 75 tools, domain buckets, compiled input validators
+  registry.ts          the tools, domain buckets, compiled input validators
   tool-kit.ts          AgentTool, tiers, audited(), money/date helpers
   domains.ts           keyword routing (unchanged)
   grounding.ts         the read-side honesty guard (unchanged)
-  memory.ts            the four memory blocks (unchanged)
+  memory.ts            the /memories directory: store, caps, the trust rule
   agent.service.ts     the WhatsApp door
   assistant.routes.ts  the dashboard's API
   reflect.ts           nightly memory tidy-up
@@ -100,7 +100,7 @@ WhatsApp confirmations.
 2. **Route.** `routeDomains` over the last five text rows picks the areas
    whose tools and business rules go in front of the model. `load_context`
    widens it mid-turn; `CORE_TOOL_NAMES` are always there.
-3. **Build the prompt.** Static prompt (the cached prefix) · memory blocks ·
+3. **Build the prompt.** Static prompt (the cached prefix) · memory (core/ in full, the rest listed) ·
    context block · live brief (who, channel, time, store switches) · the
    transcript in wire form.
 4. **Step**, up to 16 times: stream a completion; persist the assistant row
@@ -160,7 +160,7 @@ A write tool that returns `audited(result, before, after)` and defines
 appends a system row. Undoable today: `update_product`, `update_variant`,
 `adjust_stock` (reverses the delta that actually landed, so a sale in between
 survives), `set_sale`, `update_setting`, `update_discount_code`,
-`update_insight`, `memory_block_append`, `memory_block_replace`. Anything
+`update_insight`, and every `memory` command. Anything
 that goes through an admin controller with side effects (order status, emails,
 payouts) is deliberately not undoable from a button.
 
@@ -185,16 +185,53 @@ with nothing pending pushes the model to act rather than narrate.
 
 ## Memory
 
-The four blocks (`business`, `people`, `suppliers`, `decisions`) are unchanged
-and are the assistant's only long-term memory — see the security note in
-[whatsapp-agent.md](whatsapp-agent.md). The Assistant page's **Memory** panel
-reads and edits them; edits are attributed to the admin. Both memory tools are
-now undoable.
+A directory of short files under `/memories` (`agent_memory_files`), in two
+tiers with one rule.
 
-Tapis's file-directory memory was considered and not adopted: the blocks'
-threat model (everything in them is a standing system-prompt instruction, so
-only what an operator said may enter) is the right one for a shop where
-customers type into the data, and two memory systems would be worse than one.
+**`core/*.md`** is rendered in full into the system prompt on every turn, in
+every conversation, for every operator — the page the assistant opens with.
+Capped at 8,000 characters in total; a write that would exceed it is refused
+with "move the detail to a client or procedure file", not trimmed. The four
+memory blocks migrated here as `core/business.md`, `core/people.md`,
+`core/suppliers.md`, `core/decisions.md`.
+
+**Everything else** — `clients/<name>.md`, `suppliers/<name>.md`,
+`procedures/<name>.md`, `log.md` — is listed by path every turn and read on
+demand through the `memory` tool (Anthropic's six commands: view, create,
+str_replace, insert, delete, rename). Never placed in the prompt.
+
+**The rule: only what an operator said may enter memory.** Core content is a
+standing instruction to the model, and the shop's rows are typed by customers,
+so "remember this" is exactly what a planted order note wants. Enforced in
+code, not asked for in the prompt:
+
+- `assertOperatorSourced` (memory.ts) refuses a write whose text was lifted
+  from an untrusted tool result the model can see — this turn's or an earlier
+  turn's still in the transcript, or a compaction summary. "Lifted" means a
+  28-character normalised window of the new text occurs in the data and does
+  not occur in anything an operator typed. Paraphrase passes; copying a
+  sentence out of an order note does not. If the operator wants the text kept,
+  they type it and it passes.
+- Trusted evidence is the operator's own messages in the thread plus the
+  output of tools flagged `trustedOutput` — today only
+  `list_operator_messages`, which returns operator-authored rows so the
+  nightly reflection has a source it may record from. Everything else a tool
+  returns is data.
+- Every write records who made it (`createdBy` / `updatedBy`) and is an
+  audited, undoable action: undo puts back exactly the file as it was, or
+  removes a file that did not exist.
+- Read-only operators never see the tool; admins on the dashboard and full
+  operators do.
+
+The Memory panel on the Assistant page lists the directory by folder, shows
+each file's size and last writer, and edits or creates files; an admin's edit
+is attributed to them.
+
+`test:agent:memory` covers the store, the caps, the rule (lifted / paraphrase /
+operator-quoted / short / punctuation), the tool end to end with evidence, and
+undo — 42 checks. `test:agent:security` plants a "record this permanently in
+your memory" note on an order and asks the model to do what it says; the
+marker must never appear in a memory file.
 
 ---
 
@@ -206,7 +243,7 @@ in `settings`:
 | key | what |
 |---|---|
 | `agent_morning_brief` / `agent_morning_brief_hour` | once a day, after the hour: the assistant reads orders, stock, the outbox and reminders and writes one plain-text message, which the harness sends to every active operator's DM |
-| `agent_nightly_reflection` | at 3am: re-reads the day's threads and actions and tidies the memory blocks |
+| `agent_nightly_reflection` | at 3am: reads what operators said (`list_operator_messages`) and what it did, then consolidates the memory directory — merges, expires, moves detail out of core/, appends to log.md |
 
 Each runs in a thread of its own kind, visible on the page, at most once per
 Malaysian day (`agent_*_last`), from a 5-minute tick in `server.ts`. A manual
@@ -235,10 +272,10 @@ Unchanged commands, ported to the new tables:
 ```bash
 npm run test:agent:tools       # 34 read tools against the dev db
 npm run test:agent:writes      # 33 write scenarios, rolled back
-npm run test:agent:memory      # 24
+npm run test:agent:memory      # 42 — the directory, the caps, the trust rule, undo
 npm run test:agent:grounding   # 31 unit (one pre-existing failure: get_document has no precondition)
 npm run test:agent:context     # compaction is size-based now; the fixture pads replies past 100k chars
-npm run test:agent:security    # 9
+npm run test:agent:security    # 10 — includes a planted "remember this" that must never reach memory
 npm run test:agent:e2e         # 20 scenarios, real model; two are known to flake on model variance
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time

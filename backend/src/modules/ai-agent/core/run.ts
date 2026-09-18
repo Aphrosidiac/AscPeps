@@ -3,7 +3,7 @@ import { env } from '../../../config/env.js';
 import { notifyRevalidate } from '../../../utils/revalidate.js';
 import { getTool, toolsFor, validateToolInput } from '../registry.js';
 import { DOMAINS, routeDomains, type Domain } from '../domains.js';
-import { loadMemoryBlocks, renderMemoryBlocks } from '../memory.js';
+import { memoryContext, coreMemoryText } from '../memory.js';
 import { isAudited, tierOf, truncate, type AgentActor, type AgentTool, type ChatOrigin, type Tier, type ToolContext } from '../tool-kit.js';
 import { checkGrounding, parseGroundingMode, repairInstruction, GROUNDING_SUPPRESSED_REPLY, type GroundingViolation, type ToolResultRecord } from '../grounding.js';
 import { streamCompletion, type ToolCall, type WireMessage, type WireTool } from './provider.js';
@@ -314,7 +314,19 @@ function titleFrom(text: string): string {
 
 async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome) {
   const { actor, channel, origin } = run.opts;
-  const ctx: ToolContext = { fastify, prisma: fastify.prisma, actor, origin, revalidate: (tags) => notifyRevalidate(tags) };
+  // What the memory tool checks a write against: shop data seen this turn
+  // (untrusted) versus what operators said (trusted). Closures, so a tool
+  // running in step 3 sees the results of steps 1 and 2.
+  const untrustedSeen: string[] = [];
+  const trustedSeen: string[] = [];
+  const ctx: ToolContext = {
+    fastify,
+    prisma: fastify.prisma,
+    actor,
+    origin,
+    revalidate: (tags) => notifyRevalidate(tags),
+    turn: { untrusted: () => untrustedSeen, trusted: () => trustedSeen },
+  };
 
   await compactIfNeeded(fastify, run.threadId);
   const thread = await fastify.prisma.agentThread.findUnique({ where: { id: run.threadId }, select: { chatKey: true } });
@@ -333,10 +345,20 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   const activeDomains = new Set<Domain>(routeDomains(recentText));
 
   const store = await loadStoreState(fastify);
-  const memoryBlocks = await loadMemoryBlocks(fastify.prisma);
+  const coreMemory = await coreMemoryText(fastify.prisma);
+  for (const r of rows) if (r.role === 'user' && 'text' in r.content && typeof r.content.text === 'string') trustedSeen.push(r.content.text);
+  // Data the model can still see from earlier turns is data it can copy from
+  // — the first live probe of the rule did exactly that, quoting an order
+  // note fetched one turn earlier. Everything in the model's view counts.
+  for (const t of recentToolEvidence(rows, Number.POSITIVE_INFINITY)) {
+    if (t.tool === 'memory' || getTool(t.tool)?.trustedOutput) trustedSeen.push(t.result);
+    else untrustedSeen.push(t.result);
+  }
+  // A compaction summary was written by a model from that same data.
+  for (const r of rows) if (r.role === 'system' && 'replaces' in r.content) untrustedSeen.push(r.content.summary);
   const messages: WireMessage[] = [
     { role: 'system', content: staticSystemPrompt() },
-    { role: 'system', content: renderMemoryBlocks(memoryBlocks) },
+    { role: 'system', content: await memoryContext(fastify.prisma) },
     { role: 'system', content: contextBlock(activeDomains) },
     { role: 'system', content: liveBrief(actor, channel, store) },
     ...toWire(rows, { isGroup }),
@@ -351,8 +373,8 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   let wire = buildTools();
 
   // What the model may state without a tool call: who it is talking to, and
-  // the operator-authored memory blocks it was handed.
-  const trustedContext = [actor.name, actor.phone, ...memoryBlocks.map((b) => `${b.label} ${b.content}`)].filter(Boolean);
+  // the operator-authored core memory it was handed.
+  const trustedContext = [actor.name, actor.phone, ...coreMemory].filter(Boolean);
   const groundingMode = parseGroundingMode(process.env.AGENT_GROUNDING_MODE);
 
   // Every tool result produced this turn, exactly as the model received it —
@@ -575,6 +597,10 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       messages.push({ role: 'tool', tool_call_id: r.id, content: serialised });
       if (r.name !== 'load_context') toolResults.push({ tool: r.name, result: serialised });
       if (r.wrote) writesSucceeded.push(r.name);
+      // Memory's own contents and operator-authored rows are trusted; every
+      // other tool result is the shop's data.
+      if (r.name === 'load_context' || r.name === 'memory' || getTool(r.name)?.trustedOutput) trustedSeen.push(serialised);
+      else untrustedSeen.push(serialised);
     }
     // The rules for newly loaded areas arrive as their own system message,
     // so they read as instruction rather than as data the model may weigh.

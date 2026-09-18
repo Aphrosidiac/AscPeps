@@ -242,6 +242,13 @@ it in the agent's reply and in the audit log rather than being stopped up front.
 If that ever matters more than convenience, mark those tools `destructive: true`
 in the tool files and they inherit the confirmation flow with no other changes.
 
+**Memory is the one write that is not left to the model.** A planted "record
+this permanently" would, if obeyed, become a standing system-prompt
+instruction, so `memory.ts` refuses in code any memory write whose text was
+lifted from a tool result the model can see, and every write is undoable. The
+security suite plants exactly that note and checks the marker never reaches a
+memory file. See [assistant.md](assistant.md#memory).
+
 ---
 
 ## Model

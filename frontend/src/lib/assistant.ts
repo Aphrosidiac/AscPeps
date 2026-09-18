@@ -91,11 +91,9 @@ export interface ThreadDetail extends Thread {
   actions: Action[];
 }
 
-export interface MemoryBlock {
-  key: string;
-  label: string;
-  content: string;
-  charLimit: number;
+export interface MemoryFile {
+  path: string;
+  chars: number;
   updatedBy: string;
   updatedAt: string;
 }
@@ -126,12 +124,18 @@ export const stopTurn = (token: string, id: string) => http.post(`/threads/${id}
 export const decideAction = (token: string, id: string, verb: 'approve' | 'decline' | 'undo', reason?: string) =>
   http.post<{ action: Action; note?: string }>(`/actions/${id}/${verb}`, reason ? { reason } : {}, auth(token)).then((r) => r.data);
 
-export const listMemory = (token: string) => http.get<{ blocks: MemoryBlock[] }>('/memory', auth(token)).then((r) => r.data.blocks);
+export const listMemory = (token: string) => http.get<{ files: MemoryFile[] }>('/memory', auth(token)).then((r) => r.data.files);
 
-export const saveMemory = (token: string, key: string, content: string) =>
+export const readMemory = (token: string, path: string) =>
   http
-    .put<{ block: { key: string; content: string; charsUsed: number; charLimit: number } }>(`/memory/${key}`, { content }, auth(token))
-    .then((r) => r.data.block);
+    .get<{ path: string; content: string; updatedBy: string; updatedAt: string }>(`/memory/${encodeURIComponent(path).replace(/%2F/g, '/')}`, auth(token))
+    .then((r) => r.data);
+
+export const saveMemory = (token: string, path: string, content: string) =>
+  http.put<{ path: string; chars: number }>(`/memory/${encodeURIComponent(path).replace(/%2F/g, '/')}`, { content }, auth(token)).then((r) => r.data);
+
+export const deleteMemory = (token: string, path: string) =>
+  http.delete(`/memory/${encodeURIComponent(path).replace(/%2F/g, '/')}`, auth(token)).then((r) => r.data);
 
 export const listTools = (token: string) => http.get<{ tools: ToolInfo[] }>('/tools', auth(token)).then((r) => r.data.tools);
 

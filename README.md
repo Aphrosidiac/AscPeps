@@ -256,9 +256,9 @@ Renders every template against real orders, reports each one's size against Gmai
 
 ## The assistant
 
-Abby — an operator-facing assistant that can do anything the admin dashboard can, with 75 tools across catalog, orders, finance, promos, content, ops, reports, delivery, documents, shadow SKUs, reminders and memory. Two doors onto one harness (`backend/src/modules/ai-agent/core/`, see [docs/assistant.md](docs/assistant.md)):
+Abby — an operator-facing assistant that can do anything the admin dashboard can, with 74 tools across catalog, orders, finance, promos, content, ops, reports, delivery, documents, shadow SKUs, reminders and memory. Two doors onto one harness (`backend/src/modules/ai-agent/core/`, see [docs/assistant.md](docs/assistant.md)):
 
-- **Assistant page** (`/admin/assistant`) — a thread list and a streamed transcript: the reply as it is written, every tool call as a card that fills in with its result, an approval card for anything destructive, and **Undo** on the changes that can be reversed. A Memory panel for the four memory blocks, and two switchable routines (morning brief to the operators' WhatsApp, nightly memory tidy-up).
+- **Assistant page** (`/admin/assistant`) — a thread list and a streamed transcript: the reply as it is written, every tool call as a card that fills in with its result, an approval card for anything destructive, and **Undo** on the changes that can be reversed. A Memory panel over its memory directory, and two switchable routines (morning brief to the operators' WhatsApp, nightly memory tidy-up).
 - **WhatsApp** — the same loop, gated by the operator allowlist; "yes"/"no" answer a parked action. WhatsApp conversations show on the Assistant page too, read-only.
 
 The harness owns reliability: an append-only provider-neutral transcript with tool results stored in full, schema validation of every tool call, step and token budgets, an escalation model, one run per thread with a Stop that stops, and two honesty guards on every reply — a claim of a change with no successful write is replaced, and a fact no tool result supports is sent back for repair.
@@ -271,20 +271,18 @@ Access is an allowlist: an unknown sender never reaches a tool, or an LLM call, 
 
 ### Memory
 
-Conversations persist per chat as threads, with rolling compaction folding older turns into a stored summary once the model-visible transcript passes 100k characters. But every chat is an island, so the agent also has **four always-in-context memory blocks** — `business`, `people`, `suppliers`, `decisions` — rendered into their own system message on every turn, in every thread, for every operator. Roughly 400 tokens when populated.
+A directory of short files under `/memories`. `core/*.md` is rendered into the system prompt on every turn, in every thread, for every operator — capped at 8k characters in total, so it stays a page of standing facts. `clients/`, `suppliers/`, `procedures/` and `log.md` are listed every turn and read on demand through a six-command `memory` tool. The nightly reflection consolidates it. The Assistant page's Memory panel reads and edits all of it.
 
-No vector store and no embeddings, deliberately: the problem was never retrieval, and the content is SKUs, product names, ringgit amounts and people's names — exactly where keyword matching beats semantic search.
+No vector store and no embeddings, deliberately: the problem was never retrieval, and the content is SKUs, product names, ringgit amounts and people's names — exactly where a named file beats semantic search.
 
-Enforced in code rather than asked for in the prompt: character caps with oldest-line eviction (a model told to stay under 1500 characters will not), duplicate writes as a no-op, one fact per line. Blocks are seeded **empty** — pre-filling them with plausible business facts would put invented claims into the system prompt on day one.
-
-**Security note.** Block content is concatenated into the *system* prompt, which makes it the highest-value injection target in the agent — anything written there is a standing instruction for every future conversation. Only what an operator says directly may be recorded, every write stores `updatedBy`, and both write tools are gated so read-only operators cannot change what the agent believes.
+**Security note.** Core content is concatenated into the *system* prompt, which makes memory the highest-value injection target in the agent — and the shop's rows are typed by customers. So the rule "only what an operator said may enter memory" is enforced in code (`memory.ts`): a write whose text was lifted from a tool result the model can see is refused, every write records who made it and is undoable, and read-only operators never see the tool. Detail in [docs/assistant.md](docs/assistant.md#memory).
 
 ### Tests
 
 ```bash
 npm run test:agent:tools     # every tool's schema
 npm run test:agent:writes    # all write tools, with rollback + a coverage gate
-npm run test:agent:memory    # caps, eviction, dedupe, provenance, prompt rendering
+npm run test:agent:memory    # the directory: caps, the trust rule, provenance, undo, prompt rendering
 npm run test:agent:context   # routing and conversation compaction
 npm run test:agent:security  # prompt injection, privilege escalation, SQL escape hatch
 npm run test:agent:e2e       # real LLM conversations, asserted on database state

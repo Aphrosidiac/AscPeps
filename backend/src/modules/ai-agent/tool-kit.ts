@@ -88,6 +88,16 @@ export interface ToolContext {
   // edit appears to do nothing for up to an hour. Fire-and-forget by design:
   // a failed ping must not fail the write that already committed.
   revalidate: (tags: string[]) => void;
+  // What this turn has seen so far, for tools that must tell operator speech
+  // from shop data — the memory tool refuses to store text lifted from a tool
+  // result. Absent in the tool-level test scripts, where nothing is untrusted.
+  turn?: TurnEvidence;
+}
+
+/** See memory.ts — the trust rule the memory tool enforces. */
+export interface TurnEvidence {
+  untrusted: () => string[];
+  trusted: () => string[];
 }
 
 export interface AgentTool {
@@ -96,6 +106,11 @@ export interface AgentTool {
   input_schema: Record<string, any>;
   // Mutates state. Refused outright for `canWrite: false` operators.
   write?: boolean;
+  // The tool returns text an OPERATOR wrote (their own messages), not shop
+  // data. Its output is trusted evidence for memory writes rather than
+  // untrusted; nothing else changes. Only for tools whose rows are authored by
+  // operators — never for anything a customer can type into.
+  trustedOutput?: boolean;
   // Hard to undo (deletes, money movements, mail to real customers, anything
   // touching many rows at once). Parked for an explicit yes before running.
   destructive?: boolean;

@@ -6,7 +6,7 @@ import { providerConfigured } from './core/provider.js';
 import { relay } from './agent.service.js';
 import { ALL_TOOLS, toolsFor } from './registry.js';
 import { tierOf, type AgentActor } from './tool-kit.js';
-import { replaceBlock } from './memory.js';
+import { deleteMemory, listMemory, readMemory, writeMemory } from './memory.js';
 import { runReflection } from './reflect.js';
 import { startDigest } from './digest.js';
 
@@ -217,23 +217,38 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
 
   // ── Memory ──
   //
-  // The four blocks the agent carries into every conversation, readable and
-  // editable. Nothing it knows about how to work with you is hidden from you.
-  fastify.get('/memory', async () => {
-    const blocks = await fastify.prisma.memoryBlock.findMany({ orderBy: { position: 'asc' } });
-    return { blocks: blocks.map((b) => ({ key: b.key, label: b.label, content: b.content, charLimit: b.charLimit, updatedBy: b.updatedBy, updatedAt: b.updatedAt })) };
+  // The directory the assistant reads and writes, readable and editable here.
+  // Nothing it knows about how to work with you is hidden from you; an admin's
+  // edit is attributed to them like any other write.
+  fastify.get('/memory', async () => ({
+    files: (await listMemory(fastify.prisma)).map((f) => ({ ...f, updatedAt: f.updatedAt.toISOString() })),
+  }));
+
+  fastify.get<{ Params: { '*': string } }>('/memory/*', async (request, reply) => {
+    const path = decodeURIComponent(request.params['*']);
+    const file = await readMemory(fastify.prisma, path);
+    if (!file) return reply.status(404).send({ message: 'No such memory file' });
+    return { path, content: file.content, updatedBy: file.updatedBy, updatedAt: file.updatedAt.toISOString() };
   });
 
-  fastify.put<{ Params: { key: string } }>('/memory/:key', async (request, reply) => {
+  fastify.put<{ Params: { '*': string } }>('/memory/*', async (request, reply) => {
+    const path = decodeURIComponent(request.params['*']);
     const content = (request.body as Record<string, unknown> | undefined)?.content;
     if (typeof content !== 'string') return reply.status(400).send({ message: 'Send { content }' });
     const actor = await webActor(request);
     try {
-      const result = await replaceBlock(fastify.prisma, request.params.key, content, actor.name);
-      return { block: result };
+      const r = await writeMemory(fastify.prisma, path, content, actor.name);
+      return { path: r.path, chars: r.chars };
     } catch (err) {
       return reply.status(400).send({ message: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  fastify.delete<{ Params: { '*': string } }>('/memory/*', async (request, reply) => {
+    const path = decodeURIComponent(request.params['*']);
+    const r = await deleteMemory(fastify.prisma, path);
+    if (!r.deleted) return reply.status(404).send({ message: 'No such memory file' });
+    return { ok: true };
   });
 
   // ── Housekeeping ──

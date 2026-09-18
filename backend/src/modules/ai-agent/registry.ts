@@ -28,8 +28,8 @@ const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
   finance: financeTools,
   promos: contentTools.filter(isDiscountTool),
   content: contentTools.filter((t) => !isDiscountTool(t)),
-  // Memory rides with ops for registration only — the two write tools are in
-  // CORE_TOOL_NAMES so they are offered on every turn regardless of routing.
+  // Memory rides with ops for registration only — the memory tool is in
+  // CORE_TOOL_NAMES so it is offered on every turn regardless of routing.
   // Remembering is not a topic the router could detect: the operator says
   // something worth keeping while asking about an order.
   ops: [...opsTools, ...memoryTools],
