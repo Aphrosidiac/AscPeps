@@ -400,6 +400,11 @@ export const orderTools: AgentTool[] = [
         search: { type: 'string', description: 'Matches order number, customer name or phone.' },
         from: { type: 'string', description: 'Date as YYYY-MM-DD, "today", "yesterday" or "30d".' },
         to: { type: 'string', description: 'Date as YYYY-MM-DD.' },
+        missingCosts: {
+          type: 'boolean',
+          description:
+            'Only paid, live orders where at least one line has no cost entered yet — the ones whose profit and partner split are unknown. Use set_order_costs to fill them in.',
+        },
         limit: { type: 'number' },
       },
     },
@@ -408,6 +413,15 @@ export const orderTools: AgentTool[] = [
         input.status === 'DELETED' ? { deletedAt: { not: null } } : { deletedAt: null };
       if (input.status && input.status !== 'DELETED') where.status = input.status;
       if (input.paymentStatus) where.paymentStatus = input.paymentStatus;
+      if (input.missingCosts) {
+        // A cancelled or unpaid order has no profit to cost; a line with a
+        // null unitCost is "not entered yet" (profit.ts treats 0 as a real
+        // cost), so this is exactly the set the Profit Sharing tab reports as
+        // unknown.
+        where.paymentStatus = where.paymentStatus ?? 'PAID';
+        where.status = where.status ?? { notIn: ['CANCELLED'] };
+        where.items = { some: { unitCost: null } };
+      }
       if (input.search) {
         where.OR = [
           { orderNumber: { contains: input.search, mode: 'insensitive' } },
