@@ -27,6 +27,10 @@ export interface InboundMessage {
   senderLid?: string;
   senderName: string | null;
   text: string;
+  // Set by the worker when the message was an image, voice note or file with
+  // no caption. Such a message is gated exactly like text and, if it passes,
+  // answered with a fixed notice — never shown to the model.
+  media?: 'image' | 'voice message' | 'file';
   // Group only.
   groupJid?: string;
   groupSubject?: string;
@@ -284,6 +288,12 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
   const gate = await shouldHandle(fastify, msg);
   if (!gate.ok) return { action: 'ignore', reason: gate.reason };
   const actor = gate.actor;
+
+  // Media from someone the agent answers: say plainly that it cannot read it.
+  // Nothing is stored and no model runs — there is nothing to read.
+  if (msg.media && !msg.text.trim()) {
+    return { action: 'reply', text: `I can only read text right now — send that ${msg.media}'s details as a message and I'll act on it.` };
+  }
 
   // The gate is deliberately OUTSIDE the lock: an unknown sender must never be
   // able to make a real operator queue behind them.

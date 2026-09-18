@@ -28,6 +28,8 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
     if ((!body?.senderPhone && !body?.senderLid) || typeof body.text !== 'string') {
       return reply.status(400).send({ error: 'senderPhone or senderLid, plus text, are required' });
     }
+    const media = body.media === 'image' || body.media === 'voice message' || body.media === 'file' ? body.media : undefined;
+    if (!body.text.trim() && !media) return reply.status(400).send({ error: 'text or media is required' });
 
     const msg: InboundMessage = {
       kind: body.kind === 'group' ? 'group' : 'dm',
@@ -35,6 +37,7 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
       senderLid: body.senderLid,
       senderName: body.senderName ?? null,
       text: body.text,
+      media,
       groupJid: body.groupJid,
       groupSubject: body.groupSubject,
       mentionsBot: body.mentionsBot ?? true,

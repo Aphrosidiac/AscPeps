@@ -218,6 +218,7 @@ against the live deployment:
 | Unknown sender, group allowlisted | ignored |
 | Bound operator, allowlisted group, no mention | ignored |
 | Bound operator, allowlisted group, mentioned | acts |
+| Anyone, an image / voice note / file with no caption | gated exactly like text; an allowed sender gets "I can only read text right now", everyone else silence |
 
 Unresolvable senders are recorded only *after* the group gate passes. Recording
 first meant every participant of every supplier and customer group the number

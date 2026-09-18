@@ -469,19 +469,21 @@ async function handleInbound(msg: any) {
 
   let text = extractText(msg)
 
-  // Media is acknowledged but not yet fed to the model: DeepSeek V4 Flash is
-  // the text tier, and silently dropping an image the operator sent would look
-  // like the agent ignored them.
-  if (!text && (msg.message?.imageMessage || msg.message?.audioMessage || msg.message?.documentMessage)) {
-    const kind = msg.message?.imageMessage ? 'image' : msg.message?.audioMessage ? 'voice message' : 'file'
-    if (AGENT_ENABLED && sock) {
-      await sock.sendMessage(remoteJid, {
-        text: `I can only read text right now — send that ${kind}'s details as a message and I'll act on it.`,
-      })
-    }
-    return
-  }
-  if (!text.trim()) return
+  // Media is not fed to the model, but an operator who sends the bot a
+  // picture should hear that rather than be ignored. The NOTICE is the API's
+  // to send, not the worker's: this used to reply right here, before the
+  // mention check and before the allowlist, so every photo in every group the
+  // number sits in — and every stranger's voice note — got an answer from
+  // the business number. The API runs the same gate it runs for text and
+  // says nothing to anyone it would not have answered.
+  const media: 'image' | 'voice message' | 'file' | undefined = msg.message?.imageMessage
+    ? 'image'
+    : msg.message?.audioMessage
+      ? 'voice message'
+      : msg.message?.documentMessage
+        ? 'file'
+        : undefined
+  if (!text.trim() && !media) return
 
   // Computed on the RAW text — mentionsBot's JID matching doesn't touch the
   // body text at all, and its text-trigger fallback only looks for a leading
@@ -498,6 +500,10 @@ async function handleInbound(msg: any) {
     senderLid,
     senderName: msg.pushName || null,
     text,
+    // Set when the message carried no text: the API answers with the
+    // "text only" notice if — and only if — this sender in this chat would
+    // have been answered at all.
+    media: text.trim() ? undefined : media,
     groupJid: isGroup ? remoteJid : undefined,
     groupSubject: isGroup ? (await groupSubject(remoteJid)) : undefined,
     mentionsBot: mentionedBot,
