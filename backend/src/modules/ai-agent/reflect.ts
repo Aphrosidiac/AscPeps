@@ -3,7 +3,7 @@ import { env } from '../../config/env.js';
 import { startTurn, activeRun } from './core/run.js';
 import { agentModelSettings } from './core/models.js';
 import type { AgentActor } from './tool-kit.js';
-import { malaysiaDay, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } from './schedule.js';
+import { malaysiaDay, readHour, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } from './schedule.js';
 
 // The nightly pass over memory. Once a day, in the quiet hours, the assistant
 // re-reads what happened — what operators said, what it did, what was
@@ -23,8 +23,7 @@ const KEEP_THREADS = 14;
 export async function maybeReflect(fastify: FastifyInstance, now = new Date()): Promise<boolean> {
   if ((await readSetting(fastify, SETTING_KEYS.reflect)) !== 'true') return false;
   if (!env.OPENROUTER_API_KEY) return false;
-  const hourSetting = Number(await readSetting(fastify, SETTING_KEYS.reflectHour));
-  const at = Number.isFinite(hourSetting) && hourSetting >= 0 && hourSetting <= 23 ? hourSetting : DEFAULT_HOUR;
+  const at = await readHour(fastify, SETTING_KEYS.reflectHour, DEFAULT_HOUR);
   const { day, hour } = malaysiaDay(now);
   if (hour < at) return false;
   if ((await readSetting(fastify, SETTING_KEYS.reflectLast)) === day) return false;

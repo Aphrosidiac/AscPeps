@@ -21,6 +21,21 @@ export async function readSetting(fastify: FastifyInstance, key: string): Promis
   return row?.value ?? null;
 }
 
+/**
+ * An hour-of-day setting, or the fallback when it was never saved. Read this
+ * way and not with `Number(await readSetting(...))`: a missing row is `null`,
+ * and `Number(null)` is 0 — a perfectly valid hour — so the morning brief ran
+ * at midnight on production for as long as nobody had touched the dropdown,
+ * while the panel showed its 08:00 display default. Blank and garbage fall
+ * back too.
+ */
+export async function readHour(fastify: FastifyInstance, key: string, fallback: number): Promise<number> {
+  const raw = (await readSetting(fastify, key))?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : fallback;
+}
+
 export async function writeSetting(fastify: FastifyInstance, key: string, value: string): Promise<void> {
   await fastify.prisma.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
 }

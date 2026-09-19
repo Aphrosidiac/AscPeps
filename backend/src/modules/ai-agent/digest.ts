@@ -4,7 +4,7 @@ import { sendWhatsAppMessage } from '../../utils/whatsapp-send.js';
 import { startTurn, awaitTurn, activeRun } from './core/run.js';
 import { agentModelSettings } from './core/models.js';
 import type { AgentActor } from './tool-kit.js';
-import { malaysiaDay, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } from './schedule.js';
+import { malaysiaDay, readHour, readSetting, writeSetting, SETTING_KEYS, SYSTEM_ACTOR } from './schedule.js';
 
 // The morning brief. Once a day, after the configured hour, the assistant
 // writes what needs the operators today — in its own thread, read-only in
@@ -20,8 +20,7 @@ const KEEP_THREADS = 14;
 export async function maybeDigest(fastify: FastifyInstance, now = new Date()): Promise<boolean> {
   if ((await readSetting(fastify, SETTING_KEYS.digest)) !== 'true') return false;
   if (!env.OPENROUTER_API_KEY) return false;
-  const hourSetting = Number(await readSetting(fastify, SETTING_KEYS.digestHour));
-  const at = Number.isFinite(hourSetting) && hourSetting >= 0 && hourSetting <= 23 ? hourSetting : DEFAULT_HOUR;
+  const at = await readHour(fastify, SETTING_KEYS.digestHour, DEFAULT_HOUR);
   const { day, hour } = malaysiaDay(now);
   if (hour < at) return false;
   if ((await readSetting(fastify, SETTING_KEYS.digestLast)) === day) return false;

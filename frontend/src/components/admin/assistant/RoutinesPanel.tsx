@@ -218,8 +218,12 @@ export function RoutinesPanel({
       .finally(() => setBusy(''));
   };
 
-  const hour = Number(settings?.[KEYS.digestHour] ?? 8);
-  const reflectHour = Number(settings?.[KEYS.reflectHour] ?? 3);
+  // The display defaults match the schedulers' fallbacks (digest.ts, reflect.ts).
+  // Switching a routine on also writes its hour when none is saved, so what
+  // the menu shows is what the row says — a menu already showing 08:00 cannot
+  // be "chosen", and for a while the scheduler read the missing row as 0.
+  const hour = Number(settings?.[KEYS.digestHour] || 8);
+  const reflectHour = Number(settings?.[KEYS.reflectHour] || 3);
 
   return (
     <div className="flex h-full flex-col">
@@ -240,7 +244,7 @@ export function RoutinesPanel({
           <section className="space-y-3">
             <Toggle
               checked={settings[KEYS.digest] === 'true'}
-              onChange={(v) => set({ [KEYS.digest]: v ? 'true' : 'false' })}
+              onChange={(v) => set({ [KEYS.digest]: v ? 'true' : 'false', ...(settings[KEYS.digestHour] ? {} : { [KEYS.digestHour]: String(hour) }) })}
               label={
                 <span className="inline-flex items-center gap-1.5">
                   <Sunrise className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Morning brief
@@ -325,7 +329,9 @@ export function RoutinesPanel({
           <section className="space-y-3">
             <Toggle
               checked={settings[KEYS.reflect] === 'true'}
-              onChange={(v) => set({ [KEYS.reflect]: v ? 'true' : 'false' })}
+              onChange={(v) =>
+                set({ [KEYS.reflect]: v ? 'true' : 'false', ...(settings[KEYS.reflectHour] ? {} : { [KEYS.reflectHour]: String(reflectHour) }) })
+              }
               label={
                 <span className="inline-flex items-center gap-1.5">
                   <MoonStar className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Nightly reflection
