@@ -14,3 +14,8 @@ uploads/
 # whole UI for this feature — from being committed at all.
 /backend/documents/
 *.mp4
+
+# Business documents and legacy artwork that were committed by mistake; kept locally, never tracked
+/Peptides Business Plan with Asyraf.txt
+/Pricing (*).jpeg
+/ASCEND BLACKPILL LOGO*.png
