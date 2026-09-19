@@ -9,7 +9,7 @@ import { env } from '../../config/env.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
-import { notifyNewOrder } from '../../utils/order-notify.js';
+import { notifyOrder } from '../../utils/order-notify.js';
 import { newUnsubscribeToken } from '../../utils/marketing.js';
 import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage, resolveShippingFeeSen } from '../../utils/shipping-region.js';
 import { MANUALPAY_GATEWAY, isManualPayEnabled } from '../../plugins/manualpay.js';
@@ -480,10 +480,12 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
     }
   }
 
-  // The operators' WhatsApp line for a new order (Routines → New order
-  // notice). After the payment session so the notice never delays the
+  // The operators' WhatsApp line for a new order (Routines → Order notice).
+  // Only a manual-payment order is announced here — it needs a person to
+  // confirm the transfer; an online one is announced when it is paid, from
+  // applyPaid. After the payment session so the notice never delays the
   // customer's redirect, and fire-and-forget so it can never fail the order.
-  void notifyNewOrder(fastify, order.id);
+  void notifyOrder(fastify, order.id, 'created');
 
   return { order, whatsappUrl, paymentUrl };
 }

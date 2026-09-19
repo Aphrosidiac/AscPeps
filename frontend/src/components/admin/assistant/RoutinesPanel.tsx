@@ -288,14 +288,14 @@ export function RoutinesPanel({
               onChange={(v) => set({ [KEYS.orderNotify]: v ? 'true' : 'false' })}
               label={
                 <span className="inline-flex items-center gap-1.5">
-                  <ShoppingBag className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> New order notice
+                  <ShoppingBag className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Order notice
                 </span>
               }
-              description="The moment an order is placed: one WhatsApp line with the number, customer, items, total, how they are paying, and a link. Written by the system, not the assistant — instant and always right; ask Abby about the order after."
+              description="One WhatsApp line — number, customer, items, total, payment, link — at the moment the order needs you: a bank-transfer order as soon as it is placed (you confirm it in chat), an online or crypto order once it is paid, never while the customer is still on the gateway. Written by the system, not the assistant — instant and always right; ask Abby about the order after."
             />
             <div className="pl-14">
               <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
-              {recipients('orderNotify', 'new-order notices')}
+              {recipients('orderNotify', 'order notices')}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => (preview === undefined ? loadPreview() : setPreview(undefined))}
@@ -316,7 +316,9 @@ export function RoutinesPanel({
                   {preview ?? 'No order to preview yet.'}
                 </pre>
               )}
-              <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">A test sends the notice for the latest order to whoever is switched on.</p>
+              <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
+                A test sends the latest order’s notice to whoever is switched on — “new order” if it was a bank transfer, “paid” if it went online.
+              </p>
             </div>
           </section>
 

@@ -5,6 +5,7 @@ import { restoreOrderInventory } from './order-inventory.js';
 import { enqueueEmail } from './email-outbox.js';
 import { capturePurchase } from './posthog.js';
 import { computeGatewayFee } from './gateway-fee.js';
+import { notifyOrder } from './order-notify.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
@@ -79,6 +80,11 @@ export async function applyPaid(
     // UNPAID -> PAID transition emits revenue, so duplicate callbacks and
     // reconcile sweeps can't double-count.
     capturePurchase(fastify, order);
+    // The operators' WhatsApp line for a paid online/crypto order (Routines →
+    // Order notice). Here and not at creation because the customer settles
+    // on the gateway minutes after checkout, and may not settle at all. The
+    // guard above makes it once per order.
+    void notifyOrder(fastify, order.id, 'paid');
   }
   return transitioned;
 }
