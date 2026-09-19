@@ -32,6 +32,8 @@ import { config as loadEnv } from 'dotenv'
 import { contentOf, mentionsBot, stripSelfMentions } from './mention.js'
 
 loadEnv()
+// Same pin as the API (server.ts): log lines and alert timestamps in Malaysian time whatever the host's zone.
+process.env.TZ ||= 'Asia/Kuala_Lumpur'
 
 const PORT = parseInt(process.env.WORKER_HTTP_PORT || '3106')
 const TOKEN = process.env.WORKER_HTTP_TOKEN || 'ascend-worker-token'

@@ -112,6 +112,11 @@ export interface TurnOutcome {
   pending: ActionView[];
   error: string | null;
   aborted: boolean;
+  // Write tools that ran and succeeded this turn, in order. A relay that has
+  // to report a failure needs this: "nothing was changed" is only true when
+  // it is empty, and the failure that matters most is the one after step 3
+  // of 5 has already happened.
+  writes: string[];
 }
 
 const runs = new Map<string, Run>();
@@ -185,7 +190,7 @@ export function stopRun(threadId: string): boolean {
 // at once with an empty outcome.
 export function awaitTurn(threadId: string): Promise<TurnOutcome> {
   const r = runs.get(threadId);
-  if (!r) return Promise.resolve({ text: '', pending: [], error: null, aborted: false });
+  if (!r) return Promise.resolve({ text: '', pending: [], error: null, aborted: false, writes: [] });
   return r.finished;
 }
 
@@ -285,7 +290,7 @@ async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOp
   });
   if (userMessage) emit(run, { type: 'message', message: userMessage });
 
-  const outcome: TurnOutcome = { text: '', pending: [], error: null, aborted: false };
+  const outcome: TurnOutcome = { text: '', pending: [], error: null, aborted: false, writes: [] };
   void runTurn(fastify, run, outcome)
     .catch(async (err) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -605,7 +610,10 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       const serialised = truncate(JSON.stringify(r.output), 6000);
       messages.push({ role: 'tool', tool_call_id: r.id, content: serialised });
       if (r.name !== 'load_context') toolResults.push({ tool: r.name, result: serialised });
-      if (r.wrote) writesSucceeded.push(r.name);
+      if (r.wrote) {
+        writesSucceeded.push(r.name);
+        outcome.writes.push(r.name);
+      }
       // Memory's own contents and operator-authored rows are trusted; every
       // other tool result is the shop's data.
       if (r.name === 'load_context' || r.name === 'memory' || getTool(r.name)?.trustedOutput) trustedSeen.push(serialised);

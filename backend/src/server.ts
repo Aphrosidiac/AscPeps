@@ -1,3 +1,9 @@
+// Every "today", "this morning" and "8 o'clock" in this codebase is Malaysian
+// time. The box happens to run on UTC+8 today; a move to a UTC host would
+// silently shift every local-time calculation (reports, receipts, the
+// dashboard's "today") by eight hours, so the process pins its own zone.
+process.env.TZ ||= 'Asia/Kuala_Lumpur';
+
 import path from 'path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';

@@ -385,6 +385,7 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
   // loses, and the failure mode is executing a delete that was never confirmed.
   const pending = await livePendingActions(fastify, thread.id);
   const mine = pending.find((p) => p.actorPhone === actor.phone) ?? null;
+  let droppedPending: string | null = null;
 
   if (mine) {
     if (AFFIRMATIVE.test(text)) {
@@ -402,8 +403,10 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
       return { action: 'reply', text: 'Cancelled — nothing was changed.' };
     }
     // Neither yes nor no: they have moved on. Decline it rather than leaving
-    // it armed for a later, unrelated "ok".
+    // it armed for a later, unrelated "ok" — and tell the model, so the reply
+    // can say so instead of leaving the operator to assume it is still queued.
     await declineAction(fastify, mine.id, opts, 'the operator moved on without answering', false);
+    droppedPending = mine.summary ?? mine.tool;
   } else if (NEGATIVE.test(text)) {
     return { action: 'reply', text: "Nothing was pending, so nothing has changed. Tell me what you'd like me to do." };
   }
@@ -414,10 +417,21 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
   // to actually act — it still cannot shortcut the safety model: a destructive
   // tool parks for a real confirmation as usual, and the write guard stops it
   // claiming success without having called anything.
-  const systemNote =
-    !mine && AFFIRMATIVE.test(text)
-      ? 'The operator just confirmed. Carry out the action you last proposed by calling the appropriate tool NOW. Do not ask again and do not describe the action as already done — call the tool. If you cannot tell what was being confirmed, say so and ask what they want.'
-      : undefined;
+  //
+  // But "ok" is also how people say "understood". The note therefore turns on
+  // what the assistant last said: a proposal awaiting a yes is carried out; an
+  // explanation that happened to end the previous turn is not an instruction
+  // to go and change something.
+  const notes: string[] = [];
+  if (!mine && AFFIRMATIVE.test(text)) {
+    notes.push(
+      'The operator replied with a bare confirmation. If your previous message proposed ONE specific action and asked whether to do it, carry it out now by calling the tool — do not ask again and do not describe it as already done. If your previous message was an answer or an explanation rather than a proposal, this is an acknowledgement: reply briefly and change nothing.'
+    );
+  }
+  if (droppedPending) {
+    notes.push(`The action you parked earlier — ${droppedPending} — was cancelled because the operator moved on without answering it. Mention that in one short line if it is still relevant; do not redo it unless asked.`);
+  }
+  const systemNote = notes.length ? notes.join('\n') : undefined;
 
   // ---- 2. The turn.
   try {
@@ -435,7 +449,15 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
 export async function relay(threadId: string, directory: Directory = []): Promise<string> {
   const outcome = await awaitTurn(threadId);
   const parts: string[] = [];
-  if (outcome.error) parts.push(`Something went wrong on my side: ${outcome.error}. Nothing was changed by this message.`);
+  if (outcome.error) {
+    // Only claim "nothing changed" when that is true. A turn that fails at
+    // step four has already done steps one to three.
+    parts.push(
+      outcome.writes.length
+        ? `Something went wrong partway: ${outcome.error}. Before it failed, these did go through: ${[...new Set(outcome.writes)].join(', ')} — check the dashboard before asking again.`
+        : `Something went wrong on my side: ${outcome.error}. Nothing was changed by this message.`
+    );
+  }
   else if (outcome.aborted) parts.push('Stopped before I could finish.');
   else if (outcome.text) parts.push(humaniseMentions(toWhatsAppText(outcome.text), directory, 'out'));
   for (const p of outcome.pending) parts.push(confirmationPrompt(p.summary ?? p.tool));

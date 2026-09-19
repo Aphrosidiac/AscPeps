@@ -112,6 +112,10 @@ export async function adminSubscriberStats(fastify: FastifyInstance) {
 }
 
 function settingInt(settings: Record<string, string>, key: string, fallback: number): number {
+  // A blank row is "not set", not zero: the settings form saves '' to clear a
+  // numeric field, and Number('') is 0 — which for welcome_discount_days is a
+  // code that expires the moment it is minted.
+  if (!settings[key]?.trim()) return fallback;
   const raw = Number(settings[key]);
   return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : fallback;
 }

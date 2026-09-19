@@ -321,7 +321,7 @@ export function RoutinesPanel({
                 </pre>
               )}
               <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
-                A test sends the latest order’s notice to whoever is switched on — “new order” if it was a bank transfer, “paid” if it went online.
+                A test sends the latest order’s notice, exactly as it would go out, to whoever is switched on.
               </p>
             </div>
           </section>

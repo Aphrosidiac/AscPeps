@@ -57,7 +57,10 @@ export async function startDigest(fastify: FastifyInstance, by: AgentActor, day 
 
 async function deliverDigest(fastify: FastifyInstance, threadId: string): Promise<{ sent: number; recipients: number; text: string }> {
   const outcome = await awaitTurn(threadId);
-  const text = outcome.text.trim();
+  // A failed turn may have left partial text; a half-written brief that
+  // stops mid-list is worse than none, and the failure row is on the page.
+  const text = outcome.error || outcome.aborted ? '' : outcome.text.trim();
+  if (outcome.error) fastify.log.error({ threadId, error: outcome.error }, 'morning brief turn failed; nothing sent');
   const old = await fastify.prisma.agentThread.findMany({ where: { kind: 'digest' }, orderBy: { createdAt: 'desc' }, skip: KEEP_THREADS, select: { id: true } });
   for (const t of old) if (!activeRun(t.id)) await fastify.prisma.agentThread.delete({ where: { id: t.id } }).catch(() => {});
   if (!text) return { sent: 0, recipients: 0, text: '' };
