@@ -1,149 +1,208 @@
 <div align="center">
 
-# Ascend MY — Research Peptides Malaysia
+<img src="docs/screens/storefront.png" alt="The Ascend MY storefront: premium research peptides in Malaysia" width="100%">
 
-**Full-stack e-commerce platform for research-grade peptides**, built on Next.js 16 + Fastify 5 + Prisma 7 + PostgreSQL, with a two-gateway payment layer, a research-literature-backed product catalog, and an SEO/GEO posture built for both search engines and AI answer engines.
+# Ascend MY
 
-[![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js)](https://nextjs.org)
-[![React](https://img.shields.io/badge/React-19-149eca?logo=react)](https://react.dev)
-[![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify)](https://fastify.dev)
-[![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma)](https://www.prisma.io)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-blue?logo=postgresql&logoColor=white)](https://www.postgresql.org)
-[![Tailwind](https://img.shields.io/badge/Tailwind_CSS-4-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+**The shop, the books, and an assistant that runs both — for a research-peptide store in Malaysia.**
 
-**Live:** [ascendpeptides.my](https://ascendpeptides.my)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-111111?style=flat-square)](https://nextjs.org)
+[![Fastify 5](https://img.shields.io/badge/Fastify-5-202020?style=flat-square)](https://fastify.dev)
+[![Prisma 7](https://img.shields.io/badge/Prisma-7-2d3748?style=flat-square)](https://www.prisma.io)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=flat-square)](https://www.postgresql.org)
+[![Live: ascendpeptides.my](https://img.shields.io/badge/live-ascendpeptides.my-22c55e?style=flat-square)](https://ascendpeptides.my)
+
+[What is in the box](#what-is-in-the-box) · [How it is built](#how-it-is-built) · [Taking money](#taking-money) · [The books](#the-books) · [The assistant](#the-assistant) · [Run it](#running-it-locally) · [Deploy](#deployment) · [Docs](#the-docs)
 
 </div>
 
 ---
 
-## Contents
+Ascend MY sells laboratory research peptides to Malaysian buyers: 47 products
+in 63 sizes across 10 categories, sold strictly for research use, with copy
+that cites the actual PubMed studies and says so when the evidence is thin.
+Customers pay by FPX or card through ToyyibPay, by bank transfer over
+WhatsApp, or in Bitcoin; the shop confirms, restocks, emails and books each
+order without anyone touching a spreadsheet.
 
-- [Overview](#overview)
-- [Tech stack](#tech-stack)
-- [Project structure](#project-structure)
-- [Features](#features)
-- [Bookkeeping & documents](#bookkeeping--documents)
-- [Shadow SKUs](#shadow-skus)
-- [Transactional email](#transactional-email)
-- [The assistant](#the-assistant)
-- [WhatsApp AI agent](#whatsapp-ai-agent)
-- [Product catalog](#product-catalog)
-- [Content & compliance governance](#content--compliance-governance)
-- [SEO & GEO](#seo--geo)
-- [Local development](#local-development)
-- [Environment variables](#environment-variables)
-- [Payment gateway](#payment-gateway)
-- [Deployment](#deployment-vps)
-- [API reference](#api-reference)
-- [Security](#security)
+Behind the storefront is a back office that does the accounting properly —
+gateway fees, refunds that reverse rather than delete, stock charged once —
+and a filing cabinet for the paperwork. And behind *that* is **Abby**: an
+operator assistant with 74 tools over everything the dashboard can do,
+reachable from an Assistant page or by messaging the shop's own WhatsApp
+number. Ask it what came in this week, tell it to put the 10 mg on sale
+until Sunday, and it does — with every change recorded and most of them one
+click from undone.
+
+```bash
+git clone https://github.com/Aphrosidiac/AscPeps && cd AscPeps   # then see "Running it locally"
+```
 
 ---
 
-## Overview
+## What is in the box
 
-Ascend MY is a Malaysian e-commerce storefront for laboratory research peptides — every product is sold strictly for research and laboratory use, with compliance-conscious copy throughout (no medical claims, honest disclosure of mixed/negative trial results, explicit "for research use only" framing on every page). The catalog spans 54 active SKUs across 10 categories, backed by real PubMed/PMC-cited research content for the large majority of products.
-
-The site is built to be legible to three audiences at once: human shoppers (fast, mobile-first, WhatsApp-native checkout), search engines (fully server-rendered, rich Schema.org structured data, a clean sitemap), and AI answer engines (a maintained `llms.txt`, IndexNow pings on every catalog change, citation-dense product copy).
-
-## Tech stack
-
-| Layer | Technology |
+| | |
 |---|---|
-| Frontend | Next.js 16 (App Router, Turbopack, standalone output) · React 19 · Tailwind CSS v4 |
-| Backend | Fastify 5 · TypeScript · Zod validation |
-| Database | PostgreSQL · Prisma 7 (driver-adapter pattern, `@prisma/adapter-pg`) |
-| Payments | ToyyibPay (live: FPX + cards) · Billplz (adapter ready) · WhatsApp manual transfer |
-| Infra | Nginx · PM2 · Let's Encrypt (Certbot) · Brotli + gzip compression |
+| **Storefront** | Server-rendered catalogue, cart, dual checkout, order tracking, a reconstitution calculator, Certificates of Analysis, research articles with comments, optional email-verified customer accounts |
+| **Payments** | ToyyibPay (FPX + cards) live, Billplz as a drop-in adapter, BTCPay for Bitcoin, WhatsApp bank transfer, and a hosted proof-of-transfer checkout (ManualPayGate) behind a flag |
+| **Back office** | Orders with per-line costing and profit split, products and sale windows, discounts, delivery slots, subscribers and campaigns, an email outbox with a template preview, comment moderation, the WhatsApp allowlist |
+| **The books** | Revenue, COGS, gateway fees, operating vs inventory spend, partner balances, and a document store that is private by construction |
+| **Email** | Six transactional templates that survive Gmail's stylesheet stripping and Outlook's dark mode |
+| **The assistant** | One agent loop behind two doors — a streamed Assistant page and WhatsApp — with tiers, approvals, undo, a readable memory directory and three switchable routines |
+| **SEO / GEO** | Every route server-rendered, Schema.org on everything, a live `llms.txt`, IndexNow pings on every catalogue change |
 
-## Project structure
+---
+
+## How it is built
+
+```
+                    ascendpeptides.my  (nginx · TLS · Brotli · CSP)
+                            │
+             ┌──────────────┴──────────────┐
+             ▼                             ▼
+      ascend-web :3000               ascend-api :3105
+      Next.js 16, App Router         Fastify 5 · Zod · Prisma 7
+      standalone output              157 routes, 47 migrations
+      server-rendered catalogue      the agent loop lives HERE
+             │                             │
+             │   /api/* and /uploads/*     ├── PostgreSQL
+             └────────── proxied ─────────►├── ToyyibPay · Billplz · BTCPay
+                                           ├── Resend (email outbox)
+                                           ├── OpenRouter (the assistant's model)
+                                           └── PostHog (purchase events)
+                                                     ▲
+      ascend-wa :3107  ──── localhost HTTP ──────────┘
+      baileys socket only; Redis dedup; downtime alerts to Telegram
+```
+
+Three PM2 processes, one database. The WhatsApp worker holds nothing but the
+socket — the business logic that a message can trigger (restock, refund,
+email, revenue capture) is Fastify- and Prisma-coupled, so it stays in the
+API and the two talk over authenticated localhost HTTP. Reimplementing any of
+it in a second process would guarantee drift.
 
 ```
 AscPeps/
-├── frontend/                Next.js app — port 3000
-│   ├── src/app/              App Router pages (products, guide, coa, calculator, admin…)
-│   ├── src/components/       ProductCard, ProductRail, JsonLd, guide/, ui/
-│   └── src/lib/               server-api.ts, product-relations.ts, utils.ts
-├── backend/                 Fastify API — port 3105
-│   ├── src/modules/          products, orders, payments, admin, auth
-│   ├── src/utils/            payment-gateway.ts, indexnow.ts, order-inventory.ts,
-│   │                         profit.ts, finance.ts, gateway-fee.ts, document-store.ts
-│   ├── scripts/               one-off/maintenance scripts (content backfills, etc.)
-│   ├── documents/             uploaded receipts and invoices — NOT git-tracked, NOT
-│   │                         served statically, readable only via an authed route
-│   ├── uploads/               product images — public static mount
-│   └── prisma/                schema.prisma + migrations
-├── docs/                    bookkeeping.md, documents.md, assistant.md, whatsapp-agent.md, posthog.md
-├── deploy.sh                pull, build on the server, restart
-├── deploy-frontend.sh       build LOCALLY and ship the output (see Deployment)
-└── README.md
+├── frontend/                 Next.js — storefront, /admin, /pay
+│   └── src/app/               products, checkout, track, calculator, coa, insights, account, admin/…
+├── backend/                  Fastify — the API, the books, the agent
+│   ├── src/modules/           products, orders, payments, members, insights, whatsapp, ai-agent, admin/…
+│   ├── src/utils/             payment-gateway, payment-reconcile, profit, finance, order-notify, indexnow…
+│   ├── src/emails/            the six templates and their shared layout
+│   ├── whatsapp-worker/       the socket process
+│   ├── scripts/               test suites, backfills, previews
+│   ├── documents/             uploaded receipts and invoices — private, never served statically
+│   └── prisma/                schema + migrations
+├── docs/                     assistant, whatsapp-agent, bookkeeping, documents, posthog
+├── deploy.sh                 pull, migrate, build on the box, restart
+└── deploy-frontend.sh        build locally, ship the output (see Deployment)
 ```
-
-## Features
-
-### Store
-- 54-product catalog across 10 categories, fully server-rendered (no client-side catalog bailout)
-- Featured products carousel, category filtering, search — all crawlable, bookmarkable URLs
-- "Available Sizes" cross-links between dosage variants of the same compound, "Related Products," and a "Frequently Paired With" cross-sell module (BAC water / Acetic Acid, category-aware)
-- A "How to Reconstitute" section merged onto product pages from the `/guide` content, gated to only appear where relevant (not shown on ready-to-use liquid products)
-- Shopping cart (localStorage, no login required) with a mobile sticky Add-to-Cart bar
-- Adding a product and its required add-ons is **one action with one confirmation**, naming the product and counting the extras. Previously each line fired its own toast and React batched them, so buying Retatrutide confirmed "Alcohol Swab" — the last add-on — and never mentioned the product
-- After adding, the CTA becomes a persistent `View cart (N) →` rather than an "Added" flash that reverted after 2s alongside a toast that expired at 2.5s, leaving no trace and no way forward
-- Announcement bar is always **one line**; if the text is wider than the bar it scrolls infinitely at a constant ~60px/s, and sits still when it fits. It previously wrapped to three lines on a 390px screen
-- Dual checkout: WhatsApp manual transfer + online payment (ToyyibPay/Billplz)
-- Order tracking by order number + phone (no PII exposed)
-- Certificate of Analysis per product, plus a dedicated `/coa` page explaining third-party testing methodology
-- Interactive reconstitution/dose calculator (`/calculator`)
-
-### Payment Gateway
-- **Gateway-agnostic adapter** (`utils/payment-gateway.ts`) — the active gateway is chosen by the `payment_gateway` setting in the DB (`toyyibpay` | `billplz`)
-- **ToyyibPay** (live): FPX + cards, MD5 callback hash verification, bills expire after 1 day
-- **Billplz** (adapter ready): FPX/DuitNow/eWallets/cards, HMAC-SHA256 X-Signature
-- Callback signatures verified timing-safe; auto-confirms orders on payment (UNPAID → PAID, PENDING → CONFIRMED)
-- **Idempotent** order creation — a network retry can't double-create or double-charge
-- **Reconciliation sweep** (every 10 min) re-queries the gateway for missed callbacks and releases stock held by abandoned/never-paid orders
-- Amounts stored and charged in **sen** (integer) end-to-end; server is authoritative for all pricing
-- Sandbox/production toggle via `TOYYIBPAY_SANDBOX` / `BILLPLZ_SANDBOX`
-
-### Admin Panel (`/admin`)
-- **Dashboard** — stats, recent orders, low stock alerts
-- **Analytics** — revenue/profit bar chart, costs and net profit, profit-share breakdown. Profit is computed only over paid orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all paid revenue would understate margin silently. Revenue itself is counted whenever the money arrived, net of refunds, and costs include the gateway fee; it reads the same order set through the same `costOrder` as Finance, so the two pages cannot disagree
-- **Products** — CRUD over parent products and their size variants: images, pricing, sale windows, stock, featured, COA URL, benefits/dosage content, purchasable add-ons
-- **Orders** — list and per-order detail (`/admin/orders/[id]`) with a stepper across Order Info / Order Detail / Profit Sharing / Order Complete. Status and payment updates, tracking, receipt PDF, email resend, per-line costing and a per-order profit split
-  - A manual **Profit Shared** tick per row, deliberately separate from whether an order is *costed* or whether a split has been *recorded* — money leaving the account is a real-world event the system cannot observe
-  - Row columns are fixed-width so status, payment and costing badges line up down the whole list regardless of label length
-  - **Gateway fee** per order, stamped automatically at the PAID transition and editable, because a published rate is a schedule rather than a promise
-  - **Refunds** record an amount, so a partial refund is expressible and reporting reverses revenue by an exact figure instead of dropping the order — and the goods stop being a cost only when the stock actually came back
-  - Documents filed against the order — supplier invoice, courier slip, the customer's transfer screenshot — attachable from the order itself, which is where the paperwork is actually in your hand
-- **Finance** — lifetime per-partner totals, company spending, capital in. Revenue, COGS, order extras and gateway fees are broken out so the bottom line can be taken apart and checked; the four cost lines sum to gross profit exactly. Spending is split `OPERATING` / `INVENTORY` because stock bought ahead of demand is not a cost until it sells. Partners are created implicitly by typing a name into an order's split; one with nothing referencing it can be **removed outright**, and the API refuses (naming what blocks it) when splits, funding, payouts or fronted expenses still point at it. See [docs/bookkeeping.md](docs/bookkeeping.md)
-- **Documents** — the filing cabinet: receipts, supplier invoices, courier bills, bank slips, statements. Many-to-many against orders and expenses, or against nothing at all. Search matches order numbers as well as titles, and **Unfiled** is a first-class filter because the failure mode of any document store is paperwork piling up unattached. Files are private — stored outside the public `/uploads` mount and readable only through an authenticated route. See [docs/documents.md](docs/documents.md)
-- **Shadow SKUs** — the generalised name each product carries on internal paperwork, and the internal order summary built from it. Coverage leads the page because an order containing an unmapped SKU produces no sheet at all. Never reaches a customer: storefront, checkout, confirmation email and the receipt all keep the real product name. See [docs/shadow-skus.md](docs/shadow-skus.md)
-- **Delivery** — recurring weekly windows, derived slots, and a Calendly-style booking calendar pinning one slot to one order
-- **Emails** — outbox list, editable copy, and a **Template Preview** that renders the real templates against a real order with a **light/dark toggle** (the templates theme off `prefers-color-scheme`, so without it the preview only ever showed whichever scheme the admin's own machine was set to)
-- **Subscribers / Campaigns** — marketing list, welcome flow, broadcast drafting and sending
-- **Insights** — research articles with numbered figures and a click-to-enlarge gallery
-- **Comments** — moderation for reader comments on Insights
-- **Discounts** — percentage/fixed codes with optional minimum order, max uses and expiry. All three are optional and the form posts `null` for a blank one; the schema accepts that now, having previously rejected it and made the simplest possible code — a name and a percentage — impossible to create
-- **Agent** — WhatsApp operator allowlist, LID binding, group allowlist, conversation transcripts
-- **Settings** — announcement bar, WhatsApp number, business info, shipping fee, payment gateway, email toggles
-
-### Content Pages
-- `/faq` — 12 real questions across purity, COA, ordering, payment, shipping
-- `/guide` — reconstitution steps, storage guidelines, solvent comparison table
-- `/calculator` — interactive BAC water / concentration calculator
-- `/coa` — Certificates of Analysis and third-party testing methodology
-- `/shipping`, `/terms`, `/privacy`, `/disclaimer` — legal & policy pages
 
 ---
 
-## Bookkeeping & documents
+## The storefront
 
-Two related pieces: the arithmetic behind every money figure, and the filing
-cabinet of paperwork that backs it up. Full detail in
-[docs/bookkeeping.md](docs/bookkeeping.md) and
-[docs/documents.md](docs/documents.md).
+<img src="docs/screens/product.png" alt="A product page: sizes with per-mg price, required reconstitution supplies as add-ons" width="100%">
 
-### The figures
+Every page is real HTML before any JavaScript runs — the catalogue never
+bails out to a client fetch, so a crawler with no JS engine and a phone on a
+bad connection see the same thing. Products carry sizes with a per-mg price,
+cross-links between dosages of the same compound, a category-aware
+"frequently paired with" rail, and the reconstitution guide merged in where
+it applies (not on ready-to-use liquids). The supplies a peptide needs — BAC
+water, syringes, swabs — ride along as required add-ons, so adding a product
+is **one action with one confirmation** that names the product and counts
+the extras.
+
+Ordering needs no account. The cart lives in `localStorage`; tracking takes
+the order number *and* the phone, and returns no PII, so it cannot be used
+to enumerate orders. East Malaysia has a minimum order enforced at creation
+on the server, never trusted from the form.
+
+Copy is the part of this shop that is easiest to get wrong. Every product's
+research paragraph cites verifiable PubMed/PMC studies, says "studied for"
+and never "treats", and states plainly when a trial was small, mixed or
+discontinued. A handful of products deliberately carry no content at all —
+compounds that are the active ingredient of an approved prescription drug,
+or that sit under Malaysia's Poisons Act or on the NPRA negative list —
+pending an actual legal review. That is a documented hold, not a gap to be
+filled. No page shows a rating unless real reviews exist.
+
+---
+
+## Taking money
+
+Four ways to pay, one rule underneath: **the server is the only authority on
+price.** The client sends product ids and quantities; subtotal, shipping,
+discount and total are computed from the database, in integer sen,
+end to end.
+
+| Method | Confirmed by | Stock held for |
+|---|---|---|
+| ToyyibPay (FPX, cards) | return-URL verify, or the reconcile sweep | 2 h |
+| Billplz | same adapter interface, HMAC-SHA256 signature | 2 h |
+| Bitcoin (BTCPay) | webhook | 24 h — a low-fee broadcast can sit unconfirmed for hours and still be valid |
+| WhatsApp bank transfer | a person, in `/admin/orders` | 48 h |
+| Hosted proof upload (flag) | a person reviewing the screenshot | 48 h |
+
+```
+checkout ──► order row (stock decremented atomically, idempotency key stored)
+         ──► gateway bill ──► customer pays ──► callback / return / sweep
+         ──► guarded UNPAID → PAID  ──► receipt email queued in the same transaction
+                                    ──► purchase event, gateway fee stamped, operators notified
+```
+
+The `UNPAID → PAID` transition is one guarded `updateMany` in
+[`payment-reconcile.ts`](backend/src/utils/payment-reconcile.ts). Everything
+that must happen exactly once per sale — the receipt, the analytics event,
+the fee stamp, the WhatsApp notice — hangs off that guard, so a callback and
+a sweep landing together cannot double anything. Order creation is
+idempotent too: a retried checkout finds its order and its bill rather than
+making a second one.
+
+Things learned the expensive way, now in the code:
+
+- **ToyyibPay's server-to-server callback has never reached this origin.** A
+  customer who pays and closes the tab is confirmed by the reconcile sweep
+  (every 2 minutes, re-querying the gateway for any order older than 3), or
+  not at all. The sweep is not a backstop; it is the path.
+- **An abandoned online order is released, cancelled, and its bill killed.**
+  The bill would otherwise stay payable for a day while the stock behind it
+  went back on sale — a customer could pay into an order that no longer
+  existed, and nothing would reconcile it.
+- **A refused payment is a lost sale someone should chase.** The reason and
+  channel are recorded on the order rather than logged and forgotten.
+- **Restores are idempotent and floored.** Two paths flipping the same order
+  FAILED at the same moment restore the stock once.
+
+---
+
+## The back office
+
+`/admin`, a React admin over the same API. Every write is Zod-validated,
+every route behind a 24-hour JWT with the algorithm pinned.
+
+| | |
+|---|---|
+| **Dashboard · Analytics** | Revenue and profit by period. Profit is computed only over orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all revenue would understate margin silently |
+| **Orders** | A stepper per order: info, lines, profit split, complete. Per-line costs, the gateway fee (stamped automatically, editable — a published rate is a schedule, not a promise), refunds by exact amount, a manual "profit shared" tick because money leaving the account is an event the system cannot observe, and the paperwork filed against the order from the order |
+| **Products** | Parents and size variants: images, pricing, sale windows, stock, featured, COA link, research content, required add-ons |
+| **Finance · Documents** | [The books](#the-books), below |
+| **Delivery** | Recurring weekly windows, derived slots, a booking calendar pinning one slot to one order |
+| **Emails** | Outbox, editable copy, and a template preview rendered against a real order with a light/dark toggle |
+| **Subscribers · Campaigns** | The list, the welcome flow, broadcast drafting and sending |
+| **Insights · Comments** | Research articles with numbered figures; reader comments, moderated |
+| **Discounts** | Percentage or fixed, with optional minimum, cap and expiry — all three genuinely optional |
+| **WhatsApp** | The operator allowlist, LID binding, allowlisted groups, and every conversation the agent has had |
+| **Settings** | Announcement bar, business details, shipping, the active gateway, email toggles |
+
+---
+
+## The books
+
+Detail in [docs/bookkeeping.md](docs/bookkeeping.md) and
+[docs/documents.md](docs/documents.md). The arithmetic:
 
 ```
 grossOrderProfit = costedRevenue − cogs − extraCosts − gatewayFees
@@ -151,439 +210,377 @@ netProfit        = grossOrderProfit − operatingSpend
 stockOnHand      = inventoryPurchased − cogs
 ```
 
-The first identity holds exactly — every cost figure is measured over the same
-costed orders as `costedRevenue`, so the summary can never report a bottom line
-its own cost lines disagree with.
+The first identity holds exactly, because every cost line is measured over
+the same costed orders as the revenue it is set against. The Finance page
+and the Analytics page read the same order set through the same
+`costOrder`, so they cannot disagree.
 
-Four things that were previously wrong and are now not:
+Four things that used to be wrong:
 
-- **Stock is charged once.** `CompanyExpense.kind` separates `OPERATING` from
-  `INVENTORY`; stock becomes a cost as COGS when it sells, not on purchase. It
-  used to hit both, so RM5,000 of vials took RM10,000 off net profit
-- **Gateway fees exist.** `Order.gatewayFee`, stamped at the PAID transition from
-  a per-gateway `flat + bps` rule and editable per order. Configure with the
-  `gateway_fee_<gateway>_flat` / `_bps` settings
-- **Refunds reverse rather than delete.** `Order.refundedAmount` takes revenue
-  down by an exact figure while the courier and the fee already paid stand. A
-  refund used to make the books look *better* than reality
-- **Revenue does not wait for costing.** Only profit does — an unpriced order
-  used to contribute nothing at all, so takings read low because of unfinished
-  data entry
+- **Stock was charged twice** — once when bought, once when sold. Spending
+  is now `OPERATING` or `INVENTORY`, and stock becomes a cost as COGS when it
+  sells. RM5,000 of vials no longer takes RM10,000 off the bottom line.
+- **Gateway fees did not exist.** Now stamped per order at the PAID
+  transition from a per-gateway `flat + bps` rule, and editable.
+- **A refund deleted the order**, which made the books look *better* than
+  reality. It now reverses revenue by an exact amount while the courier and
+  the fee already paid stand.
+- **Revenue waited for costing.** An unpriced order contributed nothing, so
+  takings read low because of unfinished data entry. Only profit waits now.
 
-`backend/src/utils/profit.ts` is mirrored by `profitSummary` in
-`frontend/src/app/admin/orders/[id]/OrderDetail.tsx`. There is no shared package
-between the two apps, so **they must be changed together.**
+Partners exist by being typed into an order's split. One with nothing
+referencing it can be removed outright; the API refuses, naming what blocks
+it, while splits, funding, payouts or fronted expenses still point at it.
 
-Orders confirmed paid before the fee column existed still carry zero:
-`npx tsx scripts/backfill-gateway-fees.ts` reports, and `--apply` writes.
-
-### The documents
-
-Uploaded files are **not public**. Product images live in `uploads/`, a static
-mount served to the whole internet; a receipt carries a customer's address or our
-bank details, and a UUID filename is obscurity rather than access control. So
-documents live in `backend/documents/`, which nothing serves statically, behind
-`GET /api/v1/admin/documents/:id/file` and the admin JWT.
-
-Files are stored byte-for-byte — no re-encode, no downscale — with the type
-verified from magic bytes (PDF and images only). The 10 MB cap matches nginx's
-`client_max_body_size`; raising one means raising the other.
-
-The WhatsApp agent can say what a document *is* and what it is filed against, and
-can never emit a filename, path or URL. `npm run test:agent:documents` asserts
-that, because a negative stops holding the moment someone adds a field.
+**Documents are not public.** Product images live in `/uploads`, a static
+mount open to the internet. A supplier invoice carries our bank details and a
+customer's receipt carries their address, so those live in
+`backend/documents/`, which nothing serves, behind an authenticated route
+that checks the token's `kind` — a storefront member signed with the same
+secret gets a 403. Files are stored byte-for-byte, type verified from magic
+bytes, capped at nginx's 10 MB. Search matches order numbers as well as
+titles, and **Unfiled** is a first-class filter, because the failure mode of
+any document store is paperwork piling up unattached.
 
 **There is no backup of `backend/documents/`.** A deleted document is gone.
 
 ---
 
-## Shadow SKUs
-
-The generalised name a product is listed under on internal paperwork —
-`Retatrutide 10mg` reads as `Research peptide, 10mg vial`. Less specific, still
-true. Full detail in [docs/shadow-skus.md](docs/shadow-skus.md).
-
-The customer-facing side of the shop is untouched: storefront, cart, checkout,
-confirmation email and the customer's receipt always show the real product.
-Nothing here writes to any of them.
-
-- **Not a receipt.** The internal summary PDF carries a fixed banner saying so,
-  the real order number, and a footer naming the customer receipt as the record
-  of sale. None of the three is configurable, and it deliberately does not reuse
-  the receipt letterhead.
-- **Money is never shadowed.** Quantities, prices and totals are copied from the
-  order, so the sheet's total matches the receipt's by construction.
-- **Nothing is frozen.** Every sheet is resolved live from the current mapping,
-  so changing a shadow name changes every sheet. An earlier design froze the
-  wording on first print; it only ever made old sheets disagree with the mapping.
-- **Unmapped is refused, not defaulted.** An order with an unmapped SKU produces
-  no sheet at all, rather than silently falling back to the real product name.
-
-`/admin/shadow-skus` has three views: **Mapping** (one row per real SKU, with
-bulk assign) led by coverage, where the unmapped count is a filter rather than a
-statistic; **Order sheets**, the backlog of every order filtered
-Ready or Blocked, where a row opens the mapping and the rendered PDF side by
-side; and **Shadow codes** for the
-vocabulary itself. Each order also carries an Internal summary panel on its Info
-tab, under the real items.
-
 ## Transactional email
 
-Templates live in `backend/src/emails/`, are rendered by the outbox worker, and share one layout. The visual language is the site's OG image rather than a generic template: a near-black `#0A0A0A` hero carrying the constellation motif, the two-tone headline device ("Payment confirmed." / "We're packing it now."), the rounded trust-badge row, and a single green accent used only for status.
+Six templates in [`backend/src/emails/`](backend/src/emails) — order
+confirmation, payment receipt, abandoned checkout, welcome, verification,
+campaign — rendered by an outbox worker, in the site's own visual language: a
+near-black hero with the constellation motif, the two-tone headline, one
+green used only for status.
 
-**Six templates** — order confirmation, payment receipt, abandoned checkout, welcome, email verification, campaign broadcast.
+What is load-bearing and easy to undo:
 
-Things here that are load-bearing and easy to undo:
-
-- **The hero is dark in both colour schemes.** A dark panel gives a force-inverting client (Gmail iOS, Outlook 2021) nothing to invert, so the most brand-defining part of the email is the part that cannot be mangled.
-- **Real dark mode** via `prefers-color-scheme` plus `[data-ogsc]` for Outlook.com and Outlook Android. **Nothing those rules target may carry `!important` on the matching inline style** — an inline important declaration outranks a stylesheet one and no selector wins, so an inline `background-color:#ffffff !important` silently defeats the whole theme. `scripts/preview-emails.ts` fails the run if any element carries a themeable class alongside such a declaration.
-- **The webfont `@import` sits in its own `<style>` block.** Gmail discards an entire block when it objects to anything inside it; isolated, a rejection costs the webfont rather than the dark theme and the responsive rules.
-- **The base layout survives 320px with no stylesheet at all.** The Gmail app renders mail from non-Google accounts with `<style>` stripped, so media queries reach nobody there — they are refinement, never the thing standing between the layout and a phone.
-- **Product thumbnails point at `<id>.email.jpg`, never the stored `.webp`.** WebP is missing from older Outlook desktop. Uploads write the JPEG sibling automatically; `scripts/generate-email-thumbs.mjs` backfills an existing catalogue.
-- **`/uploads` serves `Cross-Origin-Resource-Policy: cross-origin`.** Helmet's global default is `same-origin`, which tells browsers to refuse the file to any other origin — and an email client *is* a different, often opaque origin, so every thumbnail was blocked before it was even requested.
-- **Line-art fallbacks** (vial, syringe, swab, droplet) stand in where a variant has no photo, matched on product name. Not an edge case: accessories ride along on nearly every order, and 53 of the last 80 order lines had no photo. Drawn in a single midtone grey so one asset reads on both the light and dark tile — no `display:none` swapping, which Outlook does not honour.
-- **`MUTED` is `#72727a`, not `#9a9a9e`.** The old value measured 2.80:1 on white, under WCAG AA for text that small, and it is not decoration — "30mg . Qty 1" is the variant the customer bought.
-
-### Previewing
+- **The hero is dark in both colour schemes**, so a force-inverting client
+  has nothing to invert in the most brand-defining part of the mail.
+- **Nothing the dark-mode rules target may carry `!important` inline.** An
+  inline important declaration outranks any stylesheet rule and silently
+  defeats the whole theme; `scripts/preview-emails.ts` fails the run on one.
+- **The webfont `@import` sits in its own `<style>` block.** Gmail discards
+  an entire block when it objects to anything inside it.
+- **The layout survives 320 px with no stylesheet at all**, because the Gmail
+  app strips `<style>` from non-Google accounts. Media queries are refinement.
+- **Thumbnails are `<id>.email.jpg`, never the stored `.webp`**, and
+  `/uploads` sends `Cross-Origin-Resource-Policy: cross-origin` — Helmet's
+  `same-origin` default told every mail client to refuse every image.
+- **Line-art fallbacks** for the accessories without a photo (53 of the last
+  80 order lines), drawn in one midtone grey that reads on both tiles.
 
 ```bash
 cd backend && set -a && source .env && set +a && npx tsx scripts/preview-emails.ts
 ```
 
-Renders every template against real orders, reports each one's size against Gmail's 102KB clip limit, and fails on dark-mode blockers. Set `EMAIL_ASSET_BASE_URL` to render against local assets — emails must use absolute image URLs (a mail client has no origin to resolve a relative path against), so without it both this script and the admin's Template Preview fetch every image from the live site, and any asset not yet deployed shows as a broken box. **Leave it unset in production.**
+Renders every template against real orders, reports size against Gmail's
+102 KB clip, and fails on dark-mode blockers.
 
 ---
 
 ## The assistant
 
-Abby — an operator-facing assistant that can do anything the admin dashboard can, with 74 tools across catalog, orders, finance, promos, content, ops, reports, delivery, documents, shadow SKUs, reminders and memory. Two doors onto one harness (`backend/src/modules/ai-agent/core/`, see [docs/assistant.md](docs/assistant.md)):
+<img src="docs/screens/assistant.png" alt="The Assistant page: a streamed transcript, each tool call a card with its result, a WRITE card for the sale it set" width="100%">
 
-- **Assistant page** (`/admin/assistant`) — a thread list and a streamed transcript: the reply as it is written, every tool call as a card that fills in with its result, an approval card for anything destructive, and **Undo** on the changes that can be reversed. A Memory panel over its memory directory, and three switchable routines: a morning brief to the operators' WhatsApp, an order notice (a bank-transfer order the moment it is placed, an online one the moment it is paid — written by code, not the model), and a nightly memory tidy-up.
-- **WhatsApp** — the same loop, gated by the operator allowlist; "yes"/"no" answer a parked action. WhatsApp conversations show on the Assistant page too, read-only.
+Abby can do anything the dashboard can — 74 tools across catalogue, orders,
+finance, promos, content, delivery, documents, reports, reminders and its own
+memory — through two doors onto one loop
+([`backend/src/modules/ai-agent/core/`](backend/src/modules/ai-agent/core),
+described in [docs/assistant.md](docs/assistant.md)):
 
-The harness owns reliability: an append-only provider-neutral transcript with tool results stored in full, schema validation of every tool call, step and token budgets, an escalation model, one run per thread with a Stop that stops, and two honesty guards on every reply — a claim of a change with no successful write is replaced, and a fact no tool result supports is sent back for repair.
+- **The Assistant page** (`/admin/assistant`): threads, and a transcript that
+  streams — the reply as it is written, every tool call as a card that fills
+  in with its result, an approval card for anything destructive, **Undo** on
+  what can be reversed. A Memory panel over its memory directory. A model
+  menu. Three routines.
+- **WhatsApp**: the same loop behind the operator allowlist. "Yes" and "no"
+  answer a parked action. The conversations show on the Assistant page too,
+  read-only.
 
-## WhatsApp AI agent
+The model is the cheap part. The harness owns reliability:
 
-Runs in the **API** process (the business logic lives there); `whatsapp-worker/worker.ts` is a separate PM2 process holding only the socket.
-
-Access is an allowlist: an unknown sender never reaches a tool, or an LLM call, at all. Groups are a restriction rather than a bypass — group allowlisted *and* sender resolving to an active operator, both required.
+| | |
+|---|---|
+| **Tiers** | 34 read tools run freely; 24 writes run and are recorded with before/after; 16 destructive ones park as an approval — on the page as a card, on WhatsApp as a question that expires in five minutes |
+| **Transcript** | Append-only and provider-neutral, tool results stored in full, compacted by size into a summary row the model reads as data. A conversation from three days ago is still there, cost included |
+| **Validation** | Every tool call is checked against its schema before it runs; two schema-invalid steps in a row hand the turn to the escalation model |
+| **Budgets** | Sixteen steps and 30k output tokens per turn; one run per thread; a Stop button that stops |
+| **Two honesty guards** | A reply that claims a change with no successful write behind it is replaced. A reply that states a fact no tool result supports is sent back for repair. Neither is a prompt; both are code over the transcript |
+| **Access** | An unknown WhatsApp sender never reaches a tool or a model call. A group is a restriction, not a bypass: allowlisted group *and* an operator in it, both required |
 
 ### Memory
 
-A directory of short files under `/memories`. `core/*.md` is rendered into the system prompt on every turn, in every thread, for every operator — capped at 8k characters in total, so it stays a page of standing facts. `clients/`, `suppliers/`, `procedures/` and `log.md` are listed every turn and read on demand through a six-command `memory` tool. The nightly reflection consolidates it. The Assistant page's Memory panel reads and edits all of it.
+A directory of short files under `/memories`. `core/*.md` goes into the
+system prompt on every turn, capped at 8k characters so it stays a page of
+standing facts; `clients/`, `suppliers/`, `procedures/` and `log.md` are
+listed every turn and read on demand through a six-command `memory` tool. No
+vector store — the content is SKUs, ringgit amounts and people's names,
+exactly where a named file beats semantic search.
 
-No vector store and no embeddings, deliberately: the problem was never retrieval, and the content is SKUs, product names, ringgit amounts and people's names — exactly where a named file beats semantic search.
+Core memory is concatenated into the *system* prompt, which makes it the
+highest-value injection target in the agent — and the shop's rows are typed
+by customers. So the rule **only what an operator said may enter memory** is
+enforced in code, not asked of the model: a write whose text was lifted from
+any tool result the model can see (this turn's or an earlier one's) is
+refused; every write records who made it and is undoable from its card;
+read-only operators never see the tool. A nightly reflection, reading only
+operator messages, consolidates what the day taught it.
 
-**Security note.** Core content is concatenated into the *system* prompt, which makes memory the highest-value injection target in the agent — and the shop's rows are typed by customers. So the rule "only what an operator said may enter memory" is enforced in code (`memory.ts`): a write whose text was lifted from a tool result the model can see is refused, every write records who made it and is undoable, and read-only operators never see the tool. Detail in [docs/assistant.md](docs/assistant.md#memory).
+### Routines
 
-### Tests
+Switched on from the page, off by default:
 
-```bash
-npm run test:agent:tools     # every tool's schema
-npm run test:agent:writes    # all write tools, with rollback + a coverage gate
-npm run test:agent:memory    # the directory: caps, the trust rule, provenance, undo, prompt rendering
-npm run test:agent:context   # routing and conversation compaction
-npm run test:agent:security  # prompt injection, privilege escalation, SQL escape hatch
-npm run test:agent:e2e       # real LLM conversations, asserted on database state
-```
+- **Morning brief** — once a day to the operators and groups who opted in:
+  new orders, anything unpaid or unshipped, low stock, paid orders that are
+  not yet costed.
+- **Order notice** — one WhatsApp line at the moment an order needs a
+  person: a bank-transfer order as soon as it is placed (someone has to
+  confirm it), an online order once it is *paid*, never while the customer
+  is still on the gateway. Written by code, not the model — instant,
+  identical, never wrong about the number.
+- **Nightly reflection** — the memory tidy-up above.
 
-The context and security suites **seed the operator rows they send as**. Without that they fail silently and misleadingly on any database restored from production: an unknown sender is dropped before the agent runs, so the suite reports "a summary was written: FAIL" as though compaction were broken.
+### Model
 
-## Product catalog
+Chosen from the page, one setting for both doors: DeepSeek V4 Flash by
+default, with an optional escalation model and a reasoning-effort dial.
+Every thread shows what it actually cost, from the provider's own
+accounting.
 
-54 active products across 10 categories:
-
-| Category | SKUs | Examples |
-|---|---|---|
-| Immune / Healing | 9 | BPC-157, TB-500, KPV, Thymosin Alpha-1 |
-| Fat Loss / Metabolism | 8 | Retatrutide, MOTS-c, AOD9604, 5-Amino-1MQ |
-| Hormone / Muscle Growth | 7 | Tesamorelin, Ipamorelin, CJC-1295, HGH, IGF-1LR3 |
-| Mitochondrial / Longevity | 7 | NAD+, SS-31 (Elamipretide), Humanin, FOXO4-DRI |
-| Skin / Anti-Aging / Repair | 6 | GHK-Cu, Epitalon, Thymalin, Pinealon |
-| Health Boosters (Injectables) | 6 | Vitamin C, Glutathione, PDRN, Ginkgo Biloba, Alpha Lipoic Acid |
-| Brain / Nootropic | 5 | Selank, Semax, DSIP, P021, Cerebrolysin |
-| Supplies | 3 | Bacteriostatic Water, Acetic Acid |
-| Testosterone | 2 | Testosterone Enanthate, Sustanon-style blend |
-| Joint / Tissue / Specialty | 1 | PE-22-28 |
-
-## Content & compliance governance
-
-Product copy follows a strict pattern: a research-context paragraph citing real, verifiable PubMed/PMC studies, an honest note when a product's vial-size tiers aren't themselves a studied dose-response variable, and standard reconstitution/storage instructions — framed throughout as "studied for" / "researched for," never a human-use or efficacy claim. Where evidence is thin, mixed, or contradictory (e.g. a peptide with only small, geographically narrow trial data, or a compound with a discontinued/mixed clinical trial history), the copy says so explicitly rather than overselling it.
-
-**A small number of products intentionally carry no content**, pending an actual legal/regulatory review rather than a copywriting decision — this applies to compounds that are the active ingredient of an approved prescription drug, or that fall under Malaysia's Poisons Act, or that appear on Malaysia's NPRA Negative List. This is a deliberate, documented hold, not a content gap to be filled in.
-
-No product page carries a review/rating unless real customer reviews exist — placeholder ratings are never fabricated.
+---
 
 ## SEO & GEO
 
-- Every route is server-rendered — no client-side catalog bailout, real HTML for every crawler regardless of JavaScript execution
-- Rich Schema.org JSON-LD: `Organization`, `WebSite`+`SearchAction`, `Product` (with `Offer`, `hasMerchantReturnPolicy`, `shippingDetails`, `priceValidUntil`, `dateModified`), `BreadcrumbList`, `CollectionPage`/`ItemList`, `FAQPage`
-- Dynamic `sitemap.xml` (65 URLs) with real per-record `lastmod` dates — static pages from git history, product pages from the DB's `updatedAt`
-- `/llms.txt` — a maintained, auto-generated source-of-truth file for AI crawlers (brand summary, key pages, live per-product pricing)
-- **IndexNow** — the backend pings Bing/Yandex/Naver on every product create/update/deactivate, fire-and-forget
-- CSP + Permissions-Policy headers, Brotli compression, HSTS, canonical/trailing-slash normalization
-- All AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended) explicitly welcomed in `robots.txt`
+Legible to three readers at once — shoppers, search engines, and answer
+engines:
 
-## Local Development
+- Every route server-rendered; canonical and trailing-slash normalised;
+  CSP, Permissions-Policy, HSTS.
+- Schema.org JSON-LD throughout: `Organization`, `WebSite` + `SearchAction`,
+  `Product` with `Offer`, return policy, shipping details and `dateModified`,
+  `BreadcrumbList`, `CollectionPage` / `ItemList`, `FAQPage`.
+- A dynamic `sitemap.xml` with real per-record `lastmod` — static pages from
+  git history, products from the database.
+- [`/llms.txt`](https://ascendpeptides.my/llms.txt), generated from the live
+  catalogue with prices, for AI crawlers; GPTBot, ClaudeBot, PerplexityBot
+  and Google-Extended explicitly welcomed.
+- **IndexNow** pinged on every product create, update or deactivate.
 
-### Prerequisites
+---
 
-- Node.js 20+
-- PostgreSQL (or Docker)
+## Running it locally
 
-### Backend
+Node 20+ and PostgreSQL. The migration history is real (47 of them) — never
+`prisma db push` against a tracked database.
 
 ```bash
 cd backend
-cp .env.example .env        # set DATABASE_URL, JWT_SECRET (>=32 chars), gateway keys
-npm install                  # postinstall runs `prisma generate`
-npx prisma migrate deploy    # apply migrations (single 0_baseline)
-npx tsx prisma/seed.ts       # seed categories, products, admin user
-npm run dev                  # runs on http://localhost:3105
+cp .env.example .env         # DATABASE_URL, JWT_SECRET (≥32 chars), gateway keys
+npm install                  # postinstall runs prisma generate
+npx prisma migrate deploy
+npx tsx prisma/seed.ts       # categories, products, an admin user
+npm run dev                  # http://localhost:3105
 ```
-
-> **Migrations**: history is a single `0_baseline` that matches the schema. To
-> change the schema, run `npx prisma migrate dev --name <change>` locally, commit
-> the generated migration, and deploy with `npx prisma migrate deploy`. Do **not**
-> use `prisma db push` against a tracked environment (it causes drift).
-
-### Frontend
 
 ```bash
 cd frontend
 echo "NEXT_PUBLIC_API_URL=http://localhost:3105" > .env.local
 npm install
-npm run dev                  # runs on http://localhost:3000
+npm run dev                  # http://localhost:3000 — /admin for the back office
 ```
 
-### Admin Panel
+`tsx watch` reloads on `.ts` edits but **not** on `prisma generate`; restart
+the API by hand after a schema change or new columns read as absent.
 
-Navigate to `/admin` and log in with the credentials from your seeded/production admin user.
+The assistant needs `OPENROUTER_API_KEY`; WhatsApp needs the worker paired
+(`whatsapp-worker/worker.ts`) and `WHATSAPP_AGENT_ENABLED=true`, which is
+off by default so a fresh deploy pairs first and watches traffic land before
+anything is sent. Every variable is documented in
+[`backend/.env.example`](backend/.env.example).
 
-### Test suites
+### Tests
 
 ```bash
 cd backend
-npm run test:agent:tools     npm run test:agent:writes    npm run test:agent:memory
-npm run test:agent:context   npm run test:agent:security  npm run test:agent:e2e
-npm run test:agent:documents # asserts the agent can never emit a document's file
-npx tsx scripts/backfill-gateway-fees.ts # dry run; --apply writes
-npx tsx scripts/preview-emails.ts        # renders all six email templates
-node scripts/generate-email-thumbs.mjs   # backfills the email-safe JPEG thumbnails
-node scripts/generate-email-icons.mjs ../frontend/public/images/email-icons
+npm run test:agent:tools          # every tool's schema
+npm run test:agent:writes         # all write tools, with rollback and a coverage gate
+npm run test:agent:memory         # the directory: caps, the trust rule, provenance, undo
+npm run test:agent:context        # routing and compaction
+npm run test:agent:security       # injection, privilege escalation, the SQL escape hatch
+npm run test:agent:grounding      # the fact guard, unit and replay
+npm run test:agent:documents      # the agent can never emit a document's file
+npm run test:agent:e2e            # real model, real conversations, asserted on database state
+npm run test:payment-failure      # refused payments are recorded, restocked, and chased
+npx tsx scripts/test-finance-split.ts · test-delivery-flow.ts · test-reminder-flow.ts · test-mention-parsing.ts
 ```
 
-`npm run dev` runs the API under `tsx watch`, which reloads on `.ts` edits but **not** on `prisma generate` — restart the API by hand after any schema change or new columns read as absent and write as no-ops.
+The context and security suites **seed the operator rows they send as**.
+Without that they fail silently on any database restored from production —
+an unknown sender is dropped before the agent runs, and the suite reports
+"a summary was written: FAIL" as though compaction were broken.
 
-## Environment variables
+---
 
-```env
-# Core
-DATABASE_URL="postgresql://user:pass@localhost:5432/ascend"
-JWT_SECRET="<openssl rand -hex 32>"   # min 32 chars (enforced)
-ADMIN_INITIAL_PASSWORD=""              # required when seeding in production (min 12)
-PORT=3105
-HOST="0.0.0.0"
-FRONTEND_URL="http://localhost:3000"
-CORS_ORIGINS="https://ascendpeptides.my"
-WHATSAPP_NUMBER="601161092723"
+## Deployment
 
-# ToyyibPay (live gateway)
-TOYYIBPAY_SECRET_KEY="your-user-secret-key"
-TOYYIBPAY_CATEGORY_CODE="your-category-code"
-TOYYIBPAY_SANDBOX=false                # "true"/"false" parsed correctly (not coerced)
+One VPS (`ubuntu`), three PM2 processes, nginx in front. Host in the
+password manager, not here.
 
-# Transactional email (Resend)
-EMAIL_FROM="Ascend MY <orders@mail.ascendpeptides.my>"   # display name shown to customers
-RESEND_API_KEY=""
-RESEND_WEBHOOK_SECRET=""                 # delivery/bounce/complaint webhook
-# EMAIL_ASSET_BASE_URL="http://localhost:3099"
-#   LOCAL DEV ONLY. Origin the email templates load images from. Emails need
-#   absolute URLs, so unset this in production or customers get unreachable
-#   images. Point it at the frontend dev server to preview against local assets.
-
-# Analytics
-POSTHOG_ENABLED=false
-POSTHOG_API_KEY=""
-POSTHOG_HOST="https://us.i.posthog.com"   # region must match the token — a mismatch drops every event silently
-
-# Billplz (optional adapter)
-BILLPLZ_API_KEY=""
-BILLPLZ_COLLECTION_ID=""
-BILLPLZ_SIGNATURE_KEY=""
-BILLPLZ_SANDBOX=true
-```
-
-Frontend needs `NEXT_PUBLIC_API_URL` pointing at the backend (also used server-side by `next.config.ts`'s `/uploads` rewrite — see [Deployment](#deployment-vps)).
-
-## Payment Gateway
-
-The active gateway is selected by the `payment_gateway` row in the `settings` table (`toyyibpay` or `billplz`), and online payment is gated by the `online_payment_enabled` setting.
-
-### Payment Flow
-
-```
-Customer → Checkout (Online Payment) → Order created in DB (stock reserved, idempotency key)
-→ Gateway bill created via API → Customer redirected to the gateway
-→ Customer pays (FPX/card) → gateway server-to-server callback
-→ Backend verifies signature → Order marked PAID + CONFIRMED
-→ Customer redirected back; redirect handler re-verifies payment server-side
-→ Reconcile sweep backstops missed callbacks and releases abandoned orders
-```
-
-### WhatsApp Flow
-
-```
-Customer → Checkout (WhatsApp) → Order created in DB
-→ Formatted message opened in WhatsApp → Customer sends bank transfer
-→ Admin confirms payment manually in /admin/orders
-```
-
-## Deployment (VPS)
-
-Server IP/host is not published here — see your password manager / VPS provider dashboard. User: `ubuntu`.
-
-```bash
-ssh ubuntu@<server-ip>
-cd /home/ubuntu/ascend && git pull origin main
-
-# Backend (runs unbundled via tsx — no build step)
-cd backend
-npm install
-set -a && source .env && set +a          # deploy.sh does NOT do this; see the note below
-npx prisma migrate deploy
-npx prisma generate                      # explicitly — `npm install` skips postinstall when "up to date"
-node scripts/generate-email-thumbs.mjs   # only when new product images have landed
-pm2 restart ascend-api
-
-# Frontend (standalone output needs public/, .next/static/ AND .env copied in)
-cd ../frontend
-pm2 restart ascend-web                   # reclaims crept RSS first — the box has ~1.9GB
-NODE_OPTIONS=--max-old-space-size=1024 npm run build
-cp -r public .next/standalone/public
-cp -r .next/static .next/standalone/.next/static
-cp .env .next/standalone/.env            # server.js chdir's here; without it REVALIDATE_SECRET is undefined
-PORT=3000 pm2 restart ascend-web --update-env
-```
-
-> **`PORT=3000` is not decoration.** `--update-env` re-reads the *calling shell's* environment, and the backend `.env` sourced above exports `PORT=3105`. Restarting the frontend from that same shell hands it the backend's port, `EADDRINUSE`, and a 502 across the whole site. Verify after any restart with `ss -lntp | grep -E ":(3000|3105)"` — `pm2 list` will happily show "online" while the process crash-loops.
-
-> **`deploy.sh` migrates safely now.** It reads `DATABASE_URL` out of `backend/.env` itself, aborts with `FATAL` if it is missing, and runs under `set -euo pipefail` — so a failed migration stops the deploy *before* anything is rebuilt or restarted, leaving the old code running against the old schema. That is a consistent state. (It previously swallowed the failure with `|| echo WARN` and restarted new code against an unmigrated database; that is what took the site down on 2026-08-13.)
-
-> **Writing to the DB directly bypasses the revalidate ping.** Migrations and backfill scripts never fire it, so the storefront serves stale copy for up to an hour. After one, `POST /api/revalidate` with `x-revalidate-secret` for the affected tags.
-
-> **DB scripts over SSH:** a plain `ssh host "npx prisma migrate deploy"` picks up a placeholder `DATABASE_URL` and fails auth — env vars aren't auto-sourced in a non-interactive SSH shell. Explicitly load them first: `set -a && source .env && set +a && npx prisma migrate deploy`.
-
-### Building on the server, or not
-
-`deploy.sh` builds the frontend **on the box**. That is only safe when the box has
-room: it has ~2 GB of RAM shared with a dozen other PM2 apps, and `next build`
-cleans `.next` *before* it fails — so an OOM leaves `ascend-web` serving out of a
-half-deleted directory. Check first:
-
-```bash
-free -m          # want comfortably more than a few hundred MB available
-swapon --show    # and swap that isn't already mostly consumed
-```
-
-When it is tight, use **`./deploy-frontend.sh`** instead. It builds locally and
-rsyncs the output, so the server only ever receives files and restarts.
-
-> **The trap that path exists to close.** `NEXT_PUBLIC_*` variables are inlined
-> into the client bundle at **build** time, not read at runtime — and
-> `frontend/.env.local` sets `NEXT_PUBLIC_API_URL=http://localhost:3105` for local
-> development. Building on a laptop with that file in place bakes `localhost` into
-> every client bundle, and the server's own `.env` **cannot** override it. Every
-> visitor's browser then calls the API on its own machine: a total outage of the
-> admin and the storefront's client-side calls. It took production down on
-> 2026-09-06.
->
-> Nothing looks wrong from `curl` — server-rendered HTML still returns 200. **A
-> 200 is not proof.** Verify with a real client-side request in a browser.
->
-> `deploy-frontend.sh` moves `.env.local` aside, refuses to ship a bundle with
-> `localhost:3105` in `.next/static`, and re-checks the deployed files on the
-> server. The check is scoped to `.next/static` deliberately: server output
-> legitimately contains `localhost:3105`, because `src/lib/server-api.ts` falls
-> back to it for server-side fetches and the Next server really does reach the API
-> that way on the same box.
-
-Production expects `NEXT_PUBLIC_API_URL` **unset**, so the client uses same-origin
-relative URLs through nginx.
-
-### PM2 Processes
-
-| Name | Port | Description |
+| Process | Port | |
 |---|---|---|
-| `ascend-api` | 3105 | Fastify backend, runs via `npx tsx src/server.ts` (no build step). The AI agent runs in here |
-| `ascend-web` | 3000 | Next.js frontend, standalone output |
-| `ascend-wa` | 3107 | WhatsApp socket worker (`whatsapp-worker/worker.ts`). Holds the paired session; restart with a plain `pm2 restart`, never `--update-env` from a shell that sourced the backend `.env` |
+| `ascend-api` | 3105 | Fastify, `tsup` build, `node dist/server.js`. The agent runs in here |
+| `ascend-web` | 3000 | Next.js standalone output |
+| `ascend-wa` | 3107 | The WhatsApp socket. Restart with a plain `pm2 restart` — never `--update-env` from a shell that sourced the backend `.env` |
 
-### Nginx
+```bash
+ssh ubuntu@<host> && cd /home/ubuntu/ascend && git pull origin main
+cd backend && npm install
+set -a && source .env && set +a
+npx prisma migrate deploy && npx prisma generate && npm run build
+PORT=3105 pm2 restart ascend-api
+```
 
-Config at `/etc/nginx/sites-available/ascendpeptides.my` — proxies `/api/*` and `/uploads/*` to the backend, everything else to the frontend. SSL via Let's Encrypt (auto-renews). CSP, Permissions-Policy, and Brotli are configured at this layer.
+Then the frontend — **from your machine**, not the box:
 
-> **`next/image` + `/uploads`:** Next's image optimizer resolves a relative `src` by fetching it from the Next.js server *itself*, not through nginx — but `/uploads/*` is only ever served by the backend. `next.config.ts` has a `rewrites()` proxy (`/uploads/:path* → backend`) specifically so this internal fetch resolves correctly; removing it will silently break every product photo.
+```bash
+./deploy-frontend.sh
+```
 
-### Database Backups
+`deploy.sh` does all of this on the server in one go, and migrates safely
+(it aborts before anything is rebuilt if the migration fails, so the old
+code keeps running against the old schema). But it builds the frontend **on
+the box**, and the box has ~2 GB of RAM shared with a dozen apps. `next build`
+cleans `.next` *before* it can OOM, leaving `ascend-web` serving a
+half-deleted directory. Check `free -m` first; when it is tight, use
+`deploy-frontend.sh`, which builds locally and rsyncs the output.
 
-Daily `pg_dump` at 3am via cron. 14-day retention.
+Three traps, each of which has taken the site down once:
 
-- Backups: `/home/ubuntu/backups/ascend/`
-- Logs: `/home/ubuntu/backups/ascend/backup.log`
-- Restore: `gunzip -c ascend_YYYYMMDD_HHMMSS.sql.gz | psql -U ascend_user ascend`
+- **`PORT=3000` on the frontend restart is not decoration.** `--update-env`
+  re-reads the calling shell, and the backend `.env` you just sourced exports
+  `PORT=3105`. Verify with `ss -lntp | grep -E ":(3000|3105)"` — `pm2 list`
+  shows "online" while a process crash-loops.
+- **`NEXT_PUBLIC_*` is inlined at build time.** A laptop build with
+  `.env.local` in place bakes `localhost:3105` into every client bundle and
+  the server's `.env` cannot override it; every visitor's browser then calls
+  the API on its own machine. `curl` still returns 200 — **a 200 is not
+  proof.** `deploy-frontend.sh` moves `.env.local` aside, refuses to ship a
+  bundle containing it, and re-checks the deployed files.
+- **A migration that fails after a restart** leaves new code on an old
+  schema. `deploy.sh` runs under `set -euo pipefail` and migrates first.
 
-## API Reference
+Also: writing to the database directly bypasses the revalidate ping, so the
+storefront serves stale copy for up to an hour (`POST /api/revalidate` with
+the secret afterwards); `next/image` resolves `/uploads/*` by fetching from
+the Next server itself, so `next.config.ts` proxies that path to the API and
+removing the rewrite silently breaks every product photo; the database is
+`pg_dump`ed nightly at 3 am with 14-day retention to `/home/ubuntu/backups/ascend/`.
 
-### Public
+---
 
-- `GET /api/v1/categories` — list categories
-- `GET /api/v1/products?category=&search=&featured=true&limit=` — list products
-- `GET /api/v1/products/:slug` — product detail
-- `GET /api/v1/settings` — public store settings
-- `POST /api/v1/orders` — create order (returns `whatsappUrl` or `paymentUrl`; accepts `idempotencyKey`)
-- `GET /api/v1/orders/lookup?phone=&orderNumber=` — track an order (both fields required; returns no PII)
-- `POST /api/v1/orders/validate-discount` — preview a discount code
-- `GET /health` — process liveness check
+## Rules the code keeps
 
-### Payments
+1. **The server prices everything.** The client names products and
+   quantities, nothing more. Amounts are integer sen throughout.
+2. **State transitions are guarded and idempotent.** `UNPAID → PAID` happens
+   once; so does a restock; so does a discount reservation.
+3. **Documents are private; `/uploads` is public.** A UUID in a URL is
+   obscurity, not permission.
+4. **Only an operator's words enter the assistant's memory.** Enforced in
+   code; every write signed and undoable.
+5. **Destructive means asked.** Deletes, money and anything a customer would
+   see wait for a person.
+6. **No claim without a citation, no rating without a review, no content
+   where the law is unclear.**
 
-- `POST /api/v1/payments/callback` — gateway webhook, ToyyibPay + Billplz (signature verified)
-- `GET /api/v1/payments/redirect` — return handler (re-verifies payment server-side)
+---
 
-### Admin (requires Bearer token)
+## What it will not do
 
-- `POST /api/v1/auth/login` — admin login (JWT, 24h expiry)
-- `GET /api/v1/auth/me` — current admin user
-- `GET /api/v1/admin/dashboard/stats` — dashboard stats
-- `GET/POST/PATCH/DELETE /api/v1/admin/products` — product CRUD (featured, COA URL) — pings IndexNow on every mutation
-- `GET/POST/PATCH/DELETE /api/v1/admin/shadow-skus` — shadow code CRUD (delete refused while referenced)
-- `GET /api/v1/admin/shadow-skus/coverage` — mapped/unmapped counts over active variants
-- `GET/PUT /api/v1/admin/shadow-skus/mapping` — read the SKU→shadow map; bulk assign or unassign
-- `GET /api/v1/admin/shadow-skus/orders?state=ready|blocked` — the order backlog with each order's sheet state
-- `GET /api/v1/admin/shadow-skus/orders/:ref/summary` — preview an order in shadow wording (no side effects)
-- `GET /api/v1/admin/shadow-skus/orders/:ref/summary.pdf` — render the internal summary PDF
-- `GET/PATCH /api/v1/admin/orders` — order management
-- `GET/PUT /api/v1/admin/settings` — store settings (announcement, WhatsApp, shipping, gateway fee rules)
-- `PUT /api/v1/admin/orders/:id/costs` — per-line costs, extra costs and the gateway fee
-- `GET /api/v1/admin/finance/overview` — revenue, COGS, fees, operating spend, stock on hand, per-partner balances
-- `GET/POST/PATCH/DELETE /api/v1/admin/finance/expenses` — company spending; `PATCH` is what reclassifies `OPERATING` ⇄ `INVENTORY` without destroying a linked advance
-- `GET/POST/PATCH/DELETE /api/v1/admin/documents` — the document store; `PUT /:id/links` replaces a document's whole link set
-- `GET /api/v1/admin/documents/:id/file` — the bytes, **authenticated** (`?download=1` forces a save). Never served from the static mount
-- `POST /api/v1/admin/upload/image` — product image upload (JPEG/PNG/WebP/AVIF, max 5MB, magic-byte validated)
+- **Confirm a ToyyibPay payment in real time.** The gateway's callback does
+  not arrive here; confirmation comes from the return URL or the sweep, so a
+  customer who closes the tab waits up to a couple of minutes. The paid-order
+  notice inherits that lag.
+- **Take crypto or hosted proof uploads by default.** Both are behind
+  settings and off until switched on with real details entered.
+- **Let the assistant near a customer.** It is operator-facing only. It reads
+  what customers typed — names, addresses, notes — and treats all of it as
+  data, never as instruction; the grounding guard runs in shadow on
+  production until it has earned enforcement.
+- **Back up uploaded documents.** The database is dumped nightly; the files
+  are not.
+- **Fabricate.** No placeholder reviews, no filled-in copy for the products
+  under legal hold, no profit figure over orders that have not been costed.
+
+---
 
 ## Security
 
-- **Payment webhooks** verified with the gateway signature (ToyyibPay MD5, Billplz HMAC-SHA256), timing-safe; payment is re-verified server-side on return
-- **Server-authoritative pricing** — the client only sends product IDs + quantities; subtotal, shipping, discount, and total are computed from the DB
-- **Concurrency-safe** — atomic conditional stock decrement (no oversell) and atomic discount-use reservation (can't exceed `maxUses`); idempotent order creation prevents double-charge on retries; single, idempotent, floored inventory restore (no double-restore / negative usage)
-- **Order lookup** requires order number + phone and returns no PII (no enumeration); per-route rate limits (login 5/min, lookup 10/min, discount 15/min, order create 20/min, callback 300/min) on top of the global 100/min
-- **JWT** with HS256 pinned (sign + verify), 24h expiry, secret min 32 chars; all admin routes authenticated
-- **File uploads** validated by real magic bytes (not the client MIME), random UUID filenames, size-limited; `/uploads` served with a locked-down CSP + nosniff
-- **Documents are private, `/uploads` is not.** Receipts and invoices carry customer addresses and bank details, so they are stored outside the static mount and every route touching them — the file stream included — sits behind the admin JWT. A UUID in a URL is obscurity, not a permission. Verified: unauthenticated reads 401, a **storefront member's** token 403s (members are signed with the same secret, so the `kind` claim is what separates the two populations), and the files are unreachable through `/uploads`
-- **The internal summary is admin-only and cannot impersonate a receipt.** Every shadow-SKU route sits behind the admin JWT, the PDF included. The document itself carries a fixed, non-configurable banner declaring it is not a receipt, prints the real order number, and names the customer receipt as the record of sale — and its totals are copied from the order rather than recomputed, so the two documents cannot disagree about money. Producing a sheet for an order with an unmapped SKU is refused rather than falling back to the real product name
-- **Content-Disposition** is RFC 6266 with both an ASCII `filename` and a percent-encoded `filename*` — a non-ASCII filename in a raw header throws `ERR_INVALID_CHAR` in Node and 500s the response
-- **`trustProxy: true`** on the Fastify instance so per-IP rate limiting actually keys on the real client IP behind nginx, not nginx's own loopback address
-- Boolean/numeric env vars parsed safely (no `Boolean("false") === true` traps); numeric settings validated server-side
-- CORS origins from environment; Helmet security headers; Zod validation on all endpoints; `prisma generate` runs on install so a stale client can't ship
+- Gateway callbacks verified with the gateway's signature (ToyyibPay MD5,
+  Billplz HMAC-SHA256, BTCPay HMAC), timing-safe; payment re-verified
+  server-side on return.
+- Server-authoritative pricing; atomic conditional stock decrement; atomic
+  discount-use reservation; idempotent order creation; single, floored
+  inventory restore.
+- Order lookup needs number *and* phone and returns no PII. Per-route rate
+  limits (login 5/min, lookup 10/min, discount 15/min, order 20/min,
+  callback 300/min) over a global 100/min, keyed on the real client IP
+  behind nginx (`trustProxy`).
+- JWT HS256 pinned on sign and verify, 24-hour expiry, 32-character minimum
+  secret; admin and storefront-member tokens share the secret and are told
+  apart by a `kind` claim that every admin route checks.
+- Uploads validated by magic bytes, not the client's MIME; UUID filenames;
+  size-limited; `/uploads` served with a locked-down CSP and `nosniff`.
+  Documents never served statically at all.
+- `Content-Disposition` per RFC 6266 with both `filename` and `filename*` — a
+  raw non-ASCII header throws in Node and 500s the response.
+- Boolean env vars parsed as strings (`Boolean("false")` is `true`); Helmet;
+  CORS from environment; Zod on every route; `prisma generate` on install so
+  a stale client cannot ship.
+
+---
+
+## API
+
+157 routes under `/api/v1`. The public surface is small on purpose:
+
+```
+GET  /categories                      GET  /products?category=&search=&featured=&limit=
+GET  /products/:slug                  GET  /settings
+POST /orders                          → { order, whatsappUrl | paymentUrl }; accepts idempotencyKey
+GET  /orders/lookup?phone=&orderNumber=      both required, no PII returned
+POST /orders/validate-discount        GET  /health
+POST /payments/callback               ToyyibPay + Billplz, signature verified
+GET  /payments/redirect               re-verifies server-side
+POST /webhooks/btcpay                 HMAC verified
+POST /members/register · login · verify · resend-verification · GET /members/me
+```
+
+Everything under `/admin/*` (products, orders, costs, finance, expenses,
+documents, delivery, emails, campaigns, insights, discounts, settings,
+whatsapp, assistant) needs the admin bearer token; product mutations ping
+IndexNow. The assistant's own routes — threads, turns, an SSE event stream,
+approve / decline / undo, memory, routines, model settings — are listed in
+[docs/assistant.md](docs/assistant.md).
+
+---
+
+## The docs
+
+| | |
+|---|---|
+| [assistant.md](docs/assistant.md) | the harness: data model, a turn step by step, tiers and undo, memory and the trust rule, routines, the model menu, tests |
+| [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
+| [bookkeeping.md](docs/bookkeeping.md) | every figure the Finance page shows and how it is derived |
+| [documents.md](docs/documents.md) | the document store and why it is not under `/uploads` |
+| [posthog.md](docs/posthog.md) | what is captured, and the region trap that drops every event silently |
+
+---
+
+<div align="center">
+
+Built for [Ascend MY](https://ascendpeptides.my) · research use only, every page says so
+
+</div>
