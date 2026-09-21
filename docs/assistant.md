@@ -356,12 +356,13 @@ Unchanged commands, ported to the new tables:
 
 ```bash
 npm run test:agent:tools       # 34 read tools against the dev db
-npm run test:agent:writes      # 33 write scenarios, rolled back
+npm run test:agent:writes      # 35 write scenarios, rolled back (incl. set_order_discount, create_order with discountRm)
 npm run test:agent:memory      # 42 — the directory, the caps, the trust rule, undo
 npm run test:agent:grounding   # 31 unit (one pre-existing failure: get_document has no precondition)
 npm run test:agent:context     # compaction is size-based now; the fixture pads replies past 100k chars
 npm run test:agent:security    # 10 — includes a planted "remember this" that must never reach memory
-npm run test:agent:e2e         # 20 scenarios, real model; two are known to flake on model variance
+npm run test:agent:e2e         # 21 scenarios, real model; two are known to flake on model variance
+E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name contains the string
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time

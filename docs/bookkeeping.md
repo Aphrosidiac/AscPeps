@@ -125,6 +125,23 @@ disagree with.
 `companySpend` is every expense row regardless of kind — cash out. It is
 `operatingSpend` alone that reduces net profit.
 
+### A discount is not a cost
+
+`discountAmount` is money the customer was **not charged**; it is already out
+of `total` (and so out of `costedRevenue`) and appears nowhere in the cost
+lines. It used to be enterable only through a discount code at checkout, so a
+discount given by hand — "RM10 off for the bulk order" — was being recorded as
+an Extra Cost called "discount". Profit came out right by accident; the
+customer's total, the receipt and the revenue figure were all wrong, and the
+discount was invisible to reporting.
+
+Since 2026-09-22 the order page has a Discount card (ringgit or a percentage
+of the goods, plus a reason stored in `discountNote`), the assistant has
+`set_order_discount` and `create_order` takes `discountRm`/`discountPercent`.
+Every path writes the same three fields — `discountAmount`, `discountNote` and
+a recomputed `total` — through `utils/manual-discount.ts`, and refuses to touch
+an order the gateway already charged.
+
 Analytics reads the same order set through the same `costOrder`, so the two pages
 cannot disagree about what a month took.
 

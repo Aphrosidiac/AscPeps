@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, User, Users, FileText, Truck, Trash2, RotateCcw, Mail, ExternalLink,
-  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt, CreditCard,
+  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt, CreditCard, BadgePercent,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { InternalSummaryCard } from './InternalSummaryCard';
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { ManualPayReview } from './ManualPayReview';
 import {
-  adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares,
+  adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares, adminSetOrderDiscount,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
 import { formatPrice, formatDate, paymentMethodLabel, cn } from '@/lib/utils';
@@ -89,7 +89,10 @@ function profitSummary(
   order: Order,
   unitCostFor: (itemId: string) => number | null,
   extraCents: number[],
-  gatewayFeeCents?: number
+  gatewayFeeCents?: number,
+  // The total as it will be once a discount being typed is saved; the page
+  // shows profit against the figure the customer will actually be charged.
+  totalCents?: number
 ) {
   const itemsRevenue = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
@@ -97,7 +100,7 @@ function profitSummary(
   // dropping out of reporting entirely — which used to erase the courier and
   // the processor's cut along with the sale.
   const refunded = order.refundedAmount ?? 0;
-  const revenue = order.total - refunded;
+  const revenue = (totalCents ?? order.total) - refunded;
   const gatewayFee = gatewayFeeCents ?? order.gatewayFee ?? 0;
 
   // An order with no lines counts as uncosted, not as "fully costed with zero
@@ -138,6 +141,33 @@ function inputToCents(value: string): number | null {
   const n = Number(trimmed);
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100);
+}
+
+// The goods figure a discount is measured against. The very first orders never
+// stored a subtotal (0 while total is not); rebuilt the same way the API does.
+function goodsSubtotal(order: Order): number {
+  if (order.subtotal > 0 || order.total === 0) return order.subtotal;
+  return Math.max(order.total + order.discountAmount - order.shippingFee, 0);
+}
+
+// Why the discount on this order cannot change — mirrors the refusals in
+// adminSetOrderDiscount, so the form says so up front instead of on Save.
+function discountLockReason(order: Order): string | null {
+  const online = order.paymentMethod === 'BILLPLZ' || order.paymentMethod === 'CRYPTO';
+  if (online && order.paymentStatus === 'PAID') {
+    return `Paid online for ${formatPrice(order.total)}. The charged total cannot change — to give money back, record a partial refund on the Order tab.`;
+  }
+  if (order.paymentStatus === 'REFUNDED') return 'This order has been refunded, so its total can no longer change.';
+  if (order.paymentGateway === 'manualpaygate' && order.paymentRef && order.paymentStatus === 'UNPAID') {
+    return `A payment page is open for ${formatPrice(order.total)} and cannot be repriced. Mark it paid for what arrives and refund the difference, or cancel and re-create the order with the discount.`;
+  }
+  return null;
+}
+
+// What the discount was for, for a label: the code the customer used, or the
+// reason typed when it was given by hand.
+function discountLabel(order: Pick<Order, 'discountCode' | 'discountNote'>): string | null {
+  return order.discountCode?.code ?? order.discountNote ?? null;
 }
 
 /**
@@ -365,7 +395,12 @@ function OrderInfoTab({ order }: { order: Order }) {
             label="Tracking"
             value={order.trackingNumber ? <span className="font-mono">{order.trackingNumber}</span> : null}
           />
-          <Field label="Discount" value={order.discountCode?.code} />
+          <Field
+            label="Discount"
+            value={order.discountAmount > 0
+              ? `-${formatPrice(order.discountAmount)}${discountLabel(order) ? ` · ${discountLabel(order)}` : ''}`
+              : null}
+          />
         </div>
         {/* The full sentence lives here rather than on the list: this is the
             page someone opens to work out what happened to one order, and
@@ -450,7 +485,7 @@ function OrderInfoTab({ order }: { order: Order }) {
           </div>
           {order.discountAmount > 0 && (
             <div className="flex justify-between text-sm text-success">
-              <span>Discount</span><span>-{formatPrice(order.discountAmount)}</span>
+              <span>Discount{discountLabel(order) ? ` (${discountLabel(order)})` : ''}</span><span>-{formatPrice(order.discountAmount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm text-text-secondary">
@@ -764,6 +799,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   // schedule, not a promise — what the processor actually took can differ, and
   // the order should record what really happened.
   const [gatewayFeeInput, setGatewayFeeInput] = useState(() => centsToInput(order.gatewayFee ?? 0));
+  // The discount as typed: a figure plus whether it is ringgit or a percentage
+  // of the goods. A saved discount always comes back as ringgit — the
+  // percentage is a way of entering it, and the note keeps the "15%" if that
+  // is what was said.
+  const [discountMode, setDiscountMode] = useState<'rm' | 'pct'>('rm');
+  const [discountInput, setDiscountInput] = useState(() => (order.discountAmount ? centsToInput(order.discountAmount) : ''));
+  const [discountNote, setDiscountNote] = useState(order.discountNote ?? '');
   const [shares, setShares] = useState<ShareRow[]>(() => {
     const saved = order.profitShares ?? [];
     return saved.length > 0
@@ -786,7 +828,20 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
   /* ----- live totals, from what's currently typed rather than what's saved */
   const shipping = order.shippingFee;
-  const discount = order.discountAmount;
+  const subtotal = goodsSubtotal(order);
+  const discountLocked = discountLockReason(order);
+  // null = something typed that is not a number, or a percentage over 100.
+  const discountCents: number | null = (() => {
+    if (discountInput.trim() === '') return 0;
+    if (discountMode === 'rm') return inputToCents(discountInput);
+    const pct = Number(discountInput);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return null;
+    return Math.round((subtotal * pct) / 100);
+  })();
+  const discountValid = discountCents !== null && discountCents <= subtotal + shipping;
+  const discount = discountLocked || !discountValid ? order.discountAmount : (discountCents as number);
+  const pendingTotal = Math.max(subtotal + shipping - discount, 0);
+  const pendingLabel = discountLabel({ discountCode: order.discountCode, discountNote: discountNote.trim() || null });
   const {
     itemsRevenue, revenue, refunded, unpricedCount,
     itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit,
@@ -794,7 +849,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     order,
     (itemId) => inputToCents(itemCosts[itemId] ?? ''),
     extras.map((e) => inputToCents(e.amount) ?? 0),
-    inputToCents(gatewayFeeInput) ?? 0
+    inputToCents(gatewayFeeInput) ?? 0,
+    pendingTotal
   );
 
   const lineCost = (itemId: string, quantity: number) => {
@@ -829,7 +885,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras) ||
     (inputToCents(gatewayFeeInput) ?? 0) !== (order.gatewayFee ?? 0);
   const sharesDirty = JSON.stringify(normalisedShares) !== JSON.stringify(savedShares);
-  const dirty = costsDirty || sharesDirty;
+  // The note only counts while there is a discount to attach it to — the API
+  // clears it along with a removed discount.
+  const discountDirty =
+    !discountLocked &&
+    (discount !== order.discountAmount ||
+      (discount > 0 && discountNote.trim() !== (order.discountNote ?? '')));
+  const dirty = costsDirty || sharesDirty || discountDirty;
 
   const extrasValid = extras.every((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null);
   // A blank fee is a real zero here (plenty of orders cost nothing to collect),
@@ -841,7 +903,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     shares.length === 0 ||
     (totalBps === 10_000 &&
       shares.every((s) => s.name.trim() !== '' && (s.capital.trim() === '' || inputToCents(s.capital) !== null)));
-  const canSave = extrasValid && sharesValid && gatewayFeeValid;
+  const canSave = extrasValid && sharesValid && gatewayFeeValid && (discountLocked !== null || discountValid);
 
   /* ----- split editing */
   const splitEvenly = (list: ShareRow[]) => {
@@ -871,6 +933,24 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     setError(null);
     setSaving(true);
     try {
+      // First: it moves the total, and the cost save checks the gateway fee
+      // against whatever the total is by then.
+      if (discountDirty) {
+        const note = discountNote.trim() || undefined;
+        const updated = await adminSetOrderDiscount(
+          token,
+          order.id,
+          discountMode === 'pct' && discountInput.trim() !== ''
+            ? { percent: Math.round(Number(discountInput) * 100) / 100, note }
+            : { amount: discount, note }
+        );
+        // The form keeps its state across the reload, so show the discount the
+        // way it is now stored: ringgit, with the note the server kept (a bare
+        // percentage comes back as "15% off").
+        setDiscountMode('rm');
+        setDiscountInput(updated.discountAmount ? centsToInput(updated.discountAmount) : '');
+        setDiscountNote(updated.discountNote ?? '');
+      }
       if (costsDirty) {
         await adminUpdateOrderCosts(token, order.id, {
           itemCosts: order.items.map((i) => ({ itemId: i.id, unitCost: inputToCents(itemCosts[i.id] ?? '') })),
@@ -910,7 +990,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           </div>
           {discount > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-text-muted">Discount{order.discountCode?.code ? ` (${order.discountCode.code})` : ''}</span>
+              <span className="text-text-muted">Discount{pendingLabel ? ` (${pendingLabel})` : ''}</span>
               <span className="font-medium text-success">-{formatPrice(discount)}</span>
             </div>
           )}
@@ -943,6 +1023,104 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
               : 'The stock did not return, so the goods stay a cost.'}{' '}
             Courier, packaging and the gateway fee are never recovered.
           </p>
+        )}
+      </Card>
+
+      {/* Discount. Its own card, not an Extra Cost row: an extra cost is money
+          the business spent, a discount is money the customer was not charged.
+          Only this one moves the total, the receipt and the revenue figure —
+          which is exactly what an "Extra Cost: discount" row got wrong. */}
+      <Card title="Discount" icon={<BadgePercent className="w-4 h-4" />}>
+        {discountLocked ? (
+          <p className="text-sm text-text-muted">
+            {discount > 0 && (
+              <span className="block text-text-primary font-medium mb-1">
+                {formatPrice(discount)} off{discountLabel(order) ? ` · ${discountLabel(order)}` : ''}
+              </span>
+            )}
+            {discountLocked}
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="min-w-0">
+                <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Amount off</span>
+                <div className="flex items-stretch">
+                  <div
+                    role="radiogroup"
+                    aria-label="Discount as ringgit or a percentage"
+                    className="flex rounded-l-lg border border-r-0 border-border overflow-hidden"
+                  >
+                    {(['rm', 'pct'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={discountMode === mode}
+                        onClick={() => { setDiscountMode(mode); touch(); }}
+                        className={cn(
+                          'px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+                          discountMode === mode ? 'bg-primary text-white' : 'bg-surface-elevated text-text-muted hover:text-text-primary'
+                        )}
+                      >
+                        {mode === 'rm' ? 'RM' : '%'}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    max={discountMode === 'pct' ? 100 : undefined}
+                    step="0.01"
+                    value={discountInput}
+                    onChange={(e) => { setDiscountInput(e.target.value); touch(); }}
+                    placeholder={discountMode === 'pct' ? '0' : '0.00'}
+                    aria-label={discountMode === 'pct' ? 'Discount percentage' : 'Discount amount in ringgit'}
+                    className="w-28 px-3 py-2 border border-border rounded-r-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+              <label className="flex-1 min-w-[12rem]">
+                <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Reason</span>
+                <input
+                  type="text"
+                  value={discountNote}
+                  onChange={(e) => { setDiscountNote(e.target.value); touch(); }}
+                  placeholder="e.g. Bulk order, Loyalty, Replaced a leaked vial"
+                  maxLength={120}
+                  aria-label="Why the discount was given"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </label>
+            </div>
+            {!discountValid ? (
+              <p className="text-xs text-danger mt-2">
+                {discountCents === null
+                  ? discountMode === 'pct' ? 'Enter a percentage between 0 and 100.' : 'That is not a valid amount.'
+                  : `A discount cannot be more than the ${formatPrice(subtotal + shipping)} the order comes to.`}
+              </p>
+            ) : (
+              <p className="text-xs text-text-muted mt-3">
+                {discountMode === 'pct' && discount > 0 && (
+                  <>{discountInput.trim()}% of the {formatPrice(subtotal)} in goods is {formatPrice(discount)}. </>
+                )}
+                {discount !== order.discountAmount
+                  ? <>Total becomes <span className="font-semibold text-text-primary">{formatPrice(pendingTotal)}</span> (was {formatPrice(order.total)}) once saved.</>
+                  : discount > 0
+                    ? <>Total is {formatPrice(order.total)} after this discount.</>
+                    : <>No discount on this order. Percentages are of the goods, before shipping.</>}
+                {order.discountCode?.code && (
+                  <> Code <span className="font-mono">{order.discountCode.code}</span> was used at checkout — the figure here replaces what it gave.</>
+                )}
+              </p>
+            )}
+            {discountDirty && order.paymentStatus === 'PAID' && (
+              <p className="text-xs text-warning mt-2 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                This order is already marked paid. Its total will change to {formatPrice(pendingTotal)} — make sure that is what was actually received.
+              </p>
+            )}
+          </>
         )}
       </Card>
 

@@ -205,6 +205,12 @@ model Order {
   subtotal              Int           @default(0)
   shippingFee           Int           @default(0)
   discountAmount        Int           @default(0)
+  // Why the discount was given, when it was keyed by hand rather than by a
+  // code: "bulk order", "loyalty 10%", "replaced a leaked vial". Free text
+  // because the reasons are for the people reading the books, not for the
+  // system. Null on code discounts (the code is the reason) and on orders
+  // with no discount at all.
+  discountNote          String?
   total                 Int
   // What the payment gateway kept out of `total`, in cents. A real cost of the
   // sale and nothing else: it is deducted in costOrder alongside item and extra

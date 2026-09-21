@@ -13,6 +13,7 @@ import { notifyOrder } from '../../utils/order-notify.js';
 import { newUnsubscribeToken } from '../../utils/marketing.js';
 import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage, resolveShippingFeeSen } from '../../utils/shipping-region.js';
 import { MANUALPAY_GATEWAY, isManualPayEnabled } from '../../plugins/manualpay.js';
+import { resolveManualDiscount, type ManualDiscountInput } from '../../utils/manual-discount.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -148,7 +149,15 @@ function isOrderNumberConflict(err: unknown): boolean {
     : typeof fields === 'string' && fields.includes('orderNumber');
 }
 
-export async function createOrder(fastify: FastifyInstance, body: unknown) {
+// `internal` is for callers inside the building only — the assistant keying an
+// order agreed over WhatsApp. It is deliberately NOT part of the body schema:
+// the public checkout route passes the request body alone, so a browser can
+// never name its own discount.
+export interface CreateOrderInternal {
+  manualDiscount?: ManualDiscountInput;
+}
+
+export async function createOrder(fastify: FastifyInstance, body: unknown, internal: CreateOrderInternal = {}) {
   const data = createOrderSchema.parse(body);
 
   // Refuse a switched-off payment method BEFORE anything is written. The
@@ -303,6 +312,16 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
       }
     }
 
+    // A discount the operator gave by hand stacks on top of any code: the two
+    // are different promises ("use code X" and "I'll knock RM10 off for you")
+    // and both were made. Capped together so the total cannot go negative.
+    let discountNote: string | null = null;
+    if (internal.manualDiscount) {
+      const manual = resolveManualDiscount(internal.manualDiscount, { subtotal, shippingFee });
+      discountAmount = Math.min(discountAmount + manual.amount, subtotal + shippingFee);
+      discountNote = manual.note;
+    }
+
     const total = Math.max(subtotal + shippingFee - discountAmount, 0);
     const orderNumber = await generateOrderNumber(tx);
 
@@ -319,6 +338,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown) {
         subtotal,
         shippingFee,
         discountAmount,
+        discountNote,
         total,
         paymentMethod: isManualPay ? 'WHATSAPP' : (data.paymentMethod as 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO'),
         paymentGateway: isManualPay ? MANUALPAY_GATEWAY : undefined,

@@ -7,6 +7,7 @@
  * reply is visible rather than passing silently.
  *
  *   set -a && source .env && set +a && npx tsx scripts/test-agent-e2e.ts
+ *   E2E_ONLY=discount npx tsx scripts/test-agent-e2e.ts   # just the matching scenarios
  *
  * Requires the API running on PORT and OPENROUTER_API_KEY set.
  */
@@ -70,6 +71,9 @@ async function scenario(
   name: string,
   run: () => Promise<{ ok: boolean; detail: string; reply?: string; tools?: string[] }>
 ) {
+  // E2E_ONLY=<substring> runs just the matching scenarios — one costs a
+  // real model round trip, and the whole suite is several minutes.
+  if (process.env.E2E_ONLY && !name.includes(process.env.E2E_ONLY)) return;
   const started = new Date();
   process.stdout.write(`\n▸ ${name}\n`);
   try {
@@ -532,6 +536,50 @@ await scenario('nonexistent order is reported honestly, not invented', async () 
     ok: !invented,
     detail: invented ? 'HALLUCINATED a status for a nonexistent order' : 'reported it could not be found',
     reply: r.text,
+  };
+});
+
+await scenario('a discount given by hand is a discount, not an extra cost', async () => {
+  await reset();
+  const order = await prisma.order.findFirst({
+    where: { deletedAt: null, paymentGateway: null, paymentStatus: 'UNPAID', subtotal: { gt: 2000 } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!order) return { ok: false, detail: 'no plain unpaid order in dev db' };
+  const before = { discountAmount: order.discountAmount, discountNote: order.discountNote, total: order.total, subtotal: order.subtotal };
+  // Start from no discount so "RM10 off" has exactly one right answer.
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { discountAmount: 0, discountNote: null, total: order.subtotal + order.shippingFee },
+  });
+
+  const started = new Date();
+  let r = await send(`give ${order.orderNumber} RM10 off, bulk order`);
+  // Changing what the customer owes parks for a yes, like a deletion does.
+  for (let i = 0; i < 3; i++) {
+    const mid = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    if (mid.discountAmount === 1000) break;
+    r = await send('yes');
+  }
+  const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { extraCosts: true } });
+  const rows = await toolsSince(started);
+  await prisma.orderExtraCost.deleteMany({ where: { orderId: order.id, createdAt: { gt: started } } });
+  await prisma.order.update({ where: { id: order.id }, data: before });
+
+  const usedDiscount = rows.some((t) => t.toolName === 'set_order_discount' && t.ok);
+  const usedCosts = rows.some((t) => t.toolName === 'set_order_costs');
+  const moved = after.discountAmount === 1000 && after.total === order.subtotal + order.shippingFee - 1000;
+  return {
+    ok: usedDiscount && !usedCosts && moved && /bulk/i.test(after.discountNote ?? ''),
+    detail: usedCosts
+      ? 'RECORDED THE DISCOUNT AS AN EXTRA COST'
+      : !usedDiscount
+        ? 'never called set_order_discount'
+        : moved
+          ? `discount RM10 stored with note "${after.discountNote}", total ${order.subtotal + order.shippingFee} -> ${after.total} (restored)`
+          : `tool ran but total/discount wrong: ${after.discountAmount} / ${after.total}`,
+    reply: r.text,
+    tools: rows.map((t) => `${t.toolName}${t.ok ? '' : '✗'}`),
   };
 });
 

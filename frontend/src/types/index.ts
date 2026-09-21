@@ -171,6 +171,9 @@ export interface Order {
   subtotal: number;
   shippingFee: number;
   discountAmount: number;
+  /** Why a hand-keyed discount was given ("bulk order", "15% off"). Null on
+   *  code discounts and on orders with none. */
+  discountNote: string | null;
   total: number;
   status: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentMethod: 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO';

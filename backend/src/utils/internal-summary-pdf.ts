@@ -26,6 +26,8 @@ interface SummaryOrder {
   subtotal: number;
   shippingFee: number;
   discountAmount: number;
+  /** Why a hand-keyed discount was given. Internal document, so it is shown. */
+  discountNote?: string | null;
   total: number;
   status: string;
   paymentStatus: string;
@@ -141,7 +143,9 @@ export async function generateInternalSummaryPdf(
     };
 
     totalRow('Subtotal', formatRM(order.subtotal));
-    if (order.discountAmount > 0) totalRow('Discount', `-${formatRM(order.discountAmount)}`);
+    if (order.discountAmount > 0) {
+      totalRow(order.discountNote ? `Discount (${order.discountNote})` : 'Discount', `-${formatRM(order.discountAmount)}`);
+    }
     if (order.shippingFee > 0) totalRow('Shipping', formatRM(order.shippingFee));
     totalRow('Total', formatRM(order.total), true);
 

@@ -433,6 +433,33 @@ Things worth knowing:
   enum name** — it means "paid online", and the live gateway is ToyyibPay. The
   agent is told never to label anything "Billplz" to an operator, and the admin
   UI renders the gateway's real name.
+- **A discount given by hand rides along**: `discountRm` or `discountPercent`
+  (of the goods subtotal, before shipping), with a `discountNote` for the books.
+  The confirmation summary shows it as its own line before the total. It stacks
+  on top of a discount code if one is also redeemed — two different promises,
+  both kept.
+
+## Discounts on existing orders
+
+`set_order_discount` gives, changes or removes a discount on an order that
+already exists: ringgit off or a percentage of the goods, with the reason. It
+sets the order's ONE discount figure (replacing whatever was there, including
+what a code gave) and recomputes the total the way checkout does, so the
+receipt, the WhatsApp summary and the revenue figure all move together.
+
+It is destructive — it changes what the customer owes — so it parks for a yes
+with the before and after: *"give RM 10.00 off ASC2609/0004 (Nurul) for "bulk
+order" — total goes RM 145.00 → RM 135.00"*. `discountRm: 0` removes it.
+
+It is refused, with the reason, on an order already **paid online** (the
+gateway charged the current total — record a partial refund instead), on a
+**refunded** order, and on one with an open hosted bank-transfer page (the page
+shows a fixed amount and cannot be repriced).
+
+The orders playbook tells the agent the difference in plain words: an extra
+cost is money the business spent, a discount is money the customer was not
+charged. That distinction is why this exists — a discount recorded as an
+"Extra Cost: discount" row got the profit right and everything else wrong.
 
 ## Delivery scheduling
 

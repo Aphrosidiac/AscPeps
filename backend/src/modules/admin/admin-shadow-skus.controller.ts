@@ -300,6 +300,7 @@ export async function previewOrderSummary(fastify: FastifyInstance, orderRef: st
       subtotal: order.subtotal,
       shippingFee: order.shippingFee,
       discountAmount: order.discountAmount,
+      discountNote: order.discountNote,
       total: order.total,
       status: order.status,
       paymentStatus: order.paymentStatus,

@@ -231,6 +231,55 @@ await check('set_order_costs computes profit', async () => {
   return `goods ${res.goodsCost.display}, extras ${res.extraCosts.display}, profit ${res.netProfit.display} (restored)`;
 });
 
+await check('set_order_discount RM / % / remove', async () => {
+  const o = await prisma.order.findFirstOrThrow({
+    where: { deletedAt: null, paymentGateway: null, paymentStatus: 'UNPAID', subtotal: { gt: 0 } },
+  });
+  const before = { discountAmount: o.discountAmount, discountNote: o.discountNote, total: o.total, subtotal: o.subtotal };
+  try {
+    const rmOff: any = await run('set_order_discount', { orderRef: o.orderNumber, discountRm: 10, discountNote: 'bulk order' });
+    assert(rmOff.discountAmount.cents === 1000, `RM10 off stored as ${rmOff.discountAmount.cents}`);
+    assert(rmOff.discountNote === 'bulk order', 'note not stored');
+    assert(rmOff.total.cents === o.subtotal + o.shippingFee - 1000, 'total did not move by the discount');
+
+    const pct: any = await run('set_order_discount', { orderRef: o.orderNumber, discountPercent: 15 });
+    const expected = Math.round((o.subtotal * 15) / 100);
+    assert(pct.discountAmount.cents === expected, `15% = ${pct.discountAmount.cents}, expected ${expected}`);
+    assert(pct.discountNote === '15% off', `bare percentage should note itself, got ${JSON.stringify(pct.discountNote)}`);
+    assert(pct.discountAmount.cents !== rmOff.discountAmount.cents || expected === 1000, 'percentage did not replace the earlier amount');
+
+    const gone: any = await run('set_order_discount', { orderRef: o.orderNumber, discountRm: 0, discountNote: 'dropped' });
+    assert(gone.discountAmount.cents === 0 && gone.discountNote === null, 'removing the discount should clear the note too');
+    assert(gone.total.cents === o.subtotal + o.shippingFee, 'total did not return to subtotal + shipping');
+
+    // Both at once is refused, as is an order already paid online.
+    let refused = false;
+    try { await run('set_order_discount', { orderRef: o.orderNumber, discountRm: 5, discountPercent: 5 }); } catch { refused = true; }
+    assert(refused, 'accepted ringgit and a percentage together');
+
+    return `RM10 → ${pct.discountAmount.display} (15%) → removed, totals followed (restored)`;
+  } finally {
+    await prisma.order.update({ where: { id: o.id }, data: before });
+  }
+});
+
+await check('set_order_discount refuses a paid online order', async () => {
+  const o = await prisma.order.findFirst({
+    where: { deletedAt: null, paymentMethod: { in: ['BILLPLZ', 'CRYPTO'] }, paymentStatus: 'PAID' },
+  });
+  if (!o) return 'skipped (no paid online order in this database)';
+  const before = { discountAmount: o.discountAmount, total: o.total };
+  try {
+    await run('set_order_discount', { orderRef: o.orderNumber, discountRm: 1 });
+  } catch (e: any) {
+    assert(/paid online/i.test(e.message), `wrong error: ${e.message}`);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: o.id } });
+    assert(after.total === before.total && after.discountAmount === before.discountAmount, 'a refused discount still changed the order');
+    return 'refused, order untouched';
+  }
+  throw new Error('changed the total of an order the gateway already charged');
+});
+
 await check('set_order_profit_shares rejects != 100%', async () => {
   const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null } });
   try {
@@ -313,6 +362,9 @@ await check('create_order (full lifecycle, rolled back)', async () => {
     postcode: '40000',
     paymentMethod: 'WHATSAPP',
     items: [{ code: parentVariant.code, quantity: 1 }],
+    // A discount given by hand rides along with the order, with its reason.
+    discountRm: 5,
+    discountNote: 'audit discount',
   });
 
   try {
@@ -344,6 +396,8 @@ await check('create_order (full lifecycle, rolled back)', async () => {
       created.total === created.subtotal + created.shippingFee - created.discountAmount,
       'total does not reconcile with subtotal + shipping - discount'
     );
+    assert(created.discountAmount === 500, `manual discount ${created.discountAmount} != 500 cents`);
+    assert(created.discountNote === 'audit discount', `discount note ${JSON.stringify(created.discountNote)} not stored`);
 
     // Roll everything back: stock, the order, and its queued email.
     await prisma.emailOutbox.deleteMany({ where: { orderId: created.id } });

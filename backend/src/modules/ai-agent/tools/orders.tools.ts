@@ -5,6 +5,7 @@ import {
   adminGetOrder,
   adminResendOrderEmail,
   adminRestoreOrder,
+  adminSetOrderDiscount,
   adminUpdateOrder,
   adminUpdateOrderCosts,
   adminUpdateOrderProfitShares,
@@ -12,6 +13,7 @@ import {
 import { createOrder } from '../../orders/orders.controller.js';
 import { validateDiscountCode } from '../../admin/admin-discounts.controller.js';
 import { getEffectivePrice } from '../../../utils/product-pricing.js';
+import { goodsSubtotal, resolveManualDiscount } from '../../../utils/manual-discount.js';
 
 // Order tools deliberately delegate to admin-orders.controller.ts wherever a
 // controller already exists. That file owns behaviour the agent must never
@@ -258,6 +260,21 @@ async function priceOrderPreview(prisma: any, input: any) {
   return { lines, autoAdded, subtotal, shippingFee };
 }
 
+// The operator's words ("RM10 off", "15%") into the shared manual-discount
+// input, or undefined when they gave none. Ringgit in, cents out — same
+// conversion as every other money field the model sends.
+function manualDiscountOf(input: { discountRm?: number; discountPercent?: number; discountNote?: string }) {
+  if (input.discountRm === undefined && input.discountPercent === undefined) return undefined;
+  if (input.discountRm !== undefined && input.discountPercent !== undefined) {
+    throw new Error('Give the discount as ringgit (discountRm) or a percentage (discountPercent), not both.');
+  }
+  return {
+    amount: input.discountRm === undefined ? undefined : toCents(input.discountRm),
+    percent: input.discountPercent === undefined ? undefined : Math.round(input.discountPercent * 100) / 100,
+    note: input.discountNote?.trim() || undefined,
+  };
+}
+
 export const orderTools: AgentTool[] = [
   {
     name: 'create_order',
@@ -294,7 +311,10 @@ export const orderTools: AgentTool[] = [
           description:
             'WHATSAPP (default) = customer pays by manual bank transfer and someone marks it paid later. ONLINE = creates a real payment bill at the store\'s configured gateway and returns a link; needs an email address.',
         },
-        discountCode: { type: 'string' },
+        discountCode: { type: 'string', description: 'A discount CODE the customer is redeeming. Not for a discount the operator is giving by hand — use discountRm / discountPercent for that.' },
+        discountRm: { type: 'number', description: 'A discount the operator is giving, in RINGGIT off the order ("give him RM10 off"). Stacks with a code if one is also used.' },
+        discountPercent: { type: 'number', description: 'A discount the operator is giving, as a percentage of the goods subtotal ("15% for the bulk order"). Use this OR discountRm, not both.' },
+        discountNote: { type: 'string', description: 'Why the discount was given, for the books: "bulk order", "loyalty", "replaced leaked vial". Short.' },
         notes: { type: 'string' },
       },
       required: ['customerName', 'phone', 'address', 'city', 'state', 'postcode', 'items'],
@@ -314,7 +334,15 @@ export const orderTools: AgentTool[] = [
         }
       }
 
-      const total = subtotal + shippingFee - discountAmount;
+      const manual = manualDiscountOf(input);
+      let manualText = '';
+      if (manual) {
+        const { amount, note } = resolveManualDiscount(manual, { subtotal, shippingFee });
+        discountAmount = Math.min(discountAmount + amount, subtotal + shippingFee);
+        manualText = ` − ${rm(amount)} off given by hand${note ? ` (${note})` : ''}`;
+      }
+
+      const total = Math.max(subtotal + shippingFee - discountAmount, 0);
       // "BILLPLZ" is accepted as an alias only because it is the stored enum
       // value; operators say "online".
       const isOnline = input.paymentMethod === 'ONLINE' || input.paymentMethod === 'BILLPLZ';
@@ -326,7 +354,7 @@ export const orderTools: AgentTool[] = [
       return [
         `create an order for ${input.customerName} (${input.phone}) — ${itemText}`,
         autoAdded.length ? `including required add-ons added automatically: ${autoAdded.map((a) => `${a.quantity}x ${a.name}`).join(', ')}` : '',
-        `subtotal ${rm(subtotal)} + shipping ${rm(shippingFee)}${discountAmount ? ` − discount ${rm(discountAmount)}` : ''} = *${rm(total)}*${discountNote}`,
+        `subtotal ${rm(subtotal)} + shipping ${rm(shippingFee)}${discountAmount && !manual ? ` − discount ${rm(discountAmount)}` : ''}${manualText} = *${rm(total)}*${discountNote}`,
         `paid by ${method}`,
         `This takes the stock immediately${input.email ? ` and emails an order confirmation to ${input.email}` : ' (no email given, so no confirmation will be sent)'}`,
       ]
@@ -359,7 +387,7 @@ export const orderTools: AgentTool[] = [
         items: lines
           .filter((l) => !autoAdded.some((a) => a.variantId === l.variantId))
           .map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
-      });
+      }, { manualDiscount: manualDiscountOf(input) });
 
       const order = result.order;
       const gateway = await activeGatewayName(prisma);
@@ -374,6 +402,7 @@ export const orderTools: AgentTool[] = [
         subtotal: money(order.subtotal),
         shippingFee: money(order.shippingFee),
         discountAmount: money(order.discountAmount),
+        discountNote: order.discountNote ?? null,
         total: money(order.total),
         addOnsAdded: autoAdded.map((a) => `${a.quantity}x ${a.name}`),
         paymentUrl: result.paymentUrl ?? null,
@@ -476,6 +505,7 @@ export const orderTools: AgentTool[] = [
         shippingFee: money(o.shippingFee),
         discountAmount: money(o.discountAmount),
         discountCode: o.discountCode?.code ?? null,
+        discountNote: o.discountNote ?? null,
         notes: o.notes,
         items: o.items.map((i: any) => ({
           itemId: i.id,
@@ -540,6 +570,54 @@ export const orderTools: AgentTool[] = [
               : body.paymentStatus === 'REFUNDED'
                 ? 'Stock restored. If this was a ToyyibPay order, the actual refund must still be issued manually in the ToyyibPay dashboard.'
                 : undefined,
+      };
+    },
+  },
+
+  {
+    name: 'set_order_discount',
+    description:
+      'Give (or change, or remove) a discount on an EXISTING order by hand: RM off or a percentage of the goods subtotal, with the reason. Recomputes the order total, so the receipt and the books follow. Sets the order\'s one discount figure — it replaces any earlier discount on the order rather than adding to it. Amount 0 removes the discount. Refused on an order already paid online (record a partial refund instead) or refunded.',
+    write: true,
+    // Changes what the customer owes — worth a yes before it lands.
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        orderRef: { type: 'string' },
+        discountRm: { type: 'number', description: 'Ringgit off the order. 0 removes the discount.' },
+        discountPercent: { type: 'number', description: 'Percentage of the goods subtotal. Use this OR discountRm.' },
+        discountNote: { type: 'string', description: 'Why: "bulk order", "loyalty", "replaced leaked vial".' },
+      },
+      required: ['orderRef'],
+    },
+    summarize: async ({ prisma }, input) => {
+      const o = await resolveOrder(prisma, input.orderRef);
+      const manual = manualDiscountOf(input);
+      if (!manual) throw new Error('Pass discountRm or discountPercent.');
+      const subtotal = goodsSubtotal(o);
+      const { amount, note } = resolveManualDiscount(manual, { subtotal, shippingFee: o.shippingFee });
+      const total = Math.max(subtotal + o.shippingFee - amount, 0);
+      const was = o.discountAmount ? ` (replacing the ${rm(o.discountAmount)} discount already on it)` : '';
+      return amount === 0
+        ? `remove the discount from ${o.orderNumber} (${o.customerName}) — total goes ${rm(o.total)} → *${rm(total)}*`
+        : `give ${rm(amount)} off ${o.orderNumber} (${o.customerName})${note ? ` for "${note}"` : ''}${was} — total goes ${rm(o.total)} → *${rm(total)}*`;
+    },
+    run: async ({ fastify, prisma }, input) => {
+      const o = await resolveOrder(prisma, input.orderRef);
+      const manual = manualDiscountOf(input);
+      if (!manual) throw new Error('Pass discountRm or discountPercent.');
+      const updated: any = await adminSetOrderDiscount(fastify, o.id, manual);
+      return {
+        ...orderSummary(updated, await activeGatewayName(prisma)),
+        subtotal: money(updated.subtotal),
+        shippingFee: money(updated.shippingFee),
+        discountAmount: money(updated.discountAmount),
+        discountNote: updated.discountNote ?? null,
+        previousTotal: money(o.total),
+        note: updated.paymentStatus === 'PAID'
+          ? 'This order was already marked paid — make sure the new total is what was actually received.'
+          : undefined,
       };
     },
   },

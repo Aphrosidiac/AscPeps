@@ -130,6 +130,15 @@ export const adminUpdateOrderCosts = (
 ) =>
   api.put<Order>(`/api/v1/admin/orders/${id}/costs`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
+// One discount figure per order, keyed as ringgit-cents OR a percentage of the
+// goods subtotal; the server works out the cents and recomputes the total.
+export const adminSetOrderDiscount = (
+  token: string,
+  id: string,
+  data: { amount?: number; percent?: number; note?: string }
+) =>
+  api.put<Order>(`/api/v1/admin/orders/${id}/discount`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminUpdateOrderProfitShares = (token: string, id: string, shares: OrderProfitShareInput[]) =>
   api.put<OrderProfitShare[]>(`/api/v1/admin/orders/${id}/profit-shares`, { shares }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 

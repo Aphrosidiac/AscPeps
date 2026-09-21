@@ -8,6 +8,7 @@ import { capturePurchase } from '../../utils/posthog.js';
 import { isOnlineMethod } from '../../utils/payment-gateway.js';
 import { computeGatewayFee } from '../../utils/gateway-fee.js';
 import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
+import { goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -216,6 +217,69 @@ export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string
       : []),
   ]);
 
+  return adminGetOrder(fastify, id);
+}
+
+// A discount keyed by hand on an existing order: RM off or a percentage, with
+// the reason. Sets the order's ONE discount figure — on the rare order that
+// also redeemed a code, this replaces the code's amount rather than stacking on
+// it, because a stored total can only carry one discount and the person typing
+// here is looking at that total. The total is recomputed the way checkout
+// computes it, so the receipt, the WhatsApp summary and the books all move
+// together; nothing else about the order changes.
+//
+// It exists because the alternative was an "Extra Cost" row called
+// "discount": the profit came out right, but the customer's total, the
+// receipt and the revenue figure were all wrong, and the discount was invisible
+// to reporting.
+export async function adminSetOrderDiscount(fastify: FastifyInstance, id: string, body: unknown) {
+  const input = manualDiscountSchema.parse(body);
+
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    select: {
+      id: true, subtotal: true, shippingFee: true, discountAmount: true, total: true, gatewayFee: true,
+      paymentMethod: true, paymentStatus: true, paymentGateway: true, paymentRef: true,
+    },
+  });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+  const subtotal = goodsSubtotal(order);
+
+  // The customer already paid the total the gateway charged. A different
+  // total now would not match the money that arrived — give some back as a
+  // partial refund instead, which is what actually happens.
+  if (isLockedOnlinePayment(order)) {
+    throw {
+      statusCode: 400,
+      message: 'This order was paid online for its current total. To give money back, record a partial refund instead.',
+    };
+  }
+  if (order.paymentStatus === 'REFUNDED') {
+    throw { statusCode: 400, message: 'This order has been refunded — its total can no longer change.' };
+  }
+  // The hosted bank-transfer page shows a fixed amount and cannot be repriced.
+  if (order.paymentGateway === MANUALPAY_GATEWAY && order.paymentRef && order.paymentStatus === 'UNPAID') {
+    throw {
+      statusCode: 400,
+      message: `This order has a payment page open for RM${(order.total / 100).toFixed(2)}, which cannot be repriced. Mark it paid for what arrives and refund the difference, or cancel and re-create the order with the discount.`,
+    };
+  }
+
+  const { amount, note } = resolveManualDiscount(input, { subtotal, shippingFee: order.shippingFee });
+  const total = Math.max(subtotal + order.shippingFee - amount, 0);
+  if (total < order.gatewayFee) {
+    throw {
+      statusCode: 400,
+      message: `The discount would take the total below the RM${(order.gatewayFee / 100).toFixed(2)} gateway fee already recorded.`,
+    };
+  }
+
+  await fastify.prisma.order.update({
+    where: { id },
+    // `subtotal` is written back too: on the handful of first orders that
+    // never stored one, this is the moment it gets rebuilt.
+    data: { subtotal, discountAmount: amount, discountNote: note, total },
+  });
   return adminGetOrder(fastify, id);
 }
 
