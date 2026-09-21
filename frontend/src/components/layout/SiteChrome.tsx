@@ -35,6 +35,9 @@ export function SiteChrome({
   // no header, footer, announcement bar or newsletter popup between the
   // customer and the bank details.
   const isPayPage = pathname?.startsWith('/pay/');
+  // Only the product detail page has the mobile sticky Add to Cart bar the
+  // WhatsApp button needs to clear — see WhatsAppButton's `raised` prop.
+  const isProductDetail = pathname ? /^\/products\/[^/]+$/.test(pathname) : false;
 
   if (isAdmin || isPayPage) {
     return <>{children}</>;
@@ -47,7 +50,7 @@ export function SiteChrome({
       <Navbar />
       <main className="flex-1">{children}</main>
       <Footer />
-      <WhatsAppButton />
+      <WhatsAppButton raised={isProductDetail} />
       {/* Mounted at the chrome level so the popup's own path exclusions are
           the single place that decides where it may appear — a per-page mount
           would mean every new storefront page has to remember to opt out. */}

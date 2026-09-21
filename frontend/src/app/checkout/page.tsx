@@ -655,7 +655,7 @@ export default function CheckoutPage() {
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-[8px] font-bold text-text-muted">{item.code}</span>
+                      <span className="w-full text-center text-[7px] leading-tight font-bold text-text-muted px-0.5 line-clamp-2 break-words">{item.code}</span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">

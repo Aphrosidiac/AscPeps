@@ -39,7 +39,7 @@ export default function CartPage() {
                   {item.imageUrl ? (
                     <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-xs font-bold text-text-muted">{item.code}</span>
+                    <span className="w-full text-center text-[9px] sm:text-[10px] leading-tight font-bold text-text-muted px-1 line-clamp-2 break-words">{item.code}</span>
                   )}
                 </div>
 
