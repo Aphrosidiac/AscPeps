@@ -13,11 +13,23 @@ import { getAnalytics, getDashboardStats } from '../../admin/admin-dashboard.con
 // to serialize a BigInt"), so every raw result must go through this before it
 // can be handed back to the model. Losing precision above 2^53 is irrelevant
 // here — these are order counts and cent totals for one small business.
-function jsonSafe(value: unknown): unknown {
+export function jsonSafe(value: unknown): unknown {
   if (typeof value === 'bigint') return Number(value);
   if (Array.isArray(value)) return value.map(jsonSafe);
   if (value && typeof value === 'object') {
     if (value instanceof Date) return value.toISOString();
+    // Postgres NUMERIC comes back as a Decimal object — a ROUND(), AVG() or
+    // "/100.0" in the model's SQL is enough to produce one — and it is not
+    // plain JSON: copying its fields gave {s, e, d, constructor}, and the
+    // thread store refused to save the turn ("could not serialize [object
+    // Function]"), which the operator saw as the bot crashing after a query
+    // that had already succeeded. Anything that knows how to become JSON is
+    // asked to, and a numeric string becomes the number it is.
+    const toJSON = (value as { toJSON?: () => unknown }).toJSON;
+    if (typeof toJSON === 'function') {
+      const json = toJSON.call(value);
+      return typeof json === 'string' && /^-?\d+(\.\d+)?$/.test(json) ? Number(json) : jsonSafe(json);
+    }
     return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, jsonSafe(v)]));
   }
   return value;
