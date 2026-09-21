@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Headset } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Headset, Handshake } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +22,7 @@ const navItems = [
   // Directly under Products: it is a second name for the same catalogue, and
   // the first thing anyone does after adding a SKU is map it.
   { href: '/admin/shadow-skus', label: 'Shadow SKUs', icon: Tags },
+  { href: '/admin/suppliers', label: 'Suppliers', icon: Handshake },
   { href: '/admin/insights', label: 'Insights', icon: Newspaper },
   { href: '/admin/comments', label: 'Comments', icon: MessageSquare },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },

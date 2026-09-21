@@ -492,6 +492,24 @@ was "fixed" by typing a unit cost that made the line total come out right. The
 profit looked correct; the order, the receipt and the stock were all wrong.
 `set_order_costs` now says in its own description that it is for costs only.
 
+## The supplier price list
+
+`list_suppliers` is who the business buys from and what each charges per unit
+of each SKU — the same list the admin's Suppliers page edits. It is a price
+list, not stock and not purchasing. Search is word by word ("reta 10mg" finds
+Retatrutide 10mg), and a SKU missing from a supplier's column means they do not
+sell it, not that it is free. `add_supplier` and `set_supplier_cost` keep it
+current from chat; a retired supplier is left out of the list and the
+dropdowns but keeps their prices and their history.
+
+To cost an order line from it, `set_order_costs` takes a `supplier` name on
+the line instead of a figure: the supplier's price for that SKU is copied onto
+the line and the supplier recorded, and the tool refuses — naming who *does*
+have a price — when they have none. The catalogue playbook tells the model to
+do that rather than read the price and type it back in, so the line keeps its
+provenance. A figure typed over a picked price drops the supplier: it no
+longer is their price.
+
 ## Delivery scheduling
 
 Asywa's delivery diary — Calendly-shaped, but built in rather than integrated.

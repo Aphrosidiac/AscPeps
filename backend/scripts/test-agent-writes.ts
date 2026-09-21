@@ -231,6 +231,65 @@ await check('set_order_costs computes profit', async () => {
   return `goods ${res.goodsCost.display}, extras ${res.extraCosts.display}, profit ${res.netProfit.display} (restored)`;
 });
 
+await check('supplier price list: add, price, cost a line from it', async () => {
+  const o = await prisma.order.findFirstOrThrow({
+    where: { deletedAt: null, items: { some: {} } },
+    include: { items: { include: { variant: true } } },
+  });
+  const line = o.items[0];
+  const before = { unitCost: line.unitCost, supplierId: line.supplierId };
+  const name = `Audit Supplier ${Date.now() % 10000}`;
+  let supplierId: string | null = null;
+  try {
+    const added: any = await run('add_supplier', { name });
+    assert(added.added === name, 'supplier not added');
+    supplierId = (await prisma.supplier.findFirstOrThrow({ where: { name } })).id;
+
+    // Same name again, any case, is refused: one person, one column.
+    let refused = false;
+    try { await run('add_supplier', { name: name.toUpperCase() }); } catch { refused = true; }
+    assert(refused, 'duplicate supplier accepted');
+
+    const set: any = await run('set_supplier_cost', { supplier: name, code: line.variant.code, costRm: 61.5 });
+    assert(/RM ?61\.50/.test(set.set), `price not set: ${set.set}`);
+    const listed: any = await run('list_suppliers', { search: line.variant.code });
+    const row = listed.prices.find((r: any) => r.sku === line.variant.code);
+    assert(row?.perUnit?.[name]?.cents === 6150, `price list does not show it: ${JSON.stringify(row)}`);
+
+    // Cost the line by naming the supplier: their price is copied and recorded.
+    const costed: any = await run('set_order_costs', {
+      orderRef: o.orderNumber,
+      itemCosts: [{ itemId: line.id, supplier: name }, ...o.items.slice(1).map((i) => ({ itemId: i.id, unitCostRm: i.unitCost == null ? null : i.unitCost / 100 }))],
+    });
+    const after = await prisma.orderItem.findUniqueOrThrow({ where: { id: line.id } });
+    assert(after.unitCost === 6150 && after.supplierId === supplierId, `line not costed from the list: ${after.unitCost} / ${after.supplierId}`);
+    assert(costed.lines.find((l: any) => l.supplier === name), 'supplier not reported back');
+
+    // A hand-typed different figure drops the supplier — it no longer IS their price.
+    await run('set_order_costs', {
+      orderRef: o.orderNumber,
+      itemCosts: [{ itemId: line.id, unitCostRm: 60 }, ...o.items.slice(1).map((i) => ({ itemId: i.id, unitCostRm: i.unitCost == null ? null : i.unitCost / 100 }))],
+    });
+    const typed = await prisma.orderItem.findUniqueOrThrow({ where: { id: line.id } });
+    assert(typed.unitCost === 6000 && typed.supplierId === null, 'hand-typed figure kept the supplier');
+
+    // No price for that SKU → refused, naming who does have one.
+    const other = await prisma.productVariant.findFirstOrThrow({ where: { id: { not: line.variantId } } });
+    const otherLine = o.items.find((i) => i.variantId === other.id);
+    if (!otherLine) {
+      refused = false;
+      try { await run('set_supplier_cost', { supplier: 'nobody-such', code: other.code, costRm: 1 }); } catch (e: any) { refused = /No supplier called/.test(e.message); }
+      assert(refused, 'unknown supplier accepted');
+    }
+    const removed: any = await run('set_supplier_cost', { supplier: name, code: line.variant.code, costRm: null });
+    assert(/no longer lists/.test(removed.removed), 'price not removed');
+    return `${name}: RM61.50 for ${line.variant.code} → line costed + recorded; typing RM60 dropped the supplier; price removed`;
+  } finally {
+    await prisma.orderItem.update({ where: { id: line.id }, data: before });
+    if (supplierId) await prisma.supplier.delete({ where: { id: supplierId } });
+  }
+});
+
 await check('set_order_discount RM / % / remove', async () => {
   const o = await prisma.order.findFirstOrThrow({
     where: { deletedAt: null, paymentGateway: null, paymentStatus: 'UNPAID', subtotal: { gt: 0 } },

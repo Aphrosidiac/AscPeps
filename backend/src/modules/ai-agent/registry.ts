@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentTool } from './tool-kit.js';
 import { CORE_TOOL_NAMES, DOMAINS, type Domain } from './domains.js';
 import { catalogTools } from './tools/catalog.tools.js';
+import { supplierTools } from './tools/suppliers.tools.js';
 import { orderTools } from './tools/orders.tools.js';
 import { financeTools } from './tools/finance.tools.js';
 import { documentTools } from './tools/documents.tools.js';
@@ -23,7 +24,9 @@ import { memoryTools } from './tools/memory.tools.js';
 const isDiscountTool = (t: AgentTool) => t.name.endsWith('_discount_code') || t.name === 'list_discount_codes';
 
 const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
-  catalog: catalogTools,
+  // Supplier prices ride with the catalogue: every price is a price for a
+  // variant, and "what does Chris charge for Reta" is a product question.
+  catalog: [...catalogTools, ...supplierTools],
   orders: orderTools,
   finance: financeTools,
   promos: contentTools.filter(isDiscountTool),

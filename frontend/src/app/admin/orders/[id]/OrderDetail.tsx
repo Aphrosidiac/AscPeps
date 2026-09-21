@@ -13,7 +13,7 @@ import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { ManualPayReview } from './ManualPayReview';
 import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares, adminSetOrderDiscount,
-  adminSetOrderItems, adminGetProducts,
+  adminSetOrderItems, adminGetProducts, adminGetSupplierOptions,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
 import { formatPrice, formatDate, paymentMethodLabel, cn, getEffectivePrice } from '@/lib/utils';
@@ -22,7 +22,7 @@ import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from 
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress, type OrderCheckKey } from '@/lib/order-progress';
 import { paymentFailureCopy } from '@/lib/payment-failure';
-import type { Order, OrderEmail, Product } from '@/types';
+import type { Order, OrderEmail, Product, SupplierOption } from '@/types';
 
 // Ascend MY's pipeline, not a copy of the source design's six purchasing stages —
 // this catalogue has no quotation/PO/warehouse chain to model. The stepper and
@@ -1140,6 +1140,54 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
 /* ------------------------------------------------------------ Profit Sharing */
 
 
+/**
+ * The supplier dropdown on one costing line: every active supplier with a
+ * price for this SKU, cheapest first, each option carrying its price so the
+ * choice is made on the figure. "By hand" is always offered — a one-off buy
+ * from nobody on the list is real — and a supplier the line was costed from
+ * who has since been retired or dropped the SKU stays selectable, or opening
+ * the dropdown would silently rewrite history.
+ */
+function SupplierSelect({
+  item,
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  item: Order['items'][number];
+  value: string;
+  options: SupplierOption[] | undefined;
+  onChange: (supplierId: string) => void;
+  className?: string;
+}) {
+  const list = options ?? [];
+  const stale = item.supplier && !list.some((o) => o.supplierId === item.supplier!.id) ? item.supplier : null;
+  const empty = list.length === 0 && !stale;
+  return (
+    <select
+      value={value}
+      disabled={options === undefined || empty}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={`Supplier for ${item.variant.product.name}`}
+      title={empty ? 'No supplier has a price for this item yet — add one on the Suppliers page' : undefined}
+      className={cn(
+        'px-2 py-1.5 border border-border rounded-lg text-xs bg-surface cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
+        !value && 'text-text-muted',
+        className,
+      )}
+    >
+      <option value="">{options === undefined ? '…' : empty ? '— no supplier prices yet —' : '— by hand —'}</option>
+      {list.map((o) => (
+        <option key={o.supplierId} value={o.supplierId}>{o.name} · {formatPrice(o.cost)}</option>
+      ))}
+      {stale && (
+        <option value={stale.id}>{stale.name} · {formatPrice(item.unitCost ?? 0)} ({stale.active ? 'no longer priced' : 'retired'})</option>
+      )}
+    </select>
+  );
+}
+
 function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => void }) {
   const { token } = useAuth();
 
@@ -1148,6 +1196,42 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const [itemCosts, setItemCosts] = useState<Record<string, string>>(() =>
     Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]))
   );
+  // Whose price list each line's cost came from; '' is "keyed in by hand".
+  // Picking a supplier from the dropdown writes their price into the cost
+  // box; typing a different figure afterwards drops the line back to "by
+  // hand", because the supplier means exactly "this figure is their price".
+  const [itemSuppliers, setItemSuppliers] = useState<Record<string, string>>(() =>
+    Object.fromEntries(order.items.map((i) => [i.id, i.supplierId ?? '']))
+  );
+  // The dropdown contents per SKU, from the Suppliers page's price list.
+  const [supplierOptions, setSupplierOptions] = useState<Record<string, SupplierOption[]> | null>(null);
+  const variantKey = order.items.map((i) => i.variantId).join(',');
+  useEffect(() => {
+    if (!token) return;
+    adminGetSupplierOptions(token, variantKey.split(',').filter(Boolean))
+      .then(setSupplierOptions)
+      .catch(() => setSupplierOptions({}));
+  }, [token, variantKey]);
+  const anySupplierPrices = supplierOptions !== null && Object.values(supplierOptions).some((o) => o.length > 0);
+
+  const pickSupplier = (item: Order['items'][number], supplierId: string) => {
+    setItemSuppliers((p) => ({ ...p, [item.id]: supplierId }));
+    const option = (supplierOptions?.[item.variantId] ?? []).find((o) => o.supplierId === supplierId);
+    if (option) setItemCosts((p) => ({ ...p, [item.id]: centsToInput(option.cost) }));
+    touch();
+  };
+  const typeCost = (item: Order['items'][number], value: string) => {
+    setItemCosts((p) => ({ ...p, [item.id]: value }));
+    const chosen = itemSuppliers[item.id];
+    if (chosen) {
+      const option = (supplierOptions?.[item.variantId] ?? []).find((o) => o.supplierId === chosen);
+      // A supplier no longer on the list (retired, or dropped this SKU) has
+      // no current price; the figure the line stored is what theirs was.
+      const listed = option ? option.cost : item.supplier?.id === chosen ? item.unitCost : null;
+      if (inputToCents(value) !== listed) setItemSuppliers((p) => ({ ...p, [item.id]: '' }));
+    }
+    touch();
+  };
   const [extras, setExtras] = useState<{ label: string; amount: string }[]>(() =>
     (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }))
   );
@@ -1220,6 +1304,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
   /* ----- dirty tracking, so Save only fires the calls that changed */
   const savedItemCosts = Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]));
+  const savedItemSuppliers = Object.fromEntries(order.items.map((i) => [i.id, i.supplierId ?? '']));
   const savedExtras = (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }));
   const savedShares = (order.profitShares ?? []).map((s) => ({
     name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount ?? 0,
@@ -1239,6 +1324,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
   const costsDirty =
     JSON.stringify(normalisedItemCosts) !== JSON.stringify(savedItemCosts) ||
+    JSON.stringify(itemSuppliers) !== JSON.stringify(savedItemSuppliers) ||
     JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras) ||
     (inputToCents(gatewayFeeInput) ?? 0) !== (order.gatewayFee ?? 0);
   const sharesDirty = JSON.stringify(normalisedShares) !== JSON.stringify(savedShares);
@@ -1310,7 +1396,11 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
       }
       if (costsDirty) {
         await adminUpdateOrderCosts(token, order.id, {
-          itemCosts: order.items.map((i) => ({ itemId: i.id, unitCost: inputToCents(itemCosts[i.id] ?? '') })),
+          itemCosts: order.items.map((i) => ({
+            itemId: i.id,
+            unitCost: inputToCents(itemCosts[i.id] ?? ''),
+            supplierId: itemSuppliers[i.id] || null,
+          })),
           extraCosts: extras
             .filter((e) => e.label.trim() !== '' && inputToCents(e.amount) !== null)
             .map((e) => ({ label: e.label.trim(), amount: inputToCents(e.amount) as number })),
@@ -1486,11 +1576,19 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
           <Package className="w-4 h-4 text-text-muted" />
           <h2 className="text-sm font-semibold">Item Costs</h2>
+          {/* The dropdowns below read the Suppliers page's price list. Say so
+              here, where someone looking for "why is my dropdown empty" will
+              look, rather than only inside each empty dropdown. */}
+          <Link href="/admin/suppliers" className="ml-auto text-xs text-primary hover:underline whitespace-nowrap">
+            {supplierOptions !== null && !anySupplierPrices ? 'Add supplier prices →' : 'Supplier prices →'}
+          </Link>
         </div>
-        {/* Six columns, one of them an editable input, do not fit a phone: the
-            unit-cost box — the only thing on this card you actually type into —
-            was cut in half by the right edge. Stacked per item instead. */}
-        <div className="divide-y divide-border md:hidden">
+        {/* Seven columns, two of them controls, do not fit a phone — or a
+            laptop with the sidebar open below 1280px: the unit-cost box was
+            cut in half by the right edge, and the supplier dropdown pushed
+            the profit column off the card entirely. Stacked per item until
+            there is genuinely room for the table. */}
+        <div className="divide-y divide-border xl:hidden">
           {order.items.map((item) => {
             const lineRevenue = item.unitPrice * item.quantity;
             const cost = lineCost(item.id, item.quantity);
@@ -1504,6 +1602,16 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                 <p className="text-xs text-text-muted mt-0.5">
                   Qty {item.quantity} · {formatPrice(lineRevenue)} revenue
                 </p>
+                <label className="block mt-2">
+                  <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Supplier</span>
+                  <SupplierSelect
+                    item={item}
+                    value={itemSuppliers[item.id] ?? ''}
+                    options={supplierOptions?.[item.variantId]}
+                    onChange={(id) => pickSupplier(item, id)}
+                    className="w-full"
+                  />
+                </label>
                 <div className="flex items-end justify-between gap-3 mt-2">
                   <label className="min-w-0">
                     <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Unit cost</span>
@@ -1514,7 +1622,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                         min="0"
                         step="0.01"
                         value={itemCosts[item.id] ?? ''}
-                        onChange={(e) => { setItemCosts((p) => ({ ...p, [item.id]: e.target.value })); touch(); }}
+                        onChange={(e) => typeCost(item, e.target.value)}
                         placeholder="0.00"
                         aria-label={`Unit cost for ${item.variant.product.name}`}
                         className="w-full pl-9 pr-2 py-1.5 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -1539,13 +1647,14 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           })}
         </div>
 
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden xl:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
                 <th className="text-left px-5 py-3">Item</th>
                 <th className="text-right px-3 py-3">Qty</th>
                 <th className="text-right px-3 py-3 whitespace-nowrap">Revenue</th>
+                <th className="text-left px-3 py-3 whitespace-nowrap">Supplier</th>
                 <th className="text-right px-3 py-3 whitespace-nowrap">Unit Cost</th>
                 <th className="text-right px-3 py-3 whitespace-nowrap">Line Cost</th>
                 <th className="text-right px-5 py-3 whitespace-nowrap">Profit</th>
@@ -1567,6 +1676,15 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                     <td className="px-3 py-3 text-right">{item.quantity}</td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">{formatPrice(lineRevenue)}</td>
                     <td className="px-3 py-3">
+                      <SupplierSelect
+                        item={item}
+                        value={itemSuppliers[item.id] ?? ''}
+                        options={supplierOptions?.[item.variantId]}
+                        onChange={(id) => pickSupplier(item, id)}
+                        className="w-40"
+                      />
+                    </td>
+                    <td className="px-3 py-3">
                       <div className="relative w-32 ml-auto">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
                         <input
@@ -1574,7 +1692,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                           min="0"
                           step="0.01"
                           value={itemCosts[item.id] ?? ''}
-                          onChange={(e) => { setItemCosts((p) => ({ ...p, [item.id]: e.target.value })); touch(); }}
+                          onChange={(e) => typeCost(item, e.target.value)}
                           placeholder="0.00"
                           aria-label={`Unit cost for ${item.variant.product.name}`}
                           className="w-full pl-9 pr-2 py-1.5 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

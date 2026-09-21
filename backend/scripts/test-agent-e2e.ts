@@ -641,6 +641,47 @@ await scenario('a wrong quantity is an item change, not a cost adjustment', asyn
   };
 });
 
+await scenario('costing a line from the supplier price list records the supplier', async () => {
+  await reset();
+  const order = await prisma.order.findFirst({
+    where: { deletedAt: null, items: { some: {} } },
+    include: { items: { include: { variant: { include: { product: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!order) return { ok: false, detail: 'no order with items in dev db' };
+  const line = order.items[0];
+  const name = `${line.variant.product.name}${line.variant.size ? ` ${line.variant.size}` : ''}`;
+  const supplierName = `E2E Supplier ${Date.now() % 10000}`;
+  const supplier = await prisma.supplier.create({ data: { name: supplierName } });
+  await prisma.supplierCost.create({ data: { supplierId: supplier.id, variantId: line.variantId, cost: 4321 } });
+  const before = { unitCost: line.unitCost, supplierId: line.supplierId };
+
+  const started = new Date();
+  // The price is deliberately NOT in the message: the model has to take it
+  // off the list by naming the supplier, not type a figure it looked up.
+  let r = await send(`cost the ${name} (${line.variant.code}) on ${order.orderNumber} from ${supplierName}`);
+  for (let i = 0; i < 2; i++) {
+    const mid = await prisma.orderItem.findUnique({ where: { id: line.id } });
+    if (mid?.supplierId === supplier.id) break;
+    r = await send('yes');
+  }
+  const after = await prisma.orderItem.findUniqueOrThrow({ where: { id: line.id } });
+  const rows = await toolsSince(started);
+
+  await prisma.orderItem.update({ where: { id: line.id }, data: before });
+  await prisma.supplier.delete({ where: { id: supplier.id } });
+
+  const ok = after.unitCost === 4321 && after.supplierId === supplier.id;
+  return {
+    ok,
+    detail: ok
+      ? `${line.variant.code} costed RM43.21 from ${supplierName}, supplier recorded (restored)`
+      : `line has cost ${after.unitCost} / supplier ${after.supplierId} — expected 4321 / ${supplier.id}`,
+    reply: r.text,
+    tools: rows.map((t) => `${t.toolName}${t.ok ? '' : '✗'}`),
+  };
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log('\n' + '='.repeat(70));

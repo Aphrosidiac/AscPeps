@@ -114,6 +114,10 @@ export interface OrderItem {
   // Profit Sharing tab reports as unknown profit, not as a 100% margin.
   // Admin responses only.
   unitCost?: number | null;
+  // Whose price list the unit cost was picked from; null when keyed in by
+  // hand. Admin responses only.
+  supplierId?: string | null;
+  supplier?: { id: string; name: string; active: boolean } | null;
   variant: {
     code: string;
     size: string | null;
@@ -230,6 +234,8 @@ export type OrderExtraCostInput = Pick<OrderExtraCost, 'label' | 'amount'>;
 export interface OrderItemCostInput {
   itemId: string;
   unitCost: number | null;
+  // Omitted leaves the stored supplier alone; null means keyed in by hand.
+  supplierId?: string | null;
 }
 
 export interface OrderProfitShare {
@@ -646,4 +652,43 @@ export interface ShadowOrderRow {
   lineCount: number;
   complete: boolean;
   unmappedCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Supplier price list
+// ---------------------------------------------------------------------------
+
+export interface Supplier {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** SKUs this supplier has a price for. */
+  priceCount: number;
+  /** Costed order lines that took this supplier's price. */
+  orderLineCount: number;
+}
+
+/** One sellable SKU and every supplier's per-unit price for it, in cents. */
+export interface SupplierSheetRow {
+  variantId: string;
+  code: string;
+  size: string | null;
+  productId: string;
+  productName: string;
+  displayName: string;
+  costs: Record<string, number>;
+}
+
+export interface SupplierSheet {
+  suppliers: { id: string; name: string; active: boolean }[];
+  rows: SupplierSheetRow[];
+}
+
+/** What the costing sheet's dropdown offers for one SKU: cheapest first. */
+export interface SupplierOption {
+  supplierId: string;
+  name: string;
+  cost: number;
 }

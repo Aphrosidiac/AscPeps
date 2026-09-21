@@ -159,6 +159,22 @@ on a cancelled order whose stock has already gone back.
 Analytics reads the same order set through the same `costOrder`, so the two pages
 cannot disagree about what a month took.
 
+### A unit cost comes off the supplier price list
+
+The remaining way a cost went wrong was the plainest one: it was typed from
+memory, and the same vial was costed at four different figures across a month.
+Since 2026-09-22 there is a **Suppliers** page — who the business buys from and
+what each of them charges per unit of each SKU (`suppliers`, `supplier_costs`)
+— and the Unit Cost box on the costing sheet sits next to a dropdown of every
+supplier with a price for that line, cheapest first: pick "YL,C · RM65.00" and
+the box fills in. The line records whose price it took (`order_items.supplierId`)
+and copies the figure onto `unitCost` at that moment; a price changed on the
+list later never rewrites an order already costed, for the same reason
+`unitCost` lives on the line at all. Typing a different figure over a picked
+price drops the line back to "by hand" — a supplier on a line means exactly
+"this figure is their price". The assistant's `set_order_costs` takes a
+supplier's name on a line the same way.
+
 ### Partner balances are untouched by all this
 
 ```

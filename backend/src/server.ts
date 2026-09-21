@@ -30,6 +30,7 @@ import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
 import adminFinanceRoutes from './modules/admin/admin-finance.routes.js';
 import adminDocumentsRoutes from './modules/admin/admin-documents.routes.js';
 import adminShadowSkusRoutes from './modules/admin/admin-shadow-skus.routes.js';
+import adminSuppliersRoutes from './modules/admin/admin-suppliers.routes.js';
 import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
 import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
@@ -167,6 +168,7 @@ await fastify.register(adminFinanceRoutes, { prefix: '/api/v1/admin/finance' });
 // utils/document-store.ts for why.
 await fastify.register(adminDocumentsRoutes, { prefix: '/api/v1/admin/documents' });
 await fastify.register(adminShadowSkusRoutes, { prefix: '/api/v1/admin/shadow-skus' });
+await fastify.register(adminSuppliersRoutes, { prefix: '/api/v1/admin/suppliers' });
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' });

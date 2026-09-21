@@ -69,6 +69,8 @@ const KEYWORDS: Record<Domain, string[]> = {
     'product', 'produk', 'variant', 'size', 'saiz', 'stock', 'stok', 'inventory',
     'price', 'harga', 'pricing', 'on sale', 'sale price', 'sold out', 'restock',
     'vial', 'peptide', 'compound', 'addon', 'add-on', 'category', 'kategori', 'sku',
+    // The supplier price list lives with the catalogue (see registry.ts).
+    'supplier', 'pembekal',
   ],
   orders: [
     'order', 'pesanan', 'checkout', 'paid', 'unpaid', 'payment', 'bayar',
@@ -81,6 +83,8 @@ const KEYWORDS: Record<Domain, string[]> = {
     // "change her order to 3", "add a syringe to Nurul's order", "tukar
     // quantity" — set_order_items, never a cost adjustment.
     'quantity', 'kuantiti', 'qty', 'change order', 'tukar order', 'add to order',
+    // "cost it from Chris" — set_order_costs with a supplier on the line.
+    'supplier', 'pembekal',
   ],
   finance: [
     'expense', 'perbelanjaan', 'belanja', 'spending', 'funding', 'capital',
@@ -172,7 +176,8 @@ const PLAYBOOKS: Record<string, Playbook> = {
 
   products: {
     title: 'How the catalogue is shaped',
-    body: `A product is a compound with one page; the sellable sizes are its variants, and price and stock live on the variant. Add-ons are other variants offered alongside a product (bacteriostatic water, syringes, swabs); a required add-on is forced into the basket and cannot be unticked.`,
+    body: `A product is a compound with one page; the sellable sizes are its variants, and price and stock live on the variant. Add-ons are other variants offered alongside a product (bacteriostatic water, syringes, swabs); a required add-on is forced into the basket and cannot be unticked.
+- The supplier price list (list_suppliers) is what each supplier charges the business per unit of each SKU. It is not stock and not purchasing. To cost an order line from it, use set_order_costs with the supplier's name on that line — the price is copied onto the order and the supplier recorded — rather than reading the price and typing it in.`,
   },
 };
 
@@ -243,7 +248,7 @@ export function domainMenu(loaded: Iterable<Domain>): string {
 }
 
 const DOMAIN_BLURB: Record<Domain, string> = {
-  catalog: 'products, variants, stock levels, prices, sales, add-ons',
+  catalog: 'products, variants, stock levels, prices, sales, add-ons, the supplier price list',
   orders: 'orders, payment status, order costs, profit shares, receipts',
   finance: 'expenses, partner funding, advances, repayments, payouts',
   promos: 'discount codes',

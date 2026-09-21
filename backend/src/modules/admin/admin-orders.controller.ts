@@ -36,6 +36,9 @@ const orderCostsSchema = z.object({
         itemId: z.string().min(1),
         // Nullable so a line can be cleared back to "not priced yet".
         unitCost: moneyCents.nullable(),
+        // Whose price list the cost came from, for traceability. Omitted
+        // leaves whatever is stored; null means keyed in by hand.
+        supplierId: z.string().min(1).nullable().optional(),
       })
     )
     .max(100),
@@ -156,7 +159,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     fastify.prisma.order.findMany({
       where,
       include: {
-        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } }, orderBy: { createdAt: 'asc' } },
+        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
         emails: EMAIL_STATUS_SELECT,
         // Only the bps, not the whole row: the list needs to know whether a
@@ -180,8 +183,13 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
     include: {
       // In the order they were placed: without it Postgres hands back rows
       // in whatever order an update last touched them, and a line the
-      // operator just edited jumps to the bottom of the list.
-      items: { include: { variant: { include: { product: true } } }, orderBy: { createdAt: 'asc' } },
+      // operator just edited jumps to the bottom of the list. Lines placed
+      // together share a createdAt to the millisecond, so the id breaks the
+      // tie the same way every time.
+      items: {
+        include: { variant: { include: { product: true } }, supplier: { select: { id: true, name: true, active: true } } },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
       emails: EMAIL_STATUS_SELECT,
       profitShares: { orderBy: { createdAt: 'asc' } },
@@ -218,12 +226,31 @@ export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string
     };
   }
 
+  // A supplier is the answer to "whose price is this?", so a line cannot name
+  // one while having no price, and the name has to be a real supplier — an
+  // inactive one is fine (this may be an old order being costed late).
+  const supplierIds = [...new Set(itemCosts.map((c) => c.supplierId).filter((x): x is string => !!x))];
+  if (supplierIds.length > 0) {
+    const found = await fastify.prisma.supplier.count({ where: { id: { in: supplierIds } } });
+    if (found !== supplierIds.length) throw { statusCode: 400, message: 'One or more suppliers do not exist.' };
+  }
+  if (itemCosts.some((c) => c.supplierId && c.unitCost === null)) {
+    throw { statusCode: 400, message: 'A line with a supplier needs a unit cost.' };
+  }
+
   await fastify.prisma.$transaction([
     ...(gatewayFee !== undefined
       ? [fastify.prisma.order.update({ where: { id }, data: { gatewayFee } })]
       : []),
     ...itemCosts.map((c) =>
-      fastify.prisma.orderItem.update({ where: { id: c.itemId }, data: { unitCost: c.unitCost } })
+      fastify.prisma.orderItem.update({
+        where: { id: c.itemId },
+        data: {
+          unitCost: c.unitCost,
+          // Clearing the cost clears its provenance with it.
+          ...(c.unitCost === null ? { supplierId: null } : c.supplierId !== undefined ? { supplierId: c.supplierId } : {}),
+        },
+      })
     ),
     // Replace-all, same as the profit split: extra costs are only meaningful as
     // a set, and diffing free-text rows by id buys nothing here.

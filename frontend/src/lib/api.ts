@@ -1,6 +1,9 @@
 import axios from 'axios';
 import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document,
   ShadowSku,
+  Supplier,
+  SupplierOption,
+  SupplierSheet,
   ShadowMappingRow,
   ShadowCoverage,
   ShadowSummary,
@@ -711,3 +714,34 @@ export const adminDownloadShadowSummary = async (
   link.click();
   URL.revokeObjectURL(url);
 };
+
+// --- Suppliers ---------------------------------------------------------------
+
+export const adminGetSuppliers = (token: string) =>
+  api.get<Supplier[]>('/api/v1/admin/suppliers', auth(token)).then((r) => r.data);
+
+export const adminCreateSupplier = (token: string, body: { name: string }) =>
+  api.post<Supplier>('/api/v1/admin/suppliers', body, auth(token)).then((r) => r.data);
+
+export const adminUpdateSupplier = (token: string, id: string, body: Partial<{ name: string; active: boolean }>) =>
+  api.patch<Supplier>(`/api/v1/admin/suppliers/${id}`, body, auth(token)).then((r) => r.data);
+
+export const adminDeleteSupplier = (token: string, id: string) =>
+  api.delete<{ success: boolean }>(`/api/v1/admin/suppliers/${id}`, auth(token)).then((r) => r.data);
+
+export const adminGetSupplierSheet = (token: string) =>
+  api.get<SupplierSheet>('/api/v1/admin/suppliers/sheet', auth(token)).then((r) => r.data);
+
+// null cost removes that supplier's price for the SKU.
+export const adminSetSupplierCosts = (
+  token: string,
+  costs: { supplierId: string; variantId: string; cost: number | null }[],
+) => api.put<{ updated: number }>('/api/v1/admin/suppliers/costs', { costs }, auth(token)).then((r) => r.data);
+
+export const adminGetSupplierOptions = (token: string, variantIds: string[]) =>
+  api
+    .get<Record<string, SupplierOption[]>>('/api/v1/admin/suppliers/options', {
+      ...auth(token),
+      params: { variantIds: variantIds.join(',') },
+    })
+    .then((r) => r.data);

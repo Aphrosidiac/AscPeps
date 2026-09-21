@@ -15,6 +15,8 @@ import { createOrder } from '../../orders/orders.controller.js';
 import { validateDiscountCode } from '../../admin/admin-discounts.controller.js';
 import { getEffectivePrice } from '../../../utils/product-pricing.js';
 import { carryDiscount, goodsSubtotal, resolveManualDiscount } from '../../../utils/manual-discount.js';
+import { getSupplierOptions } from '../../admin/admin-suppliers.controller.js';
+import { resolveSupplier } from './suppliers.tools.js';
 
 // Order tools deliberately delegate to admin-orders.controller.ts wherever a
 // controller already exists. That file owns behaviour the agent must never
@@ -567,6 +569,8 @@ export const orderTools: AgentTool[] = [
           unitPrice: money(i.unitPrice),
           lineTotal: money(i.unitPrice * i.quantity),
           unitCost: i.unitCost == null ? null : money(i.unitCost),
+          // Whose price list the cost came from; null = keyed in by hand.
+          supplier: i.supplier?.name ?? null,
         })),
         extraCosts: o.extraCosts.map((c: any) => ({ id: c.id, label: c.label, amount: money(c.amount) })),
         profitShares: o.profitShares.map((s: any) => ({
@@ -742,7 +746,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'set_order_costs',
     description:
-      'Record what an order cost the business: a per-unit cost for each line, plus any extra costs (courier, fuel, packaging). Amounts in RINGGIT. This replaces the whole cost set for the order, so send every line and every extra cost each time. Costs only — a wrong quantity is fixed with set_order_items, a discount with set_order_discount.',
+      'Record what an order cost the business: a per-unit cost for each line, plus any extra costs (courier, fuel, packaging). Amounts in RINGGIT. On a line, name the supplier instead of a figure to take that supplier\'s price off the price list (list_suppliers) — the price is copied and the supplier recorded on the line. This replaces the whole cost set for the order, so send every line and every extra cost each time. Costs only — a wrong quantity is fixed with set_order_items, a discount with set_order_discount.',
     write: true,
     input_schema: {
       type: 'object',
@@ -755,7 +759,11 @@ export const orderTools: AgentTool[] = [
             type: 'object',
             properties: {
               itemId: { type: 'string' },
-              unitCostRm: { type: 'number', description: 'Cost per unit in ringgit. Pass null to clear.' },
+              unitCostRm: { type: 'number', description: 'Cost per unit in ringgit. Pass null to clear. Ignored when supplier is given.' },
+              supplier: {
+                type: 'string',
+                description: 'Supplier name: cost this line at that supplier\'s list price for the SKU. Fails if they have no price for it.',
+              },
             },
             required: ['itemId'],
           },
@@ -776,18 +784,38 @@ export const orderTools: AgentTool[] = [
       const existing: any = await adminGetOrder(fastify, order.id);
 
       // The controller replaces the full set, so anything omitted here would
-      // be silently wiped. Default to what is already saved.
-      const itemCosts = (
-        input.itemCosts?.length
-          ? input.itemCosts
-          : existing.items.map((i: any) => ({
-              itemId: i.id,
-              unitCostRm: i.unitCost == null ? null : i.unitCost / 100,
-            }))
-      ).map((c: any) => ({
-        itemId: c.itemId,
-        unitCost: c.unitCostRm == null ? null : toCents(c.unitCostRm),
-      }));
+      // be silently wiped. Default to what is already saved — supplier
+      // included, so re-costing one line does not strip the others' provenance.
+      const options = await getSupplierOptions(fastify, existing.items.map((i: any) => i.variantId));
+      const itemCosts = [];
+      for (const c of input.itemCosts?.length
+        ? input.itemCosts
+        : existing.items.map((i: any) => ({
+            itemId: i.id,
+            unitCostRm: i.unitCost == null ? null : i.unitCost / 100,
+            supplierId: i.supplierId,
+          }))) {
+        const line = existing.items.find((i: any) => i.id === c.itemId);
+        if (!line) throw new Error(`Line ${c.itemId} is not on ${existing.orderNumber}. Get itemId values from get_order.`);
+        if (c.supplier) {
+          const supplier = await resolveSupplier(fastify, c.supplier);
+          const priced = (options[line.variantId] ?? []).find((o: any) => o.supplierId === supplier.id);
+          const name = `${line.variant.product.name}${line.variant.size ? ` ${line.variant.size}` : ''} (${line.variant.code})`;
+          if (!priced) {
+            const others = (options[line.variantId] ?? []).map((o: any) => `${o.name} ${rm(o.cost)}`).join(', ');
+            throw new Error(
+              `${supplier.name} has no price for ${name}.${others ? ` Priced by: ${others}.` : ' Nobody has priced it yet.'} Add one with set_supplier_cost or give unitCostRm instead.`
+            );
+          }
+          itemCosts.push({ itemId: c.itemId, unitCost: priced.cost, supplierId: supplier.id });
+        } else {
+          const unitCost = c.unitCostRm == null ? null : toCents(c.unitCostRm);
+          // A hand-typed figure on a line that was costed from the list keeps
+          // the supplier only while the figure still matches their price.
+          const keep = c.supplierId ?? (line.supplierId && line.unitCost === unitCost ? line.supplierId : null);
+          itemCosts.push({ itemId: c.itemId, unitCost, supplierId: unitCost === null ? null : keep });
+        }
+      }
 
       const extraCosts = (input.extraCosts ?? existing.extraCosts.map((c: any) => ({ label: c.label, amountRm: c.amount / 100 }))).map(
         (c: any) => ({ label: c.label, amount: toCents(c.amountRm) })
@@ -801,6 +829,11 @@ export const orderTools: AgentTool[] = [
 
       return {
         orderNumber: after.orderNumber,
+        lines: after.items.map((i: any) => ({
+          item: `${i.variant.product.name}${i.variant.size ? ` ${i.variant.size}` : ''}`,
+          unitCost: money(i.unitCost),
+          supplier: i.supplier?.name ?? null,
+        })),
         goodsCost: money(goods),
         extraCosts: money(extras),
         totalCost: money(goods + extras),

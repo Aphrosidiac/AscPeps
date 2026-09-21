@@ -132,6 +132,7 @@ model ProductVariant {
   // SetNull, not Cascade: retiring a shadow code must never take sellable
   // SKUs with it. Unlinking is exactly this — the variant survives, unmapped.
   shadowSku         ShadowSku?     @relation(fields: [shadowSkuId], references: [id], onDelete: SetNull)
+  supplierCosts     SupplierCost[]
 
   @@index([productId])
   @@index([active])
@@ -296,13 +297,21 @@ model OrderItem {
   // A default cost per variant is a reasonable thing to add above this one day,
   // but it would be a prefill for this field, never a replacement.
   unitCost  Int?
+  // Whose price the unit cost above was taken from, when it was picked off the
+  // supplier price list rather than typed. Traceability only: the cost is
+  // copied onto unitCost at the moment of choosing and stays put when the
+  // list changes later, for the same reason unitCost itself lives here.
+  // Null means keyed in by hand (or never priced).
+  supplierId String?
   createdAt DateTime @default(now())
 
-  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  order    Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant  ProductVariant @relation(fields: [variantId], references: [id])
+  supplier Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([variantId])
+  @@index([supplierId])
   @@map("order_items")
 }
 
@@ -1502,6 +1511,64 @@ model ShadowSku {
 
   @@index([active])
   @@map("shadow_skus")
+}
+
+// ---------------------------------------------------------------------------
+// Supplier price list
+// ---------------------------------------------------------------------------
+
+// Who the business buys from, and what each of them charges per unit of each
+// SKU. The list exists so the unit cost on an order's costing sheet is picked
+// from a dropdown — "YL,C · RM65" — rather than typed from memory, which is
+// how the same vial ended up costed at four different figures across a month.
+//
+// It is a PRICE LIST, not purchasing: no purchase orders, no stock-in, no
+// invoices. An order line records which supplier's price it took
+// (OrderItem.supplierId) and copies the figure onto OrderItem.unitCost at that
+// moment; changing a price here never rewrites an order already costed.
+model Supplier {
+  id     String  @id @default(cuid())
+  // Short, the way the partners say it: "Chris", "YL,C", "Zuwa". Unique so
+  // the dropdown can never offer the same person twice.
+  name   String  @unique
+  // Retiring, not deleting: a supplier referenced by any order line stays
+  // resolvable forever, the same rule as ShadowSku and ProductVariant. An
+  // inactive supplier drops out of the dropdown and the price sheet but keeps
+  // their prices and their history.
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  costs      SupplierCost[]
+  orderItems OrderItem[]
+
+  @@index([active])
+  @@map("suppliers")
+}
+
+// One supplier's per-unit price for one SKU, in cents. A pair with no row is
+// "this supplier does not sell this" — a real state, distinct from a price of
+// zero — and the dropdown on a costing sheet only lists suppliers with a row
+// for that line's SKU.
+model SupplierCost {
+  id         String @id @default(cuid())
+  supplierId String
+  variantId  String
+  cost       Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Cascade both ways: a price is nothing without its supplier or its SKU,
+  // and neither of those can be deleted while an order line references it,
+  // so nothing an order relies on can disappear through here.
+  supplier Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  variant  ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, variantId])
+  @@index([variantId])
+  @@map("supplier_costs")
 }
 
 // ---------------------------------------------------------------------------
