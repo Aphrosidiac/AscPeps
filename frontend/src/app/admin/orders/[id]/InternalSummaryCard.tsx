@@ -28,13 +28,18 @@ export function InternalSummaryCard({ order }: { order: Order }) {
   const [error, setError] = useState('');
   const [viewing, setViewing] = useState(false);
 
+  // Re-read when the lines change under it (the Items card's edit mode), not
+  // only when the page opens on a different order — otherwise this card kept
+  // naming a line that had just been removed.
+  const linesKey = order.items.map((i) => `${i.id}:${i.quantity}`).join(',');
+
   const load = useCallback(() => {
     if (!token) return;
     adminGetShadowSummary(token, order.id)
       .then(setSummary)
       .catch(() => setError('Could not load the internal summary.'))
       .finally(() => setLoading(false));
-  }, [token, order.id]);
+  }, [token, order.id, linesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(load, [load]);
 

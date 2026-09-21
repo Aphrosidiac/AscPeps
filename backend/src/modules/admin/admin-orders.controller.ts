@@ -8,7 +8,9 @@ import { capturePurchase } from '../../utils/posthog.js';
 import { isOnlineMethod } from '../../utils/payment-gateway.js';
 import { computeGatewayFee } from '../../utils/gateway-fee.js';
 import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
-import { goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
+import { carryDiscount, goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
+import { getEffectivePrice } from '../../utils/product-pricing.js';
+import { getVariantDisplayName } from '../../utils/product-addons.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -45,6 +47,17 @@ const orderCostsSchema = z.object({
   // real settlement can differ, and the order should record what was actually
   // taken. Omitted leaves whatever is already stored.
   gatewayFee: moneyCents.optional(),
+});
+
+// The order's lines as they should be from now on: every line, not a diff.
+// Quantity 0 drops a line, a variant not on the order yet is added. The cap
+// per line matches checkout's; there is no cap on the number of units across
+// the order because the orders that get edited by hand are the bulk ones.
+const orderItemsSchema = z.object({
+  items: z
+    .array(z.object({ variantId: z.string().min(1), quantity: z.number().int().min(0).max(100) }))
+    .min(1)
+    .max(50),
 });
 
 // No .default() on any field — this schema is only ever used for partial
@@ -143,7 +156,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     fastify.prisma.order.findMany({
       where,
       include: {
-        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } } },
+        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } }, orderBy: { createdAt: 'asc' } },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
         emails: EMAIL_STATUS_SELECT,
         // Only the bps, not the whole row: the list needs to know whether a
@@ -165,7 +178,10 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({
     where: { id },
     include: {
-      items: { include: { variant: { include: { product: true } } } },
+      // In the order they were placed: without it Postgres hands back rows
+      // in whatever order an update last touched them, and a line the
+      // operator just edited jumps to the bottom of the list.
+      items: { include: { variant: { include: { product: true } } }, orderBy: { createdAt: 'asc' } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
       emails: EMAIL_STATUS_SELECT,
       profitShares: { orderBy: { createdAt: 'asc' } },
@@ -281,6 +297,147 @@ export async function adminSetOrderDiscount(fastify: FastifyInstance, id: string
     data: { subtotal, discountAmount: amount, discountNote: note, total },
   });
   return adminGetOrder(fastify, id);
+}
+
+// Changes WHAT an order is for after it was placed: a quantity corrected, a
+// line dropped, a size added. Until this existed the only lever was the unit
+// cost on the Profit tab, so a wrong quantity was "fixed" by typing a cost
+// that made the line total come out right — the books balanced and the
+// order, the receipt and the stock were all wrong.
+//
+// Stock moves by the difference, with the same conditional decrement checkout
+// uses so two edits cannot oversell the last unit. An existing line keeps the
+// price it was sold at and the cost already entered for it; a new line is
+// priced at today's effective price and has no cost yet. The discount follows
+// the rule it was given under (carryDiscount), shipping stays, and the total
+// is recomputed the way checkout computes it. Same refusals as a discount:
+// the customer's total cannot change under a settled online payment, a
+// refund, or an open hosted payment page. Nothing is emailed — the operator
+// resends the confirmation if the customer needs the new one.
+export async function adminSetOrderItems(fastify: FastifyInstance, id: string, body: unknown) {
+  const { items } = orderItemsSchema.parse(body);
+
+  // A variant listed twice is one line: the last quantity wins, the way a
+  // person re-typing a row would expect.
+  const wanted = new Map<string, number>();
+  for (const line of items) wanted.set(line.variantId, line.quantity);
+  if (![...wanted.values()].some((q) => q > 0)) {
+    throw { statusCode: 400, message: 'An order needs at least one item.' };
+  }
+
+  return fastify.prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id },
+      include: {
+        items: { include: { variant: { include: { product: { select: { name: true } } } } } },
+        discountCode: { select: { discountType: true, discountValue: true } },
+      },
+    });
+    if (!order) throw { statusCode: 404, message: 'Order not found' };
+    if (order.deletedAt) throw { statusCode: 400, message: 'This order is deleted. Restore it first.' };
+
+    if (isLockedOnlinePayment(order)) {
+      throw {
+        statusCode: 400,
+        message: 'This order was paid online for its current total, so its items cannot change. Create a new order for anything extra, or record a partial refund.',
+      };
+    }
+    if (order.paymentStatus === 'REFUNDED') {
+      throw { statusCode: 400, message: 'This order has been refunded — its items can no longer change.' };
+    }
+    // Cancelled/failed orders have had their stock put back; moving it again
+    // from here would double-count. Restore-then-edit is not a flow worth
+    // building for the handful of times it would be wanted.
+    if (order.stockRestored) {
+      throw { statusCode: 400, message: 'This order was cancelled and its stock returned, so its items cannot change. Create a new order instead.' };
+    }
+    if (order.paymentGateway === MANUALPAY_GATEWAY && order.paymentRef && order.paymentStatus === 'UNPAID') {
+      throw {
+        statusCode: 400,
+        message: `This order has a payment page open for RM${(order.total / 100).toFixed(2)}, which cannot be repriced. Cancel it and re-create the order, or mark it paid for what arrives.`,
+      };
+    }
+
+    const now = new Date();
+    const existingByVariant = new Map(order.items.map((i) => [i.variantId, i]));
+    const addedIds = [...wanted.keys()].filter((v) => !existingByVariant.has(v) && wanted.get(v)! > 0);
+    const added = addedIds.length
+      ? await tx.productVariant.findMany({
+          where: { id: { in: addedIds }, active: true, product: { active: true } },
+          include: { product: { select: { name: true } } },
+        })
+      : [];
+    if (added.length !== addedIds.length) {
+      throw { statusCode: 400, message: 'One or more products to add were not found or are no longer sold.' };
+    }
+
+    // Stock first, so an oversell rolls the whole edit back before any line
+    // has moved. Decrements are conditional (the WHERE only matches while
+    // enough remains); increments never fail.
+    const moves: { variantId: string; delta: number; name: string }[] = [];
+    for (const item of order.items) {
+      const next = wanted.has(item.variantId) ? wanted.get(item.variantId)! : 0;
+      const delta = next - item.quantity;
+      if (delta !== 0) moves.push({ variantId: item.variantId, delta, name: getVariantDisplayName(item.variant.product, item.variant) });
+    }
+    for (const v of added) {
+      moves.push({ variantId: v.id, delta: wanted.get(v.id)!, name: getVariantDisplayName(v.product, v) });
+    }
+    for (const move of moves) {
+      if (move.delta > 0) {
+        const dec = await tx.productVariant.updateMany({
+          where: { id: move.variantId, stock: { gte: move.delta } },
+          data: { stock: { decrement: move.delta } },
+        });
+        if (dec.count === 0) {
+          const v = await tx.productVariant.findUnique({ where: { id: move.variantId }, select: { stock: true } });
+          throw { statusCode: 400, message: `Only ${v?.stock ?? 0} more of ${move.name} in stock — ${move.delta} more needed.` };
+        }
+      } else {
+        await tx.productVariant.update({
+          where: { id: move.variantId },
+          data: { stock: { increment: -move.delta } },
+        });
+      }
+    }
+
+    // Lines. Existing ones are updated in place so their id — and the cost
+    // keyed against it — survives; a duplicate line for the same variant
+    // (possible on a few old orders) is folded into the first.
+    const seen = new Set<string>();
+    for (const item of order.items) {
+      const next = wanted.has(item.variantId) && !seen.has(item.variantId) ? wanted.get(item.variantId)! : 0;
+      seen.add(item.variantId);
+      if (next === 0) {
+        await tx.orderItem.delete({ where: { id: item.id } });
+      } else if (next !== item.quantity) {
+        await tx.orderItem.update({ where: { id: item.id }, data: { quantity: next } });
+      }
+    }
+    if (added.length) {
+      await tx.orderItem.createMany({
+        data: added.map((v) => ({ orderId: id, variantId: v.id, quantity: wanted.get(v.id)!, unitPrice: getEffectivePrice(v, now) })),
+      });
+    }
+
+    const lines = await tx.orderItem.findMany({ where: { orderId: id }, select: { quantity: true, unitPrice: true } });
+    const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
+    const discountAmount = carryDiscount(order, { subtotal, shippingFee: order.shippingFee });
+    const total = Math.max(subtotal + order.shippingFee - discountAmount, 0);
+    if (total < order.gatewayFee) {
+      throw {
+        statusCode: 400,
+        message: `The new total would be below the RM${(order.gatewayFee / 100).toFixed(2)} gateway fee already recorded.`,
+      };
+    }
+    // A discount that has shrunk to nothing takes its reason with it.
+    await tx.order.update({
+      where: { id },
+      data: { subtotal, discountAmount, discountNote: discountAmount > 0 ? order.discountNote : null, total },
+    });
+
+    return order;
+  }, { timeout: 15000, maxWait: 5000 }).then(() => adminGetOrder(fastify, id));
 }
 
 // Replaces the whole split in one shot rather than exposing per-row CRUD: the

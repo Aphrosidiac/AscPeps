@@ -583,6 +583,64 @@ await scenario('a discount given by hand is a discount, not an extra cost', asyn
   };
 });
 
+await scenario('a wrong quantity is an item change, not a cost adjustment', async () => {
+  await reset();
+  // A plain WhatsApp order whose stock is still held: paid or not, a manual
+  // payment does not lock the lines.
+  const order = await prisma.order.findFirst({
+    where: {
+      deletedAt: null, paymentMethod: 'WHATSAPP', paymentGateway: null, paymentStatus: { in: ['UNPAID', 'PAID'] },
+      stockRestored: false, subtotal: { gt: 0 }, items: { some: {} },
+    },
+    include: { items: { include: { variant: { include: { product: true } } }, orderBy: { createdAt: 'asc' } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!order) return { ok: false, detail: 'no plain WhatsApp order with stock held in dev db' };
+  const line = order.items[0];
+  const name = `${line.variant.product.name}${line.variant.size ? ` ${line.variant.size}` : ''}`;
+  const stock0 = (await prisma.productVariant.findUniqueOrThrow({ where: { id: line.variantId } })).stock;
+  const target = line.quantity + 1;
+  const linesBefore = order.items.map((i) => ({ id: i.id, variantId: i.variantId, quantity: i.quantity, unitPrice: i.unitPrice, unitCost: i.unitCost }));
+  const before = { subtotal: order.subtotal, discountAmount: order.discountAmount, discountNote: order.discountNote, total: order.total };
+
+  const started = new Date();
+  let r = await send(`${order.orderNumber} was keyed in wrong — the customer actually ordered ${target} ${name} (${line.variant.code}), not ${line.quantity}. fix it`);
+  for (let i = 0; i < 3; i++) {
+    const mid = await prisma.orderItem.findUnique({ where: { id: line.id } });
+    if (mid?.quantity === target) break;
+    r = await send('yes');
+  }
+  const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { items: true } });
+  const stock1 = (await prisma.productVariant.findUniqueOrThrow({ where: { id: line.variantId } })).stock;
+  const rows = await toolsSince(started);
+
+  // Put everything back exactly, whatever the model did.
+  await prisma.$transaction(async (tx) => {
+    await tx.orderItem.deleteMany({ where: { orderId: order.id } });
+    await tx.orderItem.createMany({ data: linesBefore.map((l) => ({ ...l, orderId: order.id })) });
+    await tx.order.update({ where: { id: order.id }, data: before });
+    await tx.productVariant.update({ where: { id: line.variantId }, data: { stock: stock0 } });
+    await tx.orderExtraCost.deleteMany({ where: { orderId: order.id, createdAt: { gt: started } } });
+  });
+
+  const usedItems = rows.some((t) => t.toolName === 'set_order_items' && t.ok);
+  const usedCosts = rows.some((t) => t.toolName === 'set_order_costs');
+  const edited = after.items.find((i) => i.id === line.id)?.quantity === target;
+  const total = after.subtotal === order.subtotal + line.unitPrice && stock1 === stock0 - 1;
+  return {
+    ok: usedItems && !usedCosts && edited && total,
+    detail: usedCosts
+      ? 'ADJUSTED A COST INSTEAD OF THE QUANTITY'
+      : !usedItems
+        ? 'never called set_order_items'
+        : edited && total
+          ? `${line.variant.code} ${line.quantity} -> ${target}, subtotal +${line.unitPrice}, stock ${stock0} -> ${stock1} (restored)`
+          : `tool ran but line/subtotal/stock wrong: qty ${after.items.find((i) => i.id === line.id)?.quantity}, subtotal ${after.subtotal}, stock ${stock1}`,
+    reply: r.text,
+    tools: rows.map((t) => `${t.toolName}${t.ok ? '' : '✗'}`),
+  };
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log('\n' + '='.repeat(70));

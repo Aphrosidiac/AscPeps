@@ -139,6 +139,12 @@ export const adminSetOrderDiscount = (
 ) =>
   api.put<Order>(`/api/v1/admin/orders/${id}/discount`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
+// The order's lines as they should be from now on — every line, quantity 0
+// drops one, an unlisted variant is added. The server moves stock by the
+// difference and recomputes the total.
+export const adminSetOrderItems = (token: string, id: string, items: { variantId: string; quantity: number }[]) =>
+  api.put<Order>(`/api/v1/admin/orders/${id}/items`, { items }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
 export const adminUpdateOrderProfitShares = (token: string, id: string, shares: OrderProfitShareInput[]) =>
   api.put<OrderProfitShare[]>(`/api/v1/admin/orders/${id}/profit-shares`, { shares }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 

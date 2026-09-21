@@ -461,6 +461,37 @@ cost is money the business spent, a discount is money the customer was not
 charged. That distinction is why this exists — a discount recorded as an
 "Extra Cost: discount" row got the profit right and everything else wrong.
 
+## Changing an order's items
+
+`set_order_items` changes WHAT an existing order is for: a quantity keyed in
+wrong, a line the customer dropped, a size they added afterwards. The operator
+passes only the lines that change — a variant (id or SKU code) and the quantity
+it should be *from now on*; 0 removes the line, and every line not mentioned is
+left alone. The tool merges that onto the order's current lines and calls the
+same controller the admin page's "Edit items" button uses
+(`PUT /admin/orders/:id/items`), so the two paths cannot disagree.
+
+What happens on save: stock moves by the difference (a conditional decrement,
+the same one checkout uses, so two edits cannot oversell the last unit);
+existing lines keep the price they were sold at and any cost already entered;
+a new line is priced at today's effective price with no cost yet; shipping
+stays; the discount follows the rule it was given under — a "15% off" hand
+discount or a percentage code is recomputed on the new goods, a fixed sum
+stays — and the total is recomputed the way checkout computes it. Nothing is
+emailed; the operator resends the confirmation if the customer needs the new
+one.
+
+It parks for a yes with the diff and the money: *"change ASC2609/0015 (Nurul):
+BPC-157 10mg (BP10) 2 → 3, remove 1x AOD9604 10mg (AOD10) — goods RM 405.00 →
+RM 405.00, total RM 374.50 → RM 374.50. Stock moves to match"*. Refused on the
+same orders a discount is — paid online, refunded, open payment page — and
+additionally on a **cancelled** order, whose stock has already gone back.
+
+The playbook names the trap this replaces: before it existed, a wrong quantity
+was "fixed" by typing a unit cost that made the line total come out right. The
+profit looked correct; the order, the receipt and the stock were all wrong.
+`set_order_costs` now says in its own description that it is for costs only.
+
 ## Delivery scheduling
 
 Asywa's delivery diary — Calendly-shaped, but built in rather than integrated.

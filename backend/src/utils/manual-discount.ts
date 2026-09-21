@@ -64,3 +64,37 @@ export function goodsSubtotal(order: {
 function trimPercent(p: number): string {
   return Number.isInteger(p) ? String(p) : p.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
+
+/**
+ * What an order's discount becomes when its GOODS change after the fact (a
+ * line added, removed or requantified). The stored figure is cents, so the
+ * rule that produced it has to be read back off the order:
+ *
+ * - a hand discount noted as "15% off" (the note resolveManualDiscount writes
+ *   for a bare percentage) is a percentage, and follows the new goods total;
+ * - a code discount with no hand note is the code's rule — percentage codes
+ *   follow, fixed codes stay;
+ * - anything else is a fixed sum somebody agreed to, and stays.
+ *
+ * Whatever comes out is capped at what the order can absorb, as always.
+ */
+export function carryDiscount(
+  order: {
+    discountAmount: number;
+    discountNote: string | null;
+    discountCode: { discountType: string; discountValue: number } | null;
+  },
+  next: { subtotal: number; shippingFee: number }
+): number {
+  let amount = order.discountAmount;
+  const pct = order.discountNote?.match(/^(\d+(?:\.\d+)?)% off$/);
+  if (pct) {
+    amount = Math.round((next.subtotal * Number(pct[1])) / 100);
+  } else if (order.discountCode && !order.discountNote) {
+    amount =
+      order.discountCode.discountType === 'PERCENTAGE'
+        ? Math.round((next.subtotal * order.discountCode.discountValue) / 100)
+        : Math.min(order.discountCode.discountValue, next.subtotal);
+  }
+  return Math.min(amount, next.subtotal + next.shippingFee);
+}

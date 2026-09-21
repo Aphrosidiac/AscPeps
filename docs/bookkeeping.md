@@ -142,6 +142,20 @@ Every path writes the same three fields — `discountAmount`, `discountNote` and
 a recomputed `total` — through `utils/manual-discount.ts`, and refuses to touch
 an order the gateway already charged.
 
+### A wrong quantity is not a cost either
+
+The other number that used to get bent to make the books balance was the unit
+cost: with no way to change an order's lines after it was placed, a quantity
+keyed in wrong was "fixed" by typing a cost that made the line total right.
+Since 2026-09-22 the Items card on the order page has an **Edit items** mode
+(quantity, remove, add a size) and the assistant has `set_order_items`. Both go
+through `adminSetOrderItems`: stock moves by the difference, existing lines keep
+their sold price and their entered cost, a new line takes today's price with no
+cost yet, the discount follows its own rule (`carryDiscount` in
+`utils/manual-discount.ts` — percentages follow the new goods, fixed sums stay)
+and `subtotal`/`total` are recomputed. Refused where a discount is refused, plus
+on a cancelled order whose stock has already gone back.
+
 Analytics reads the same order set through the same `costOrder`, so the two pages
 cannot disagree about what a month took.
 

@@ -280,6 +280,96 @@ await check('set_order_discount refuses a paid online order', async () => {
   throw new Error('changed the total of an order the gateway already charged');
 });
 
+await check('set_order_items qty / add / remove, stock follows', async () => {
+  // A plain WhatsApp order whose stock is still held (paid or not — a manual
+  // payment does not lock the items), with a line we can bump.
+  const o = await prisma.order.findFirstOrThrow({
+    where: {
+      deletedAt: null, paymentMethod: 'WHATSAPP', paymentGateway: null, paymentStatus: { in: ['UNPAID', 'PAID'] },
+      stockRestored: false, subtotal: { gt: 0 }, items: { some: {} },
+    },
+    include: { items: { include: { variant: true } }, discountCode: { select: { discountType: true, discountValue: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  const first = o.items[0];
+  const extra = await prisma.productVariant.findFirstOrThrow({
+    where: { active: true, product: { active: true }, stock: { gt: 3 }, id: { notIn: o.items.map((i) => i.variantId) } },
+  });
+  const stockBefore = async (id: string) => (await prisma.productVariant.findUniqueOrThrow({ where: { id }, select: { stock: true } })).stock;
+  const firstStock0 = await stockBefore(first.variantId);
+  const extraStock0 = await stockBefore(extra.id);
+  const before = { subtotal: o.subtotal, discountAmount: o.discountAmount, discountNote: o.discountNote, total: o.total };
+  const linesBefore = o.items.map((i) => ({ id: i.id, variantId: i.variantId, quantity: i.quantity, unitPrice: i.unitPrice, unitCost: i.unitCost }));
+  try {
+    // +1 on the first line.
+    const bumped: any = await run('set_order_items', { orderRef: o.orderNumber, items: [{ variantId: first.variantId, quantity: first.quantity + 1 }] });
+    assert(bumped.changed.length === 1 && / → /.test(bumped.changed[0]), `change not described: ${JSON.stringify(bumped.changed)}`);
+    const line = bumped.items.find((i: any) => i.code === first.variant.code);
+    assert(line?.quantity === first.quantity + 1, 'quantity did not change');
+    assert(bumped.subtotal.cents === o.subtotal + first.unitPrice, `subtotal ${bumped.subtotal.cents}, expected ${o.subtotal + first.unitPrice}`);
+    assert((await stockBefore(first.variantId)) === firstStock0 - 1, 'stock did not drop by the one extra unit');
+    const costKept = await prisma.orderItem.findUniqueOrThrow({ where: { id: first.id } });
+    assert(costKept.unitCost === first.unitCost && costKept.unitPrice === first.unitPrice, 'existing line lost its price or cost');
+
+    // Add a new product by SKU code.
+    const added: any = await run('set_order_items', { orderRef: o.orderNumber, items: [{ code: extra.code, quantity: 2 }] });
+    assert(/^add 2x/.test(added.changed[0]), `add not described: ${added.changed[0]}`);
+    assert(added.items.some((i: any) => i.code === extra.code && i.quantity === 2), 'new line missing');
+    assert((await stockBefore(extra.id)) === extraStock0 - 2, 'stock not taken for the added line');
+    assert(added.total.cents === Math.max(added.subtotal.cents + o.shippingFee - added.discountAmount.cents, 0), 'total not recomputed');
+
+    // Remove it again and restore the first line's quantity.
+    const back: any = await run('set_order_items', {
+      orderRef: o.orderNumber,
+      items: [{ code: extra.code, quantity: 0 }, { variantId: first.variantId, quantity: first.quantity }],
+    });
+    assert(back.changed.some((c: string) => /^remove 2x/.test(c)), 'removal not described');
+    assert(!back.items.some((i: any) => i.code === extra.code), 'removed line still there');
+    assert(back.subtotal.cents === o.subtotal && back.total.cents === o.total, 'order did not return to its original figures');
+    assert((await stockBefore(extra.id)) === extraStock0 && (await stockBefore(first.variantId)) === firstStock0, 'stock did not return');
+
+    // An unchanged quantity is "nothing to do", not a silent no-op write.
+    let refused = false;
+    try { await run('set_order_items', { orderRef: o.orderNumber, items: [{ variantId: first.variantId, quantity: first.quantity }] }); } catch { refused = true; }
+    assert(refused, 'accepted a change that changes nothing');
+
+    // Oversell is refused and nothing moves.
+    refused = false;
+    try { await run('set_order_items', { orderRef: o.orderNumber, items: [{ code: extra.code, quantity: extra.stock + 5 }] }); } catch { refused = true; }
+    assert(refused, 'oversold on an edit');
+    assert((await stockBefore(extra.id)) === extraStock0, 'a refused oversell still moved stock');
+
+    return `${first.variant.code} ${first.quantity}→${first.quantity + 1}, +2x ${extra.code}, both undone; stock and totals followed`;
+  } finally {
+    // Belt and braces: put the lines and figures back exactly, whatever failed mid-way.
+    await prisma.$transaction(async (tx) => {
+      await tx.orderItem.deleteMany({ where: { orderId: o.id } });
+      await tx.orderItem.createMany({ data: linesBefore.map((l) => ({ ...l, orderId: o.id })) });
+      await tx.order.update({ where: { id: o.id }, data: before });
+      await tx.productVariant.update({ where: { id: first.variantId }, data: { stock: firstStock0 } });
+      await tx.productVariant.update({ where: { id: extra.id }, data: { stock: extraStock0 } });
+    });
+  }
+});
+
+await check('set_order_items refuses a cancelled order', async () => {
+  const o = await prisma.order.findFirst({
+    where: { deletedAt: null, stockRestored: true, items: { some: {} } },
+    include: { items: true },
+  });
+  if (!o) return 'skipped (no cancelled order in this database)';
+  const snapshot = await prisma.order.findUniqueOrThrow({ where: { id: o.id }, include: { items: true } });
+  try {
+    await run('set_order_items', { orderRef: o.orderNumber, items: [{ variantId: o.items[0].variantId, quantity: o.items[0].quantity + 1 }] });
+  } catch (e: any) {
+    assert(/cancelled|returned|refunded|paid online/i.test(e.message), `wrong error: ${e.message}`);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: o.id }, include: { items: true } });
+    assert(after.total === snapshot.total && after.items[0].quantity === snapshot.items[0].quantity, 'a refused edit still changed the order');
+    return 'refused, order untouched';
+  }
+  throw new Error('edited an order whose stock was already returned');
+});
+
 await check('set_order_profit_shares rejects != 100%', async () => {
   const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null } });
   try {

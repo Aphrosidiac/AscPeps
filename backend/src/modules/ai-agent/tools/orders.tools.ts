@@ -6,6 +6,7 @@ import {
   adminResendOrderEmail,
   adminRestoreOrder,
   adminSetOrderDiscount,
+  adminSetOrderItems,
   adminUpdateOrder,
   adminUpdateOrderCosts,
   adminUpdateOrderProfitShares,
@@ -13,7 +14,7 @@ import {
 import { createOrder } from '../../orders/orders.controller.js';
 import { validateDiscountCode } from '../../admin/admin-discounts.controller.js';
 import { getEffectivePrice } from '../../../utils/product-pricing.js';
-import { goodsSubtotal, resolveManualDiscount } from '../../../utils/manual-discount.js';
+import { carryDiscount, goodsSubtotal, resolveManualDiscount } from '../../../utils/manual-discount.js';
 
 // Order tools deliberately delegate to admin-orders.controller.ts wherever a
 // controller already exists. That file owns behaviour the agent must never
@@ -273,6 +274,56 @@ function manualDiscountOf(input: { discountRm?: number; discountPercent?: number
     percent: input.discountPercent === undefined ? undefined : Math.round(input.discountPercent * 100) / 100,
     note: input.discountNote?.trim() || undefined,
   };
+}
+
+// The operator's changes ("make it 3 Reta", "take off the bac water") merged
+// onto the order's current lines, into the full list adminSetOrderItems
+// wants — and a human description of each change for the confirmation.
+async function planOrderItems(fastify: any, prisma: any, input: any) {
+  const found = await resolveOrder(prisma, input.orderRef);
+  const order: any = await adminGetOrder(fastify, found.id);
+  if (!Array.isArray(input.items) || !input.items.length) throw new Error('Pass at least one line to change.');
+
+  const lines: { variantId: string; quantity: number; unitPrice: number; name: string }[] = order.items.map((i: any) => ({
+    variantId: i.variantId,
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+    name: `${i.variant.product.name}${i.variant.size ? ` ${i.variant.size}` : ''} (${i.variant.code})`,
+  }));
+  const changes: string[] = [];
+
+  for (const raw of input.items) {
+    const quantity = Math.trunc(Number(raw.quantity));
+    if (!Number.isFinite(quantity) || quantity < 0) throw new Error(`Quantity for "${raw.code ?? raw.variantId}" must be 0 or more.`);
+
+    const variant = raw.variantId
+      ? await prisma.productVariant.findFirst({ where: { id: raw.variantId }, include: { product: true } })
+      : await prisma.productVariant.findFirst({
+          where: { code: { equals: String(raw.code ?? ''), mode: 'insensitive' } },
+          include: { product: true },
+        });
+    if (!variant) {
+      throw new Error(`No product matches "${raw.code ?? raw.variantId}". Use search_products or get_order to find the right size.`);
+    }
+    const name = `${variant.product.name}${variant.size ? ` ${variant.size}` : ''} (${variant.code})`;
+    const existing = lines.find((l) => l.variantId === variant.id);
+
+    if (existing) {
+      if (existing.quantity === quantity) continue;
+      changes.push(quantity === 0 ? `remove ${existing.quantity}x ${name}` : `${name} ${existing.quantity} → ${quantity}`);
+      existing.quantity = quantity;
+    } else {
+      if (quantity === 0) continue;
+      if (!variant.active || !variant.product.active) throw new Error(`${name} is no longer sold and cannot be added.`);
+      if (variant.stock < quantity) throw new Error(`Only ${variant.stock} of ${name} left in stock — ${quantity} requested.`);
+      changes.push(`add ${quantity}x ${name} at ${rm(getEffectivePrice(variant))}`);
+      lines.push({ variantId: variant.id, quantity, unitPrice: getEffectivePrice(variant), name });
+    }
+  }
+
+  const kept = lines.filter((l) => l.quantity > 0);
+  if (!kept.length) throw new Error('That would leave the order with no items — cancel the order instead.');
+  return { order, lines, changes };
 }
 
 export const orderTools: AgentTool[] = [
@@ -623,9 +674,75 @@ export const orderTools: AgentTool[] = [
   },
 
   {
+    name: 'set_order_items',
+    description:
+      'Change WHAT an existing order is for: correct a quantity, remove a line, add a product. Use this when the customer changed their mind or the order was keyed in wrong — never "fix" a wrong quantity through set_order_costs. Stock moves by the difference, existing lines keep the price they were sold at, a new line is priced at today\'s price, and the total is recomputed (a percentage discount follows the new goods total; a fixed one stays). Lines you do not mention are left alone; quantity 0 removes a line. Refused on an order paid online, refunded, cancelled, or with a payment page open.',
+    write: true,
+    // Moves stock and changes what the customer owes.
+    destructive: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        orderRef: { type: 'string' },
+        items: {
+          type: 'array',
+          description: 'Only the lines to change or add. Each is a product size (variantId from search_products/get_order, or its SKU code) with the quantity it should be FROM NOW ON — not the difference. 0 removes the line.',
+          items: {
+            type: 'object',
+            properties: {
+              variantId: { type: 'string' },
+              code: { type: 'string', description: 'SKU code, e.g. BP10. Use if you do not have the variantId.' },
+              quantity: { type: 'number', description: 'The new quantity for this line. 0 removes it.' },
+            },
+            required: ['quantity'],
+          },
+        },
+      },
+      required: ['orderRef', 'items'],
+    },
+    summarize: async ({ fastify, prisma }, input) => {
+      const { order, lines, changes } = await planOrderItems(fastify, prisma, input);
+      if (!changes.length) throw new Error('Nothing changes — every line already has that quantity.');
+      const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
+      const discount = carryDiscount(order, { subtotal, shippingFee: order.shippingFee });
+      const total = Math.max(subtotal + order.shippingFee - discount, 0);
+      const discountText =
+        discount !== order.discountAmount ? `, discount ${rm(order.discountAmount)} → ${rm(discount)}` : '';
+      return `change ${order.orderNumber} (${order.customerName}): ${changes.join(', ')} — goods ${rm(goodsSubtotal(order))} → ${rm(subtotal)}${discountText}, total ${rm(order.total)} → *${rm(total)}*. Stock moves to match`;
+    },
+    run: async ({ fastify, prisma }, input) => {
+      const { order, lines, changes } = await planOrderItems(fastify, prisma, input);
+      if (!changes.length) throw new Error('Nothing changes — every line already has that quantity.');
+      const updated: any = await adminSetOrderItems(fastify, order.id, {
+        items: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+      });
+      return {
+        ...orderSummary(updated, await activeGatewayName(prisma)),
+        changed: changes,
+        items: updated.items.map((i: any) => ({
+          product: i.variant.product.name,
+          code: i.variant.code,
+          size: i.variant.size,
+          quantity: i.quantity,
+          unitPrice: money(i.unitPrice),
+          lineTotal: money(i.unitPrice * i.quantity),
+        })),
+        subtotal: money(updated.subtotal),
+        shippingFee: money(updated.shippingFee),
+        discountAmount: money(updated.discountAmount),
+        previousTotal: money(order.total),
+        note: [
+          updated.paymentStatus === 'PAID' ? 'This order was already marked paid — make sure the new total is what was actually received.' : '',
+          updated.email ? 'The customer has NOT been emailed about the change — use resend_order_email if they need the updated confirmation.' : '',
+        ].filter(Boolean).join(' ') || undefined,
+      };
+    },
+  },
+
+  {
     name: 'set_order_costs',
     description:
-      'Record what an order cost the business: a per-unit cost for each line, plus any extra costs (courier, fuel, packaging). Amounts in RINGGIT. This replaces the whole cost set for the order, so send every line and every extra cost each time.',
+      'Record what an order cost the business: a per-unit cost for each line, plus any extra costs (courier, fuel, packaging). Amounts in RINGGIT. This replaces the whole cost set for the order, so send every line and every extra cost each time. Costs only — a wrong quantity is fixed with set_order_items, a discount with set_order_discount.',
     write: true,
     input_schema: {
       type: 'object',

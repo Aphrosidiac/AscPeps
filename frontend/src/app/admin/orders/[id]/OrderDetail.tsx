@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, User, Users, FileText, Truck, Trash2, RotateCcw, Mail, ExternalLink,
-  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt, CreditCard, BadgePercent,
+  Plus, X, Hash, Scale, Package, Coins, Wallet, Check, AlertTriangle, Receipt, CreditCard, BadgePercent, Pencil,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { InternalSummaryCard } from './InternalSummaryCard';
@@ -13,15 +13,16 @@ import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { ManualPayReview } from './ManualPayReview';
 import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares, adminSetOrderDiscount,
+  adminSetOrderItems, adminGetProducts,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
-import { formatPrice, formatDate, paymentMethodLabel, cn } from '@/lib/utils';
+import { formatPrice, formatDate, paymentMethodLabel, cn, getEffectivePrice } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/lib/constants';
 import { EMAIL_TYPE_LABELS, emailStatusText } from '@/lib/email-status';
 import { orderProgress, type OrderCheckKey } from '@/lib/order-progress';
 import { paymentFailureCopy } from '@/lib/payment-failure';
-import type { Order, OrderEmail } from '@/types';
+import type { Order, OrderEmail, Product } from '@/types';
 
 // Ascend MY's pipeline, not a copy of the source design's six purchasing stages —
 // this catalogue has no quotation/PO/warehouse chain to model. The stepper and
@@ -40,9 +41,14 @@ const STEPS = [
 
 type StepKey = (typeof STEPS)[number]['key'];
 
+// The API's refusals arrive as `{ error }` (plugins/error-handler.ts), with a
+// `details[]` on validation failures. This used to read `.message`, which the
+// API never sends, so every refusal on this page — an oversell, a locked
+// payment — fell through to the generic "could not save" line.
 function apiErrorMessage(err: unknown): string | null {
   if (err && typeof err === 'object' && 'response' in err) {
-    return (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? null;
+    const data = (err as { response?: { data?: { error?: string; message?: string; details?: { message?: string }[] } } }).response?.data;
+    return data?.details?.[0]?.message ?? data?.error ?? data?.message ?? null;
   }
   return null;
 }
@@ -168,6 +174,39 @@ function discountLockReason(order: Order): string | null {
 // reason typed when it was given by hand.
 function discountLabel(order: Pick<Order, 'discountCode' | 'discountNote'>): string | null {
   return order.discountCode?.code ?? order.discountNote ?? null;
+}
+
+// Why this order's items cannot change — mirrors adminSetOrderItems, so the
+// Edit button says so instead of Save failing.
+function itemsLockReason(order: Order): string | null {
+  if (order.deletedAt) return 'This order is deleted. Restore it to change its items.';
+  const online = order.paymentMethod === 'BILLPLZ' || order.paymentMethod === 'CRYPTO';
+  if (online && order.paymentStatus === 'PAID') {
+    return `Paid online for ${formatPrice(order.total)}, so the items cannot change. Create a new order for anything extra, or record a partial refund.`;
+  }
+  if (order.paymentStatus === 'REFUNDED') return 'This order has been refunded, so its items can no longer change.';
+  if (order.stockRestored) return 'This order was cancelled and its stock returned, so its items cannot change. Create a new order instead.';
+  if (order.paymentGateway === 'manualpaygate' && order.paymentRef && order.paymentStatus === 'UNPAID') {
+    return `A payment page is open for ${formatPrice(order.total)} and cannot be repriced. Cancel it and re-create the order, or mark it paid for what arrives.`;
+  }
+  return null;
+}
+
+// What the discount becomes once the goods change — the same reading of the
+// order as backend/src/utils/manual-discount.ts carryDiscount: a "15% off"
+// hand discount or a percentage code follows the new goods total, a fixed
+// sum stays, and it never exceeds what the order can absorb.
+function carryDiscount(order: Order, subtotal: number): number {
+  let amount = order.discountAmount;
+  const pct = order.discountNote?.match(/^(\d+(?:\.\d+)?)% off$/);
+  if (pct) {
+    amount = Math.round((subtotal * Number(pct[1])) / 100);
+  } else if (order.discountCode && !order.discountNote) {
+    amount = order.discountCode.discountType === 'PERCENTAGE'
+      ? Math.round((subtotal * order.discountCode.discountValue) / 100)
+      : Math.min(order.discountCode.discountValue, subtotal);
+  }
+  return Math.min(amount, subtotal + order.shippingFee);
 }
 
 /**
@@ -346,7 +385,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
         </div>
       </div>
 
-      {step === 'info' && <OrderInfoTab order={order} />}
+      {step === 'info' && <OrderInfoTab order={order} onChange={load} />}
       {step === 'detail' && <OrderDetailTab order={order} onChange={load} />}
       {step === 'profit' && <ProfitSharingTab order={order} onChange={load} />}
       {step === 'complete' && <OrderCompleteTab order={order} onGoTo={setStep} />}
@@ -377,7 +416,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function OrderInfoTab({ order }: { order: Order }) {
+function OrderInfoTab({ order, onChange }: { order: Order; onChange: () => void }) {
   return (
     <div className="space-y-6">
       <Card title="Order Details" icon={<Hash className="w-4 h-4" />}>
@@ -427,77 +466,395 @@ function OrderInfoTab({ order }: { order: Order }) {
         )}
       </Card>
 
-      {/* Items */}
-      <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
-        {/* Four columns each carrying 40px of horizontal padding leaves the
-            item name nothing on a phone, so the row scrolled sideways and the
-            line total — the figure you scan for — went with it. */}
-        <div className="divide-y divide-border sm:hidden">
-          {order.items.map((item) => (
-            <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
-                </p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  <span className="font-mono">{item.variant.code}</span> · {item.quantity} × {formatPrice(item.unitPrice)}
-                </p>
-              </div>
-              <span className="text-sm font-semibold shrink-0 tabular-nums">
-                {formatPrice(item.unitPrice * item.quantity)}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="hidden sm:block overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
-                <th className="text-left px-5 py-3">Item</th>
-                <th className="text-right px-5 py-3 whitespace-nowrap">Qty</th>
-                <th className="text-right px-5 py-3 whitespace-nowrap">Price</th>
-                <th className="text-right px-5 py-3 whitespace-nowrap">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {order.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-5 py-4">
-                    <span className="font-medium">
-                      {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
-                    </span>
-                    <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
-                  </td>
-                  <td className="px-5 py-4 text-right">{item.quantity}</td>
-                  <td className="px-5 py-4 text-right whitespace-nowrap">{formatPrice(item.unitPrice)}</td>
-                  <td className="px-5 py-4 text-right font-semibold whitespace-nowrap">
-                    {formatPrice(item.unitPrice * item.quantity)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-border bg-surface-elevated px-5 py-4 space-y-1">
-          <div className="flex justify-between text-sm text-text-secondary">
-            <span>Subtotal</span><span>{formatPrice(order.subtotal || order.total)}</span>
-          </div>
-          {order.discountAmount > 0 && (
-            <div className="flex justify-between text-sm text-success">
-              <span>Discount{discountLabel(order) ? ` (${discountLabel(order)})` : ''}</span><span>-{formatPrice(order.discountAmount)}</span>
-            </div>
-          )}
-          <div className="flex justify-between text-sm text-text-secondary">
-            <span>Shipping</span><span>{!order.shippingFee ? 'Free' : formatPrice(order.shippingFee)}</span>
-          </div>
-          <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
-            <span>Grand Total</span><span>{formatPrice(order.total)}</span>
-          </div>
-        </div>
-      </div>
+      <OrderItemsCard order={order} onChange={onChange} />
 
       <InternalSummaryCard order={order} />
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------------- Items */
+
+// One line while the order's items are being edited. `qty` is the raw string
+// being typed (see ShareRow for why); 0 means "remove this line".
+interface ItemLine {
+  variantId: string;
+  name: string;
+  code: string;
+  unitPrice: number;
+  // Quantity as saved; 0 for a line that is being added.
+  original: number;
+  qty: string;
+  stock: number | null;
+}
+
+const lineQty = (line: ItemLine): number | null => {
+  const t = line.qty.trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
+};
+
+// The order's lines, with an Edit mode: correct a quantity, drop a line, add
+// a size. Until this existed the only lever on a keyed-in order was the unit
+// cost on the Profit tab, so a wrong quantity got "fixed" by typing a cost
+// that made the line total come out right — and the order, the receipt and
+// the stock stayed wrong.
+function OrderItemsCard({ order, onChange }: { order: Order; onChange: () => void }) {
+  const { token } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [lines, setLines] = useState<ItemLine[]>([]);
+  const [products, setProducts] = useState<Product[] | null>(null);
+  const [addId, setAddId] = useState('');
+  const [addQty, setAddQty] = useState('1');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const lockReason = itemsLockReason(order);
+
+  const startEditing = () => {
+    setLines(order.items.map((i) => ({
+      variantId: i.variantId,
+      name: `${i.variant.product.name}${i.variant.size ? ` ${i.variant.size}` : ''}`,
+      code: i.variant.code,
+      unitPrice: i.unitPrice,
+      original: i.quantity,
+      qty: String(i.quantity),
+      stock: null,
+    })));
+    setAddId('');
+    setAddQty('1');
+    setError(null);
+    setEditing(true);
+    // The catalogue, for the "add a product" picker. Fetched once per page.
+    if (!products && token) {
+      adminGetProducts(token, { limit: '100' })
+        .then((r) => setProducts(r.data))
+        .catch(() => setProducts([]));
+    }
+  };
+
+  // Sizes that can still be added: sold, and not already on the order.
+  const addable = (products ?? [])
+    .filter((p) => p.active)
+    .map((p) => ({
+      product: p,
+      variants: p.variants.filter((v) => v.active && !lines.some((l) => l.variantId === v.id)),
+    }))
+    .filter((g) => g.variants.length > 0);
+
+  const addLine = () => {
+    const group = addable.find((g) => g.variants.some((v) => v.id === addId));
+    const variant = group?.variants.find((v) => v.id === addId);
+    if (!group || !variant) return;
+    const qty = Math.max(1, Math.min(100, Math.trunc(Number(addQty)) || 1));
+    setLines((prev) => [...prev, {
+      variantId: variant.id,
+      name: `${group.product.name}${variant.size ? ` ${variant.size}` : ''}`,
+      code: variant.code,
+      unitPrice: getEffectivePrice(variant),
+      original: 0,
+      qty: String(qty),
+      stock: variant.stock,
+    }]);
+    setAddId('');
+    setAddQty('1');
+  };
+
+  const setQty = (variantId: string, qty: string) =>
+    setLines((prev) => prev.map((l) => (l.variantId === variantId ? { ...l, qty } : l)));
+
+  const remove = (variantId: string) =>
+    setLines((prev) => prev
+      // A line that was only just added simply disappears; a saved one is
+      // kept at 0 so the person can see what they are about to drop.
+      .filter((l) => !(l.variantId === variantId && l.original === 0))
+      .map((l) => (l.variantId === variantId ? { ...l, qty: '0' } : l)));
+
+  const quantities = lines.map((l) => ({ line: l, qty: lineQty(l) }));
+  const invalid = quantities.some((q) => q.qty === null);
+  const kept = quantities.filter((q) => q.qty !== null && q.qty! > 0);
+  const overStock = quantities.find((q) => q.line.stock !== null && q.qty !== null && q.qty > q.line.stock!);
+  const dirty = quantities.some((q) => q.qty !== q.line.original);
+  const subtotal = kept.reduce((s, q) => s + q.line.unitPrice * q.qty!, 0);
+  const discount = carryDiscount(order, subtotal);
+  const total = Math.max(subtotal + order.shippingFee - discount, 0);
+  const belowFee = total < (order.gatewayFee ?? 0);
+  const canSave = dirty && !invalid && kept.length > 0 && !overStock && !belowFee && !saving;
+
+  const handleSave = async () => {
+    if (!token || !canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await adminSetOrderItems(token, order.id, quantities.map((q) => ({ variantId: q.line.variantId, quantity: q.qty! })));
+      setEditing(false);
+      onChange();
+    } catch (err) {
+      setError(apiErrorMessage(err) ?? 'Could not save the items. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const wasSubtotal = order.subtotal || order.total;
+
+  return (
+    <div style={{ animationDelay: `90ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-border">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-text-muted"><Package className="w-4 h-4" /></span>
+          <h2 className="text-sm font-semibold">Items</h2>
+        </div>
+        {!editing && (
+          <button
+            onClick={startEditing}
+            disabled={!!lockReason}
+            title={lockReason ?? undefined}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-lg text-xs font-medium text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Edit items
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div>
+          <div className="divide-y divide-border">
+            {lines.map((line) => {
+              const qty = lineQty(line);
+              const removed = qty === 0;
+              const added = line.original === 0;
+              return (
+                <div key={line.variantId} className={`flex items-center gap-3 px-4 sm:px-5 py-3 ${removed ? 'opacity-60' : ''}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm font-medium truncate ${removed ? 'line-through' : ''}`}>{line.name}</p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      <span className="font-mono">{line.code}</span> · {formatPrice(line.unitPrice)} each
+                      {added && <span className="ml-1.5 text-primary">new · today&apos;s price</span>}
+                      {removed && <span className="ml-1.5 text-danger">removed</span>}
+                      {!added && !removed && qty !== null && qty !== line.original && (
+                        <span className="ml-1.5 text-primary">was {line.original}</span>
+                      )}
+                    </p>
+                  </div>
+                  {removed ? (
+                    <button
+                      onClick={() => setQty(line.variantId, String(line.original))}
+                      className="text-xs font-medium text-primary hover:underline cursor-pointer shrink-0"
+                    >
+                      Undo
+                    </button>
+                  ) : (
+                    <>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={line.qty}
+                        onChange={(e) => setQty(line.variantId, e.target.value)}
+                        aria-label={`${line.name} quantity`}
+                        className={`w-16 px-2 py-1.5 border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
+                          qty === null || (line.stock !== null && qty > line.stock) ? 'border-danger' : 'border-border'
+                        }`}
+                      />
+                      <span className="hidden sm:inline text-sm font-semibold w-24 text-right tabular-nums shrink-0">
+                        {qty === null ? '—' : formatPrice(line.unitPrice * qty)}
+                      </span>
+                      <button
+                        onClick={() => remove(line.variantId)}
+                        aria-label={`Remove ${line.name}`}
+                        className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add a size */}
+          <div className="flex flex-wrap items-center gap-2 px-4 sm:px-5 py-3 border-t border-border bg-surface-elevated/50">
+            <select
+              value={addId}
+              onChange={(e) => setAddId(e.target.value)}
+              aria-label="Product to add"
+              disabled={products === null}
+              className="flex-1 min-w-[12rem] px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+            >
+              <option value="">{products === null ? 'Loading products…' : 'Add a product…'}</option>
+              {addable.map((g) => (
+                <optgroup key={g.product.id} label={g.product.name}>
+                  {g.variants.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {g.product.name}{v.size ? ` ${v.size}` : ''} ({v.code}) · {formatPrice(getEffectivePrice(v))} · {v.stock} in stock
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={addQty}
+              onChange={(e) => setAddQty(e.target.value)}
+              aria-label="Quantity to add"
+              className="w-16 px-2 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+            <button
+              onClick={addLine}
+              disabled={!addId}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-elevated transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add
+            </button>
+          </div>
+
+          <div className="border-t border-border bg-surface-elevated px-5 py-4 space-y-1">
+            <div className="flex justify-between text-sm text-text-secondary">
+              <span>Subtotal</span>
+              <span className="tabular-nums">
+                {subtotal !== wasSubtotal && <span className="text-text-muted line-through mr-2">{formatPrice(wasSubtotal)}</span>}
+                {formatPrice(subtotal)}
+              </span>
+            </div>
+            {(discount > 0 || order.discountAmount > 0) && (
+              <div className="flex justify-between text-sm text-success">
+                <span>Discount{discountLabel(order) ? ` (${discountLabel(order)})` : ''}</span>
+                <span className="tabular-nums">
+                  {discount !== order.discountAmount && <span className="text-text-muted line-through mr-2">-{formatPrice(order.discountAmount)}</span>}
+                  -{formatPrice(discount)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm text-text-secondary">
+              <span>Shipping</span><span>{!order.shippingFee ? 'Free' : formatPrice(order.shippingFee)}</span>
+            </div>
+            <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
+              <span>Grand Total</span>
+              <span className="tabular-nums">
+                {total !== order.total && <span className="text-text-muted font-normal line-through mr-2">{formatPrice(order.total)}</span>}
+                {formatPrice(total)}
+              </span>
+            </div>
+
+            <div className="pt-2 space-y-1">
+              {overStock && (
+                <p className="text-xs text-danger">
+                  Only {overStock.line.stock} of {overStock.line.name} in stock.
+                </p>
+              )}
+              {!invalid && kept.length === 0 && (
+                <p className="text-xs text-danger">An order needs at least one item — cancel the order instead.</p>
+              )}
+              {belowFee && (
+                <p className="text-xs text-danger">The new total would be below the {formatPrice(order.gatewayFee)} gateway fee already recorded.</p>
+              )}
+              {error && <p className="text-xs text-danger">{error}</p>}
+              {order.paymentStatus === 'PAID' && (
+                <p className="text-xs text-warning">This order is already marked paid — make sure the new total is what was actually received.</p>
+              )}
+              <p className="text-xs text-text-muted">
+                Stock moves by the difference. Existing lines keep the price they were sold at. The customer is not emailed — resend the confirmation from Order Detail if they need the updated one.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <button
+                onClick={() => { setEditing(false); setError(null); }}
+                disabled={saving}
+                className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!canSave}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Check className="w-3.5 h-3.5" /> {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Four columns each carrying 40px of horizontal padding leaves the
+              item name nothing on a phone, so the row scrolled sideways and the
+              line total — the figure you scan for — went with it. */}
+          <div className="divide-y divide-border sm:hidden">
+            {order.items.map((item) => (
+              <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    <span className="font-mono">{item.variant.code}</span> · {item.quantity} × {formatPrice(item.unitPrice)}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold shrink-0 tabular-nums">
+                  {formatPrice(item.unitPrice * item.quantity)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
+                  <th className="text-left px-5 py-3">Item</th>
+                  <th className="text-right px-5 py-3 whitespace-nowrap">Qty</th>
+                  <th className="text-right px-5 py-3 whitespace-nowrap">Price</th>
+                  <th className="text-right px-5 py-3 whitespace-nowrap">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {order.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-5 py-4">
+                      <span className="font-medium">
+                        {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                      </span>
+                      <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
+                    </td>
+                    <td className="px-5 py-4 text-right">{item.quantity}</td>
+                    <td className="px-5 py-4 text-right whitespace-nowrap">{formatPrice(item.unitPrice)}</td>
+                    <td className="px-5 py-4 text-right font-semibold whitespace-nowrap">
+                      {formatPrice(item.unitPrice * item.quantity)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-border bg-surface-elevated px-5 py-4 space-y-1">
+            <div className="flex justify-between text-sm text-text-secondary">
+              <span>Subtotal</span><span>{formatPrice(order.subtotal || order.total)}</span>
+            </div>
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-success">
+                <span>Discount{discountLabel(order) ? ` (${discountLabel(order)})` : ''}</span><span>-{formatPrice(order.discountAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm text-text-secondary">
+              <span>Shipping</span><span>{!order.shippingFee ? 'Free' : formatPrice(order.shippingFee)}</span>
+            </div>
+            <div className="flex justify-between font-display font-bold text-base border-t border-border pt-2 mt-1">
+              <span>Grand Total</span><span>{formatPrice(order.total)}</span>
+            </div>
+          </div>
+          {lockReason && (
+            <p className="px-5 py-3 border-t border-border text-xs text-text-muted">{lockReason}</p>
+          )}
+        </>
+      )}
     </div>
   );
 }

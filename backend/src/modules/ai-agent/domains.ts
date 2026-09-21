@@ -78,6 +78,9 @@ const KEYWORDS: Record<Domain, string[]> = {
     // Also under promos: "give him a discount" on an order is an orders job
     // (set_order_discount), and loading both is cheaper than the wrong one.
     'discount', 'diskaun',
+    // "change her order to 3", "add a syringe to Nurul's order", "tukar
+    // quantity" — set_order_items, never a cost adjustment.
+    'quantity', 'kuantiti', 'qty', 'change order', 'tukar order', 'add to order',
   ],
   finance: [
     'expense', 'perbelanjaan', 'belanja', 'spending', 'funding', 'capital',
@@ -154,7 +157,8 @@ const PLAYBOOKS: Record<string, Playbook> = {
 - REFUNDED restores stock but, on ToyyibPay, does NOT move money — it has no refund API, so a human still has to issue the refund in the ToyyibPay dashboard. Always say this out loud when recording a refund on a ToyyibPay order.
 - Order status (PENDING → CONFIRMED → SHIPPED → DELIVERED) is fulfilment. Payment status (UNPAID/PAID/FAILED/REFUNDED) is money. They move independently: a WhatsApp order is routinely still UNPAID while the customer arranges a transfer.
 - Stock is taken when the order is placed, not when it ships.
-- A discount given by hand ("RM10 off", "15% for the bulk order") is a DISCOUNT on the order — discountRm / discountPercent on create_order, or set_order_discount on an existing order — never an extra cost called "discount". An extra cost is money the business spent (courier, packaging); a discount is money the customer was not charged. Only the discount changes the total, the receipt and the revenue figure. Percentages are of the goods subtotal, before shipping.`,
+- A discount given by hand ("RM10 off", "15% for the bulk order") is a DISCOUNT on the order — discountRm / discountPercent on create_order, or set_order_discount on an existing order — never an extra cost called "discount". An extra cost is money the business spent (courier, packaging); a discount is money the customer was not charged. Only the discount changes the total, the receipt and the revenue figure. Percentages are of the goods subtotal, before shipping.
+- A wrong quantity, a line the customer dropped, or a product they added AFTER ordering is a change to the order's ITEMS — set_order_items. It moves stock by the difference and recomputes the total. Never make the numbers "come out right" by typing a unit cost that isn't real: that leaves the order, the receipt and the stock wrong while only the profit looks right.`,
   },
 
   moneyflow: {
