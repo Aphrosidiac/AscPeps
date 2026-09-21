@@ -23,13 +23,13 @@
  */
 import Fastify from 'fastify'
 import Redis from 'ioredis'
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from 'baileys'
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } from 'baileys'
 type WASocket = ReturnType<typeof makeWASocket>
 import * as QRCode from 'qrcode'
 import path from 'path'
 import fs from 'fs'
 import { config as loadEnv } from 'dotenv'
-import { contentOf, mentionsBot, stripSelfMentions } from './mention.js'
+import { contentOf, mentionsBot, stripSelfMentions, unwrapMessage, type QuotedContent } from './mention.js'
 
 loadEnv()
 // Same pin as the API (server.ts): log lines and alert timestamps in Malaysian time whatever the host's zone.
@@ -58,13 +58,65 @@ if (!AGENT_ENABLED) {
   console.log('[worker] Agent is DISABLED (set WHATSAPP_AGENT_ENABLED=true to enable). Inbound messages are received and logged but never answered or acted on.')
 }
 
-// NOTE: HarvestGrow's worker downloads and base64-relays inbound images and
-// voice notes, with a 10MB pre-download size check read off the protobuf's own
-// fileLength. That is deliberately not ported: this agent runs on a text model,
-// so there is nothing to relay media to, and downloading it would buffer
-// many-MB payloads in this single process for no benefit. Media is acknowledged
-// with a short reply instead (see handleInbound). If a vision tier is adopted
-// later, port that size guard back with it — not after.
+// Inbound PICTURES are downloaded and relayed to the API as base64, where a
+// vision model transcribes them for the assistant (see agent.service.ts).
+// This was deliberately left out at first — "the agent runs on a text model,
+// so there is nothing to relay media to" — and the first time an operator
+// sent a screenshot of a customer's order with "ab key this in", the model
+// answered that it could not see any picture. Ported from HarvestGrow's
+// worker together with its guard: the size is read off the protobuf's own
+// fileLength BEFORE anything is fetched, so an oversized file is refused
+// without ever buffering it in this single process. Voice notes, video and
+// other files are still only acknowledged.
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024
+function mediaFileLength(fileLength: number | { toNumber(): number } | null | undefined): number {
+  if (fileLength == null) return 0
+  return typeof fileLength === 'number' ? fileLength : fileLength.toNumber()
+}
+
+export interface InboundImage {
+  mimeType: string
+  base64: string
+}
+
+// The picture in a message, if it carries one we can read: an imageMessage,
+// or a document that is really an image (a screenshot sent "as file" to
+// avoid compression). Returns null for anything else, and `oversized` when
+// the file is too big to fetch — the API tells the operator, not the worker.
+function imageNode(rawMessage: any): { node: any; mime: string } | null {
+  const m = unwrapMessage(rawMessage)
+  if (m.imageMessage) return { node: m.imageMessage, mime: m.imageMessage.mimetype || 'image/jpeg' }
+  if (m.documentMessage && /^image\//.test(m.documentMessage.mimetype || '')) return { node: m.documentMessage, mime: m.documentMessage.mimetype }
+  return null
+}
+
+async function fetchImage(message: any, label: string): Promise<InboundImage | 'oversized' | null> {
+  const found = imageNode(message.message)
+  if (!found) return null
+  const size = mediaFileLength(found.node.fileLength)
+  if (size > MAX_MEDIA_BYTES) {
+    console.warn(`[worker] ${label} image is ${Math.round(size / 1024 / 1024)}MB, over the ${MAX_MEDIA_BYTES / 1024 / 1024}MB limit — not downloaded`)
+    return 'oversized'
+  }
+  try {
+    const buffer = (await downloadMediaMessage(message, 'buffer', {})) as Buffer
+    return { mimeType: found.mime, base64: buffer.toString('base64') }
+  } catch (err: any) {
+    // Expired media, a key WhatsApp no longer honours, a network blip: the
+    // message still goes through as text, and the API says the picture
+    // could not be read rather than pretending there was none.
+    console.error(`[worker] ${label} image download failed: ${err?.message ?? err}`)
+    return null
+  }
+}
+
+// A quoted picture is fetched the same way: downloadMediaMessage only needs
+// the media node (url, mediaKey, directPath), which the quoted message
+// carries in full.
+async function fetchQuotedImage(remoteJid: string, quoted: QuotedContent): Promise<InboundImage | 'oversized' | null> {
+  const message = { key: { remoteJid, id: quoted.stanzaId ?? undefined, participant: quoted.participantJid ?? undefined, fromMe: false }, message: quoted.raw }
+  return fetchImage(message, 'quoted')
+}
 
 // Persistent message dedup — an in-memory Set is recreated on every reconnect
 // and lost entirely on restart, so a crash/redeploy mid-conversation causes the
@@ -469,13 +521,14 @@ async function handleInbound(msg: any) {
   if (content.silent) return
   let text = content.text
 
-  // Media is not fed to the model, but an operator who sends the bot a
-  // picture should hear that rather than be ignored. The NOTICE is the API's
-  // to send, not the worker's: this used to reply right here, before the
-  // mention check and before the allowlist, so every photo in every group the
-  // number sits in — and every stranger's voice note — got an answer from
-  // the business number. The API runs the same gate it runs for text and
-  // says nothing to anyone it would not have answered.
+  // A picture is read (below); other media is not fed to the model, but an
+  // operator who sends the bot a voice note should hear that rather than be
+  // ignored. The NOTICE is the API's to send, not the worker's: this used to
+  // reply right here, before the mention check and before the allowlist, so
+  // every photo in every group the number sits in — and every stranger's
+  // voice note — got an answer from the business number. The API runs the
+  // same gate it runs for text and says nothing to anyone it would not have
+  // answered.
   const media = content.media
   if (!text.trim() && !media) return
 
@@ -488,24 +541,48 @@ async function handleInbound(msg: any) {
   const mentionedBot = isGroup ? mentionsBot(msg, text, ids) : true
   text = stripSelfMentions(text, ids)
 
+  if (!AGENT_ENABLED) {
+    console.log(`[worker] (agent disabled) inbound from ${senderLid ? `lid:${senderLid}` : senderPhone}${isGroup ? ` in ${remoteJid}` : ''}: ${text.slice(0, 80)}`)
+    return
+  }
+
+  // Pictures are fetched only for a message that will be looked at: in a
+  // group that requires a mention, a photo nobody addressed to the bot is
+  // not downloaded at all. The allowlist is the API's, so a stranger's DM
+  // photo is still fetched and then dropped there — a cost of one download,
+  // not a reply.
+  const wanted = !isGroup || mentionedBot
+  const image = wanted && imageNode(msg.message) ? await fetchImage(msg, 'inbound') : null
+  const quoted = content.quoted
+  const quotedImage = wanted && quoted && imageNode(quoted.raw) ? await fetchQuotedImage(remoteJid, quoted) : null
+
   const payload = {
     kind: isGroup ? 'group' : 'dm',
     senderPhone,
     senderLid,
     senderName: msg.pushName || null,
     text,
-    // Set when the message carried no text: the API answers with the
-    // "text only" notice if — and only if — this sender in this chat would
-    // have been answered at all.
-    media: text.trim() ? undefined : media,
+    // What the message carried besides text. The API answers a bare voice
+    // note with the "text only" notice if — and only if — this sender in
+    // this chat would have been answered at all; a picture is transcribed.
+    media,
+    image: image === 'oversized' ? undefined : image ?? undefined,
+    imageOversized: image === 'oversized' || undefined,
+    // The message this one replies to, so "@Abby key this in" as a reply to
+    // a customer's message arrives WITH the customer's message.
+    quoted: quoted
+      ? {
+          text: stripSelfMentions(quoted.text, ids),
+          media: quoted.media,
+          participantJid: quoted.participantJid,
+          fromBot: !!quoted.participantJid && ids.some((id) => quoted.participantJid!.startsWith(id)),
+          image: quotedImage === 'oversized' ? undefined : quotedImage ?? undefined,
+          imageOversized: quotedImage === 'oversized' || undefined,
+        }
+      : undefined,
     groupJid: isGroup ? remoteJid : undefined,
     groupSubject: isGroup ? (await groupSubject(remoteJid)) : undefined,
     mentionsBot: mentionedBot,
-  }
-
-  if (!AGENT_ENABLED) {
-    console.log(`[worker] (agent disabled) inbound from ${senderLid ? `lid:${senderLid}` : senderPhone}${isGroup ? ` in ${remoteJid}` : ''}: ${text.slice(0, 80)}`)
-    return
   }
 
   // A turn can run several tool calls, so this is slow by design. Show the

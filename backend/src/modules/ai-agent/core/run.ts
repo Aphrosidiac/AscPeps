@@ -77,8 +77,41 @@ export interface GuardNote {
   violations?: number;
 }
 
+// What an operator's message carried besides its text. Over WhatsApp a
+// message can reply to an earlier one (the quoted message comes with it) and
+// can carry a picture; both were dropped on the floor until 21 Sep 2026,
+// when "ab put in a new order under the name andrew" — sent with a
+// screenshot of the customer's order — reached the model as those nine
+// words alone, and it answered that it could not see any picture. Now the
+// quoted message and the picture's transcript are stored on the row, so the
+// model sees them this turn and every later one, and the dashboard shows
+// what was actually sent.
+export interface Attachment {
+  kind: 'image' | 'video' | 'voice message' | 'audio' | 'file' | 'sticker' | 'contact' | 'location' | 'poll';
+  // The picture's contents, transcribed verbatim by the vision model.
+  text?: string;
+  // Why there is no transcript: not a picture, too big, download failed.
+  unreadable?: string;
+  model?: string;
+}
+
+export interface QuotedMessage {
+  // Who wrote it: an operator's name, "you" for the assistant's own message,
+  // or "someone (digits)" for anyone else.
+  from: string;
+  text: string;
+  attachments?: Attachment[];
+}
+
+export interface UserContent {
+  text: string;
+  sender?: string;
+  quoted?: QuotedMessage;
+  attachments?: Attachment[];
+}
+
 export type MessageContent =
-  | { text: string; sender?: string }
+  | UserContent
   | { text?: string; reasoning?: string; toolCalls?: { id: string; name: string; input: unknown; raw?: string }[]; reasoningDetails?: unknown[]; guard?: GuardNote; retracted?: boolean }
   | { toolResults: { id: string; name: string; output: unknown; isError: boolean; ms: number }[] }
   | { text: string; transient?: boolean; error?: boolean }
@@ -256,8 +289,10 @@ export function actionView(a: {
 
 // Starts a turn. Returns once the operator's message is stored and the run is
 // registered; the work continues in the background and streams events.
-export async function startTurn(fastify: FastifyInstance, threadId: string, text: string, opts: TurnOptions): Promise<{ userMessage: StoredMessage }> {
-  const { userMessage } = await beginRun(fastify, threadId, opts, text);
+export type UserInput = string | { text: string; quoted?: QuotedMessage; attachments?: Attachment[] };
+
+export async function startTurn(fastify: FastifyInstance, threadId: string, input: UserInput, opts: TurnOptions): Promise<{ userMessage: StoredMessage }> {
+  const { userMessage } = await beginRun(fastify, threadId, opts, typeof input === 'string' ? { text: input } : input);
   return { userMessage: userMessage! };
 }
 
@@ -267,12 +302,26 @@ export async function continueTurn(fastify: FastifyInstance, threadId: string, o
   await beginRun(fastify, threadId, opts);
 }
 
-async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOptions, text?: string): Promise<{ userMessage: StoredMessage | null }> {
+async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOptions, input?: Exclude<UserInput, string>): Promise<{ userMessage: StoredMessage | null }> {
   if (activeRun(threadId)) throw httpError('The assistant is still working on the last message', 409);
   const thread = await fastify.prisma.agentThread.findUnique({ where: { id: threadId } });
   if (!thread) throw httpError('Conversation not found', 404);
 
-  const userMessage = text ? await append(fastify, threadId, 'user', { text, ...(opts.channel === 'group' ? { sender: opts.actor.name } : {}) }, opts.actor) : null;
+  const text = input?.text;
+  const userMessage = input
+    ? await append(
+        fastify,
+        threadId,
+        'user',
+        {
+          text: input.text,
+          ...(opts.channel === 'group' ? { sender: opts.actor.name } : {}),
+          ...(input.quoted ? { quoted: input.quoted } : {}),
+          ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+        },
+        opts.actor
+      )
+    : null;
   if (opts.systemNote) await append(fastify, threadId, 'system', { text: opts.systemNote, transient: true });
 
   let resolve: (o: TurnOutcome) => void = () => {};
@@ -663,10 +712,13 @@ function recentToolEvidence(rows: { seq: number; role: string; content: MessageC
   return out;
 }
 
+// The operator's latest message as the model saw it — quoted message and
+// picture transcript included, so a phone number read off a screenshot
+// counts as something the operator gave, not something the model invented.
 function latestUserText(rows: { role: string; content: MessageContent }[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i];
-    if (r.role === 'user' && 'text' in r.content) return String(r.content.text ?? '');
+    if (r.role === 'user' && 'text' in r.content) return userMessageText(r.content as UserContent);
   }
   return '';
 }
@@ -978,10 +1030,11 @@ export function toWire(rows: { seq: number; role: string; content: MessageConten
       return;
     }
     if (role === 'user') {
-      const u = c as { text: string; sender?: string };
+      const u = c as UserContent;
       // In a group, several people share one thread — without the name the
       // model cannot tell who asked what two turns ago.
-      out.push({ role: 'user', content: opts.isGroup && u.sender ? `[${u.sender}] ${u.text}` : u.text });
+      const text = userMessageText(u);
+      out.push({ role: 'user', content: opts.isGroup && u.sender ? `[${u.sender}] ${text}` : text });
     } else if (role === 'assistant') {
       const a = c as Extract<MessageContent, { toolCalls?: unknown }> & { text?: string };
       out.push({
@@ -995,6 +1048,30 @@ export function toWire(rows: { seq: number; role: string; content: MessageConten
     } else if (role === 'system') out.push({ role: 'system', content: (c as { text: string }).text });
   });
   return out;
+}
+
+// An operator's message as one block of text for the model: the message it
+// replies to first (so the request reads in order — context, then ask), the
+// text, then what was attached. A picture is its transcript, bracketed so
+// the model can tell the vision model's reading from the operator's own
+// words; a picture that could not be read says so, so the model asks for
+// it again instead of guessing at what it showed.
+export function userMessageText(u: UserContent): string {
+  const parts: string[] = [];
+  if (u.quoted) {
+    const body = [u.quoted.text.trim(), ...(u.quoted.attachments ?? []).map(attachmentText)].filter(Boolean).join('\n');
+    const who = u.quoted.from === 'you' ? 'your earlier message' : `a message from ${u.quoted.from}`;
+    parts.push(`[Replying to ${who}:\n${body || '(empty)'}\n— end of the quoted message]`);
+  }
+  if (u.text.trim()) parts.push(u.text);
+  for (const a of u.attachments ?? []) parts.push(attachmentText(a));
+  return parts.join('\n');
+}
+
+function attachmentText(a: Attachment): string {
+  const label = a.kind === 'image' ? 'picture' : a.kind;
+  if (a.text) return `[A ${label} is attached. Its contents, transcribed verbatim for you:\n${a.text}\n— end of the ${label}]`;
+  return `[A ${label} is attached that you cannot see${a.unreadable ? ` — ${a.unreadable}` : ''}]`;
 }
 
 // How a compaction summary is presented to the model. Framed as recollection

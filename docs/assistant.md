@@ -182,6 +182,69 @@ had: the room is checked before the person, unknown senders are recorded and
 ignored in silence, two operators on one thread are serialised, a bare "yes"
 with nothing pending pushes the model to act rather than narrate.
 
+### Replies and pictures
+
+A WhatsApp message carries more than its text, and until 21 Sep 2026 the
+rest was dropped: "ab put in a new order under the name andrew", sent with a
+screenshot of the customer's order, reached the model as those nine words,
+and it answered that it could not see any picture. Two things were missing.
+
+**The replied-to message.** WhatsApp puts the whole quoted message on the
+wire (`contextInfo.quotedMessage`); the worker read it only to decide
+whether the bot had been addressed. Now `contentOf` in
+`whatsapp-worker/mention.ts` extracts it, the worker relays it as `quoted`
+(text, media kind, author JID, whether it was the bot's own), and the adapter
+names the author the way it names a mention — an operator by name, the bot
+as "you", anyone else as "someone (digits)". It is stored on the user row
+as `quoted` and rendered ahead of the operator's words:
+
+```
+[Replying to a message from Asywa:
+Andrew Tan, 2x BPC-157 5mg, No 12 Jalan Setia 3/4, 81100 JB
+— end of the quoted message]
+ab key this in
+```
+
+**Pictures.** The everyday model (DeepSeek V4 Flash) is text-only on
+OpenRouter, so the worker was written never to download media. It now
+downloads a picture — an `imageMessage`, or a document whose mime is
+`image/*` — with HarvestGrow's guard (the size is read off the protobuf's
+`fileLength` before anything is fetched; over 10 MB is refused and reported
+as `imageOversized`), and a quoted picture the same way. The adapter hands
+the bytes to `core/vision.ts`: `AGENT_VISION_MODEL` (GLM 5.3 Flash by
+default) transcribes the picture verbatim — every name, number, address,
+item and amount, who said what if it is a chat, and one `Image:` line saying
+what kind of picture it is. The transcript is stored on the user row as an
+attachment and rendered bracketed, so the model can tell the vision model's
+reading from the operator's own words:
+
+```
+put in a new order under the name andrew
+[A picture is attached. Its contents, transcribed verbatim for you:
+Andrew Tan (10:44):
+2x BPC-157 5mg
+…
+— end of the picture]
+```
+
+Transcribed once, before the turn, rather than handed to the turn's model as
+an image: it works whichever model the Assistant page has selected, it stays
+in the thread for later turns ("the phone number in that screenshot"), the
+Assistant page shows it under a *Picture · transcribed* chip, and the
+grounding guard treats a number read off the screenshot as something the
+operator gave. The image bytes themselves are not kept. A picture that could
+not be read (too big, download failed, vision model down) is stored as
+`unreadable` with the reason and rendered as "a picture is attached that you
+cannot see — …", and the prompt tells the model to ask rather than guess.
+Video, audio and files are still only named as attached.
+
+GLM 5.3 Flash was chosen from a side-by-side on an order-chat screenshot
+against Qwen3.7 Flash, Qwen3-VL 8B/30B and Gemini 2.5 Flash Lite: the only
+one that attributed lines to speakers and flagged cut-off text; ~2 s and
+about USD 0.0003 a picture. `scripts/test-inbound-context.ts` covers the
+rendering, a live read of `scripts/fixtures-order-chat.jpg`, and four
+end-to-end turns through `/inbound`.
+
 ---
 
 ## Memory
@@ -279,6 +342,7 @@ OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=deepseek/deepseek-v4-flash   # fallback when agent_model is unset
 OPENROUTER_ESCALATION_MODEL=                  # fallback when agent_escalation_model is unset
 AGENT_REASONING_EFFORT=none                   # fallback; none | low | medium | high
+AGENT_VISION_MODEL=z-ai/glm-5.3-flash         # reads pictures sent over WhatsApp
 AGENT_GROUNDING_MODE=shadow                   # off | shadow | enforce
 ```
 
@@ -298,6 +362,7 @@ npm run test:agent:grounding   # 31 unit (one pre-existing failure: get_document
 npm run test:agent:context     # compaction is size-based now; the fixture pads replies past 100k chars
 npm run test:agent:security    # 10 — includes a planted "remember this" that must never reach memory
 npm run test:agent:e2e         # 20 scenarios, real model; two are known to flake on model variance
+npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time
 ```

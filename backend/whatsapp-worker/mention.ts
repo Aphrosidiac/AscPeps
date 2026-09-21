@@ -19,9 +19,28 @@ export interface MessageContent {
   text: string
   media?: MediaKind
   contextInfo?: any
+  // The message this one replies to, when it is a reply. WhatsApp puts the
+  // whole quoted message on the wire (contextInfo.quotedMessage), so what
+  // the operator is pointing at is right there — for months it was read
+  // only to decide whether the bot had been addressed, then thrown away, and
+  // "@Abby key this in" as a reply to a customer's message reached the model
+  // with nothing after it.
+  quoted?: QuotedContent
   // Something the agent should never react to: a reaction, a delete, an
   // edit's bookkeeping, a protocol message.
   silent: boolean
+}
+
+export interface QuotedContent {
+  text: string
+  media?: MediaKind
+  // Who wrote the quoted message, as the JID WhatsApp gave (phone or LID
+  // form). Resolved to a name by the API; our own JID means "the bot".
+  participantJid: string | null
+  // The quoted message's id, and its raw content — what downloadMediaMessage
+  // needs to fetch a quoted picture.
+  stanzaId: string | null
+  raw: any
 }
 
 const WRAPPERS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage'] as const
@@ -42,6 +61,7 @@ export function contentOf(rawMessage: any): MessageContent {
     text: (text ?? '').toString(),
     media,
     contextInfo: node?.contextInfo,
+    quoted: quotedOf(node?.contextInfo),
     silent: false,
   })
   if (typeof m.conversation === 'string') return pick(m, undefined, m.conversation)
@@ -57,6 +77,24 @@ export function contentOf(rawMessage: any): MessageContent {
   // Reactions, deletes, edits' protocol bookkeeping, poll votes, keep-alives:
   // nothing a person said to us.
   return { text: '', silent: true }
+}
+
+// The replied-to message, in the same shape as a top-level one. A quoted
+// message is a full message object, so it goes through the same unwrapping;
+// the one difference is that it is never silent — a reply to a reaction is
+// not a thing WhatsApp lets you send.
+function quotedOf(contextInfo: any): QuotedContent | undefined {
+  const q = contextInfo?.quotedMessage
+  if (!q || typeof q !== 'object') return undefined
+  const inner = contentOf(q)
+  if (inner.silent) return undefined
+  return {
+    text: inner.text,
+    media: inner.media,
+    participantJid: typeof contextInfo.participant === 'string' ? contextInfo.participant : null,
+    stanzaId: typeof contextInfo.stanzaId === 'string' ? contextInfo.stanzaId : null,
+    raw: q,
+  }
 }
 
 // Did this message address the bot? Three ways count: an explicit @-mention of

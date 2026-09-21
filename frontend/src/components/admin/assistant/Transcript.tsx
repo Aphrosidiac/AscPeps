@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Loader2, ShieldAlert, ShieldCheck, Undo2, Wrench, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Image as ImageIcon, Loader2, Paperclip, ShieldAlert, ShieldCheck, Undo2, Wrench, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
-import type { Action, Message, ToolResult } from '@/lib/assistant';
+import type { Action, Attachment, Message, ToolResult } from '@/lib/assistant';
 import { inputSummary, pretty, timeOf } from './format';
 
 // The transcript: everything the server stored, plus the turn in flight.
@@ -62,10 +62,23 @@ export function Transcript({
     <div className="mx-auto max-w-3xl space-y-5">
       {messages.map((m) => {
         if (m.role === 'user') {
+          const q = m.content.quoted;
           return (
             <div key={m.id} className="msg-in flex flex-col items-end">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[15px] leading-[22px] text-white">
-                {m.content.text}
+              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[15px] leading-[22px] text-white">
+                {q && (
+                  <div className="mb-2 rounded-[10px] border-l-[3px] border-white/60 bg-white/10 px-3 py-1.5 text-[13px] leading-[18px]">
+                    <p className="font-medium text-white/90">{q.from === 'you' ? 'Abby' : q.from}</p>
+                    {q.text && <p className="whitespace-pre-wrap text-white/80">{q.text}</p>}
+                    {q.attachments?.map((a, i) => (
+                      <AttachmentCard key={i} a={a} tone="quoted" />
+                    ))}
+                  </div>
+                )}
+                {m.content.text && <p className="whitespace-pre-wrap">{m.content.text}</p>}
+                {m.content.attachments?.map((a, i) => (
+                  <AttachmentCard key={i} a={a} tone="own" />
+                ))}
               </div>
               <p className="mt-1 text-[11px] leading-4 text-text-muted">
                 {m.content.sender ?? m.actorName ?? 'You'} · {timeOf(m.createdAt)}
@@ -348,5 +361,35 @@ function GuardBadge({ guard }: { guard: NonNullable<Message['content']['guard']>
     >
       <Icon className="h-3 w-3" strokeWidth={1.75} /> {copy}
     </p>
+  );
+}
+
+// A picture is shown as what the assistant was given: the vision model's
+// transcript, folded under a chip. The image itself is not stored — the
+// transcript is the record, and it is what the model acted on.
+function AttachmentCard({ a, tone }: { a: Attachment; tone: 'own' | 'quoted' }) {
+  const label = a.kind === 'image' ? 'Picture' : a.kind[0].toUpperCase() + a.kind.slice(1);
+  const Icon = a.kind === 'image' ? ImageIcon : Paperclip;
+  const chip = cn(
+    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] leading-4',
+    tone === 'own' ? 'bg-white/15 text-white' : 'bg-white/10 text-white/90'
+  );
+  if (!a.text) {
+    return (
+      <p className={cn('mt-1.5 w-fit', chip)}>
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+        {label}{a.unreadable ? ' · not read' : ''}
+      </p>
+    );
+  }
+  return (
+    <details className="group mt-1.5">
+      <summary className={cn('cursor-pointer list-none select-none', chip)}>
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+        {label} · transcribed
+        <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" strokeWidth={1.75} />
+      </summary>
+      <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap rounded-[10px] bg-black/20 px-3 py-2 font-sans text-[13px] leading-[18px] text-white/90">{a.text}</pre>
+    </details>
   );
 }

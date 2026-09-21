@@ -218,7 +218,9 @@ against the live deployment:
 | Unknown sender, group allowlisted | ignored |
 | Bound operator, allowlisted group, no mention | ignored |
 | Bound operator, allowlisted group, mentioned | acts |
-| Anyone, media with no caption (image, video, voice note, audio, file, contact, location, poll) | gated exactly like text; an allowed sender gets a one-line "I can't read that" notice, everyone else silence. Stickers, reactions and deletes get silence from everyone. Text inside disappearing / view-once / captioned-document envelopes is unwrapped and handled as text |
+| Anyone, a picture (image, or a document whose mime is `image/*`) | gated exactly like text; for an allowed sender the worker downloads it (10 MB cap, checked before the fetch) and the API has `AGENT_VISION_MODEL` transcribe it for the model — see *Replies and pictures* in `assistant.md`. In a group that requires a mention, a picture nobody addressed to the bot is not downloaded at all |
+| Anyone, a reply to an earlier message | the quoted message travels with it and the model sees it first, named by author |
+| Anyone, other media with no caption (video, voice note, audio, file, contact, location, poll) | gated exactly like text; an allowed sender gets a one-line "I can't read that" notice, everyone else silence. Under a caption the model is told what was attached. Stickers, reactions and deletes get silence from everyone. Text inside disappearing / view-once / captioned-document envelopes is unwrapped and handled as text |
 
 Unresolvable senders are recorded only *after* the group gate passes. Recording
 first meant every participant of every supplier and customer group the number

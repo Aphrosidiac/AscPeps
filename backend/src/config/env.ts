@@ -106,6 +106,14 @@ const envSchema = z.object({
   // usable (verified on HarvestGrow with a 20-token budget). Raise it once
   // the budget is generous and the Thinking disclosure is wanted.
   AGENT_REASONING_EFFORT: z.enum(['none', 'low', 'medium', 'high']).default('none'),
+  // The model that reads pictures operators send over WhatsApp. The everyday
+  // model (DeepSeek V4 Flash) is text-only on OpenRouter, so a picture is
+  // transcribed here first and the transcript goes on the operator's message,
+  // where it stays for later turns and shows on the Assistant page. GLM 5.3
+  // Flash was the pick from a side-by-side on an order-chat screenshot: the
+  // only cheap model that names who said what and flags cut-off text, ~2 s,
+  // about USD 0.0003 a picture. Any OpenRouter model with image input works.
+  AGENT_VISION_MODEL: z.string().default('z-ai/glm-5.3-flash'),
   // Downtime alerting. A dropped baileys socket is invisible from outside:
   // PM2 stays green (the process never dies, only the socket does) and the
   // site keeps returning 200. These are the out-of-band signal.

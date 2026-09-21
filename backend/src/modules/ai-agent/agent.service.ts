@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { normalizePhone } from '../../utils/phone.js';
 import type { AgentActor } from './tool-kit.js';
-import { activeRun, approveAction, awaitTurn, declineAction, livePendingActions, startTurn, type TurnOptions } from './core/run.js';
+import { activeRun, approveAction, awaitTurn, declineAction, livePendingActions, startTurn, type Attachment, type QuotedMessage, type TurnOptions } from './core/run.js';
+import { readImage, type InboundImage } from './core/vision.js';
 
 // The WhatsApp door onto the assistant.
 //
@@ -27,16 +28,33 @@ export interface InboundMessage {
   senderLid?: string;
   senderName: string | null;
   text: string;
-  // Set by the worker when the message carried no text: what it was instead.
-  // Gated exactly like text and, if it passes, answered with a fixed notice
-  // (or, for a sticker, nothing) — never shown to the model.
+  // Set by the worker when the message carried media: what kind. A picture
+  // arrives with `image` and is transcribed for the model; anything else
+  // with no caption is gated exactly like text and, if it passes, answered
+  // with a fixed notice (or, for a sticker, nothing).
   media?: MediaKind;
+  image?: InboundImage;
+  // The worker saw a picture but refused to download it (over its size cap).
+  imageOversized?: boolean;
+  // The message this one replies to, as WhatsApp carried it.
+  quoted?: InboundQuoted;
   // Group only.
   groupJid?: string;
   groupSubject?: string;
   // Whether the message mentioned/replied to the bot. Groups with
   // requireMention set only act on messages where this is true.
   mentionsBot?: boolean;
+}
+
+export interface InboundQuoted {
+  text: string;
+  media?: MediaKind;
+  // The quoted author's JID as WhatsApp gave it (phone or LID form).
+  participantJid?: string | null;
+  // The quoted message was the bot's own.
+  fromBot?: boolean;
+  image?: InboundImage;
+  imageOversized?: boolean;
 }
 
 export type MediaKind = 'image' | 'video' | 'voice message' | 'audio' | 'file' | 'sticker' | 'contact' | 'location' | 'poll';
@@ -58,9 +76,54 @@ export function mediaNotice(kind: MediaKind): string | null {
       return "I can't read a shared location — type the address and what to do with it.";
     case 'poll':
       return "I can't read polls — ask me directly.";
+    case 'image':
+      return "I couldn't read that picture — could you send it again, or type what's in it?";
     default:
       return `I can only read text right now — send that ${kind}'s details as a message and I'll act on it.`;
   }
+}
+
+// ------------------------------------------------------------- attachments
+//
+// A picture becomes text here, before the turn: the vision model reads it
+// verbatim and the transcript goes on the operator's row. See core/vision.ts
+// for why it is transcribed rather than handed to the turn's model.
+
+const MEDIA_UNREADABLE: Partial<Record<MediaKind, string>> = {
+  video: 'you cannot watch video',
+  'voice message': 'you cannot listen to audio',
+  audio: 'you cannot listen to audio',
+  file: 'you cannot open files',
+  contact: 'a shared contact card',
+  location: 'a shared location',
+  poll: 'a poll',
+};
+
+async function attachmentsFor(fastify: FastifyInstance, media: MediaKind | undefined, image: InboundImage | undefined, oversized: boolean | undefined): Promise<Attachment[]> {
+  if (image) {
+    try {
+      const reading = await readImage(image);
+      return [{ kind: 'image', text: reading.text, model: reading.model }];
+    } catch (err: any) {
+      fastify.log.error({ err }, 'vision model could not read an inbound picture');
+      return [{ kind: 'image', unreadable: `the picture could not be read (${err?.message ?? 'vision model failed'}); ask for it again or for the details as text` }];
+    }
+  }
+  if (oversized) return [{ kind: 'image', unreadable: 'the picture was over 10 MB and was not downloaded; ask for a smaller one or the details as text' }];
+  if (!media || media === 'sticker') return [];
+  if (media === 'image') return [{ kind: 'image', unreadable: 'the picture could not be downloaded; ask for it again or for the details as text' }];
+  return [{ kind: media, unreadable: MEDIA_UNREADABLE[media] }];
+}
+
+// Who a quoted message came from, by name where the directory knows the
+// digits — the same rule as a mention, and for the same reason: the model
+// must never see a raw LID as something to look up or repeat.
+function quotedFrom(q: InboundQuoted, dir: Directory): string {
+  if (q.fromBot) return 'you';
+  const digits = (q.participantJid ?? '').replace(/@.*$/, '').split(':')[0].replace(/\D/g, '');
+  if (!digits) return 'someone';
+  const hit = dir.find((d) => d.digits === digits);
+  return hit ? hit.name : `someone (${digits})`;
 }
 
 export type AgentOutcome =
@@ -354,9 +417,12 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
   if (!gate.ok) return { action: 'ignore', reason: gate.reason };
   const actor = gate.actor;
 
-  // Media from someone the agent answers: say plainly that it cannot read it.
-  // Nothing is stored and no model runs — there is nothing to read.
-  if (msg.media && !msg.text.trim()) {
+  // Media the assistant cannot read, from someone it answers, with nothing
+  // else to go on: say so plainly. Nothing is stored and no model runs. A
+  // picture that was downloaded, or media under a caption or a reply, goes
+  // on to the turn — the model is told what was attached.
+  const readable = !!msg.image || !!msg.quoted?.image;
+  if (msg.media && !msg.text.trim() && !readable && !msg.quoted) {
     const notice = mediaNotice(msg.media);
     return notice ? { action: 'reply', text: notice } : { action: 'ignore', reason: `${msg.media} — nothing to answer` };
   }
@@ -433,9 +499,23 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
   }
   const systemNote = notes.length ? notes.join('\n') : undefined;
 
-  // ---- 2. The turn.
+  // ---- 2. What came with the message: the replied-to message, and any
+  // picture read by the vision model. Read before the turn so the transcript
+  // is on the operator's row from the start.
+  let quoted: QuotedMessage | undefined;
+  if (msg.quoted) {
+    const qAttachments = await attachmentsFor(fastify, msg.quoted.media, msg.quoted.image, msg.quoted.imageOversized);
+    quoted = {
+      from: quotedFrom(msg.quoted, directory),
+      text: humaniseMentions(msg.quoted.text.trim(), directory, 'in'),
+      ...(qAttachments.length ? { attachments: qAttachments } : {}),
+    };
+  }
+  const attachments = await attachmentsFor(fastify, msg.media, msg.image, msg.imageOversized);
+
+  // ---- 3. The turn.
   try {
-    await startTurn(fastify, thread.id, text, { ...opts, systemNote });
+    await startTurn(fastify, thread.id, { text, quoted, attachments }, { ...opts, systemNote });
   } catch (err: any) {
     return { action: 'reply', text: `Something went wrong on my side: ${err?.message ?? 'unknown error'}. Nothing was changed by this message.` };
   }

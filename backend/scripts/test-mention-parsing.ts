@@ -246,6 +246,68 @@ check('a caption that tags the bot counts as a mention', () => {
   eq(mentionsBot(msg, contentOf(msg.message).text, IDS), true);
 });
 
+// -------------------------------------------------- the replied-to message
+//
+// 21 Sep 2026: "ab put in a new order under the name andrew" was a reply to
+// a customer's message pasted into the group; the model got the nine words
+// and nothing else. The quoted message is on the wire as
+// contextInfo.quotedMessage and must come through in full.
+
+check('a reply carries the quoted text and its author', () => {
+  const msg = {
+    message: {
+      extendedTextMessage: {
+        text: `@${OWN_LID} key this in`,
+        contextInfo: {
+          mentionedJid: [`${OWN_LID}@lid`],
+          participant: '60123456789@s.whatsapp.net',
+          stanzaId: 'QUOTED1',
+          quotedMessage: { conversation: 'Andrew Tan, 2x BPC-157 5mg, No 12 Jalan Setia 3/4, 81100 JB' },
+        },
+      },
+    },
+  };
+  const c = contentOf(msg.message);
+  eq(c.text, `@${OWN_LID} key this in`);
+  eq(c.quoted?.text, 'Andrew Tan, 2x BPC-157 5mg, No 12 Jalan Setia 3/4, 81100 JB');
+  eq(c.quoted?.participantJid, '60123456789@s.whatsapp.net');
+  eq(c.quoted?.stanzaId, 'QUOTED1');
+  eq(c.quoted?.media, undefined);
+});
+
+check('a reply to a picture knows it is a picture and keeps the raw node for download', () => {
+  const quotedMessage = { imageMessage: { caption: 'my order', mimetype: 'image/jpeg', url: 'https://mmg.whatsapp.net/x', mediaKey: 'k', fileLength: 51685 } };
+  const msg = { message: { extendedTextMessage: { text: 'ab key this in', contextInfo: { participant: '60123456789@s.whatsapp.net', quotedMessage } } } };
+  const c = contentOf(msg.message);
+  eq(c.quoted?.media, 'image');
+  eq(c.quoted?.text, 'my order');
+  eq(c.quoted?.raw, quotedMessage);
+});
+
+check('a reply to the bot is attributed to the bot JID', () => {
+  const msg = replyMessage('yes that one');
+  const c = contentOf({ ...msg.message, extendedTextMessage: { ...msg.message.extendedTextMessage, contextInfo: { ...msg.message.extendedTextMessage.contextInfo, quotedMessage: { conversation: 'Which order — 0031 or 0032?' } } } });
+  eq(c.quoted?.participantJid, `${OWN_PHONE}@s.whatsapp.net`);
+  eq(c.quoted?.text, 'Which order — 0031 or 0032?');
+});
+
+check('a quoted message in a disappearing-messages group is unwrapped too', () => {
+  const msg = { message: { extendedTextMessage: { text: 'this one', contextInfo: { quotedMessage: { ephemeralMessage: { message: { conversation: 'inner' } } } } } } };
+  eq(contentOf(msg.message).quoted?.text, 'inner');
+});
+
+check('a message that is not a reply has no quoted message', () => {
+  eq(contentOf({ conversation: 'hi' }).quoted, undefined);
+  const msg = mentionMessage(`@${OWN_LID} hi`);
+  eq(contentOf(msg.message).quoted, undefined);
+});
+
+check('a picture with a caption is a picture, and the caption is its text', () => {
+  const c = contentOf({ imageMessage: { caption: 'ab put in a new order under the name andrew', mimetype: 'image/jpeg' } });
+  eq(c.media, 'image');
+  eq(c.text, 'ab put in a new order under the name andrew');
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (failures.length) failures.forEach((f) => console.log(`  - ${f}`));
 process.exit(fail ? 1 : 0);

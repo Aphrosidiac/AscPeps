@@ -17,6 +17,7 @@
     "test:agent:tools": "tsx scripts/smoke-agent-tools.ts",
     "test:agent:writes": "tsx scripts/test-agent-writes.ts",
     "test:agent:e2e": "tsx scripts/test-agent-e2e.ts",
+    "test:agent:inbound": "tsx scripts/test-inbound-context.ts",
     "test:agent:context": "tsx scripts/test-agent-context.ts",
     "test:agent:security": "tsx scripts/test-agent-security.ts",
     "test:agent:memory": "tsx scripts/test-agent-memory.ts",

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../../config/env.js';
-import { handleMessage, MEDIA_KINDS, type InboundMessage, type MediaKind } from './agent.service.js';
+import { handleMessage, MEDIA_KINDS, type InboundMessage, type InboundQuoted, type MediaKind } from './agent.service.js';
+import type { InboundImage } from './core/vision.js';
 import { sendEmail } from '../../utils/email.js';
 
 // The worker → API hop. This endpoint can run every tool the agent has, so it
@@ -22,14 +23,18 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post('/inbound', async (request, reply) => {
+  // A picture rides along as base64 — up to 10 MB decoded, which the worker
+  // enforces before downloading — so this one route takes bodies well past
+  // the server's default 1 MiB.
+  fastify.post('/inbound', { bodyLimit: 32 * 1024 * 1024 }, async (request, reply) => {
     const body = request.body as Partial<InboundMessage>;
     // Either identity is acceptable — a LID-only sender has no phone at all.
     if ((!body?.senderPhone && !body?.senderLid) || typeof body.text !== 'string') {
       return reply.status(400).send({ error: 'senderPhone or senderLid, plus text, are required' });
     }
-    const media = (MEDIA_KINDS as readonly string[]).includes(String(body.media)) ? (body.media as MediaKind) : undefined;
-    if (!body.text.trim() && !media) return reply.status(400).send({ error: 'text or media is required' });
+    const media = mediaKind(body.media);
+    const quoted = quotedOf(body.quoted);
+    if (!body.text.trim() && !media && !quoted) return reply.status(400).send({ error: 'text or media is required' });
 
     const msg: InboundMessage = {
       kind: body.kind === 'group' ? 'group' : 'dm',
@@ -38,6 +43,9 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
       senderName: body.senderName ?? null,
       text: body.text,
       media,
+      image: imageOf(body.image),
+      imageOversized: body.imageOversized === true,
+      quoted,
       groupJid: body.groupJid,
       groupSubject: body.groupSubject,
       mentionsBot: body.mentionsBot ?? true,
@@ -102,6 +110,36 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
     }
     return reply.send({ sent });
   });
+}
+
+function mediaKind(value: unknown): MediaKind | undefined {
+  return (MEDIA_KINDS as readonly string[]).includes(String(value)) ? (value as MediaKind) : undefined;
+}
+
+// Only a picture, only as base64. The worker is trusted, but the shape is
+// checked so a stray field never reaches the vision model as a data: URL.
+function imageOf(value: unknown): InboundImage | undefined {
+  const v = value as Partial<InboundImage> | undefined;
+  if (!v || typeof v.base64 !== 'string' || !v.base64) return undefined;
+  const mimeType = typeof v.mimeType === 'string' && /^image\/[\w.+-]+$/.test(v.mimeType) ? v.mimeType : 'image/jpeg';
+  return { mimeType, base64: v.base64 };
+}
+
+function quotedOf(value: unknown): InboundQuoted | undefined {
+  const v = value as Partial<InboundQuoted> | undefined;
+  if (!v || typeof v !== 'object') return undefined;
+  const text = typeof v.text === 'string' ? v.text : '';
+  const media = mediaKind(v.media);
+  const image = imageOf(v.image);
+  if (!text.trim() && !media && !image) return undefined;
+  return {
+    text,
+    media,
+    participantJid: typeof v.participantJid === 'string' ? v.participantJid : null,
+    fromBot: v.fromBot === true,
+    image,
+    imageOversized: v.imageOversized === true,
+  };
 }
 
 function escapeHtml(value: string): string {

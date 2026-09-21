@@ -67,9 +67,27 @@ export interface GuardNote {
   violations?: number;
 }
 
+// What a WhatsApp message carried besides its text: the message it replied
+// to, and any picture — as the vision model's transcript, since the image
+// itself is not kept.
+export interface Attachment {
+  kind: 'image' | 'video' | 'voice message' | 'audio' | 'file' | 'sticker' | 'contact' | 'location' | 'poll';
+  text?: string;
+  unreadable?: string;
+  model?: string;
+}
+
+export interface QuotedMessage {
+  from: string;
+  text: string;
+  attachments?: Attachment[];
+}
+
 export interface MessageContent {
   text?: string;
   sender?: string;
+  quoted?: QuotedMessage;
+  attachments?: Attachment[];
   reasoning?: string;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
