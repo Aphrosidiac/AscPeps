@@ -1164,27 +1164,94 @@ function SupplierSelect({
   const list = options ?? [];
   const stale = item.supplier && !list.some((o) => o.supplierId === item.supplier!.id) ? item.supplier : null;
   const empty = list.length === 0 && !stale;
+  if (options === undefined) {
+    return <span aria-hidden="true" className={cn('block h-[38px] rounded-[6px] bg-surface-elevated', className)} />;
+  }
+  // Nobody has priced this SKU: say so in words rather than offering a
+  // dropdown that cannot be opened, and point at where the prices go.
+  if (empty) {
+    return (
+      <span className={cn('flex h-[38px] items-center text-[13px] leading-[18px] text-text-secondary', className)}>
+        No list prices yet ·&nbsp;<Link href="/admin/suppliers" className="text-text-primary underline underline-offset-2 hover:text-primary">add</Link>
+      </span>
+    );
+  }
   return (
-    <select
-      value={value}
-      disabled={options === undefined || empty}
-      onChange={(e) => onChange(e.target.value)}
-      aria-label={`Supplier for ${item.variant.product.name}`}
-      title={empty ? 'No supplier has a price for this item yet — add one on the Suppliers page' : undefined}
+    <span className={cn('relative block', className)}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={`Supplier for ${item.variant.product.name}`}
+        className={cn(
+          'h-[38px] w-full appearance-none rounded-[6px] border border-border bg-surface pl-3 pr-9 text-[14px] text-text-primary cursor-pointer',
+          'transition-[border-color,box-shadow] duration-[120ms] focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/15',
+          !value && 'text-text-secondary',
+        )}
+      >
+        <option value="">Keyed in by hand</option>
+        {list.map((o) => (
+          <option key={o.supplierId} value={o.supplierId}>{o.name} · {formatPrice(o.cost)}</option>
+        ))}
+        {stale && (
+          <option value={stale.id}>{stale.name} · {formatPrice(item.unitCost ?? 0)} ({stale.active ? 'no longer priced' : 'retired'})</option>
+        )}
+      </select>
+      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M4 6.5 8 10.5 12 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+}
+
+/** The RM box a unit cost is typed into — the house Affixed control. */
+function UnitCostInput({
+  item,
+  value,
+  onChange,
+  className,
+}: {
+  item: Order['items'][number];
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <span
       className={cn(
-        'px-2 py-1.5 border border-border rounded-lg text-xs bg-surface cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
-        !value && 'text-text-muted',
+        'flex h-[38px] items-stretch overflow-hidden rounded-[6px] border border-border bg-surface transition-[border-color,box-shadow] duration-[120ms] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/15',
         className,
       )}
     >
-      <option value="">{options === undefined ? '…' : empty ? '— no supplier prices yet —' : '— by hand —'}</option>
-      {list.map((o) => (
-        <option key={o.supplierId} value={o.supplierId}>{o.name} · {formatPrice(o.cost)}</option>
-      ))}
-      {stale && (
-        <option value={stale.id}>{stale.name} · {formatPrice(item.unitCost ?? 0)} ({stale.active ? 'no longer priced' : 'retired'})</option>
-      )}
-    </select>
+      <span className="flex items-center border-r border-border bg-surface-elevated px-2.5 text-[13px] text-text-secondary">RM</span>
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="0.00"
+        aria-label={`Unit cost for ${item.variant.product.name}`}
+        className="h-full w-full min-w-0 bg-transparent px-2.5 text-right text-[14px] tabular-nums text-text-primary outline-none placeholder:text-text-muted [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+    </span>
+  );
+}
+
+/**
+ * Where a line's figure came from, under the cost box: a supplier's name
+ * means "this is their list price"; anything else was keyed in. The rule
+ * that typing a different figure drops the supplier is otherwise invisible.
+ */
+function CostSource({ item, supplierId, options, cost }: { item: Order['items'][number]; supplierId: string; options: SupplierOption[] | undefined; cost: string }) {
+  const name = supplierId
+    ? (options?.find((o) => o.supplierId === supplierId)?.name ?? (item.supplier?.id === supplierId ? item.supplier.name : null))
+    : null;
+  if (!name && cost.trim() === '') return null;
+  return (
+    <span className="block text-[12px] leading-4 text-text-secondary">
+      {name ? `${name}'s list price` : 'Keyed in by hand'}
+    </span>
   );
 }
 
@@ -1573,14 +1640,20 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
       {/* Per-item cost */}
       <div style={{ animationDelay: `135ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
-          <Package className="w-4 h-4 text-text-muted" />
-          <h2 className="text-sm font-semibold">Item Costs</h2>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-3.5 border-b border-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <Package className="w-4 h-4 text-text-muted" />
+            <h2 className="text-sm font-semibold">Item Costs</h2>
+          </div>
           {/* The dropdowns below read the Suppliers page's price list. Say so
               here, where someone looking for "why is my dropdown empty" will
-              look, rather than only inside each empty dropdown. */}
-          <Link href="/admin/suppliers" className="ml-auto text-xs text-primary hover:underline whitespace-nowrap">
-            {supplierOptions !== null && !anySupplierPrices ? 'Add supplier prices →' : 'Supplier prices →'}
+              look, rather than only inside each line. */}
+          <Link
+            href="/admin/suppliers"
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated whitespace-nowrap"
+          >
+            {supplierOptions !== null && !anySupplierPrices ? 'Add supplier prices' : 'Supplier prices'}
+            <ExternalLink className="w-3.5 h-3.5 text-text-secondary" />
           </Link>
         </div>
         {/* Seven columns, two of them controls, do not fit a phone — or a
@@ -1594,46 +1667,20 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             const cost = lineCost(item.id, item.quantity);
             const lineProfit = cost === null ? null : lineRevenue - cost;
             return (
-              <div key={item.id} className="px-4 py-3">
-                <p className="text-sm font-medium">
-                  {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
-                  <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
-                </p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Qty {item.quantity} · {formatPrice(lineRevenue)} revenue
-                </p>
-                <label className="block mt-2">
-                  <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Supplier</span>
-                  <SupplierSelect
-                    item={item}
-                    value={itemSuppliers[item.id] ?? ''}
-                    options={supplierOptions?.[item.variantId]}
-                    onChange={(id) => pickSupplier(item, id)}
-                    className="w-full"
-                  />
-                </label>
-                <div className="flex items-end justify-between gap-3 mt-2">
-                  <label className="min-w-0">
-                    <span className="block text-[11px] font-medium text-text-muted uppercase tracking-wider mb-1">Unit cost</span>
-                    <span className="relative block w-32">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={itemCosts[item.id] ?? ''}
-                        onChange={(e) => typeCost(item, e.target.value)}
-                        placeholder="0.00"
-                        aria-label={`Unit cost for ${item.variant.product.name}`}
-                        className="w-full pl-9 pr-2 py-1.5 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                      />
-                    </span>
-                  </label>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs text-text-muted">
-                      {cost === null ? 'Line cost —' : `Line cost ${formatPrice(cost)}`}
+              <div key={item.id} className="px-4 py-4 sm:px-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[15px] leading-[22px] font-medium">
+                      {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                      <span className="ml-2 font-mono text-[12px] text-text-secondary">{item.variant.code}</span>
                     </p>
-                    <p className="text-sm font-semibold">
+                    <p className="text-[13px] leading-[18px] text-text-secondary">
+                      Qty {item.quantity} · {formatPrice(lineRevenue)} revenue
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-[12px] leading-4 text-text-secondary">Profit</p>
+                    <p className="text-[15px] leading-[22px] font-semibold tabular-nums">
                       {lineProfit === null ? (
                         <span className="text-text-muted font-normal">—</span>
                       ) : (
@@ -1641,6 +1688,28 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                       )}
                     </p>
                   </div>
+                </div>
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_8.5rem] gap-3">
+                  <label className="block min-w-0">
+                    <span className="mb-1.5 block text-[13px] leading-[18px] font-medium text-text-primary">Supplier</span>
+                    <SupplierSelect
+                      item={item}
+                      value={itemSuppliers[item.id] ?? ''}
+                      options={supplierOptions?.[item.variantId]}
+                      onChange={(id) => pickSupplier(item, id)}
+                      className="w-full"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[13px] leading-[18px] font-medium text-text-primary">Unit cost</span>
+                    <UnitCostInput item={item} value={itemCosts[item.id] ?? ''} onChange={(v) => typeCost(item, v)} />
+                  </label>
+                </div>
+                <div className="mt-1.5 flex items-baseline justify-between gap-3">
+                  <CostSource item={item} supplierId={itemSuppliers[item.id] ?? ''} options={supplierOptions?.[item.variantId]} cost={itemCosts[item.id] ?? ''} />
+                  <span className="ml-auto text-[12px] leading-4 text-text-secondary tabular-nums">
+                    {cost === null ? 'Line cost —' : `Line cost ${formatPrice(cost)}`}
+                  </span>
                 </div>
               </div>
             );
@@ -1650,13 +1719,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         <div className="hidden xl:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-surface-elevated text-xs font-medium text-text-muted uppercase tracking-wider">
+              <tr className="bg-surface-elevated text-[12px] leading-4 font-semibold uppercase tracking-[0.08em] text-text-secondary">
                 <th className="text-left px-5 py-3">Item</th>
                 <th className="text-right px-3 py-3">Qty</th>
                 <th className="text-right px-3 py-3 whitespace-nowrap">Revenue</th>
                 <th className="text-left px-3 py-3 whitespace-nowrap">Supplier</th>
-                <th className="text-right px-3 py-3 whitespace-nowrap">Unit Cost</th>
-                <th className="text-right px-3 py-3 whitespace-nowrap">Line Cost</th>
+                <th className="text-right px-3 py-3 whitespace-nowrap">Unit cost</th>
+                <th className="text-right px-3 py-3 whitespace-nowrap">Line cost</th>
                 <th className="text-right px-5 py-3 whitespace-nowrap">Profit</th>
               </tr>
             </thead>
@@ -1666,48 +1735,41 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                 const cost = lineCost(item.id, item.quantity);
                 const lineProfit = cost === null ? null : lineRevenue - cost;
                 return (
-                  <tr key={item.id}>
+                  <tr key={item.id} className="align-top">
                     <td className="px-5 py-3">
-                      <span className="font-medium">
+                      <span className="block pt-2 font-medium">
                         {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
+                        <span className="ml-2 font-mono text-[12px] font-normal text-text-secondary">{item.variant.code}</span>
                       </span>
-                      <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
                     </td>
-                    <td className="px-3 py-3 text-right">{item.quantity}</td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap">{formatPrice(lineRevenue)}</td>
+                    <td className="px-3 py-3 text-right"><span className="block pt-2 tabular-nums">{item.quantity}</span></td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap"><span className="block pt-2 tabular-nums">{formatPrice(lineRevenue)}</span></td>
                     <td className="px-3 py-3">
                       <SupplierSelect
                         item={item}
                         value={itemSuppliers[item.id] ?? ''}
                         options={supplierOptions?.[item.variantId]}
                         onChange={(id) => pickSupplier(item, id)}
-                        className="w-40"
+                        className="w-44"
                       />
                     </td>
                     <td className="px-3 py-3">
-                      <div className="relative w-32 ml-auto">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={itemCosts[item.id] ?? ''}
-                          onChange={(e) => typeCost(item, e.target.value)}
-                          placeholder="0.00"
-                          aria-label={`Unit cost for ${item.variant.product.name}`}
-                          className="w-full pl-9 pr-2 py-1.5 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                        />
-                      </div>
+                      <UnitCostInput item={item} value={itemCosts[item.id] ?? ''} onChange={(v) => typeCost(item, v)} className="ml-auto w-32" />
+                      <span className="mt-1 block text-right">
+                        <CostSource item={item} supplierId={itemSuppliers[item.id] ?? ''} options={supplierOptions?.[item.variantId]} cost={itemCosts[item.id] ?? ''} />
+                      </span>
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {cost === null ? <span className="text-text-muted">—</span> : formatPrice(cost)}
+                      <span className="block pt-2 tabular-nums">{cost === null ? <span className="text-text-muted">—</span> : formatPrice(cost)}</span>
                     </td>
                     <td className="px-5 py-3 text-right font-semibold whitespace-nowrap">
-                      {lineProfit === null ? (
-                        <span className="text-text-muted font-normal">—</span>
-                      ) : (
-                        <span className={lineProfit < 0 ? 'text-danger' : 'text-success'}>{formatPrice(lineProfit)}</span>
-                      )}
+                      <span className="block pt-2 tabular-nums">
+                        {lineProfit === null ? (
+                          <span className="text-text-muted font-normal">—</span>
+                        ) : (
+                          <span className={lineProfit < 0 ? 'text-danger' : 'text-success'}>{formatPrice(lineProfit)}</span>
+                        )}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -1716,8 +1778,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
           </table>
         </div>
         <div className="border-t border-border bg-surface-elevated px-5 py-3 flex justify-between text-sm">
-          <span className="text-text-muted">Total item cost</span>
-          <span className="font-semibold">
+          <span className="text-text-secondary">Total item cost</span>
+          <span className="font-semibold tabular-nums">
             {unpricedCount > 0 && <span className="text-warning font-normal mr-2">{unpricedCount} not priced</span>}
             {formatPrice(itemCostTotal)}
           </span>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Handshake, Plus, Pencil, Check, X, Search, Trash2, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
+import { Handshake, Plus, Search, Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   adminCreateSupplier,
@@ -13,18 +13,22 @@ import {
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
-import { PageHeader, SaveBar } from '@/components/admin/ui';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, Field, TextInput, PageHeader, SaveBar } from '@/components/admin/ui';
+import { Dialog, ConfirmDialog } from '@/components/admin/Dialog';
 import type { Supplier, SupplierSheet } from '@/types';
 
 /**
  * Suppliers — who the business buys from, and what each of them charges per
  * unit of each SKU.
  *
- * It is laid out as the sheet the partners already keep by hand: one row per
- * sellable SKU, one column per supplier, a price in each cell. The order page's
- * costing sheet reads this to offer "YL,C · RM65.00" from a dropdown instead
- * of a blank box, which is what makes the same vial stop being costed at four
- * different figures across a month.
+ * Two cards. The first is the list of suppliers, where they are added,
+ * renamed, retired and (while nothing has been costed from them) removed.
+ * The second is the sheet the partners already keep by hand: one row per
+ * sellable SKU, one column per supplier, a price in each cell. The order
+ * page's costing sheet reads this to offer "YL,C · RM65.00" from a dropdown
+ * instead of a blank box, which is what makes the same vial stop being costed
+ * at four different figures across a month.
  *
  * A price changed here never rewrites an order already costed: the order line
  * copied the figure when it was picked and records whose it was.
@@ -47,167 +51,193 @@ function apiError(e: unknown, fallback: string) {
   return err.response?.data?.details?.[0]?.message ?? err.response?.data?.error ?? fallback;
 }
 
-/* ------------------------------------------------------------------ chips */
+const draftFromSheet = (sheet: SupplierSheet) =>
+  Object.fromEntries(
+    sheet.rows.flatMap((r) => sheet.suppliers.map((s) => [cellKey(s.id, r.variantId), centsToInput(r.costs[s.id])])),
+  );
 
-function SupplierStrip({
+/* ------------------------------------------------------------- dialogs */
+
+/** Add a supplier, or rename one — the same one-field form. */
+function SupplierDialog({
+  supplier,
+  onClose,
+  onSaved,
+}: {
+  supplier: Supplier | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { token } = useAuth();
+  const [name, setName] = useState(supplier?.name ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const trimmed = name.trim();
+  const unchanged = supplier ? trimmed === supplier.name : false;
+
+  const submit = async (close: () => void) => {
+    if (!token || !trimmed || unchanged) return;
+    setBusy(true);
+    setError('');
+    try {
+      if (supplier) await adminUpdateSupplier(token, supplier.id, { name: trimmed });
+      else await adminCreateSupplier(token, { name: trimmed });
+      onSaved();
+      close();
+    } catch (e) {
+      setError(apiError(e, supplier ? 'Could not rename that supplier.' : 'Could not add that supplier.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={supplier ? `Rename ${supplier.name}` : 'Add a supplier'}
+      description={supplier ? 'Orders already costed from them keep the new name.' : 'They appear as a column on the price list and in the costing dropdown once priced.'}
+      onClose={onClose}
+    >
+      {(close) => (
+        <form id="supplier-form" onSubmit={(e) => { e.preventDefault(); submit(close); }} className="space-y-4">
+          <Field label="Name" htmlFor="supplier-name" error={error || null} help={supplier ? undefined : 'The name the partners use — e.g. Chris, YL,C, Zuwa.'}>
+            <TextInput
+              id="supplier-name"
+              autoFocus
+              value={name}
+              onChange={(e) => { setName(e.target.value); setError(''); }}
+              maxLength={60}
+              placeholder="Supplier name"
+              invalid={!!error}
+            />
+          </Field>
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={close} disabled={busy}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={busy || !trimmed || unchanged}>
+              {busy ? 'Saving…' : supplier ? 'Rename' : 'Add supplier'}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Dialog>
+  );
+}
+
+/* ------------------------------------------------------------- pieces */
+
+function Pill({ tone, children }: { tone: 'active' | 'retired'; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2 py-[2px] text-[12px] leading-4 font-semibold',
+        tone === 'active' ? 'bg-green-100 text-green-800' : 'bg-surface-elevated text-text-secondary',
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Ghost text action used along a supplier row. */
+function RowAction({ onClick, tone = 'neutral', children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'neutral' | 'danger' }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'h-8 rounded-[6px] px-2.5 text-[13px] font-medium transition-colors cursor-pointer',
+        tone === 'danger'
+          ? 'text-text-secondary hover:bg-danger/10 hover:text-danger'
+          : 'text-text-secondary hover:bg-surface-elevated hover:text-text-primary',
+      )}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SupplierList({
   suppliers,
+  skuCount,
+  onRename,
+  onRemove,
   onChanged,
   onError,
 }: {
   suppliers: Supplier[];
+  skuCount: number;
+  onRename: (s: Supplier) => void;
+  onRemove: (s: Supplier) => void;
   onChanged: () => void;
   onError: (msg: string) => void;
 }) {
   const { token } = useAuth();
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-
-  const add = async () => {
-    if (!token || !name.trim()) return;
-    setBusy(true);
-    try {
-      await adminCreateSupplier(token, { name: name.trim() });
-      setName('');
-      onChanged();
-    } catch (e) {
-      onError(apiError(e, 'Could not add that supplier.'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const rename = async (s: Supplier) => {
-    if (!token || !draft.trim()) return;
-    setBusy(true);
-    try {
-      await adminUpdateSupplier(token, s.id, { name: draft.trim() });
-      setEditingId(null);
-      onChanged();
-    } catch (e) {
-      onError(apiError(e, 'Could not rename that supplier.'));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const toggle = async (s: Supplier) => {
     if (!token) return;
+    setBusyId(s.id);
     try {
       await adminUpdateSupplier(token, s.id, { active: !s.active });
       onChanged();
     } catch (e) {
       onError(apiError(e, 'Could not update that supplier.'));
-    }
-  };
-
-  const remove = async (s: Supplier) => {
-    if (!token) return;
-    if (!confirm(`Remove ${s.name} and their ${s.priceCount} price${s.priceCount === 1 ? '' : 's'}?`)) return;
-    try {
-      await adminDeleteSupplier(token, s.id);
-      onChanged();
-    } catch (e) {
-      onError(apiError(e, 'Could not remove that supplier.'));
+    } finally {
+      setBusyId(null);
     }
   };
 
   return (
-    <div className="mb-5 p-4 sm:p-5 rounded-xl bg-surface-elevated border border-border">
-      <div className="flex flex-wrap items-center gap-2">
-        {suppliers.map((s) =>
-          editingId === s.id ? (
-            <form
-              key={s.id}
-              onSubmit={(e) => { e.preventDefault(); rename(s); }}
-              className="inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full border border-primary bg-surface"
+    <ul className="divide-y divide-border">
+      {suppliers.map((s) => (
+        <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span className={cn('text-[15px] leading-[22px] font-medium truncate', !s.active && 'text-text-secondary')}>{s.name}</span>
+            <Pill tone={s.active ? 'active' : 'retired'}>{s.active ? 'Active' : 'Retired'}</Pill>
+          </div>
+          <p className="w-full sm:w-auto text-[13px] leading-[18px] text-text-secondary tabular-nums sm:text-right">
+            {s.priceCount === 0 ? 'No prices yet' : `${s.priceCount} of ${skuCount} SKUs priced`}
+            <span className="text-text-muted"> · </span>
+            {s.orderLineCount === 0 ? 'no order lines' : `${s.orderLineCount} order line${s.orderLineCount === 1 ? '' : 's'}`}
+          </p>
+          <div className="flex items-center -mx-2.5">
+            <RowAction onClick={() => onRename(s)} disabled={busyId === s.id}>Rename</RowAction>
+            <RowAction
+              onClick={() => toggle(s)}
+              disabled={busyId === s.id}
+              title={s.active ? 'Take them out of the costing dropdown. Prices and history stay.' : 'Put them back in the costing dropdown.'}
             >
-              <input
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                aria-label={`New name for ${s.name}`}
-                className="w-28 text-sm bg-transparent focus:outline-none"
-              />
-              <button type="submit" disabled={busy || !draft.trim()} aria-label="Save name" className="p-1 rounded-full hover:bg-surface-elevated text-success cursor-pointer disabled:opacity-40">
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button type="button" onClick={() => setEditingId(null)} aria-label="Cancel rename" className="p-1 rounded-full hover:bg-surface-elevated text-text-muted cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </form>
-          ) : (
-            <span
-              key={s.id}
-              className={cn(
-                'group inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full border text-sm',
-                s.active ? 'border-border bg-surface' : 'border-dashed border-border text-text-muted',
-              )}
-            >
-              <span className="font-medium">{s.name}</span>
-              <span className="text-xs text-text-muted ml-1 tabular-nums" title={`${s.priceCount} prices · ${s.orderLineCount} costed order lines`}>
-                {s.priceCount}
-              </span>
-              {!s.active && <span className="text-[10px] uppercase tracking-wider ml-1">retired</span>}
-              <button
-                onClick={() => { setEditingId(s.id); setDraft(s.name); }}
-                aria-label={`Rename ${s.name}`}
-                title="Rename"
-                className="p-1 rounded-full hover:bg-surface-elevated text-text-muted hover:text-text-primary cursor-pointer"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => toggle(s)}
-                title={s.active ? 'Retire — drops out of the dropdown, prices and history stay' : 'Bring back'}
-                aria-label={s.active ? `Retire ${s.name}` : `Reactivate ${s.name}`}
-                className="px-1.5 py-0.5 rounded-full text-[11px] hover:bg-surface-elevated text-text-muted hover:text-text-primary cursor-pointer"
-              >
-                {s.active ? 'retire' : 'bring back'}
-              </button>
-              {/* Delete only while nothing has been costed against them; the
-                  API refuses otherwise, so the button is not offered. */}
-              {s.orderLineCount === 0 && (
-                <button
-                  onClick={() => remove(s)}
-                  aria-label={`Remove ${s.name}`}
-                  title="Remove"
-                  className="p-1 rounded-full hover:bg-danger/10 text-text-muted hover:text-danger cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </span>
-          ),
-        )}
+              {s.active ? 'Retire' : 'Bring back'}
+            </RowAction>
+            {/* Delete only while nothing has been costed against them; the
+                API refuses otherwise, so the button is not offered. */}
+            {s.orderLineCount === 0 && (
+              <RowAction tone="danger" onClick={() => onRemove(s)} disabled={busyId === s.id}>Remove</RowAction>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
-        <form onSubmit={(e) => { e.preventDefault(); add(); }} className="inline-flex items-center gap-1.5">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={suppliers.length === 0 ? 'First supplier, e.g. Chris' : 'Add a supplier'}
-            aria-label="New supplier name"
-            className="w-44 px-3 py-1.5 border border-border rounded-full text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-          <button
-            type="submit"
-            disabled={busy || !name.trim()}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium disabled:opacity-40 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add
-          </button>
-        </form>
-      </div>
-      <p className="mt-3 text-xs text-text-muted">
-        The number on each chip is how many SKUs that supplier has a price for. Retire a supplier to
-        take them out of the dropdown without losing their prices or the orders costed from them.
-      </p>
+function SkeletonRows({ rows = 6 }: { rows?: number }) {
+  return (
+    <div aria-hidden="true">
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="flex items-center gap-4 border-b border-border px-6 py-4 last:border-0">
+          <div className="h-4 rounded bg-surface-elevated" style={{ width: r % 2 ? '26%' : '34%' }} />
+          <div className="ml-auto h-4 w-24 rounded bg-surface-elevated" />
+          <div className="h-4 w-24 rounded bg-surface-elevated" />
+        </div>
+      ))}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ page */
+/* ------------------------------------------------------------- page */
+
+type DialogState = { kind: 'add' } | { kind: 'rename'; supplier: Supplier } | { kind: 'remove'; supplier: Supplier } | null;
 
 export default function AdminSuppliersPage() {
   const { token } = useAuth();
@@ -218,10 +248,12 @@ export default function AdminSuppliersPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [showRetired, setShowRetired] = useState(false);
+  const [dialog, setDialog] = useState<DialogState>(null);
+  const [removeError, setRemoveError] = useState('');
   // Ringgit text per cell, keyed supplier:variant. Empty is "no price".
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   const load = useCallback(() => {
     if (!token) return;
@@ -229,11 +261,7 @@ export default function AdminSuppliersPage() {
       .then(([list, data]) => {
         setSuppliers(list);
         setSheet(data);
-        setDraft(
-          Object.fromEntries(
-            data.rows.flatMap((r) => data.suppliers.map((s) => [cellKey(s.id, r.variantId), centsToInput(r.costs[s.id])])),
-          ),
-        );
+        setDraft(draftFromSheet(data));
         setLoadFailed(false);
       })
       .catch(() => setLoadFailed(true))
@@ -282,6 +310,10 @@ export default function AdminSuppliersPage() {
   }, [sheet, draft]);
   const invalidCount = changes.filter((c) => c.invalid).length;
   const dirty = changes.length > 0;
+  const changedSuppliers = useMemo(() => {
+    const ids = new Set(changes.map((c) => c.supplierId));
+    return (sheet?.suppliers ?? []).filter((s) => ids.has(s.id)).map((s) => s.name);
+  }, [changes, sheet]);
 
   const save = async () => {
     if (!token || !dirty || invalidCount > 0) return;
@@ -289,7 +321,7 @@ export default function AdminSuppliersPage() {
     setError('');
     try {
       await adminSetSupplierCosts(token, changes.map(({ supplierId, variantId, cost }) => ({ supplierId, variantId, cost })));
-      setSavedAt(Date.now());
+      setJustSaved(true);
       load();
     } catch (e) {
       setError(apiError(e, 'Could not save the prices.'));
@@ -298,138 +330,240 @@ export default function AdminSuppliersPage() {
     }
   };
 
-  const discard = () => {
-    if (!sheet) return;
-    setDraft(
-      Object.fromEntries(
-        sheet.rows.flatMap((r) => sheet.suppliers.map((s) => [cellKey(s.id, r.variantId), centsToInput(r.costs[s.id])])),
-      ),
-    );
+  const discard = () => { if (sheet) setDraft(draftFromSheet(sheet)); };
+  const edit = (k: string, v: string) => { setJustSaved(false); setDraft((p) => ({ ...p, [k]: v })); };
+
+  const remove = async (s: Supplier) => {
+    if (!token) return false;
+    setRemoveError('');
+    try {
+      await adminDeleteSupplier(token, s.id);
+      load();
+      return true;
+    } catch (e) {
+      setRemoveError(apiError(e, 'Could not remove that supplier.'));
+      return false;
+    }
+  };
+
+  // Spreadsheet keys: Enter walks down the column, Shift+Enter back up, so a
+  // supplier's whole column can be typed in one pass without touching the
+  // mouse. Tab already walks across the row.
+  const sheetRef = useRef<HTMLTableElement>(null);
+  const onCellKey = (e: KeyboardEvent<HTMLInputElement>, supplierId: string) => {
+    if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const inputs = Array.from(sheetRef.current?.querySelectorAll<HTMLInputElement>(`input[data-supplier="${supplierId}"]`) ?? []);
+    const i = inputs.indexOf(e.currentTarget);
+    if (i === -1) return;
+    const next = inputs[e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey) ? i - 1 : i + 1];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    next.select();
   };
 
   const retiredCount = (sheet?.suppliers ?? []).filter((s) => !s.active).length;
+  const skuCount = sheet?.rows.length ?? 0;
+  const emptySheet = !loading && !loadFailed && suppliers.length === 0;
 
   return (
-    <div className="pb-24">
+    <div className="pb-6">
       <Animate variant="fadeUp">
         <PageHeader
           icon={Handshake}
           title="Suppliers"
-          subtitle="Who the business buys from and what each of them charges per unit. The costing sheet on an order picks a unit cost from this list — a price changed here never rewrites an order already costed."
-          className="mb-5"
+          subtitle="Who the business buys from and what each of them charges per unit. The costing sheet on an order picks from this list."
+          actions={
+            !emptySheet && (
+              <Button size="sm" onClick={() => setDialog({ kind: 'add' })}>
+                <Plus className="w-4 h-4" /> Add supplier
+              </Button>
+            )
+          }
         />
       </Animate>
 
-      {error && <p className="mb-4 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs">{error}</p>}
-
-      <Animate variant="fadeUp" delay={0.05}>
-        <SupplierStrip suppliers={suppliers} onChanged={() => { setError(''); load(); }} onError={setError} />
-      </Animate>
+      {error && <p className="mb-4 rounded-[6px] bg-danger/10 px-3 py-2 text-[13px] leading-[18px] text-danger">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-text-muted">Loading…</p>
+        <Card><SkeletonRows /></Card>
       ) : loadFailed ? (
-        <p className="text-sm text-danger">Could not load the price list.</p>
-      ) : suppliers.length === 0 ? (
-        <div className="px-4 py-3 rounded-xl bg-warning/10 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="inline-flex items-center gap-1.5 text-warning font-medium">
-            <AlertTriangle className="w-4 h-4 shrink-0" /> No suppliers yet
-          </span>
-          <span className="text-text-secondary">Add one above and the price sheet appears here.</span>
-        </div>
-      ) : (
-        <>
-          <div className="mb-4 flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search a product or SKU code"
-                aria-label="Search SKUs"
-                className="w-full pl-9 pr-3 py-2.5 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-            </div>
-            {retiredCount > 0 && (
-              <button
-                onClick={() => setShowRetired(!showRetired)}
-                aria-pressed={showRetired}
-                className={cn(
-                  'px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap',
-                  showRetired ? 'bg-primary text-white' : 'bg-surface-elevated text-text-secondary hover:bg-border',
-                )}
-              >
-                {showRetired ? 'Hide' : 'Show'} retired ({retiredCount})
-              </button>
-            )}
-          </div>
-
-          {columns.length === 0 ? (
-            <p className="text-sm text-text-muted">Every supplier is retired. Bring one back to edit prices.</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-text-muted">No SKUs match that search.</p>
-          ) : (
-            <div className="max-h-[65vh] overflow-auto border border-border rounded-xl">
-              <table className="w-full text-sm" style={{ minWidth: `${18 + columns.length * 8}rem` }}>
-                <thead className="text-text-muted text-xs">
-                  <tr>
-                    {/* Both sticky: the item column so a phone can scroll the
-                        supplier columns sideways without losing which row it is
-                        on, the header so the supplier names survive scrolling
-                        down a 60-row catalogue. */}
-                    <th className="sticky top-0 left-0 z-20 bg-surface-elevated p-3 text-left font-medium min-w-[18rem]">Item</th>
-                    {columns.map((s) => (
-                      <th key={s.id} className={cn('sticky top-0 z-10 bg-surface-elevated p-3 text-right font-medium whitespace-nowrap', !s.active && 'text-text-muted/70')}>
-                        {s.name}
-                        {!s.active && <span className="block text-[10px] font-normal uppercase tracking-wider">retired</span>}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {groups.map(([productId, g]) => (
-                    <GroupRows key={productId} name={g.name} rows={g.rows} columns={columns} draft={draft} sheet={sheet!} onChange={(k, v) => setDraft((p) => ({ ...p, [k]: v }))} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <p className="mt-3 text-xs text-text-muted">
-            An empty cell means that supplier does not sell the item — it is not a price of zero. Per unit, in ringgit.
-          </p>
-
-          {dirty && (
-            <SaveBar className="mt-4">
-              <span className="text-sm font-medium">
-                {changes.length} price{changes.length === 1 ? '' : 's'} changed
-              </span>
-              {invalidCount > 0 && (
-                <span className="text-xs text-danger">
-                  {invalidCount} {invalidCount === 1 ? 'is' : 'are'} not a number
-                </span>
-              )}
-              <div className="ml-auto flex items-center gap-2">
-                <button onClick={discard} disabled={saving} className="px-3 py-1.5 rounded-lg bg-surface-elevated text-text-secondary text-xs font-medium hover:bg-border cursor-pointer">
-                  Discard
-                </button>
-                <button
-                  onClick={save}
-                  disabled={saving || invalidCount > 0}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium disabled:opacity-40 cursor-pointer"
-                >
-                  {saving ? 'Saving…' : 'Save prices'}
-                </button>
-              </div>
-            </SaveBar>
-          )}
-          {!dirty && savedAt && (
-            <p className="mt-3 text-xs text-success inline-flex items-center gap-1">
-              <Check className="w-3.5 h-3.5" /> Prices saved
+        <Card className="px-6 py-12 text-center">
+          <h3 className="text-[16px] leading-6 font-semibold">Could not load the price list</h3>
+          <p className="mx-auto mt-1.5 max-w-md text-[15px] leading-[22px] text-text-secondary">Check the connection and try again.</p>
+          <div className="mt-5"><Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }}>Retry</Button></div>
+        </Card>
+      ) : emptySheet ? (
+        <Animate variant="fadeUp" delay={0.05}>
+          <Card className="px-6 py-12 text-center">
+            <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-elevated text-text-secondary">
+              <Handshake className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <h3 className="text-[16px] leading-6 font-semibold">No suppliers yet</h3>
+            <p className="mx-auto mt-1.5 max-w-md text-[15px] leading-[22px] text-text-secondary">
+              Add the people the business buys from — Chris, YL,C, Zuwa — and a price sheet with a column for each appears here.
+              The costing sheet on an order then offers their prices from a dropdown.
             </p>
-          )}
-        </>
+            <div className="mt-5">
+              <Button size="sm" onClick={() => setDialog({ kind: 'add' })}><Plus className="w-4 h-4" /> Add the first supplier</Button>
+            </div>
+          </Card>
+        </Animate>
+      ) : (
+        <div className="space-y-6">
+          <Animate variant="fadeUp" delay={0.05}>
+            <Card>
+              <CardHeader
+                title={<>Suppliers <span className="ml-1 text-text-secondary font-normal tabular-nums">{suppliers.length}</span></>}
+                description="Retire a supplier to take them out of the costing dropdown — their prices and the orders costed from them stay. Remove is only offered while no order has been costed from them."
+              />
+              <SupplierList
+                suppliers={suppliers}
+                skuCount={skuCount}
+                onRename={(s) => setDialog({ kind: 'rename', supplier: s })}
+                onRemove={(s) => { setRemoveError(''); setDialog({ kind: 'remove', supplier: s }); }}
+                onChanged={() => { setError(''); load(); }}
+                onError={setError}
+              />
+            </Card>
+          </Animate>
+
+          <Animate variant="fadeUp" delay={0.1}>
+            <Card>
+              <CardHeader
+                title="Price list"
+                description="What each supplier charges per unit, in ringgit. A blank cell means they don't sell it — not a price of zero. Enter moves down a column."
+                className="flex-col sm:flex-row sm:items-center"
+                actions={
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <div className="relative flex-1 sm:w-64">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                      <TextInput
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search products"
+                        aria-label="Search SKUs"
+                        className="pl-9 text-[14px]"
+                      />
+                    </div>
+                    {retiredCount > 0 && (
+                      <Button
+                        type="button"
+                        variant={showRetired ? 'secondary' : 'outline'}
+                        size="sm"
+                        aria-pressed={showRetired}
+                        onClick={() => setShowRetired(!showRetired)}
+                        className="h-[38px]"
+                      >
+                        {showRetired ? 'Hide' : 'Show'} retired <span className="tabular-nums text-text-secondary">{retiredCount}</span>
+                      </Button>
+                    )}
+                  </div>
+                }
+              />
+
+              {columns.length === 0 ? (
+                <p className="px-6 py-10 text-center text-[15px] leading-[22px] text-text-secondary">Every supplier is retired. Bring one back to edit prices.</p>
+              ) : rows.length === 0 ? (
+                <p className="px-6 py-10 text-center text-[15px] leading-[22px] text-text-secondary">
+                  No SKUs match “{search.trim()}”.{' '}
+                  <button type="button" onClick={() => setSearch('')} className="text-text-primary underline underline-offset-2 cursor-pointer">Clear the search</button>
+                </p>
+              ) : (
+                <div className="relative max-h-[65vh] overflow-auto rounded-b-[10px]">
+                  <table ref={sheetRef} className="w-full border-collapse text-left" style={{ minWidth: `${9 + columns.length * 9}rem` }}>
+                    <thead>
+                      <tr>
+                        {/* Both sticky: the item column so a phone can scroll the
+                            supplier columns sideways without losing which row it is
+                            on, the header so the supplier names survive scrolling
+                            down a 60-row catalogue. */}
+                        <th scope="col" className="sticky left-0 top-0 z-20 min-w-[8.5rem] sm:min-w-[16rem] bg-surface-elevated px-4 py-3 text-[12px] leading-4 font-semibold uppercase tracking-[0.08em] text-text-secondary sm:px-6">
+                          Item
+                        </th>
+                        {columns.map((s) => (
+                          <th
+                            key={s.id}
+                            scope="col"
+                            className={cn(
+                              'sticky top-0 z-10 w-[9.5rem] whitespace-nowrap bg-surface-elevated px-3 py-3 text-right text-[12px] leading-4 font-semibold uppercase tracking-[0.08em] text-text-secondary',
+                              !s.active && 'text-text-muted',
+                            )}
+                          >
+                            {s.name}
+                            {!s.active && <span className="ml-1.5 font-medium normal-case tracking-normal">(retired)</span>}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groups.map(([productId, g]) => (
+                        <GroupRows
+                          key={productId}
+                          name={g.name}
+                          rows={g.rows}
+                          columns={columns}
+                          draft={draft}
+                          sheet={sheet!}
+                          onChange={edit}
+                          onKey={onCellKey}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </Animate>
+
+          <SaveBar>
+            <p className="flex-1 min-w-[10rem] px-1 text-[13px] leading-[18px]">
+              {invalidCount > 0 ? (
+                <span className="text-danger">
+                  {invalidCount} {invalidCount === 1 ? 'cell is' : 'cells are'} not a price — fix or clear {invalidCount === 1 ? 'it' : 'them'} to save
+                </span>
+              ) : justSaved && !dirty ? (
+                <span className="inline-flex items-center gap-1.5 font-medium text-success"><Check className="w-4 h-4" /> Prices saved</span>
+              ) : dirty ? (
+                <span className="text-text-secondary">
+                  <span className="font-medium text-text-primary">{changes.length} {changes.length === 1 ? 'price' : 'prices'} changed</span>
+                  {' '}for {changedSuppliers.join(', ')}
+                </span>
+              ) : (
+                <span className="text-text-secondary">No unsaved changes</span>
+              )}
+            </p>
+            {dirty && (
+              <Button type="button" variant="outline" size="sm" onClick={discard} disabled={saving}>Discard</Button>
+            )}
+            <Button type="button" size="sm" onClick={save} disabled={saving || !dirty || invalidCount > 0}>
+              {saving ? 'Saving…' : 'Save prices'}
+            </Button>
+          </SaveBar>
+        </div>
+      )}
+
+      {dialog?.kind === 'add' && (
+        <SupplierDialog supplier={null} onClose={() => setDialog(null)} onSaved={() => { setError(''); load(); }} />
+      )}
+      {dialog?.kind === 'rename' && (
+        <SupplierDialog supplier={dialog.supplier} onClose={() => setDialog(null)} onSaved={() => { setError(''); load(); }} />
+      )}
+      {dialog?.kind === 'remove' && (
+        <ConfirmDialog
+          title={`Remove ${dialog.supplier.name}?`}
+          body={
+            dialog.supplier.priceCount === 0
+              ? 'They have no prices yet, so nothing else is lost.'
+              : `Their ${dialog.supplier.priceCount} price${dialog.supplier.priceCount === 1 ? '' : 's'} go with them. If you only want them out of the dropdown, retire them instead — that keeps the prices.`
+          }
+          confirmLabel="Remove"
+          tone="danger"
+          error={removeError}
+          onConfirm={() => remove(dialog.supplier)}
+          onClose={() => setDialog(null)}
+        />
       )}
     </div>
   );
@@ -442,6 +576,7 @@ function GroupRows({
   draft,
   sheet,
   onChange,
+  onKey,
 }: {
   name: string;
   rows: SupplierSheet['rows'];
@@ -449,51 +584,67 @@ function GroupRows({
   draft: Record<string, string>;
   sheet: SupplierSheet;
   onChange: (key: string, value: string) => void;
+  onKey: (e: KeyboardEvent<HTMLInputElement>, supplierId: string) => void;
 }) {
   return (
     <>
-      <tr className="border-t border-border bg-surface-elevated/60">
-        <td colSpan={columns.length + 1} className="sticky left-0 px-3 py-1.5 text-xs font-semibold text-text-secondary bg-surface-elevated/60">
+      <tr className="border-t border-border">
+        <td colSpan={columns.length + 1} className="sticky left-0 bg-surface px-4 pb-1.5 pt-3 text-[13px] leading-[18px] font-semibold text-text-primary sm:px-6">
           {name}
         </td>
       </tr>
-      {rows.map((r) => (
-        <tr key={r.variantId} className="border-t border-border hover:bg-surface-elevated/40">
-          <td className="sticky left-0 z-[5] bg-surface p-3">
-            <span className="font-medium">{r.size ?? r.displayName}</span>
-            <span className="text-text-muted ml-2 text-xs font-mono">{r.code}</span>
-          </td>
-          {columns.map((s) => {
-            const key = cellKey(s.id, r.variantId);
-            const value = draft[key] ?? '';
-            const saved = sheet.rows.find((x) => x.variantId === r.variantId)?.costs[s.id] ?? null;
-            const cents = inputToCents(value);
-            const invalid = value.trim() !== '' && cents === null;
-            const changed = invalid || cents !== saved;
-            return (
-              <td key={s.id} className="p-2 text-right">
-                <span className="relative inline-block w-28">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={value}
-                    onChange={(e) => onChange(key, e.target.value)}
-                    placeholder="—"
-                    aria-label={`${s.name} price for ${r.displayName}`}
-                    aria-invalid={invalid || undefined}
+      {rows.map((r) => {
+        const saved = sheet.rows.find((x) => x.variantId === r.variantId)?.costs ?? {};
+        // The lowest figure across the visible columns, so "who is cheapest
+        // for this vial" is read off the sheet rather than worked out.
+        const priced = columns.map((s) => inputToCents(draft[cellKey(s.id, r.variantId)] ?? '')).filter((c): c is number => c !== null);
+        const lowest = priced.length >= 2 ? Math.min(...priced) : null;
+        return (
+          <tr key={r.variantId} className="group/row hover:bg-surface-elevated/50">
+            <td className="sticky left-0 z-[5] bg-surface px-4 py-1.5 align-middle group-hover/row:bg-background sm:px-6">
+              <span className="block text-[15px] leading-[22px] sm:inline">{r.size ?? r.displayName}</span>
+              <span className="block font-mono text-[12px] leading-4 text-text-secondary sm:ml-2 sm:inline">{r.code}</span>
+            </td>
+            {columns.map((s) => {
+              const key = cellKey(s.id, r.variantId);
+              const value = draft[key] ?? '';
+              const cents = inputToCents(value);
+              const invalid = value.trim() !== '' && cents === null;
+              const changed = invalid || cents !== (saved[s.id] ?? null);
+              const cheapest = lowest !== null && cents === lowest;
+              return (
+                <td key={s.id} className="px-3 py-1.5 text-right align-middle">
+                  <span
                     className={cn(
-                      'w-full pl-9 pr-2 py-1.5 border rounded-lg text-sm bg-surface text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary',
+                      'inline-flex h-9 w-[7.5rem] items-stretch overflow-hidden rounded-[6px] border bg-surface transition-[border-color,box-shadow] duration-[120ms] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/15',
                       invalid ? 'border-danger' : changed ? 'border-primary' : 'border-border',
                     )}
-                  />
-                </span>
-              </td>
-            );
-          })}
-        </tr>
-      ))}
+                  >
+                    <span className="flex items-center border-r border-border bg-surface-elevated px-2 text-[12px] text-text-secondary">RM</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={value}
+                      data-supplier={s.id}
+                      onChange={(e) => onChange(key, e.target.value)}
+                      onKeyDown={(e) => onKey(e, s.id)}
+                      placeholder="—"
+                      aria-label={`${s.name} price for ${r.displayName}`}
+                      aria-invalid={invalid || undefined}
+                      className={cn(
+                        'h-full w-full min-w-0 bg-transparent px-2 text-right text-[14px] tabular-nums outline-none placeholder:text-text-muted [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                        cheapest && !invalid ? 'font-semibold text-green-700' : 'text-text-primary',
+                      )}
+                    />
+                  </span>
+                </td>
+              );
+            })}
+          </tr>
+        );
+      })}
     </>
   );
 }
