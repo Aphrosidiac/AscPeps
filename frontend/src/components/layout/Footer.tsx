@@ -79,6 +79,9 @@ export function Footer() {
 
           <div className="border-t border-neutral-800 mt-8 pt-8 text-center text-sm text-neutral-500">
             &copy; {new Date().getFullYear()} Ascend MY. All rights reserved.
+            <span className="mx-2" aria-hidden="true">&middot;</span>
+            Site by{' '}
+            <a href="https://ffdev.studio/projects/ascend-peptides" className="underline underline-offset-2 hover:text-neutral-300">FF Dev Studio</a>
           </div>
         </div>
       </div>
