@@ -68,6 +68,8 @@ export function WebSiteJsonLd() {
     url: 'https://ascendpeptides.my',
     inLanguage: 'en-MY',
     publisher: { '@id': 'https://ascendpeptides.my/#organization' },
+    // Who designed and built the site; the footer credit says the same.
+    creator: { '@type': 'Organization', '@id': 'https://ffdev.studio/#org', name: 'FF Dev Studio', url: 'https://ffdev.studio' },
     potentialAction: {
       '@type': 'SearchAction',
       target: {
