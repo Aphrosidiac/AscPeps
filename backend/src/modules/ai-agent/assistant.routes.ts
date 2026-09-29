@@ -8,6 +8,7 @@ import { ALL_TOOLS, toolsFor } from './registry.js';
 import { tierOf, type AgentActor } from './tool-kit.js';
 import { deleteMemory, listMemory, readMemory, writeMemory } from './memory.js';
 import { runReflection } from './reflect.js';
+import { computeMonthEnd, currentMonth, monthEndText, sendMonthEnd } from '../../utils/month-end.js';
 import { startDigest } from './digest.js';
 import { orderNoticeText, testOrderNotice } from '../../utils/order-notify.js';
 
@@ -287,6 +288,31 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
     const latest = await fastify.prisma.order.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true } });
     if (!latest) return reply.status(404).send({ message: 'No order to send a notice for' });
     return testOrderNotice(fastify, latest.id);
+  });
+
+  // ── Month-end wrap ──
+  //
+  // The wrap for any month (default: this month so far) as it would be sent,
+  // and a send of it to whoever is switched on — so the routine can be
+  // checked, and a month re-sent, without waiting for the 1st.
+  const monthOf = (q: unknown) => {
+    const m = (q as { month?: string } | undefined)?.month;
+    return typeof m === 'string' && m ? m : currentMonth();
+  };
+  fastify.get('/month-end/preview', async (request, reply) => {
+    try {
+      return { text: monthEndText(await computeMonthEnd(fastify, monthOf(request.query))) };
+    } catch (err) {
+      return fail(reply, err);
+    }
+  });
+
+  fastify.post('/month-end/send', async (request, reply) => {
+    try {
+      return await sendMonthEnd(fastify, monthOf(request.body));
+    } catch (err) {
+      return fail(reply, err);
+    }
   });
 
   // ── Housekeeping ──

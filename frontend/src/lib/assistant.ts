@@ -201,6 +201,12 @@ export const orderNoticePreview = (token: string) => http.get<{ text: string | n
 export const orderNoticeTest = (token: string) =>
   http.post<{ sent: number; recipients: number; text: string | null }>('/order-notify/test', {}, auth(token)).then((r) => r.data);
 
+export const monthEndPreview = (token: string, month: string) =>
+  http.get<{ text: string }>('/month-end/preview', { ...auth(token), params: { month } }).then((r) => r.data.text);
+
+export const monthEndSend = (token: string, month: string) =>
+  http.post<{ sent: number; recipients: number; text: string }>('/month-end/send', { month }, auth(token)).then((r) => r.data);
+
 export const listTools = (token: string) => http.get<{ tools: ToolInfo[] }>('/tools', auth(token)).then((r) => r.data.tools);
 
 export const runReflection = (token: string) => http.post<{ threadId: string }>('/reflect', {}, auth(token)).then((r) => r.data);

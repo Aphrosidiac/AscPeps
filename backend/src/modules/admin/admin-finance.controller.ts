@@ -64,7 +64,7 @@ const payoutSchema = z.object({
 });
 
 /** Everything the balance maths needs, in one place so nothing drifts. */
-async function loadFinanceInput(fastify: FastifyInstance) {
+export async function loadFinanceInput(fastify: FastifyInstance) {
   const [partners, orders, expenses, funding, payouts] = await Promise.all([
     fastify.prisma.partner.findMany(),
     // Orders the money actually arrived on — matching the analytics endpoint

@@ -495,6 +495,7 @@ export const PRECONDITIONS: Precondition[] = [
     requires: [
       'get_order', 'finance_overview', 'set_order_costs', 'set_order_profit_shares',
       'get_partner', 'save_partners', 'record_payout', 'sales_breakdown', 'sales_analytics',
+      'month_end_report',
     ],
     describes: "an order's costs or profit split",
   },

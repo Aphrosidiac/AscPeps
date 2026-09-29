@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { costOrder, allocate } from '../../utils/profit.js';
+import { RESTOCK_BELOW } from '../../utils/restock.js';
 
 export async function getDashboardStats(fastify: FastifyInstance) {
   const today = new Date();
@@ -25,7 +26,7 @@ export async function getDashboardStats(fastify: FastifyInstance) {
     fastify.prisma.product.count({ where: { active: true } }),
 
     fastify.prisma.productVariant.findMany({
-      where: { active: true, stock: { lt: 5 }, product: { active: true } },
+      where: { active: true, stock: { lt: RESTOCK_BELOW }, product: { active: true } },
       select: { id: true, code: true, size: true, stock: true, product: { select: { name: true } } },
       orderBy: { stock: 'asc' },
     }),

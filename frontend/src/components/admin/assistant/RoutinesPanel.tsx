@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, MoonStar, ShoppingBag, Sunrise, X } from 'lucide-react';
+import { CalendarCheck, Loader2, MoonStar, ShoppingBag, Sunrise, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toggle, SelectInput } from '@/components/admin/ui';
 import { adminAgentOperators, adminAgentSaveGroup, adminAgentSaveOperator, adminGetSettings, adminUpdateSettings } from '@/lib/api';
-import { runDigest, runReflection, errorMessage, orderNoticePreview, orderNoticeTest } from '@/lib/assistant';
+import { runDigest, runReflection, errorMessage, orderNoticePreview, orderNoticeTest, monthEndPreview, monthEndSend } from '@/lib/assistant';
 
-// The assistant's two scheduled jobs, switched here rather than in the
-// environment: the nightly memory tidy-up (3am) and the morning brief. Each
+// The assistant's scheduled jobs, switched here rather than in the
+// environment: the nightly memory tidy-up (3am), the morning brief, and the
+// month-end wrap. Each
 // can also be run now, into a thread of its own that shows in the list.
 //
 // Who receives the brief is decided here too, per operator. The recipients
@@ -26,6 +27,7 @@ interface Operator {
   canWrite: boolean;
   morningBrief: boolean;
   orderNotify: boolean;
+  monthEnd: boolean;
 }
 
 interface Group {
@@ -36,9 +38,10 @@ interface Group {
   requireMention: boolean;
   morningBrief: boolean;
   orderNotify: boolean;
+  monthEnd: boolean;
 }
 
-type Flag = 'morningBrief' | 'orderNotify';
+type Flag = 'morningBrief' | 'orderNotify' | 'monthEnd';
 
 // One row of the recipients list: a switch and a name.
 function Recipient({
@@ -87,9 +90,23 @@ const KEYS = {
   digest: 'agent_morning_brief',
   digestHour: 'agent_morning_brief_hour',
   orderNotify: 'agent_order_notify',
+  monthEnd: 'agent_month_end',
+  monthEndHour: 'agent_month_end_hour',
 } as const;
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
+
+// This month and the five before it, in Malaysia time, newest first — the
+// months the wrap can be previewed or re-sent for.
+function recentMonths(): { value: string; label: string }[] {
+  const now = new Date(Date.now() + 8 * 3600_000);
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const value = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const name = d.toLocaleString('en-MY', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    return { value, label: i === 0 ? `${name} (so far)` : name };
+  });
+}
 
 export function RoutinesPanel({
   token,
@@ -200,6 +217,29 @@ export function RoutinesPanel({
       .finally(() => setBusy(''));
   };
 
+  const months = recentMonths();
+  const [wrapMonth, setWrapMonth] = useState(months[1].value);
+  const [wrap, setWrap] = useState<string | undefined>(undefined);
+  const loadWrap = (month = wrapMonth) => {
+    setBusy('wrap-preview');
+    monthEndPreview(token, month)
+      .then(setWrap)
+      .catch((e) => onNotice('bad', errorMessage(e)))
+      .finally(() => setBusy(''));
+  };
+  const sendWrap = () => {
+    setBusy('wrap');
+    monthEndSend(token, wrapMonth)
+      .then((r) =>
+        onNotice(
+          r.sent ? 'ok' : 'bad',
+          r.sent ? `Sent to ${r.sent} of ${r.recipients}` : r.recipients ? 'Nothing sent — is WhatsApp connected?' : 'Switch on at least one recipient first'
+        )
+      )
+      .catch((e) => onNotice('bad', errorMessage(e)))
+      .finally(() => setBusy(''));
+  };
+
   const run = (which: 'reflect' | 'digest') => {
     setBusy(which);
     const job =
@@ -224,6 +264,7 @@ export function RoutinesPanel({
   // be "chosen", and for a while the scheduler read the missing row as 0.
   const hour = Number(settings?.[KEYS.digestHour] || 8);
   const reflectHour = Number(settings?.[KEYS.reflectHour] || 3);
+  const wrapHour = Number(settings?.[KEYS.monthEndHour] || 9);
 
   return (
     <div className="flex h-full flex-col">
@@ -328,6 +369,78 @@ export function RoutinesPanel({
 
           <section className="space-y-3">
             <Toggle
+              checked={settings[KEYS.monthEnd] === 'true'}
+              onChange={(v) => set({ [KEYS.monthEnd]: v ? 'true' : 'false', ...(settings[KEYS.monthEndHour] ? {} : { [KEYS.monthEndHour]: String(wrapHour) }) })}
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarCheck className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Month-end wrap
+                </span>
+              }
+              description="On the 1st, the month that just ended: revenue against the month before, profit, what each partner earned and is owed, orders still unpaid or unshipped, best sellers and what is under 5 units. Written by the system from the same numbers as Finance and Analytics — exact, not the assistant’s arithmetic."
+            />
+            <div className="flex items-center gap-3 pl-14">
+              <label className="text-[13px] text-text-secondary" htmlFor="wrap-hour">
+                On the 1st at
+              </label>
+              <div className="w-28">
+                <SelectInput id="wrap-hour" value={String(wrapHour)} onChange={(e) => set({ [KEYS.monthEndHour]: e.target.value })}>
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>
+                      {String(h).padStart(2, '0')}:00
+                    </option>
+                  ))}
+                </SelectInput>
+              </div>
+            </div>
+            <div className="pl-14">
+              <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
+              {recipients('monthEnd', 'the month-end wrap')}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="w-48">
+                  <SelectInput
+                    aria-label="Month"
+                    value={wrapMonth}
+                    onChange={(e) => {
+                      setWrapMonth(e.target.value);
+                      if (wrap !== undefined) loadWrap(e.target.value);
+                    }}
+                  >
+                    {months.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </SelectInput>
+                </div>
+                <button
+                  disabled={busy === 'wrap-preview'}
+                  onClick={() => (wrap === undefined ? loadWrap() : setWrap(undefined))}
+                  className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                >
+                  {busy === 'wrap-preview' && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />}
+                  {wrap === undefined ? 'Preview' : 'Hide preview'}
+                </button>
+                <button
+                  disabled={!!busy}
+                  onClick={sendWrap}
+                  className="press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-50"
+                >
+                  {busy === 'wrap' && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />} Send now
+                </button>
+              </div>
+              {wrap !== undefined && (
+                <pre className="view-in mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[8px] border border-border bg-surface-elevated px-3 py-2 text-[12px] leading-4 text-text-primary">
+                  {wrap}
+                </pre>
+              )}
+              <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
+                Send now sends the chosen month to whoever is switched on. It carries each partner’s earnings — choose the recipients with that in mind.
+              </p>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <Toggle
               checked={settings[KEYS.reflect] === 'true'}
               onChange={(v) =>
                 set({ [KEYS.reflect]: v ? 'true' : 'false', ...(settings[KEYS.reflectHour] ? {} : { [KEYS.reflectHour]: String(reflectHour) }) })
@@ -363,7 +476,7 @@ export function RoutinesPanel({
           </section>
 
           <p className="text-[12px] leading-4 text-text-secondary">
-            The brief and the reflection run at most once per day (Malaysia time); a manual run counts as today’s. None of these changes orders, products or
+            The brief and the reflection run at most once per day (Malaysia time); a manual run counts as today’s. The wrap runs once a month; a manual send does not replace it. None of these changes orders, products or
             settings.
           </p>
         </div>

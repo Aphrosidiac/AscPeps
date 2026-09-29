@@ -1,6 +1,8 @@
 import type { AgentTool } from '../tool-kit.js';
 import { clampLimit, money, parseDate, truncate } from '../tool-kit.js';
 import { getAnalytics, getDashboardStats } from '../../admin/admin-dashboard.controller.js';
+import { computeMonthEnd, monthEndText, currentMonth } from '../../../utils/month-end.js';
+import { RESTOCK_BELOW } from '../../../utils/restock.js';
 
 // Reporting. The fixed reports below cover the questions that get asked
 // weekly; `run_report_query` is what makes the rest possible, because no fixed
@@ -107,6 +109,22 @@ export const reportTools: AgentTool[] = [
     description: 'Headline numbers: revenue, order counts by status, recent orders, low stock. The quick "how are we doing".',
     input_schema: { type: 'object', properties: {} },
     run: async ({ fastify }) => jsonSafe(await getDashboardStats(fastify)),
+  },
+
+  {
+    name: 'month_end_report',
+    description:
+      'The month-end wrap for a calendar month: revenue (vs the month before), orders placed/paid/unpaid/failed, costs and profit, what each partner earned that month and is owed to date, orders still hanging (unpaid, or paid and not shipped), units sold, and stock under the restock line. Use for "month end", "wrap up September", "how did the month go", "how much did each of us earn this month". The figures are exact and computed by the system — reply with `text` exactly as given (you may add one line before it), never re-add or reformat the numbers.',
+    input_schema: {
+      type: 'object',
+      properties: { month: { type: 'string', description: 'YYYY-MM. Default: this month so far.' } },
+    },
+    run: async ({ fastify }, input) => {
+      const month = typeof input.month === 'string' && input.month.trim() ? input.month.trim() : currentMonth();
+      // The text alone: every figure is already in it, formatted, and raw
+      // cents beside it only invite the model to redo the sums.
+      return { month, text: monthEndText(await computeMonthEnd(fastify, month)) };
+    },
   },
 
   {
@@ -231,10 +249,10 @@ export const reportTools: AgentTool[] = [
     description: 'Stock position across the catalogue: units on hand, retail value, and what is out of or low on stock.',
     input_schema: {
       type: 'object',
-      properties: { lowStockThreshold: { type: 'number', description: 'Default 10.' } },
+      properties: { lowStockThreshold: { type: 'number', description: `At or below this counts as low. Default ${RESTOCK_BELOW - 1} — the operators want restock reminders only under ${RESTOCK_BELOW} units.` } },
     },
     run: async ({ prisma }, input) => {
-      const threshold = Number.isFinite(input.lowStockThreshold) ? Math.trunc(input.lowStockThreshold) : 10;
+      const threshold = Number.isFinite(input.lowStockThreshold) ? Math.trunc(input.lowStockThreshold) : RESTOCK_BELOW - 1;
       const rows: any[] = await prisma.$queryRawUnsafe(
         `SELECT COUNT(*)::bigint                                  AS variants,
                 SUM(stock)::bigint                                AS units,

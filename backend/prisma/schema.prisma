@@ -836,6 +836,9 @@ model WhatsAppOperator {
   // Gets a WhatsApp line the moment an order is created. Off by default: it
   // is a message per order, chosen per person on the Routines panel.
   orderNotify  Boolean @default(false)
+  // Gets the month-end wrap on the 1st. Off by default: it carries each
+  // partner's earnings, so who reads it is a choice.
+  monthEnd     Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -893,6 +896,8 @@ model WhatsAppGroup {
   morningBrief   Boolean @default(false)
   // Gets the new-order notice posted into it. Off by default, same reason.
   orderNotify    Boolean @default(false)
+  // Gets the month-end wrap posted into it. Off by default, same reason.
+  monthEnd       Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

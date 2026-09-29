@@ -101,7 +101,8 @@ const KEYWORDS: Record<Domain, string[]> = {
   reports: [
     'report', 'laporan', 'analytics', 'stats', 'statistic', 'revenue', 'sales',
     'jualan', 'total', 'jumlah', 'breakdown', 'top ', 'best', 'trend', 'month',
-    'bulan', 'week', 'minggu', 'compare', 'query', 'sql', 'database',
+    'bulan', 'week', 'minggu', 'compare', 'query', 'sql', 'database', 'wrap',
+    'earning', 'earned',
   ],
   delivery: [
     'delivery', 'penghantaran', 'hantar', 'deliver', 'courier', 'kurier',

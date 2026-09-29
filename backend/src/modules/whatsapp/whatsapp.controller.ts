@@ -152,6 +152,7 @@ export async function upsertOperator(fastify: FastifyInstance, body: any) {
       canWrite: body.canWrite !== false,
       morningBrief: body.morningBrief !== false,
       orderNotify: !!body.orderNotify,
+      monthEnd: !!body.monthEnd,
     },
     update: {
       name: String(body.name),
@@ -159,6 +160,7 @@ export async function upsertOperator(fastify: FastifyInstance, body: any) {
       canWrite: body.canWrite !== false,
       ...(body.morningBrief !== undefined ? { morningBrief: body.morningBrief !== false } : {}),
       ...(body.orderNotify !== undefined ? { orderNotify: !!body.orderNotify } : {}),
+      ...(body.monthEnd !== undefined ? { monthEnd: !!body.monthEnd } : {}),
     },
   });
 }
@@ -179,6 +181,7 @@ export async function upsertGroup(fastify: FastifyInstance, body: any) {
       requireMention: body.requireMention !== false,
       morningBrief: !!body.morningBrief,
       orderNotify: !!body.orderNotify,
+      monthEnd: !!body.monthEnd,
     },
     update: {
       ...(body.subject ? { subject: String(body.subject) } : {}),
@@ -186,6 +189,7 @@ export async function upsertGroup(fastify: FastifyInstance, body: any) {
       requireMention: body.requireMention !== false,
       ...(body.morningBrief !== undefined ? { morningBrief: !!body.morningBrief } : {}),
       ...(body.orderNotify !== undefined ? { orderNotify: !!body.orderNotify } : {}),
+      ...(body.monthEnd !== undefined ? { monthEnd: !!body.monthEnd } : {}),
     },
   });
 }

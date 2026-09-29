@@ -1,6 +1,7 @@
 import type { AgentTool } from '../tool-kit.js';
 import { audited, clampLimit, listResult, money, toCents, parseDate, rm } from '../tool-kit.js';
 import { getEffectivePrice, isSaleActive } from '../../../utils/product-pricing.js';
+import { RESTOCK_BELOW } from '../../../utils/restock.js';
 
 // Catalogue tools. The parent/variant split matters here and the descriptions
 // lean on it hard: a Product is the compound (one storefront URL, shared copy),
@@ -443,17 +444,17 @@ export const catalogTools: AgentTool[] = [
 
   {
     name: 'list_low_stock',
-    description: 'Variants at or below a stock threshold, lowest first. Use for restock planning.',
+    description: `Variants at or below a stock threshold, lowest first. Use for restock planning. The default is the operators' restock line — only variants under ${RESTOCK_BELOW} units need a reminder; do not raise anything at ${RESTOCK_BELOW} or above as low unless asked for a higher threshold.`,
     input_schema: {
       type: 'object',
       properties: {
-        threshold: { type: 'number', description: 'Default 10.' },
+        threshold: { type: 'number', description: `At or below this. Default ${RESTOCK_BELOW - 1}.` },
         includeInactive: { type: 'boolean' },
         limit: { type: 'number' },
       },
     },
     run: async ({ prisma }, input) => {
-      const threshold = Number.isFinite(input.threshold) ? Math.trunc(input.threshold) : 10;
+      const threshold = Number.isFinite(input.threshold) ? Math.trunc(input.threshold) : RESTOCK_BELOW - 1;
       const variants = await prisma.productVariant.findMany({
         where: {
           stock: { lte: threshold },

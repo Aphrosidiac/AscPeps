@@ -50,6 +50,7 @@ import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import assistantRoutes from './modules/ai-agent/assistant.routes.js';
 import { maybeReflect } from './modules/ai-agent/reflect.js';
 import { maybeDigest } from './modules/ai-agent/digest.js';
+import { maybeMonthEnd } from './utils/month-end.js';
 import { reconcileStaleOrders } from './utils/payment-reconcile.js';
 import manualPayPlugin from './plugins/manualpay.js';
 import { manualPayGatePlugin } from 'manualpaygate/server/fastify';
@@ -308,6 +309,7 @@ try {
   const assistantTimer = setInterval(() => {
     maybeReflect(fastify).catch((err) => fastify.log.error({ err }, 'nightly reflection failed'));
     maybeDigest(fastify).catch((err) => fastify.log.error({ err }, 'morning brief failed'));
+    maybeMonthEnd(fastify).catch((err) => fastify.log.error({ err }, 'month-end wrap failed'));
   }, ASSISTANT_TICK_MS);
   assistantTimer.unref();
 } catch (err) {

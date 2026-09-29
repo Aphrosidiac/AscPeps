@@ -14,6 +14,10 @@ export const SETTING_KEYS = {
   orderNotify: 'agent_order_notify',
   reflectLast: 'agent_nightly_reflection_last',
   digestLast: 'agent_morning_brief_last',
+  monthEnd: 'agent_month_end',
+  monthEndHour: 'agent_month_end_hour',
+  // The last month (YYYY-MM) a wrap went out for, not a day.
+  monthEndLast: 'agent_month_end_last',
 } as const;
 
 export async function readSetting(fastify: FastifyInstance, key: string): Promise<string | null> {

@@ -301,18 +301,23 @@ marker must never appear in a memory file.
 
 ## Routines
 
-Three routines, switched on from the Assistant page (**Routines**), stored in
+Four routines, switched on from the Assistant page (**Routines**), stored in
 `settings`:
 
 | key | what |
 |---|---|
 | `agent_morning_brief` / `agent_morning_brief_hour` | once a day, after the hour (default 8; a missing or blank hour row means the default — `readHour` in `schedule.ts`, because `Number(null)` is 0 and the brief once ran at midnight on production for that reason): the assistant reads orders, stock, the outbox and reminders and writes one plain-text message, which the harness sends to every active operator's DM and every allowlisted group with `morningBrief` on — chosen per row on the Routines panel (operators default on, groups off); recipients can only ever be on the WhatsApp allowlist |
 | `agent_order_notify` | not scheduled — fires at the moment the order needs a person (`utils/order-notify.ts`): a manual-payment order (`WHATSAPP`, incl. the hosted proof-upload flow) on creation, from the end of `createOrder` — someone has to confirm the transfer; an online-gateway or crypto order on its `UNPAID → PAID` transition, from `applyPaid` — the customer settles on the gateway minutes after checkout and may not settle at all, and the guarded transition makes it once per order. One WhatsApp line (🛒 *New order* / ✅ *Order paid*) with number, customer, items, total, payment and the admin link, to every active operator and allowlisted group with `orderNotify` on. Written by code, not the model: immediate, identical, never wrong about the number. Preview and a test send on the panel; the test is the notice that order's method produces |
+| `agent_month_end` / `agent_month_end_hour` | on the 1st after the hour (default 9; the 2nd and 3rd are a catch-up window, never later): the month just ended, written by code in `utils/month-end.ts` — revenue vs the month before, placed/paid/unpaid/failed, costs and profit over costed orders (uncosted ones named), each partner's earnings that month from the same `costOrder`/`allocate` as Analytics and their owed-to-date from `computeFinance`, orders still unpaid or paid-not-shipped, units sold (add-on supplies counted apart) and every variant under the restock line. Sent to operators/groups with `monthEnd` on; `agent_month_end_last` holds the month (YYYY-MM) last sent. The panel previews or sends any of the last six months; the assistant reads the same text through `month_end_report`. Stock comes before any section naming an order, because the grounding guard ties a product name to the nearest order number above it |
 | `agent_nightly_reflection` / `agent_nightly_reflection_hour` | once a day after the hour (3am by default): reads what operators said (`list_operator_messages`) and what it did, then consolidates the memory directory — merges, expires, moves detail out of core/, appends to log.md |
 
-Each runs in a thread of its own kind, visible on the page, at most once per
-Malaysian day (`agent_*_last`), from a 5-minute tick in `server.ts`. A manual
-run counts as the day's.
+The brief and the reflection each run in a thread of its own kind, visible on
+the page, at most once per Malaysian day (`agent_*_last`), from a 5-minute tick
+in `server.ts`. A manual run counts as the day's.
+
+The restock line is `RESTOCK_BELOW` in `utils/restock.ts` (5): a variant needs a
+reminder under 5 units and not otherwise. The dashboard, `list_low_stock`,
+`inventory_report`, the brief's prompt and the wrap all read it.
 
 ---
 
