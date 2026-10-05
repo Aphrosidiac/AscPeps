@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../../config/env.js';
 import { handleMessage, MEDIA_KINDS, type InboundMessage, type InboundQuoted, type MediaKind } from './agent.service.js';
-import type { InboundImage } from './core/vision.js';
+import type { InboundFile } from './core/media.js';
 import { sendEmail } from '../../utils/email.js';
 
 // The worker → API hop. This endpoint can run every tool the agent has, so it
@@ -23,10 +23,11 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // A picture rides along as base64 — up to 10 MB decoded, which the worker
-  // enforces before downloading — so this one route takes bodies well past
-  // the server's default 1 MiB.
-  fastify.post('/inbound', { bodyLimit: 32 * 1024 * 1024 }, async (request, reply) => {
+  // A file rides along as base64 — the worker enforces the size before
+  // downloading — so this one route takes bodies well past the server's
+  // default 1 MiB: a file and a quoted file, each up to AGENT_MAX_FILE_MB, as base64 (4/3 the
+  // size) — plus room for the JSON around them.
+  fastify.post('/inbound', { bodyLimit: Math.ceil(env.AGENT_MAX_FILE_MB * 2 * 1.4 + 4) * 1024 * 1024 }, async (request, reply) => {
     const body = request.body as Partial<InboundMessage>;
     // Either identity is acceptable — a LID-only sender has no phone at all.
     if ((!body?.senderPhone && !body?.senderLid) || typeof body.text !== 'string') {
@@ -43,8 +44,10 @@ export default async function internalAgentRoutes(fastify: FastifyInstance) {
       senderName: body.senderName ?? null,
       text: body.text,
       media,
-      image: imageOf(body.image),
-      imageOversized: body.imageOversized === true,
+      // `image` is the pre-October field; a worker deployed a minute before or
+      // after this API still sends it.
+      file: fileOf(body.file) ?? fileOf(body.image),
+      fileOversized: oversizeOf(body.fileOversized) ?? (body.imageOversized === true ? { sizeMb: 10 } : undefined),
       quoted,
       groupJid: body.groupJid,
       groupSubject: body.groupSubject,
@@ -116,13 +119,21 @@ function mediaKind(value: unknown): MediaKind | undefined {
   return (MEDIA_KINDS as readonly string[]).includes(String(value)) ? (value as MediaKind) : undefined;
 }
 
-// Only a picture, only as base64. The worker is trusted, but the shape is
-// checked so a stray field never reaches the vision model as a data: URL.
-function imageOf(value: unknown): InboundImage | undefined {
-  const v = value as Partial<InboundImage> | undefined;
+// A file as base64 with a declared type and name. The worker is trusted, but
+// the shape is checked; the declared type is only a hint — media.ts sniffs
+// the bytes.
+function fileOf(value: unknown): InboundFile | undefined {
+  const v = value as Partial<InboundFile> | undefined;
   if (!v || typeof v.base64 !== 'string' || !v.base64) return undefined;
-  const mimeType = typeof v.mimeType === 'string' && /^image\/[\w.+-]+$/.test(v.mimeType) ? v.mimeType : 'image/jpeg';
-  return { mimeType, base64: v.base64 };
+  const mimeType = typeof v.mimeType === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(v.mimeType) ? v.mimeType : 'application/octet-stream';
+  const fileName = typeof v.fileName === 'string' && v.fileName.trim() ? v.fileName.slice(0, 200) : undefined;
+  return { mimeType, base64: v.base64, ...(fileName ? { fileName } : {}) };
+}
+
+function oversizeOf(value: unknown): { fileName?: string; sizeMb: number } | undefined {
+  const v = value as { fileName?: unknown; sizeMb?: unknown } | undefined;
+  if (!v || typeof v !== 'object' || typeof v.sizeMb !== 'number') return undefined;
+  return { sizeMb: Math.round(v.sizeMb), ...(typeof v.fileName === 'string' ? { fileName: v.fileName.slice(0, 200) } : {}) };
 }
 
 function quotedOf(value: unknown): InboundQuoted | undefined {
@@ -130,15 +141,15 @@ function quotedOf(value: unknown): InboundQuoted | undefined {
   if (!v || typeof v !== 'object') return undefined;
   const text = typeof v.text === 'string' ? v.text : '';
   const media = mediaKind(v.media);
-  const image = imageOf(v.image);
-  if (!text.trim() && !media && !image) return undefined;
+  const file = fileOf(v.file) ?? fileOf(v.image);
+  if (!text.trim() && !media && !file) return undefined;
   return {
     text,
     media,
     participantJid: typeof v.participantJid === 'string' ? v.participantJid : null,
     fromBot: v.fromBot === true,
-    image,
-    imageOversized: v.imageOversized === true,
+    file,
+    fileOversized: oversizeOf(v.fileOversized) ?? (v.imageOversized === true ? { sizeMb: 10 } : undefined),
   };
 }
 

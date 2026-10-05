@@ -19,10 +19,10 @@ export interface SendTarget {
   jid?: string;
 }
 
-export async function workerRequest(path: string, body?: any) {
+export async function workerRequest(path: string, body?: any, timeoutMs = 10_000) {
   const url = `http://127.0.0.1:${env.WORKER_HTTP_PORT}${path}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       method: body ? 'POST' : 'GET',
@@ -47,6 +47,28 @@ export async function sendWhatsAppMessage(target: SendTarget, message: string): 
     // 409 is the worker saying WhatsApp is not connected — a temporary state
     // worth retrying, not a bad request. The message says so plainly because
     // it ends up stored on the reminder as lastError and read by a human.
+    throw new Error(body?.message || `worker returned ${res.status}`);
+  }
+}
+
+export interface OutgoingFile {
+  // 'image' arrives as a photo in the chat; 'document' as a file with its name.
+  kind: 'image' | 'document';
+  base64: string;
+  mimeType: string;
+  fileName: string;
+  caption?: string;
+}
+
+/**
+ * Send one file. Same contract as sendWhatsAppMessage — throws a readable
+ * reason — with a longer clock: the worker has to upload the bytes to
+ * WhatsApp's media servers before the message itself goes out.
+ */
+export async function sendWhatsAppFile(target: SendTarget, file: OutgoingFile): Promise<void> {
+  const res = await workerRequest('/send-file', { ...target, ...file }, 90_000);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as any;
     throw new Error(body?.message || `worker returned ${res.status}`);
   }
 }

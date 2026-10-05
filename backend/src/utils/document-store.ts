@@ -113,6 +113,37 @@ export async function sniffDocumentType(filepath: string): Promise<AllowedMime |
 }
 
 /**
+ * What can be filed from a chat. Wider than ALLOWED_MIME on purpose: the
+ * bookkeeping that arrives over WhatsApp is not only PDFs and photos — bank
+ * statements come as CSV or Excel, supplier quotes as Word. As the note on
+ * ALLOWED_MIME says, a type that cannot be shown safely is fine to KEEP as long
+ * as it is never served inline: the file route already forces a download for
+ * anything isInlineViewable() refuses, with nosniff and a locked-down CSP.
+ *
+ * Identified from the bytes (agent-media-store's sniffType); only plain CSV
+ * and text, which have no magic number, rely on the name — after the bytes
+ * are checked to be text. HTML is deliberately not on the list.
+ */
+export const FILEABLE_FROM_CHAT: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/heic': 'heic',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.oasis.opendocument.spreadsheet': 'ods',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'text/csv': 'csv',
+  'text/tab-separated-values': 'tsv',
+  'text/plain': 'txt',
+};
+
+export const FILEABLE_LABEL = 'PDF, picture, Word, Excel/CSV, PowerPoint or text file';
+
+/**
  * Whether a browser can be trusted to display this inline rather than being
  * handed it as a download. Both are served from the same authenticated route;
  * this only decides Content-Disposition.

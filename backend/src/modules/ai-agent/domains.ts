@@ -50,6 +50,13 @@ export const CORE_TOOL_NAMES = [
   // only sees "order" would leave the agent unable to keep it — or to read the
   // client file the answer needs.
   'memory',
+  // Files can come up in any conversation — "send me the receipt", "what does
+  // page 3 of that PDF say", "send the BPC photo" — so reading one and sending
+  // into this chat are always on offer. Forwarding elsewhere and filing stay
+  // with the documents domain.
+  'read_attachment',
+  'list_attachments',
+  'send_file',
 ];
 
 // Used when nothing matched. Orders and catalog are what operators ask about
@@ -117,6 +124,8 @@ const KEYWORDS: Record<Domain, string[]> = {
     // either genuinely wants both domains, and loading two is far cheaper than
     // routing to the wrong one.
     'receipt', 'resit', 'invoice', 'invois', 'bil',
+    // Sending a file somewhere else, and filing one that was sent.
+    'forward', 'teruskan', 'spreadsheet', 'excel', 'export',
   ],
   shadow: [
     'shadow', 'bayang', 'generalis', 'generaliz', 'alias', 'codename', 'code name',
@@ -175,6 +184,18 @@ const PLAYBOOKS: Record<string, Playbook> = {
 4. Separately, the finance side tracks company spending, money partners put in, and money paid back out. Money in is either a CONTRIBUTION (capital, never repaid) or an ADVANCE (a debt the company owes back). These are not interchangeable — ask which one if it is not stated.`,
   },
 
+  bookkeeping: {
+    title: 'Bookkeeping over WhatsApp',
+    body: `The operators keep the books by sending you the paperwork. Every file they send is already read for you (its text is on their message, with a mediaId), and nothing is in the books until a tool puts it there.
+- A file with no instruction, or "handle this": read it and say in one or two lines what it is — who from, the date, the amount, what for — then PROPOSE the one entry it needs and ask for a yes. Spending (a bill, a receipt, a supplier invoice we paid): "Record RM 230.40 Utilities — TNB bill Sept 2026, dated 3 Oct — and file the bill?" → record_expense with receiptMediaId. A customer's payment slip: name the order it matches and offer to mark it paid and file the slip against it. A statement or a quotation: offer to file it (save_attachment_as_document) — a statement is not an expense.
+- Take the amount, date and vendor from the document exactly, and say which figure you used when there is more than one (total vs subtotal, with or without SST). If the amount or the date cannot be read, ask — never estimate a figure into the books.
+- Category: reuse one already in use (list_expenses shows them) rather than inventing a near-duplicate ("Ads" not "Advertising"). Ask who paid only when it reads like a partner paid personally; otherwise it is company money.
+- A file already in the books is refused with where it is filed — tell the operator that and stop; never record it a second time under a different amount or date to get round the refusal.
+- Several files in a row: handle each on its own turn. "File all of those" means every file sent since the last one you filed — list_attachments shows them with their mediaIds; do them in one step, one call each, and report each one.
+- An existing expense with no receipt yet: file the receipt against it (save_attachment_as_document with expenseIds), do not record the expense again.
+- "Send me the July receipts" / "what did we spend on ads in September": list_expenses or list_documents first, then send_file each document the operator asked for.`,
+  },
+
   products: {
     title: 'How the catalogue is shaped',
     body: `A product is a compound with one page; the sellable sizes are its variants, and price and stock live on the variant. Add-ons are other variants offered alongside a product (bacteriostatic water, syringes, swabs); a required add-on is forced into the basket and cannot be unticked.
@@ -187,14 +208,14 @@ const PLAYBOOKS: Record<string, Playbook> = {
 const DOMAIN_PLAYBOOKS: Record<Domain, string[]> = {
   catalog: ['products'],
   orders: ['checkout', 'statuses'],
-  finance: ['moneyflow'],
+  finance: ['moneyflow', 'bookkeeping'],
   promos: [],
   content: [],
   ops: [],
   reports: ['moneyflow'],
   delivery: ['statuses'],
   reminders: [],
-  documents: [],
+  documents: ['bookkeeping'],
   // Borrows the catalogue playbook: every question here is ultimately about a
   // variant, and the model needs to know a product is not the sellable thing.
   shadow: ['products'],

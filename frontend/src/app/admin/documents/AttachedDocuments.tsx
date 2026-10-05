@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { FileText, Image as ImageIcon, Plus, ArrowRight } from 'lucide-react';
+import { FileText, Plus, ArrowRight } from 'lucide-react';
+import { DocumentIcon } from './DocumentIcon';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetDocuments } from '@/lib/api';
 import { formatPrice, formatShortDate } from '@/lib/utils';
@@ -84,9 +85,7 @@ export function AttachedDocuments({
                 onClick={() => setSelected(d)}
                 className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-surface-elevated transition-colors cursor-pointer"
               >
-                {d.mimeType === 'application/pdf'
-                  ? <FileText className="w-4 h-4 text-danger shrink-0" />
-                  : <ImageIcon className="w-4 h-4 text-primary shrink-0" />}
+                <DocumentIcon mimeType={d.mimeType} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium truncate">{d.title}</span>
                   <span className="block text-xs text-text-muted truncate">

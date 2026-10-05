@@ -13,6 +13,8 @@ uploads/
 # EVERY depth, which silently excluded frontend/src/app/admin/documents — the
 # whole UI for this feature — from being committed at all.
 /backend/documents/
+# Files sent to and by the assistant — other people's paperwork, same rule.
+/backend/agent-media/
 *.mp4
 
 # Business documents and legacy artwork that were committed by mistake; kept locally, never tracked

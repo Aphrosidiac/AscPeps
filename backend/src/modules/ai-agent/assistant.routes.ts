@@ -11,6 +11,10 @@ import { runReflection } from './reflect.js';
 import { computeMonthEnd, currentMonth, monthEndText, sendMonthEnd } from '../../utils/month-end.js';
 import { startDigest } from './digest.js';
 import { orderNoticeText, testOrderNotice } from '../../utils/order-notify.js';
+import { env } from '../../config/env.js';
+import { deleteAgentMedia, readAgentMedia } from '../../utils/agent-media-store.js';
+import { attachmentFor, ingestFile, MAX_INBOUND_BYTES } from './core/media.js';
+import type { Attachment } from './core/run.js';
 
 // The Assistant page's API: threads, turns, and a stream of what a turn is
 // doing. The stream is plain SSE over a fetch with the normal auth header —
@@ -102,14 +106,64 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>('/threads/:id', async (request, reply) => {
     if (activeRun(request.params.id)) return reply.status(409).send({ message: 'Stop the assistant first' });
+    // A deleted conversation takes its files with it. Anything filed from it
+    // lives on in the document store, which holds its own copy.
+    const media = await fastify.prisma.agentMedia.findMany({ where: { threadId: request.params.id }, select: { id: true, storedName: true } });
+    for (const m of media) if (m.storedName) await deleteAgentMedia(m.storedName);
+    await fastify.prisma.agentMedia.deleteMany({ where: { id: { in: media.map((m) => m.id) } } });
     await fastify.prisma.agentThread.delete({ where: { id: request.params.id } });
     return { ok: true };
   });
 
+  // ── Files ──
+  //
+  // An upload is read straight away — before the admin presses send — so the
+  // composer can show the file as read (or say why it could not be) and the
+  // turn itself starts without waiting on an OCR call. The turn then names the
+  // uploaded files by mediaId.
+  fastify.post<{ Params: { id: string } }>('/threads/:id/files', async (request, reply) => {
+    const thread = await fastify.prisma.agentThread.findUnique({ where: { id: request.params.id }, select: { kind: true } });
+    if (!thread) return reply.status(404).send({ message: 'Conversation not found' });
+    if (thread.kind === 'whatsapp') return reply.status(409).send({ message: 'This conversation is over WhatsApp — send files from there.' });
+    const part = await request.file({ limits: { fileSize: MAX_INBOUND_BYTES } });
+    if (!part) return reply.status(400).send({ message: 'No file uploaded' });
+    const bytes = await part.toBuffer().catch(() => null);
+    if (!bytes || part.file.truncated) return reply.status(413).send({ message: `That file is over ${env.AGENT_MAX_FILE_MB} MB.` });
+    const attachment = await ingestFile(fastify, request.params.id, { base64: bytes.toString('base64'), mimeType: part.mimetype, fileName: part.filename });
+    return { attachment };
+  });
+
+  // The file itself, for the transcript's download links and previews. Same
+  // rule as documents: behind the admin login, never a public URL, and served
+  // inline only for types a browser cannot run (PDF and pictures).
+  fastify.get<{ Params: { mediaId: string } }>('/media/:mediaId', async (request, reply) => {
+    const m = await fastify.prisma.agentMedia.findUnique({ where: { id: request.params.mediaId } });
+    if (!m) return reply.status(404).send({ message: 'File not found' });
+    if (!m.storedName) return reply.status(410).send({ message: `This file was cleared after ${env.AGENT_MEDIA_RETENTION_DAYS} days.` });
+    const bytes = await readAgentMedia(m.storedName).catch(() => null);
+    if (!bytes) return reply.status(410).send({ message: 'The file is missing from storage.' });
+    const inline = (m.mimeType === 'application/pdf' || /^image\/(jpeg|png|webp|gif|avif)$/.test(m.mimeType)) && (request.query as Record<string, string>).download !== '1';
+    const ascii = m.fileName.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, "'");
+    return reply
+      .header('Content-Type', inline ? m.mimeType : 'application/octet-stream')
+      .header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(m.fileName)}`)
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Cache-Control', 'private, no-store')
+      .header('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox")
+      .send(bytes);
+  });
+
   // ── Turns ──
   fastify.post<{ Params: { id: string } }>('/threads/:id/turns', async (request, reply) => {
-    const text = String((request.body as Record<string, unknown> | undefined)?.text ?? '').trim().slice(0, 20_000);
-    if (!text) return reply.status(400).send({ message: 'Say something' });
+    const body = (request.body as Record<string, unknown> | undefined) ?? {};
+    const text = String(body.text ?? '').trim().slice(0, 20_000);
+    // Files uploaded to THIS thread beforehand, by mediaId.
+    const mediaIds = Array.isArray(body.attachments) ? body.attachments.map(String).slice(0, 10) : [];
+    const media = mediaIds.length
+      ? await fastify.prisma.agentMedia.findMany({ where: { id: { in: mediaIds }, threadId: request.params.id, direction: 'in' } })
+      : [];
+    const attachments: Attachment[] = mediaIds.map((id) => media.find((m) => m.id === id)).filter((m) => !!m).map(attachmentFor);
+    if (!text && !attachments.length) return reply.status(400).send({ message: 'Say something' });
     const thread = await fastify.prisma.agentThread.findUnique({ where: { id: request.params.id }, select: { kind: true } });
     if (!thread) return reply.status(404).send({ message: 'Conversation not found' });
     // A WhatsApp thread belongs to the operator on the phone; typing into it
@@ -118,7 +172,7 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
     if (!providerConfigured()) return reply.status(503).send({ message: 'OpenRouter is not configured (OPENROUTER_API_KEY missing)' });
     const actor = await webActor(request);
     try {
-      const { userMessage } = await startTurn(fastify, request.params.id, text, webOptions(actor, request.params.id));
+      const { userMessage } = await startTurn(fastify, request.params.id, attachments.length ? { text, attachments } : text, webOptions(actor, request.params.id));
       return { userMessage };
     } catch (err) {
       return fail(reply, err);

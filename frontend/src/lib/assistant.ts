@@ -75,6 +75,31 @@ export interface Attachment {
   text?: string;
   unreadable?: string;
   model?: string;
+  // The stored file, when there is one (see core/media.ts on the API).
+  mediaId?: string;
+  name?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  pages?: number;
+  // pdf-text | pdf-ocr | vision | docx | sheet | pptx | text
+  method?: string;
+  truncated?: boolean;
+  totalChars?: number;
+}
+
+// What send_file / forward_file hand back: the file that went out.
+export interface SentFile {
+  sent: true;
+  mediaId: string;
+  fileName: string;
+  sizeKb: number;
+  sentAs: 'image' | 'document';
+  deliveredTo: string;
+}
+
+export function sentFileOf(output: unknown): SentFile | null {
+  const o = output as Partial<SentFile> | null;
+  return o && o.sent === true && typeof o.mediaId === 'string' && typeof o.fileName === 'string' ? (o as SentFile) : null;
 }
 
 export interface QuotedMessage {
@@ -153,8 +178,60 @@ export const renameThread = (token: string, id: string, title: string) =>
 
 export const deleteThread = (token: string, id: string) => http.delete(`/threads/${id}`, auth(token)).then((r) => r.data);
 
-export const sendTurn = (token: string, id: string, text: string) =>
-  http.post<{ userMessage: Message }>(`/threads/${id}/turns`, { text }, auth(token)).then((r) => r.data.userMessage);
+export const sendTurn = (token: string, id: string, text: string, attachments: string[] = []) =>
+  http
+    .post<{ userMessage: Message }>(`/threads/${id}/turns`, { text, ...(attachments.length ? { attachments } : {}) }, auth(token))
+    .then((r) => r.data.userMessage);
+
+// Uploads one file to a thread. The API reads it before answering (a scan is
+// OCR'd), so this can take a while — hence the long timeout.
+export const uploadFile = (token: string, threadId: string, file: File, onProgress?: (pct: number) => void) => {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  return http
+    .post<{ attachment: Attachment }>(`/threads/${threadId}/files`, form, {
+      ...auth(token),
+      timeout: 180_000,
+      onUploadProgress: (e) => e.total && onProgress?.(Math.round((e.loaded / e.total) * 100)),
+    })
+    .then((r) => r.data.attachment);
+};
+
+// A stored file as a blob URL. Fetched with the Authorization header rather
+// than linked to directly, for the same reason as adminOpenReceiptPdf: a
+// `?token=` link would put the admin JWT in history and the access log.
+// Cached per mediaId for the page's lifetime — a thumbnail and its Open
+// button share one download.
+const mediaCache = new Map<string, Promise<string>>();
+export function mediaUrl(token: string, mediaId: string): Promise<string> {
+  let p = mediaCache.get(mediaId);
+  if (!p) {
+    p = http
+      .get<Blob>(`/media/${mediaId}`, { ...auth(token), responseType: 'blob', timeout: 60_000 })
+      .then((r) => URL.createObjectURL(r.data))
+      .catch((e) => {
+        mediaCache.delete(mediaId);
+        throw e;
+      });
+    mediaCache.set(mediaId, p);
+  }
+  return p;
+}
+
+export async function openMedia(token: string, mediaId: string, fileName: string, mimeType?: string) {
+  const url = await mediaUrl(token, mediaId);
+  const viewable = !mimeType || mimeType === 'application/pdf' || mimeType.startsWith('image/');
+  if (viewable) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 export const stopTurn = (token: string, id: string) => http.post(`/threads/${id}/stop`, {}, auth(token)).then((r) => r.data);
 

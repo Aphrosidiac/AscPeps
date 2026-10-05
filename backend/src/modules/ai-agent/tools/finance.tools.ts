@@ -14,6 +14,7 @@ import {
   listExpenses,
   saveFinancePartners,
 } from '../../admin/admin-finance.controller.js';
+import { fileReady, prepareFiling, shapeFiled } from './files.tools.js';
 
 // Finance tools move real money between real people, so every one of them
 // delegates to admin-finance.controller.ts — the balance maths ("owed = earned
@@ -117,7 +118,7 @@ export const financeTools: AgentTool[] = [
   {
     name: 'record_expense',
     description:
-      'Record company spending. Amount in RINGGIT. If a partner paid for it out of their own pocket, name them in paidByPartner AND say whether that was a CONTRIBUTION (they never want it back) or an ADVANCE (the company owes them) — getting that wrong misstates what the business owes.',
+      'Record company spending. Amount in RINGGIT. If a partner paid for it out of their own pocket, name them in paidByPartner AND say whether that was a CONTRIBUTION (they never want it back) or an ADVANCE (the company owes them) — getting that wrong misstates what the business owes. When the operator sent the receipt, bill or invoice for it in this conversation, pass its mediaId as receiptMediaId: the receipt is filed in the document store against this expense in the same step, and a receipt that is already in the books is refused before anything is recorded — so the same bill is never booked twice.',
     write: true,
     input_schema: {
       type: 'object',
@@ -132,10 +133,16 @@ export const financeTools: AgentTool[] = [
           enum: ['CONTRIBUTION', 'ADVANCE'],
           description: 'Required when paidByPartner is set. ADVANCE creates a debt to that person; CONTRIBUTION does not.',
         },
+        receiptMediaId: { type: 'string', description: 'The mediaId of the receipt/bill/invoice file the operator sent for this expense, to file it alongside.' },
+        receiptKind: { type: 'string', description: 'What the file is: Receipt (default), Bill, Invoice, Bank slip.' },
       },
       required: ['amountRm', 'category', 'description'],
     },
-    run: async ({ fastify, prisma }, input) => {
+    run: async (ctx, input) => {
+      const { fastify, prisma } = ctx;
+      // Checked BEFORE the expense exists: a receipt that is already filed, or
+      // cannot be, stops the booking rather than leaving a half-done one.
+      const receipt = input.receiptMediaId ? await prepareFiling(ctx, input.receiptMediaId) : null;
       let paidByPartnerId: string | null = null;
       if (input.paidByPartner) {
         if (!input.paidByFundingType) {
@@ -153,7 +160,22 @@ export const financeTools: AgentTool[] = [
         paidByPartnerId,
         paidByFundingType: paidByPartnerId ? input.paidByFundingType : null,
       });
-      return { expenseId: row.id, amount: money(row.amount), category: row.category, occurredAt: row.occurredAt };
+      const recorded = { expenseId: row.id, amount: money(row.amount), category: row.category, occurredAt: row.occurredAt };
+      if (!receipt) return recorded;
+      try {
+        const doc = await fileReady(
+          ctx,
+          receipt,
+          { title: input.description, kind: input.receiptKind || 'Receipt', occurredAt: row.occurredAt, amount: row.amount, description: null },
+          { expenseIds: [row.id] }
+        );
+        return { ...recorded, receipt: shapeFiled(doc) };
+      } catch (err: any) {
+        // All or nothing: an expense whose receipt did not file is removed
+        // again, so a retry cannot leave two copies of the same booking.
+        await deleteExpense(fastify, row.id).catch(() => undefined);
+        throw new Error(`Nothing was recorded — the receipt could not be filed: ${err?.message ?? err}`);
+      }
     },
   },
 

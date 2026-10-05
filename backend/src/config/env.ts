@@ -114,6 +114,15 @@ const envSchema = z.object({
   // only cheap model that names who said what and flags cut-off text, ~2 s,
   // about USD 0.0003 a picture. Any OpenRouter model with image input works.
   AGENT_VISION_MODEL: z.string().default('z-ai/glm-5.3-flash'),
+  // The largest file the assistant will take in, over WhatsApp or from the
+  // dashboard. The worker checks it against the message's own fileLength
+  // before downloading, so a bigger file is never buffered at all. Pictures
+  // keep their own 10 MB cap in the worker.
+  AGENT_MAX_FILE_MB: z.coerce.number().min(1).max(64).default(20),
+  // How long a file sent to or by the assistant keeps its bytes. The row, its
+  // extracted text and its place in the transcript stay; only the file goes.
+  // Anything worth keeping is filed into the document store, which copies it.
+  AGENT_MEDIA_RETENTION_DAYS: z.coerce.number().min(1).default(90),
   // Downtime alerting. A dropped baileys socket is invisible from outside:
   // PM2 stays green (the process never dies, only the socket does) and the
   // site keeps returning 200. These are the out-of-band signal.

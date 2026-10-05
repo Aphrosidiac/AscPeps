@@ -11,20 +11,18 @@ import {
 /**
  * The filing cabinet, over WhatsApp.
  *
- * One rule shapes every tool in this file: THE AGENT NEVER HANDS OUT A FILE.
- *
  * Documents are receipts, invoices and bank slips. They carry customer names
- * and addresses, and our own account details. The whole reason they are stored
- * outside the public /uploads mount and served only behind the admin JWT (see
- * utils/document-store.ts) is that a link to one is as good as the document
- * itself — and a WhatsApp group is exactly where a link gets forwarded out of
- * the business without anyone deciding to.
+ * and addresses, and our own account details. They are stored outside the
+ * public /uploads mount and served only behind the admin JWT (see
+ * utils/document-store.ts) because a link to one is as good as the document
+ * itself.
  *
- * So `shape()` below is the boundary. The agent can say a document EXISTS, what
- * it is, when it is dated, what it is worth and what it is filed against —
- * everything needed to answer "do we have the receipt for that order?" — and
- * cannot emit the stored filename, a path, or a URL, because none of them ever
- * enter its context. Opening the file is a thing a human does in the admin.
+ * So `shape()` below never emits the stored filename, a path, or a URL. These
+ * tools say what a document IS. Sending the file itself is send_file /
+ * forward_file (files.tools.ts), which deliver the bytes as a WhatsApp file
+ * into an allowlisted chat — never a link that could outlive the chat. Until
+ * October 2026 the agent could not send a file at all; that was lifted at the
+ * owner's request with the destination rules in files.tools.ts.
  */
 
 interface DocumentLinkRow {
@@ -50,9 +48,8 @@ function shape(d: any) {
         ? { type: 'order', orderId: l.orderId, orderNumber: l.order?.orderNumber, customer: l.order?.customerName }
         : { type: 'expense', expenseId: l.expenseId, description: l.expense?.description, category: l.expense?.category }
     ),
-    // Said out loud so the model does not invent a link, apologise for not
-    // having one, or promise to send the file.
-    note: 'The file itself is only viewable in the admin. There is no link to give out.',
+    // Said out loud so the model does not invent a link.
+    note: 'There is no link to give out. To send the file itself, use send_file with source "document" and this documentId.',
   };
 }
 
@@ -75,7 +72,7 @@ export const documentTools: AgentTool[] = [
   {
     name: 'list_documents',
     description:
-      'Search the document store — receipts, supplier invoices, courier bills, bank slips, statements. Use it to answer "do we have the receipt for X", "what paperwork is on this order", or "what has been uploaded but never filed" (set unlinkedOnly). Returns what each document IS, not the file: the file is only viewable in the admin and you cannot send it.',
+      'Search the document store — receipts, supplier invoices, courier bills, bank slips, statements. Use it to answer "do we have the receipt for X", "what paperwork is on this order", or "what has been uploaded but never filed" (set unlinkedOnly). Returns what each document IS; to send the file itself, use send_file with source "document".',
     input_schema: {
       type: 'object',
       properties: {
@@ -115,7 +112,7 @@ export const documentTools: AgentTool[] = [
   {
     name: 'get_document',
     description:
-      'One document in full: what it is, its date and amount, and everything it is filed against. The file itself cannot be sent — say so plainly if asked for it.',
+      'One document in full: what it is, its date and amount, and everything it is filed against. To send the file itself, use send_file.',
     input_schema: {
       type: 'object',
       properties: { documentId: { type: 'string' } },

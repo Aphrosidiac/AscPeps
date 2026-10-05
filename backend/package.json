@@ -24,6 +24,7 @@
     "test:agent:grounding": "tsx scripts/test-grounding-unit.ts",
     "test:agent:grounding:e2e": "tsx scripts/test-agent-grounding.ts",
     "test:agent:documents": "tsx scripts/test-agent-documents.ts",
+    "test:agent:files": "tsx scripts/test-agent-files.ts",
     "audit:agent:grounding": "tsx scripts/audit-agent-grounding.ts",
     "test:payment-failure": "tsx scripts/test-payment-failure.ts"
   },
@@ -46,7 +47,10 @@
     "dotenv": "^17.4.2",
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.1.0",
+    "file-type": "^22.1.1",
     "ioredis": "^5.11.1",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
     "manualpaygate": "github:Aphrosidiac/ManualPayGate",
     "pdfkit": "^0.19.0",
     "pg": "^8.21.0",
@@ -55,6 +59,8 @@
     "resend": "^6.18.0",
     "sharp": "^0.35.3",
     "svix": "^1.99.1",
+    "unpdf": "^1.8.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.4.3"
   },
   "devDependencies": {

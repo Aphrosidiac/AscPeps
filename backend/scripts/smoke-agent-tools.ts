@@ -54,6 +54,11 @@ const INPUTS: Record<string, any> = {
   preview_internal_summary: someOrder ? { orderRef: someOrder.orderNumber } : null,
   email_outbox_status: {},
   agent_activity_log: { limit: 3 },
+  // File tools need a conversation, and send_file has a side effect (it sends);
+  // both are exercised end to end in test-agent-files.ts instead.
+  read_attachment: null,
+  list_attachments: null,
+  send_file: null,
   run_report_query: {
     sql: 'SELECT status, COUNT(*) AS n FROM orders WHERE "deletedAt" IS NULL GROUP BY status',
     purpose: 'smoke test',

@@ -953,6 +953,7 @@ model AgentThread {
 
   messages AgentMessage[]
   actions  AgentAction[]
+  media    AgentMedia[]
 
   @@index([kind, lastMessageAt])
   @@index([lastMessageAt])
@@ -971,6 +972,58 @@ model AgentThread {
 // replays — the old 2000-character audit truncation made that replay
 // over-report. Old results leave the model's view (run.ts trims them) without
 // leaving the table.
+// A file that passed through the assistant: one an operator sent it (a
+// supplier's invoice PDF, a spreadsheet, a screenshot) or one it sent back (a
+// receipt, a filed document, a product photo, an export).
+//
+// The bytes live in agent-media/, which — like documents/ — nothing serves
+// statically: these are other people's paperwork, and the only way to read one
+// is the authenticated dashboard route or the worker's own send. The extracted
+// text is kept here so a 40-page PDF is read ONCE: the model sees the opening
+// of it inline and pages through the rest with read_attachment, instead of the
+// file being re-parsed (or re-OCR'd, which costs money) on every question.
+//
+// Inbound files are purged after AGENT_MEDIA_RETENTION_DAYS. Anything worth
+// keeping is filed into the document store, which copies the bytes — so a
+// purge never takes a filed document with it.
+model AgentMedia {
+  id         String       @id @default(cuid())
+  threadId   String?
+  // 'in' — an operator sent it; 'out' — the assistant sent or produced it.
+  direction  String
+  // 'image' | 'document'. How it travels over WhatsApp, decided by its type.
+  kind       String
+  // The name it arrived or left under. Display only — never a path.
+  fileName   String
+  // Sniffed from the bytes wherever the format allows; the sender's claim
+  // only for plain-text formats that have no magic number.
+  mimeType   String
+  sizeBytes  Int
+  sha256     String
+  // "<cuid>.<ext>" inside agent-media/. Null once purged.
+  storedName String?
+  // Everything the extractor could read, for read_attachment. Capped.
+  text       String?
+  // How it was read: pdf-text | pdf-ocr | vision | docx | sheet | pptx | text.
+  textMethod String?
+  pages      Int?
+  // Why it could not be read, when it could not.
+  error      String?
+  // OpenRouter spend on reading it (vision / OCR). Zero for local parsing.
+  costUsd    Float        @default(0)
+  // What produced an outbound file: "document:<id>", "receipt:ASC…",
+  // "product-image:<id>", "report", "forward:<mediaId>". For the audit.
+  source     String?
+  purgedAt   DateTime?
+  createdAt  DateTime     @default(now())
+
+  thread AgentThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@index([direction, createdAt])
+  @@map("agent_media")
+}
+
 model AgentMessage {
   id         String  @id @default(cuid())
   threadId   String
@@ -1452,6 +1505,11 @@ model Document {
   originalName String
   mimeType     String
   sizeBytes    Int
+  // SHA-256 of the bytes. What stops the same receipt being filed — and its
+  // expense recorded — twice when it is forwarded to the assistant again a
+  // week later. Null on documents filed before it existed until the backfill
+  // (scripts/backfill-document-hashes.ts) has run.
+  sha256       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1460,6 +1518,7 @@ model Document {
 
   @@index([occurredAt])
   @@index([kind])
+  @@index([sha256])
   @@map("documents")
 }
 

@@ -1,3 +1,4 @@
+import type { PrismaClient } from '@prisma/client';
 import type { AgentTool } from '../tool-kit.js';
 import { clampLimit, money, parseDate, truncate } from '../tool-kit.js';
 import { getAnalytics, getDashboardStats } from '../../admin/admin-dashboard.controller.js';
@@ -35,6 +36,34 @@ export function jsonSafe(value: unknown): unknown {
     return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, jsonSafe(v)]));
   }
   return value;
+}
+
+/**
+ * One SELECT, run so that it cannot write: the regexes catch obvious
+ * mistakes and give a clear error, and the READ ONLY transaction is what
+ * actually makes a write impossible, enforced by Postgres rather than by
+ * pattern matching. Shared by run_report_query (200 rows, for the model to
+ * read) and the spreadsheet export in send_file (more rows, straight to a
+ * file the model never transcribes).
+ */
+export async function runReadOnlyQuery(prisma: PrismaClient, rawSql: string, limit: number): Promise<Record<string, unknown>[]> {
+  const sql = rawSql.trim().replace(/;\s*$/, '');
+  if (!/^(select|with)\b/i.test(sql)) {
+    throw new Error('Only SELECT (or WITH ... SELECT) queries are allowed.');
+  }
+  if (sql.includes(';')) {
+    throw new Error('Only one statement at a time — remove the semicolon.');
+  }
+  const rows = await prisma.$transaction(async (tx) => {
+    // Postgres refuses any INSERT/UPDATE/DELETE/DDL in this transaction,
+    // regardless of what the string contains.
+    await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+    // A runaway join must not pin a connection from the pool the
+    // storefront is also using.
+    await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '15s'`);
+    return tx.$queryRawUnsafe(`SELECT * FROM (${sql}) AS agent_query LIMIT ${Math.max(1, Math.floor(limit))}`);
+  });
+  return jsonSafe(rows) as Record<string, unknown>[];
 }
 
 // The tables the agent is allowed to read, and what they mean. Handed to the
@@ -380,30 +409,7 @@ export const reportTools: AgentTool[] = [
       required: ['sql'],
     },
     run: async ({ prisma }, input) => {
-      const sql = String(input.sql).trim().replace(/;\s*$/, '');
-
-      // Two independent guards, because a regex alone is not a security
-      // boundary. This one catches obvious mistakes and gives a clear error;
-      // the READ ONLY transaction below is what actually makes a write
-      // impossible, enforced by Postgres rather than by pattern matching.
-      if (!/^(select|with)\b/i.test(sql)) {
-        throw new Error('Only SELECT (or WITH ... SELECT) queries are allowed.');
-      }
-      if (sql.includes(';')) {
-        throw new Error('Only one statement at a time — remove the semicolon.');
-      }
-
-      const rows = await prisma.$transaction(async (tx) => {
-        // Postgres refuses any INSERT/UPDATE/DELETE/DDL in this transaction,
-        // regardless of what the string contains.
-        await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-        // A runaway join must not pin a connection from the pool the
-        // storefront is also using.
-        await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '15s'`);
-        return tx.$queryRawUnsafe(`SELECT * FROM (${sql}) AS agent_query LIMIT 200`);
-      });
-
-      const safe = jsonSafe(rows) as any[];
+      const safe = await runReadOnlyQuery(prisma, String(input.sql), 200);
 
       // Drop whole rows until the payload fits the context budget. Truncating
       // the serialized JSON mid-string instead would hand the model malformed

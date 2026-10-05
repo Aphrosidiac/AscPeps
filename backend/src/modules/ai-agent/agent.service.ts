@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { normalizePhone } from '../../utils/phone.js';
 import type { AgentActor } from './tool-kit.js';
 import { activeRun, approveAction, awaitTurn, declineAction, livePendingActions, startTurn, type Attachment, type QuotedMessage, type TurnOptions } from './core/run.js';
-import { readImage, type InboundImage } from './core/vision.js';
+import { ingestFile, type InboundFile } from './core/media.js';
+import { env } from '../../config/env.js';
 
 // The WhatsApp door onto the assistant.
 //
@@ -29,12 +30,17 @@ export interface InboundMessage {
   senderName: string | null;
   text: string;
   // Set by the worker when the message carried media: what kind. A picture
-  // arrives with `image` and is transcribed for the model; anything else
-  // with no caption is gated exactly like text and, if it passes, answered
-  // with a fixed notice (or, for a sticker, nothing).
+  // or a document arrives with `file` and is read for the model (see
+  // core/media.ts); audio, video and the rest with no caption are gated
+  // exactly like text and, if they pass, answered with a fixed notice (or,
+  // for a sticker, nothing).
   media?: MediaKind;
-  image?: InboundImage;
-  // The worker saw a picture but refused to download it (over its size cap).
+  file?: InboundFile;
+  // The worker saw a file but refused to download it (over its size cap).
+  fileOversized?: { fileName?: string; sizeMb: number };
+  // Before October 2026 the worker relayed pictures only, as `image`. Still
+  // accepted so a worker and an API deployed a minute apart keep working.
+  image?: InboundFile;
   imageOversized?: boolean;
   // The message this one replies to, as WhatsApp carried it.
   quoted?: InboundQuoted;
@@ -53,7 +59,9 @@ export interface InboundQuoted {
   participantJid?: string | null;
   // The quoted message was the bot's own.
   fromBot?: boolean;
-  image?: InboundImage;
+  file?: InboundFile;
+  fileOversized?: { fileName?: string; sizeMb: number };
+  image?: InboundFile;
   imageOversized?: boolean;
 }
 
@@ -78,6 +86,8 @@ export function mediaNotice(kind: MediaKind): string | null {
       return "I can't read polls — ask me directly.";
     case 'image':
       return "I couldn't read that picture — could you send it again, or type what's in it?";
+    case 'file':
+      return "I couldn't download that file — could you send it again?";
     default:
       return `I can only read text right now — send that ${kind}'s details as a message and I'll act on it.`;
   }
@@ -85,34 +95,43 @@ export function mediaNotice(kind: MediaKind): string | null {
 
 // ------------------------------------------------------------- attachments
 //
-// A picture becomes text here, before the turn: the vision model reads it
-// verbatim and the transcript goes on the operator's row. See core/vision.ts
-// for why it is transcribed rather than handed to the turn's model.
+// A picture or a document is read here, before the turn — stored, read once
+// (a picture by the vision model, a document by the extractors), and its
+// text goes on the operator's row. See core/media.ts.
 
 const MEDIA_UNREADABLE: Partial<Record<MediaKind, string>> = {
   video: 'you cannot watch video',
   'voice message': 'you cannot listen to audio',
   audio: 'you cannot listen to audio',
-  file: 'you cannot open files',
   contact: 'a shared contact card',
   location: 'a shared location',
   poll: 'a poll',
 };
 
-async function attachmentsFor(fastify: FastifyInstance, media: MediaKind | undefined, image: InboundImage | undefined, oversized: boolean | undefined): Promise<Attachment[]> {
-  if (image) {
-    try {
-      const reading = await readImage(image);
-      return [{ kind: 'image', text: reading.text, model: reading.model }];
-    } catch (err: any) {
-      fastify.log.error({ err }, 'vision model could not read an inbound picture');
-      return [{ kind: 'image', unreadable: `the picture could not be read (${err?.message ?? 'vision model failed'}); ask for it again or for the details as text` }];
-    }
+async function attachmentsFor(
+  fastify: FastifyInstance,
+  threadId: string,
+  media: MediaKind | undefined,
+  file: InboundFile | undefined,
+  oversized: { fileName?: string; sizeMb: number } | undefined
+): Promise<Attachment[]> {
+  const kind = media === 'image' ? 'image' : 'file';
+  if (file) return [await ingestFile(fastify, threadId, file)];
+  if (oversized) {
+    return [{ kind, name: oversized.fileName, unreadable: `it is ${oversized.sizeMb} MB, over the ${media === 'image' ? 10 : env.AGENT_MAX_FILE_MB} MB I take in, and was not downloaded; ask for a smaller file or just the part that matters` }];
   }
-  if (oversized) return [{ kind: 'image', unreadable: 'the picture was over 10 MB and was not downloaded; ask for a smaller one or the details as text' }];
   if (!media || media === 'sticker') return [];
-  if (media === 'image') return [{ kind: 'image', unreadable: 'the picture could not be downloaded; ask for it again or for the details as text' }];
+  if (media === 'image' || media === 'file') return [{ kind, unreadable: 'it could not be downloaded from WhatsApp; ask for it to be sent again' }];
   return [{ kind: media, unreadable: MEDIA_UNREADABLE[media] }];
+}
+
+// The file a message (or a quoted message) carried, whichever field the
+// worker used.
+function fileOf(m: { file?: InboundFile; image?: InboundFile }): InboundFile | undefined {
+  return m.file ?? m.image;
+}
+function oversizeOf(m: { fileOversized?: { fileName?: string; sizeMb: number }; imageOversized?: boolean }) {
+  return m.fileOversized ?? (m.imageOversized ? { sizeMb: 10 } : undefined);
 }
 
 // Who a quoted message came from, by name where the directory knows the
@@ -421,7 +440,7 @@ export async function handleMessage(fastify: FastifyInstance, msg: InboundMessag
   // else to go on: say so plainly. Nothing is stored and no model runs. A
   // picture that was downloaded, or media under a caption or a reply, goes
   // on to the turn — the model is told what was attached.
-  const readable = !!msg.image || !!msg.quoted?.image;
+  const readable = !!fileOf(msg) || !!(msg.quoted && fileOf(msg.quoted));
   if (msg.media && !msg.text.trim() && !readable && !msg.quoted) {
     const notice = mediaNotice(msg.media);
     return notice ? { action: 'reply', text: notice } : { action: 'ignore', reason: `${msg.media} — nothing to answer` };
@@ -500,18 +519,18 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
   const systemNote = notes.length ? notes.join('\n') : undefined;
 
   // ---- 2. What came with the message: the replied-to message, and any
-  // picture read by the vision model. Read before the turn so the transcript
-  // is on the operator's row from the start.
+  // picture or document, read before the turn so its text is on the
+  // operator's row from the start.
   let quoted: QuotedMessage | undefined;
   if (msg.quoted) {
-    const qAttachments = await attachmentsFor(fastify, msg.quoted.media, msg.quoted.image, msg.quoted.imageOversized);
+    const qAttachments = await attachmentsFor(fastify, thread.id, msg.quoted.media, fileOf(msg.quoted), oversizeOf(msg.quoted));
     quoted = {
       from: quotedFrom(msg.quoted, directory),
       text: humaniseMentions(msg.quoted.text.trim(), directory, 'in'),
       ...(qAttachments.length ? { attachments: qAttachments } : {}),
     };
   }
-  const attachments = await attachmentsFor(fastify, msg.media, msg.image, msg.imageOversized);
+  const attachments = await attachmentsFor(fastify, thread.id, msg.media, fileOf(msg), oversizeOf(msg));
 
   // ---- 3. The turn.
   try {

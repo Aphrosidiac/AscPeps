@@ -58,65 +58,81 @@ if (!AGENT_ENABLED) {
   console.log('[worker] Agent is DISABLED (set WHATSAPP_AGENT_ENABLED=true to enable). Inbound messages are received and logged but never answered or acted on.')
 }
 
-// Inbound PICTURES are downloaded and relayed to the API as base64, where a
-// vision model transcribes them for the assistant (see agent.service.ts).
-// This was deliberately left out at first — "the agent runs on a text model,
-// so there is nothing to relay media to" — and the first time an operator
-// sent a screenshot of a customer's order with "ab key this in", the model
-// answered that it could not see any picture. Ported from HarvestGrow's
-// worker together with its guard: the size is read off the protobuf's own
-// fileLength BEFORE anything is fetched, so an oversized file is refused
-// without ever buffering it in this single process. Voice notes, video and
-// other files are still only acknowledged.
-const MAX_MEDIA_BYTES = 10 * 1024 * 1024
+// Inbound pictures AND documents are downloaded and relayed to the API as
+// base64, where they are stored and read for the assistant (see
+// src/modules/ai-agent/core/media.ts): a picture by the vision model, a PDF,
+// Word, Excel/CSV or PowerPoint file by the extractors. Pictures were first
+// (Sept 2026) — the first time an operator sent a screenshot of a customer's
+// order with "ab key this in", the model answered that it could not see any
+// picture — and documents followed in October. The size guard is ported from
+// HarvestGrow's worker: it is read off the protobuf's own fileLength BEFORE
+// anything is fetched, so an oversized file is refused without ever being
+// buffered in this single process. Voice notes and video are still only
+// acknowledged.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_FILE_BYTES = Math.max(1, Number(process.env.AGENT_MAX_FILE_MB) || 20) * 1024 * 1024
 function mediaFileLength(fileLength: number | { toNumber(): number } | null | undefined): number {
   if (fileLength == null) return 0
   return typeof fileLength === 'number' ? fileLength : fileLength.toNumber()
 }
 
-export interface InboundImage {
+export interface InboundFile {
   mimeType: string
   base64: string
+  fileName?: string
 }
 
-// The picture in a message, if it carries one we can read: an imageMessage,
-// or a document that is really an image (a screenshot sent "as file" to
-// avoid compression). Returns null for anything else, and `oversized` when
-// the file is too big to fetch — the API tells the operator, not the worker.
-function imageNode(rawMessage: any): { node: any; mime: string } | null {
+type Fetched = InboundFile | { oversized: { fileName?: string; sizeMb: number } } | null
+
+// The file in a message, if it carries one we read: a picture, or a document
+// of any type (the API decides whether it can read it, from the bytes — a
+// declared mimetype is only a hint). Video, audio and stickers are not
+// fetched.
+function fileNode(rawMessage: any): { node: any; mime: string; fileName?: string; limit: number } | null {
   const m = unwrapMessage(rawMessage)
-  if (m.imageMessage) return { node: m.imageMessage, mime: m.imageMessage.mimetype || 'image/jpeg' }
-  if (m.documentMessage && /^image\//.test(m.documentMessage.mimetype || '')) return { node: m.documentMessage, mime: m.documentMessage.mimetype }
+  if (m.imageMessage) return { node: m.imageMessage, mime: m.imageMessage.mimetype || 'image/jpeg', limit: MAX_IMAGE_BYTES }
+  if (m.documentMessage) {
+    const mime = m.documentMessage.mimetype || 'application/octet-stream'
+    return {
+      node: m.documentMessage,
+      mime,
+      fileName: m.documentMessage.fileName || m.documentMessage.title || undefined,
+      limit: /^image\//.test(mime) ? MAX_IMAGE_BYTES : MAX_FILE_BYTES,
+    }
+  }
   return null
 }
 
-async function fetchImage(message: any, label: string): Promise<InboundImage | 'oversized' | null> {
-  const found = imageNode(message.message)
+async function fetchFile(message: any, label: string): Promise<Fetched> {
+  const found = fileNode(message.message)
   if (!found) return null
   const size = mediaFileLength(found.node.fileLength)
-  if (size > MAX_MEDIA_BYTES) {
-    console.warn(`[worker] ${label} image is ${Math.round(size / 1024 / 1024)}MB, over the ${MAX_MEDIA_BYTES / 1024 / 1024}MB limit — not downloaded`)
-    return 'oversized'
+  if (size > found.limit) {
+    console.warn(`[worker] ${label} file is ${Math.round(size / 1024 / 1024)}MB, over the ${found.limit / 1024 / 1024}MB limit — not downloaded`)
+    return { oversized: { fileName: found.fileName, sizeMb: Math.round(size / 1024 / 1024) } }
   }
   try {
     const buffer = (await downloadMediaMessage(message, 'buffer', {})) as Buffer
-    return { mimeType: found.mime, base64: buffer.toString('base64') }
+    return { mimeType: found.mime, base64: buffer.toString('base64'), ...(found.fileName ? { fileName: found.fileName } : {}) }
   } catch (err: any) {
     // Expired media, a key WhatsApp no longer honours, a network blip: the
-    // message still goes through as text, and the API says the picture
-    // could not be read rather than pretending there was none.
-    console.error(`[worker] ${label} image download failed: ${err?.message ?? err}`)
+    // message still goes through as text, and the API says the file could
+    // not be read rather than pretending there was none.
+    console.error(`[worker] ${label} file download failed: ${err?.message ?? err}`)
     return null
   }
 }
 
-// A quoted picture is fetched the same way: downloadMediaMessage only needs
-// the media node (url, mediaKey, directPath), which the quoted message
-// carries in full.
-async function fetchQuotedImage(remoteJid: string, quoted: QuotedContent): Promise<InboundImage | 'oversized' | null> {
+// A quoted file is fetched the same way: downloadMediaMessage only needs the
+// media node (url, mediaKey, directPath), which the quoted message carries in
+// full.
+async function fetchQuotedFile(remoteJid: string, quoted: QuotedContent): Promise<Fetched> {
   const message = { key: { remoteJid, id: quoted.stanzaId ?? undefined, participant: quoted.participantJid ?? undefined, fromMe: false }, message: quoted.raw }
-  return fetchImage(message, 'quoted')
+  return fetchFile(message, 'quoted')
 }
+
+const asFile = (f: Fetched) => (f && 'base64' in f ? f : undefined)
+const asOversized = (f: Fetched) => (f && 'oversized' in f ? f.oversized : undefined)
 
 // Persistent message dedup — an in-memory Set is recreated on every reconnect
 // and lost entirely on restart, so a crash/redeploy mid-conversation causes the
@@ -546,15 +562,15 @@ async function handleInbound(msg: any) {
     return
   }
 
-  // Pictures are fetched only for a message that will be looked at: in a
-  // group that requires a mention, a photo nobody addressed to the bot is
-  // not downloaded at all. The allowlist is the API's, so a stranger's DM
-  // photo is still fetched and then dropped there — a cost of one download,
-  // not a reply.
+  // Files are fetched only for a message that will be looked at: in a group
+  // that requires a mention, a PDF nobody addressed to the bot is not
+  // downloaded at all. The allowlist is the API's, so a stranger's DM file is
+  // still fetched and then dropped there — a cost of one download, not a
+  // reply.
   const wanted = !isGroup || mentionedBot
-  const image = wanted && imageNode(msg.message) ? await fetchImage(msg, 'inbound') : null
+  const file = wanted ? await fetchFile(msg, 'inbound') : null
   const quoted = content.quoted
-  const quotedImage = wanted && quoted && imageNode(quoted.raw) ? await fetchQuotedImage(remoteJid, quoted) : null
+  const quotedFile = wanted && quoted ? await fetchQuotedFile(remoteJid, quoted) : null
 
   const payload = {
     kind: isGroup ? 'group' : 'dm',
@@ -563,11 +579,11 @@ async function handleInbound(msg: any) {
     senderName: msg.pushName || null,
     text,
     // What the message carried besides text. The API answers a bare voice
-    // note with the "text only" notice if — and only if — this sender in
-    // this chat would have been answered at all; a picture is transcribed.
+    // note with the "can't listen" notice if — and only if — this sender in
+    // this chat would have been answered at all; a picture or document is read.
     media,
-    image: image === 'oversized' ? undefined : image ?? undefined,
-    imageOversized: image === 'oversized' || undefined,
+    file: asFile(file),
+    fileOversized: asOversized(file),
     // The message this one replies to, so "@Abby key this in" as a reply to
     // a customer's message arrives WITH the customer's message.
     quoted: quoted
@@ -576,8 +592,8 @@ async function handleInbound(msg: any) {
           media: quoted.media,
           participantJid: quoted.participantJid,
           fromBot: !!quoted.participantJid && ids.some((id) => quoted.participantJid!.startsWith(id)),
-          image: quotedImage === 'oversized' ? undefined : quotedImage ?? undefined,
-          imageOversized: quotedImage === 'oversized' || undefined,
+          file: asFile(quotedFile),
+          fileOversized: asOversized(quotedFile),
         }
       : undefined,
     groupJid: isGroup ? remoteJid : undefined,
@@ -600,8 +616,9 @@ async function handleInbound(msg: any) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
       body: JSON.stringify(payload),
-      // Generous: a multi-tool turn against the LLM legitimately takes a while.
-      signal: AbortSignal.timeout(180_000),
+      // Generous: a multi-tool turn against the LLM legitimately takes a
+      // while, and a scanned PDF is OCR'd before the turn even starts.
+      signal: AbortSignal.timeout(300_000),
     })
 
     if (!res.ok) {
@@ -676,7 +693,8 @@ function toJid(phone: string): string {
 }
 
 // ─── HTTP control plane (localhost only) ───────────────────
-const app = Fastify({ logger: false, requestTimeout: 30000 })
+// 120 s: a file send uploads to WhatsApp's media servers before it returns.
+const app = Fastify({ logger: false, requestTimeout: 120_000 })
 
 app.addHook('preHandler', async (request, reply) => {
   const ip = request.ip
@@ -809,6 +827,42 @@ app.post('/send', async (request, reply) => {
   if (!message || (!phone && !jid)) return reply.status(400).send({ message: 'phone (or jid) and message are required' })
   const target = jid || toJid(phone)
   await sock.sendMessage(target, { text: message })
+  return { ok: true, to: target }
+})
+
+// Outbound file: a receipt, a filed document, a product photo, an export.
+// The API decides what and where (see core/media.ts); this only moves bytes.
+// A picture goes as a photo with an optional caption, anything else as a
+// document carrying its filename — WhatsApp shows the name and the type, and
+// the operator can open or forward it like any file.
+app.post('/send-file', { bodyLimit: 64 * 1024 * 1024 }, async (request, reply) => {
+  if (!AGENT_ENABLED) {
+    return reply.status(409).send({ message: 'WhatsApp agent is disabled (WHATSAPP_AGENT_ENABLED is not true).' })
+  }
+  const { phone, jid, kind, base64, mimeType, fileName, caption } = request.body as any
+  if (!sock || !connected) return reply.status(409).send({ message: 'WhatsApp not connected' })
+  if ((!phone && !jid) || !base64 || (kind !== 'image' && kind !== 'document')) {
+    return reply.status(400).send({ message: 'phone (or jid), kind (image|document) and base64 are required' })
+  }
+  const target = jid || toJid(phone)
+  const buffer = Buffer.from(String(base64), 'base64')
+  const text = typeof caption === 'string' && caption.trim() ? caption.trim().slice(0, 1000) : undefined
+  try {
+    if (kind === 'image') {
+      await sock.sendMessage(target, { image: buffer, mimetype: mimeType || 'image/jpeg', ...(text ? { caption: text } : {}) })
+    } else {
+      await sock.sendMessage(target, {
+        document: buffer,
+        mimetype: mimeType || 'application/octet-stream',
+        fileName: typeof fileName === 'string' && fileName.trim() ? fileName.trim().slice(0, 200) : 'file',
+        ...(text ? { caption: text } : {}),
+      })
+    }
+  } catch (err: any) {
+    console.error(`[worker] FILE SEND FAILED to ${target}: ${err?.message ?? err}`)
+    return reply.status(502).send({ message: `WhatsApp refused the file: ${err?.message ?? err}` })
+  }
+  console.log(`[worker] sent ${kind} "${fileName ?? ''}" (${Math.round(buffer.length / 1024)} KB) to ${target}`)
   return { ok: true, to: target }
 })
 

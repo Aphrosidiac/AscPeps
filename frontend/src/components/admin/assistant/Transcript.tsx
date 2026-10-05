@@ -1,10 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Image as ImageIcon, Loader2, Paperclip, ShieldAlert, ShieldCheck, Undo2, Wrench, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle, Check, ChevronDown, ChevronRight, ExternalLink, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Paperclip,
+  Presentation, Send, ShieldAlert, ShieldCheck, Undo2, Wrench, Sparkles,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
-import type { Action, Attachment, Message, ToolResult } from '@/lib/assistant';
+import { mediaUrl, openMedia, sentFileOf, type Action, type Attachment, type Message, type SentFile, type ToolResult } from '@/lib/assistant';
 import { inputSummary, pretty, timeOf } from './format';
 
 // The transcript: everything the server stored, plus the turn in flight.
@@ -26,6 +29,7 @@ const TIER_CLS: Record<string, string> = {
 };
 
 export function Transcript({
+  token,
   messages,
   actions,
   live,
@@ -34,6 +38,7 @@ export function Transcript({
   readOnly,
   onDecide,
 }: {
+  token: string;
   messages: Message[];
   actions: Action[];
   live: LiveTurn | null;
@@ -71,13 +76,13 @@ export function Transcript({
                     <p className="font-medium text-white/90">{q.from === 'you' ? 'Abby' : q.from}</p>
                     {q.text && <p className="whitespace-pre-wrap text-white/80">{q.text}</p>}
                     {q.attachments?.map((a, i) => (
-                      <AttachmentCard key={i} a={a} tone="quoted" />
+                      <AttachmentCard key={i} a={a} tone="quoted" token={token} />
                     ))}
                   </div>
                 )}
                 {m.content.text && <p className="whitespace-pre-wrap">{m.content.text}</p>}
                 {m.content.attachments?.map((a, i) => (
-                  <AttachmentCard key={i} a={a} tone="own" />
+                  <AttachmentCard key={i} a={a} tone="own" token={token} />
                 ))}
               </div>
               <p className="mt-1 text-[11px] leading-4 text-text-muted">
@@ -150,9 +155,12 @@ export function Transcript({
               const liveTool = live?.tools.get(call.id);
               const isOpen = expanded.has(call.id);
               const pending = action?.status === 'pending';
+              // A file the assistant sent: from the result row, or — for a
+              // forward that waited for approval — from the action's output.
+              const sentFile = call.name === 'send_file' || call.name === 'forward_file' ? sentFileOf(result && !result.isError ? result.output : action?.status === 'done' ? action.output : null) : null;
               return (
+                <div key={call.id} className="space-y-2">
                 <div
-                  key={call.id}
                   // Cards from one step arrive together; a short stagger keeps
                   // them readable as a sequence. A pending one rings once.
                   style={{ animationDelay: `${Math.min(i * 40, 200)}ms` }}
@@ -281,6 +289,8 @@ export function Transcript({
                     </div>
                   </div>
                 </div>
+                {sentFile && <SentFileCard file={sentFile} token={token} />}
+                </div>
               );
             })}
           </div>
@@ -364,32 +374,187 @@ function GuardBadge({ guard }: { guard: NonNullable<Message['content']['guard']>
   );
 }
 
-// A picture is shown as what the assistant was given: the vision model's
-// transcript, folded under a chip. The image itself is not stored — the
-// transcript is the record, and it is what the model acted on.
-function AttachmentCard({ a, tone }: { a: Attachment; tone: 'own' | 'quoted' }) {
-  const label = a.kind === 'image' ? 'Picture' : a.kind[0].toUpperCase() + a.kind.slice(1);
-  const Icon = a.kind === 'image' ? ImageIcon : Paperclip;
-  const chip = cn(
-    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] leading-4',
-    tone === 'own' ? 'bg-white/15 text-white' : 'bg-white/10 text-white/90'
-  );
-  if (!a.text) {
-    return (
-      <p className={cn('mt-1.5 w-fit', chip)}>
-        <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-        {label}{a.unreadable ? ' · not read' : ''}
-      </p>
-    );
+// ---------------------------------------------------------------- files
+
+const METHOD_LABEL: Record<string, string> = {
+  'pdf-text': 'read',
+  'pdf-ocr': 'read by OCR',
+  vision: 'transcribed',
+  docx: 'read',
+  sheet: 'read',
+  pptx: 'read',
+  text: 'read',
+};
+
+// One icon per kind of file, picked from the type or the name's extension.
+function FileIcon({ mime, name, fallback, className }: { mime?: string; name?: string; fallback?: 'image' | 'clip'; className: string }) {
+  const ext = (name ?? '').split('.').pop()?.toLowerCase() ?? '';
+  if (!mime && !name) return fallback === 'image' ? <ImageIcon className={className} strokeWidth={1.75} /> : <Paperclip className={className} strokeWidth={1.75} />;
+  if (mime?.startsWith('image/')) return <ImageIcon className={className} strokeWidth={1.75} />;
+  if (/sheet|excel|csv|opendocument\.spreadsheet/.test(mime ?? '') || ['xlsx', 'xls', 'csv', 'ods', 'tsv'].includes(ext)) {
+    return <FileSpreadsheet className={className} strokeWidth={1.75} />;
   }
+  if (/presentation/.test(mime ?? '') || ext === 'pptx') return <Presentation className={className} strokeWidth={1.75} />;
+  return <FileText className={className} strokeWidth={1.75} />;
+}
+
+function fileSize(bytes?: number) {
+  if (!bytes) return '';
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function typeLabel(mime?: string, name?: string) {
+  if (mime === 'application/pdf') return 'PDF';
+  if (mime?.startsWith('image/')) return 'Picture';
+  const ext = (name ?? '').split('.').pop()?.toUpperCase();
+  return ext && ext.length <= 5 ? ext : 'File';
+}
+
+// A stored picture, fetched with the admin token into a blob URL.
+function Thumb({ token, mediaId, alt, onOpen }: { token: string; mediaId: string; alt: string; onOpen: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    mediaUrl(token, mediaId)
+      .then((u) => live && setUrl(u))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [token, mediaId]);
+  if (failed) return null;
   return (
-    <details className="group mt-1.5">
-      <summary className={cn('cursor-pointer list-none select-none', chip)}>
-        <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-        {label} · transcribed
-        <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" strokeWidth={1.75} />
-      </summary>
-      <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap rounded-[10px] bg-black/20 px-3 py-2 font-sans text-[13px] leading-[18px] text-white/90">{a.text}</pre>
-    </details>
+    <button type="button" onClick={onOpen} className="press mt-1.5 block overflow-hidden rounded-[10px] bg-black/10" aria-label={`Open ${alt}`}>
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={alt} className="block max-h-56 w-auto max-w-full object-contain" />
+      ) : (
+        <span className="block h-32 w-48 animate-pulse" />
+      )}
+    </button>
+  );
+}
+
+// A file in an operator's message (own) or in the message they replied to
+// (quoted): what it is, an Open button, and — folded — exactly what the
+// assistant read from it, since that is what it acted on.
+function AttachmentCard({ a, tone, token }: { a: Attachment; tone: 'own' | 'quoted'; token: string }) {
+  const [opening, setOpening] = useState(false);
+  const isImage = a.kind === 'image';
+  const label = a.name ?? (isImage ? 'Picture' : a.kind[0].toUpperCase() + a.kind.slice(1));
+  const open = () => {
+    if (!a.mediaId) return;
+    setOpening(true);
+    openMedia(token, a.mediaId, a.name ?? 'file', a.mimeType)
+      .catch(() => undefined)
+      .finally(() => setOpening(false));
+  };
+  const meta = [
+    a.mediaId ? typeLabel(a.mimeType, a.name) : null,
+    a.pages ? `${a.pages} ${a.method === 'sheet' ? 'sheet' : a.method === 'pptx' ? 'slide' : 'page'}${a.pages === 1 ? '' : 's'}` : null,
+    fileSize(a.sizeBytes) || null,
+    a.text ? METHOD_LABEL[a.method ?? ''] ?? 'read' : a.unreadable ? 'not read' : null,
+  ].filter(Boolean);
+
+  return (
+    <div className="mt-1.5">
+      {isImage && a.mediaId && <Thumb token={token} mediaId={a.mediaId} alt={label} onOpen={open} />}
+      <div className={cn('mt-1.5 flex items-center gap-2.5 rounded-[10px] px-2.5 py-2', tone === 'own' ? 'bg-white/12' : 'bg-white/8')}>
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/15">
+          <FileIcon mime={a.mimeType} name={a.name} fallback={isImage ? 'image' : 'clip'} className="h-4 w-4 text-white" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium leading-[18px] text-white">{label}</span>
+          {meta.length > 0 && <span className="block truncate text-[12px] leading-4 text-white/70">{meta.join(' · ')}</span>}
+        </span>
+        {a.mediaId && (
+          <button
+            type="button"
+            onClick={open}
+            disabled={opening}
+            className="press inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-white/15 px-2 text-[12px] font-medium text-white hover:bg-white/25 disabled:opacity-60"
+          >
+            {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
+            Open
+          </button>
+        )}
+      </div>
+      {a.unreadable && (
+        <p className="mt-1 flex items-start gap-1.5 text-[12px] leading-4 text-white/80">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={1.75} /> Couldn’t read it: {a.unreadable}
+        </p>
+      )}
+      {a.text && (
+        <details className="group mt-1">
+          <summary className="inline-flex cursor-pointer list-none select-none items-center gap-1 text-[12px] leading-4 text-white/80 hover:text-white">
+            What Abby read{a.truncated ? ` · first ${a.text.length.toLocaleString()} of ${a.totalChars?.toLocaleString()} characters` : ''}
+            <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" strokeWidth={1.75} />
+          </summary>
+          <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap rounded-[10px] bg-black/20 px-3 py-2 font-sans text-[13px] leading-[18px] text-white/90">{a.text}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+// A file the assistant sent — where it went, and a way to open it here.
+function SentFileCard({ file, token }: { file: SentFile; token: string }) {
+  const [opening, setOpening] = useState(false);
+  const isImage = file.sentAs === 'image';
+  const open = () => {
+    setOpening(true);
+    openMedia(token, file.mediaId, file.fileName, isImage ? 'image/jpeg' : file.fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : undefined)
+      .catch(() => undefined)
+      .finally(() => setOpening(false));
+  };
+  return (
+    <div className="msg-in w-full max-w-sm rounded-[12px] border border-border bg-surface p-2.5">
+      {isImage && <ThumbLight token={token} mediaId={file.mediaId} alt={file.fileName} onOpen={open} />}
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-elevated">
+          <FileIcon mime={isImage ? 'image/jpeg' : undefined} name={file.fileName} className="h-4 w-4 text-text-primary" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium leading-[18px] text-text-primary">{file.fileName}</span>
+          <span className="flex items-center gap-1 truncate text-[12px] leading-4 text-text-secondary">
+            <Send className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+            {file.deliveredTo === 'the dashboard' ? 'Here' : file.deliveredTo} · {fileSize(file.sizeKb * 1024)}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={open}
+          disabled={opening}
+          className="press inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-text-primary hover:bg-surface-elevated disabled:opacity-60"
+        >
+          {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          Open
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ThumbLight({ token, mediaId, alt, onOpen }: { token: string; mediaId: string; alt: string; onOpen: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    mediaUrl(token, mediaId)
+      .then((u) => live && setUrl(u))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token, mediaId]);
+  return (
+    <button type="button" onClick={onOpen} className="press mb-2 block w-full overflow-hidden rounded-[8px] bg-surface-elevated" aria-label={`Open ${alt}`}>
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={alt} className="mx-auto block max-h-64 w-auto max-w-full object-contain" />
+      ) : (
+        <span className="block h-40 w-full animate-pulse" />
+      )}
+    </button>
   );
 }

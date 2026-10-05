@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { env } from '../../config/env.js';
+import { sha256, sniffType } from '../../utils/agent-media-store.js';
 import { randomUUID } from 'crypto';
 import { getPaginationParams } from '../../utils/pagination.js';
 import { createReadStream, createWriteStream } from 'fs';
@@ -8,6 +10,8 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import {
   ALLOWED_LABEL,
+  FILEABLE_FROM_CHAT,
+  FILEABLE_LABEL,
   DOCUMENTS_DIR,
   deleteDocumentFile,
   documentPath,
@@ -196,6 +200,8 @@ export async function uploadDocument(fastify: FastifyInstance, request: FastifyR
   // Stored byte-for-byte: no re-encode, no downscale. A document may have to be
   // produced to an accountant or a bank exactly as it was issued.
   await import('fs/promises').then((fs) => fs.rename(tmppath, documentPath(filename)));
+  // Recorded so a later copy arriving over WhatsApp is recognised as this one.
+  const digest = sha256(await import('fs/promises').then((fs) => fs.readFile(documentPath(filename))));
 
   try {
     return await fastify.prisma.$transaction(async (tx) => {
@@ -209,6 +215,7 @@ export async function uploadDocument(fastify: FastifyInstance, request: FastifyR
           originalName: originalName?.slice(0, 255) || filename,
           mimeType: mime,
           sizeBytes: size,
+          sha256: digest,
         },
       });
 
@@ -220,6 +227,74 @@ export async function uploadDocument(fastify: FastifyInstance, request: FastifyR
   } catch (err) {
     // The row is what makes the file reachable. If it never landed, the file is
     // unreferenced bytes on disk — remove it rather than leaking storage.
+    await deleteDocumentFile(filename);
+    throw err;
+  }
+}
+
+/** Thrown when the exact same file is already in the store. */
+export class DuplicateDocument extends Error {
+  statusCode = 409;
+  constructor(public existing: { id: string; title: string; kind: string; amount: number | null; occurredAt: Date; links: unknown[] }) {
+    super(`This exact file is already filed as "${existing.title}" (${existing.kind}, ${existing.occurredAt.toISOString().slice(0, 10)}).`);
+  }
+}
+
+/** The document already holding these exact bytes, if any. */
+export async function findDocumentByHash(fastify: FastifyInstance, sha256: string) {
+  return fastify.prisma.document.findFirst({ where: { sha256 }, include: DOCUMENT_INCLUDE, orderBy: { createdAt: 'asc' } });
+}
+
+/**
+ * The same filing as an upload, from bytes already on the server — a file an
+ * operator sent the assistant over WhatsApp. Same rules for the metadata and
+ * the links; a wider set of types (FILEABLE_FROM_CHAT — statements arrive as
+ * Excel/CSV), still identified from the bytes; and the same file twice is
+ * refused, because the second copy of a receipt is how an expense gets booked
+ * twice.
+ */
+export async function createDocumentFromBytes(
+  fastify: FastifyInstance,
+  input: { bytes: Buffer; originalName: string; meta: unknown; links: { orderIds?: string[]; expenseIds?: string[] } }
+) {
+  const maxBytes = env.AGENT_MAX_FILE_MB * 1024 * 1024;
+  if (input.bytes.length > maxBytes) {
+    throw { statusCode: 400, message: `File too large for the document store. Max ${env.AGENT_MAX_FILE_MB}MB.` };
+  }
+  const meta = metaSchema.parse(input.meta);
+  const links = linkTargets.parse(input.links);
+
+  const type = await sniffType(input.bytes, undefined, input.originalName);
+  const ext = FILEABLE_FROM_CHAT[type.mime];
+  if (!ext) throw { statusCode: 400, message: `Only a ${FILEABLE_LABEL} can be filed in the document store — this is ${type.ext ? `a .${type.ext} file` : 'not one of those'}.` };
+
+  const digest = sha256(input.bytes);
+  const existing = await findDocumentByHash(fastify, digest);
+  if (existing) throw new DuplicateDocument(existing);
+
+  await ensureDocumentsDir();
+  const filename = `${randomUUID()}.${ext}`;
+  await import('fs/promises').then((fs) => fs.writeFile(documentPath(filename), input.bytes));
+
+  try {
+    return await fastify.prisma.$transaction(async (tx) => {
+      const document = await tx.document.create({
+        data: {
+          ...meta,
+          description: meta.description ?? null,
+          amount: meta.amount ?? null,
+          filename,
+          originalName: input.originalName.slice(0, 255) || filename,
+          mimeType: type.mime,
+          sizeBytes: input.bytes.length,
+          sha256: digest,
+        },
+      });
+      const rows = await buildLinks(fastify, document.id, links);
+      if (rows.length) await tx.documentLink.createMany({ data: rows });
+      return tx.document.findUnique({ where: { id: document.id }, include: DOCUMENT_INCLUDE });
+    });
+  } catch (err) {
     await deleteDocumentFile(filename);
     throw err;
   }

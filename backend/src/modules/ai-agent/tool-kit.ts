@@ -82,6 +82,11 @@ export interface ToolContext {
   // actually lives. Optional so the write-tool tests can build a context
   // without inventing a conversation.
   origin?: ChatOrigin;
+  // The AgentThread this call belongs to. Files are scoped to it: the file
+  // tools only see attachments from this conversation, so a group can never
+  // page through, or have forwarded to it, something sent in someone's DM.
+  // Optional for the same reason as origin.
+  threadId?: string;
   // Storefront cache invalidation. Writing product/content rows straight to
   // the DB (as these tools do) bypasses the admin HTTP API and therefore never
   // fires the revalidate ping the frontend relies on — without this an agent

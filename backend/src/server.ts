@@ -48,6 +48,7 @@ import btcpayWebhookRoutes from './modules/webhooks/btcpay-webhook.routes.js';
 import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import assistantRoutes from './modules/ai-agent/assistant.routes.js';
+import { purgeOldMedia } from './modules/ai-agent/core/media.js';
 import { maybeReflect } from './modules/ai-agent/reflect.js';
 import { maybeDigest } from './modules/ai-agent/digest.js';
 import { maybeMonthEnd } from './utils/month-end.js';
@@ -310,6 +311,9 @@ try {
     maybeReflect(fastify).catch((err) => fastify.log.error({ err }, 'nightly reflection failed'));
     maybeDigest(fastify).catch((err) => fastify.log.error({ err }, 'morning brief failed'));
     maybeMonthEnd(fastify).catch((err) => fastify.log.error({ err }, 'month-end wrap failed'));
+    // Files sent to or by the assistant lose their bytes after the retention
+    // window (AGENT_MEDIA_RETENTION_DAYS); 500 per tick is plenty.
+    purgeOldMedia(fastify).catch((err) => fastify.log.error({ err }, 'agent media purge failed'));
   }, ASSISTANT_TICK_MS);
   assistantTimer.unref();
 } catch (err) {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Brain, CalendarClock, Loader2, MessagesSquare, SendHorizontal, Square, MessageSquare } from 'lucide-react';
+import { AlertTriangle, Brain, CalendarClock, Check, FileText, Loader2, MessagesSquare, Paperclip, SendHorizontal, Square, MessageSquare, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresence } from '@/hooks/usePresence';
 import { cn } from '@/lib/utils';
@@ -17,8 +17,10 @@ import {
   sendTurn,
   stopTurn,
   streamEvents,
+  uploadFile,
   type Action,
   type AgentEvent,
+  type Attachment,
   type Message,
   type Thread,
 } from '@/lib/assistant';
@@ -197,6 +199,14 @@ function Conversation({
   const [running, setRunning] = useState(false);
   const [acting, setActing] = useState('');
   const [draft, setDraft] = useState('');
+  // Files attached to the next message. Each is uploaded — and read by the
+  // API — the moment it is added, so by the time Send is pressed the
+  // assistant already has its text.
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  // A thread made just to hold an upload, before the first message is sent.
+  const draftThread = useRef<string | null>(null);
 
   const scroller = useRef<HTMLDivElement | null>(null);
   const composer = useRef<HTMLTextAreaElement | null>(null);
@@ -305,29 +315,74 @@ function Conversation({
     return () => stopStream.current?.();
   }, [threadId]);
 
+  // The thread an upload or a message belongs to, made on first use.
+  const ensureThread = async (): Promise<string> => {
+    if (threadId) return threadId;
+    if (draftThread.current) return draftThread.current;
+    const t = await createThread(token);
+    onCreated(t);
+    draftThread.current = t.id;
+    return t.id;
+  };
+
+  const addFiles = async (list: FileList | File[]) => {
+    const incoming = Array.from(list).slice(0, Math.max(0, MAX_FILES - files.length));
+    if (!incoming.length) return;
+    let id: string;
+    try {
+      id = await ensureThread();
+    } catch (e) {
+      show('bad', errorMessage(e));
+      return;
+    }
+    for (const f of incoming) {
+      const key = `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`;
+      if (f.size > MAX_FILE_BYTES) {
+        setFiles((fs) => [...fs, { key, name: f.name, size: f.size, status: 'failed', progress: 0, error: `Over ${MAX_FILE_BYTES / 1024 / 1024} MB` }]);
+        continue;
+      }
+      setFiles((fs) => [...fs, { key, name: f.name, size: f.size, status: 'uploading', progress: 0 }]);
+      const patch = (p: Partial<PendingFile>) => setFiles((fs) => fs.map((x) => (x.key === key ? { ...x, ...p } : x)));
+      uploadFile(token, id, f, (progress) => patch({ progress }))
+        .then((attachment) => patch({ status: 'ready', attachment }))
+        .catch((e) => patch({ status: 'failed', error: errorMessage(e) }));
+    }
+  };
+
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = Array.from(e.clipboardData.files);
+    if (pasted.length) {
+      e.preventDefault();
+      void addFiles(pasted);
+    }
+  };
+
+  const uploading = files.some((f) => f.status === 'uploading');
+  const readyIds = files.filter((f) => f.status === 'ready' && f.attachment?.mediaId).map((f) => f.attachment!.mediaId!);
+
   const send = async () => {
     const text = draft.trim();
-    if (!text || running) return;
+    if ((!text && !readyIds.length) || running || uploading) return;
+    const sentFiles = files;
     let id = threadId;
     try {
-      if (!id) {
-        const t = await createThread(token);
-        onCreated(t);
-        id = t.id;
-      }
+      if (!id) id = await ensureThread();
+      draftThread.current = null;
       setDraft('');
+      setFiles([]);
       setRunning(true);
       setLive({ text: '', reasoning: '', tools: new Map() });
       // Start the turn before navigating to a new thread: the new
       // Conversation loads it, sees it running, and attaches — no race with
       // a load that would report it idle.
-      await sendTurn(token, id, text);
+      await sendTurn(token, id, text, readyIds);
       if (threadId !== id) router.push(`/admin/assistant/${id}`);
       else attachRef.current(id);
     } catch (e) {
       setRunning(false);
       setLive(null);
       setDraft(text);
+      setFiles(sentFiles);
       show('bad', errorMessage(e));
     }
   };
@@ -433,7 +488,7 @@ function Conversation({
             </p>
           </div>
         ) : (
-          <Transcript messages={messages} actions={actions} live={live} running={running} acting={acting} readOnly={!!readOnly} onDecide={decide} />
+          <Transcript token={token} messages={messages} actions={actions} live={live} running={running} acting={acting} readOnly={!!readOnly} onDecide={decide} />
         )}
       </div>
 
@@ -450,13 +505,58 @@ function Conversation({
             </Link>
           </p>
         ) : (
-          <>
-            <div className="mx-auto flex max-w-3xl items-end gap-2">
+          <div
+            className={cn('mx-auto max-w-3xl rounded-xl transition-colors', dragging && 'bg-primary/5 ring-2 ring-primary/30 ring-offset-4 ring-offset-surface')}
+            onDragOver={(e) => {
+              if (running || !configured || !e.dataTransfer.types.includes('Files')) return;
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (running || !configured) return;
+              void addFiles(e.dataTransfer.files);
+            }}
+          >
+            {files.length > 0 && (
+              <ul className="mb-2 flex flex-wrap gap-2">
+                {files.map((f) => (
+                  <FileChip key={f.key} f={f} onRemove={() => setFiles((fs) => fs.filter((x) => x.key !== f.key))} />
+                ))}
+              </ul>
+            )}
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                accept=".pdf,.docx,.xlsx,.xls,.ods,.csv,.tsv,.pptx,.txt,.md,.json,.html,image/*"
+                onChange={(e) => {
+                  if (e.target.files) void addFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                disabled={running || !configured || files.length >= MAX_FILES}
+                aria-label="Attach a file"
+                title="Attach a PDF, Word, Excel, slides or a picture"
+                className="press grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-border text-text-secondary hover:bg-surface-elevated hover:text-text-primary disabled:opacity-50"
+              >
+                <Paperclip className="h-4 w-4" strokeWidth={1.75} />
+              </button>
               <textarea
                 ref={composer}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={onKey}
+                onPaste={onPaste}
                 rows={1}
                 disabled={running || !configured}
                 placeholder="Ask about anything in the shop…"
@@ -464,20 +564,89 @@ function Conversation({
               />
               <button
                 onClick={() => void send()}
-                disabled={!draft.trim() || running || !configured}
+                disabled={(!draft.trim() && !readyIds.length) || uploading || running || !configured}
                 aria-label="Send"
                 className="press grid h-11 w-11 place-items-center rounded-lg bg-primary text-white hover:bg-primary-light disabled:opacity-50"
               >
                 {running ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <SendHorizontal className="h-4 w-4" strokeWidth={1.75} />}
               </button>
             </div>
-            <p className="mx-auto mt-1.5 max-w-3xl text-[12px] leading-4 text-text-secondary">
-              Enter to send, Shift+Enter for a new line. Changes are recorded and can be undone from their card; deletes, money and anything customer-facing
-              wait for your approval.
+            <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
+              Enter to send, Shift+Enter for a new line.{' '}
+              <span className="hidden sm:inline">Drop or paste a PDF, Word, Excel, slides or a picture to have it read. </span>Changes are recorded and can be
+              undone from their card; deletes, money and anything customer-facing wait for your approval.
             </p>
-          </>
+          </div>
         )}
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------- uploads
+
+// Mirrors AGENT_MAX_FILE_MB's default on the API, which enforces it anyway;
+// checking here just saves uploading 40 MB to be told no.
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILES = 10;
+
+interface PendingFile {
+  key: string;
+  name: string;
+  size: number;
+  status: 'uploading' | 'ready' | 'failed';
+  progress: number;
+  attachment?: Attachment;
+  error?: string;
+}
+
+function FileChip({ f, onRemove }: { f: PendingFile; onRemove: () => void }) {
+  const unreadable = f.status === 'ready' && !!f.attachment?.unreadable;
+  const pages = f.attachment?.pages;
+  const status =
+    f.status === 'uploading'
+      ? f.progress < 100
+        ? `Uploading ${f.progress}%`
+        : 'Reading…'
+      : f.status === 'failed'
+        ? f.error ?? 'Upload failed'
+        : unreadable
+          ? 'Can’t read this — Abby will say so'
+          : f.attachment?.method === 'pdf-ocr'
+            ? `Read by OCR${pages ? ` · ${pages} page${pages === 1 ? '' : 's'}` : ''}`
+            : `Read${pages ? ` · ${pages} ${f.attachment?.method === 'sheet' ? 'sheet' : f.attachment?.method === 'pptx' ? 'slide' : 'page'}${pages === 1 ? '' : 's'}` : ''}`;
+  return (
+    <li
+      className={cn(
+        'msg-in flex max-w-full items-center gap-2 rounded-lg border bg-surface py-1.5 pl-2 pr-1 text-[13px] leading-[18px] sm:max-w-[18rem]',
+        f.status === 'failed' ? 'border-danger/40' : unreadable ? 'border-amber-300' : 'border-border'
+      )}
+      title={f.attachment?.unreadable ?? f.error ?? f.name}
+    >
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-elevated">
+        {f.status === 'uploading' ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-text-secondary" strokeWidth={2} />
+        ) : f.status === 'failed' || unreadable ? (
+          <AlertTriangle className={cn('h-3.5 w-3.5', f.status === 'failed' ? 'text-danger' : 'text-amber-600')} strokeWidth={1.75} />
+        ) : (
+          <FileText className="h-3.5 w-3.5 text-text-primary" strokeWidth={1.75} />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-text-primary">{f.name}</span>
+        <span className={cn('flex items-center gap-1 truncate text-[12px] leading-4', f.status === 'failed' ? 'text-danger' : 'text-text-secondary')}>
+          {f.status === 'ready' && !unreadable && <Check className="h-3 w-3 shrink-0 text-success" strokeWidth={2.5} />}
+          {status}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${f.name}`}
+        className="press grid h-7 w-7 shrink-0 place-items-center rounded-md text-text-muted hover:bg-surface-elevated hover:text-text-primary"
+      >
+        <X className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+    </li>
   );
 }

@@ -340,6 +340,63 @@ provider omits it), Claude Sonnet 5 (finance and customer-facing judgement).
 Escalation: DeepSeek V4 Pro, Claude Opus 5. Any other OpenRouter id can be
 saved through the API; it simply shows no price.
 
+## Files (Oct 2026)
+
+Abby reads files, sends files, and keeps the books from them — over WhatsApp
+and on the Assistant page.
+
+**In.** The worker downloads any picture or document sent to it (size checked
+against the protobuf's `fileLength` before downloading: 10 MB pictures,
+`AGENT_MAX_FILE_MB` documents) and relays it as base64. `core/media.ts` stores
+it in `agent-media/` (private, never served statically), identifies it from
+its bytes, and `core/extract.ts` reads it once:
+
+| Type | How | Cost |
+|---|---|---|
+| PDF with a text layer | `unpdf`, page by page | free |
+| Scanned PDF (< 40 chars/page) | OpenRouter file-parser, `mistral-ocr` (≤ 40 pages) | ~USD 0.002/page-set |
+| Word (.docx) | `mammoth` → HTML → text, tables as `a \| b` rows | free |
+| Excel/ODS/CSV | SheetJS, every sheet, one row per line | free |
+| PowerPoint (.pptx) | slide XML via JSZip | free |
+| Text / HTML | decoded; HTML tags stripped | free |
+| Picture | vision model, as before (HEIC sent as a file is refused) | ~USD 0.0003 |
+
+The text is stored on the `agent_media` row; the operator's message carries the
+first 8,000 characters and a `mediaId`. `read_attachment` searches the whole
+file (`query`) or pages through it — the model is told never to say a file
+lacks something until a search came back empty. The same file twice in a
+thread (a reply re-sends it) reuses the first reading. Bytes are purged after
+`AGENT_MEDIA_RETENTION_DAYS`; the row and text stay.
+
+**Out.** `send_file` sends into the chat the request came from: a filed
+document, an order receipt (generated), a catalogue photo (converted to JPEG —
+WhatsApp shows WebP as a sticker), an earlier file, or a spreadsheet built from
+a read-only SQL query (`runReadOnlyQuery`, up to 10,000 rows — the database
+fills the file, the model never transcribes rows). `forward_file` reaches
+another allowlisted operator or group only, and parks for a yes. Files never
+go to customers, and nothing produces a link. The worker's `/send-file` does
+the upload. A reply claiming a send with nothing sent is replaced
+(`CLAIMS_FILE_SENT`); a sent file counts as done for the write guard.
+
+**Bookkeeping.** `record_expense` takes `receiptMediaId`: the receipt is
+checked first (in this conversation, still stored, fileable, not already
+filed), then the expense is recorded and the receipt filed against it; if
+filing fails the expense is deleted again. `save_attachment_as_document` files
+anything else (statements, quotations, slips) against orders/expenses. The
+document store takes PDFs, pictures, Word, Excel/CSV, PowerPoint and text
+from chat (`FILEABLE_FROM_CHAT`; non-inline types are always served as
+downloads). `documents.sha256` refuses the same file twice and says where it
+is filed — the second copy of a receipt is how an expense gets booked twice.
+The `bookkeeping` playbook (finance + documents domains, auto-loaded when a
+message carries a file) tells the model to read a bare bill, propose the one
+entry, and wait for a yes.
+
+In a group with `requireMention`, a file is only downloaded when the message
+tags Abby (in the caption) or replies to the file tagging her — the same gate
+as text.
+
+---
+
 ## Environment
 
 ```bash
@@ -349,6 +406,8 @@ OPENROUTER_ESCALATION_MODEL=                  # fallback when agent_escalation_m
 AGENT_REASONING_EFFORT=none                   # fallback; none | low | medium | high
 AGENT_VISION_MODEL=z-ai/glm-5.3-flash         # reads pictures sent over WhatsApp
 AGENT_GROUNDING_MODE=shadow                   # off | shadow | enforce
+AGENT_MAX_FILE_MB=20                          # largest document taken in (worker reads it too)
+AGENT_MEDIA_RETENTION_DAYS=90                 # how long chat files keep their bytes
 ```
 
 The `openai` package is gone; the provider is a streamed `fetch`.
@@ -369,6 +428,7 @@ npm run test:agent:security    # 10 — includes a planted "remember this" that 
 npm run test:agent:e2e         # 23 scenarios, real model; two are known to flake on model variance
 E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name contains the string
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
+npm run test:agent:files       # 56 — every format, storage, send/forward/file/record tools, 16 real-model turns incl. bookkeeping
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time
 ```

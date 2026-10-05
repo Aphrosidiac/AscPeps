@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  FileText, Image as ImageIcon, Plus, Search, FolderOpen, ShoppingBag, Receipt, AlertTriangle,
+  Plus, Search, FolderOpen, ShoppingBag, Receipt, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetDocuments } from '@/lib/api';
@@ -10,6 +10,7 @@ import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import { Animate } from '@/components/ui/Animate';
 import type { Document } from '@/types';
 import { UploadDocumentDialog } from './UploadDocumentDialog';
+import { DocumentIcon } from './DocumentIcon';
 import { DocumentDetail } from './DocumentDetail';
 import { PageHeader } from '@/components/admin/ui';
 import { Button } from '@/components/ui/Button';
@@ -25,15 +26,6 @@ import { Button } from '@/components/ui/Button';
  * something you would have to go looking for.
  */
 
-const isPdf = (mime: string) => mime === 'application/pdf';
-
-function DocumentIcon({ mimeType }: { mimeType: string }) {
-  return isPdf(mimeType) ? (
-    <FileText className="w-4 h-4 text-danger shrink-0" />
-  ) : (
-    <ImageIcon className="w-4 h-4 text-primary shrink-0" />
-  );
-}
 
 /** What a document is attached to, as compact chips. */
 function FiledChips({ doc }: { doc: Document }) {

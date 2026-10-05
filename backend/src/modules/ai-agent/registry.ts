@@ -6,6 +6,7 @@ import { supplierTools } from './tools/suppliers.tools.js';
 import { orderTools } from './tools/orders.tools.js';
 import { financeTools } from './tools/finance.tools.js';
 import { documentTools } from './tools/documents.tools.js';
+import { fileTools } from './tools/files.tools.js';
 import { shadowTools } from './tools/shadow.tools.js';
 import { contentTools } from './tools/content.tools.js';
 import { opsTools } from './tools/ops.tools.js';
@@ -46,7 +47,10 @@ const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
   // the documents keyword list shares "receipt"/"invoice" with orders, so
   // "record the ads expense, here's the receipt" loads finance and documents
   // together.
-  documents: documentTools,
+  // Files ride with documents: filing an attachment IS a document-store job,
+  // and a turn that carries a file loads this domain automatically (run.ts).
+  // read_attachment, list_attachments and send_file are also core, below.
+  documents: [...documentTools, ...fileTools],
   // Its own bucket for the same reason documents has one: a tool may appear in
   // exactly one domain or the duplicate-name check below fires. Routing is not
   // harmed by the split — routeDomains returns every domain a message matches.
