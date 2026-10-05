@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { createOrder, getSettings, validateDiscount } from '@/lib/api';
-import { formatPrice, cn } from '@/lib/utils';
+import { formatPrice, cn, normalizePhone } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import { isEastMalaysia, parseEastMalaysiaMinOrder, resolveShippingFeeSen } from '@/lib/shipping-region';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 import { rememberPendingPayment } from '@/lib/pending-payment';
+import { rememberTrackedOrder } from '@/lib/tracked-order';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
 
@@ -299,6 +300,10 @@ export default function CheckoutPage() {
       });
 
       idempotencyKeyRef.current = null; // success — next order gets a fresh key
+
+      // So "Track Order" — here, on the success page, or days later — opens
+      // straight onto this order instead of asking for it.
+      rememberTrackedOrder({ orderNumber: result.order.orderNumber, phone: normalizePhone(form.phone) });
 
       // Deliberately NOT called "purchase" and deliberately carries no revenue.
       // At this point the order row exists but nothing has been paid: for

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { TrackedOrder } from './order-pipeline';
 import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document,
   ShadowSku,
   Supplier,
@@ -68,8 +69,9 @@ export const createOrder = (data: {
   idempotencyKey?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
-export const lookupOrders = (phone?: string, orderNumber?: string) =>
-  api.get<Order[]>('/api/v1/orders/lookup', { params: { ...(phone && { phone }), ...(orderNumber && { orderNumber }) } }).then((r) => r.data);
+// Both are required: the phone is the ownership proof for the guessable order number.
+export const lookupOrders = (phone: string, orderNumber: string) =>
+  api.get<TrackedOrder[]>('/api/v1/orders/lookup', { params: { phone, orderNumber } }).then((r) => r.data);
 
 export const getReceiptData = (orderNumber: string, phone: string) =>
   api.get<Order>(`/api/v1/orders/receipt/${encodeURIComponent(orderNumber)}`, { params: { phone } }).then((r) => r.data);

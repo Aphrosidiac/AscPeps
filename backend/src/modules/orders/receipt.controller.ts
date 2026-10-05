@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { normalizePhone } from '../../utils/phone.js';
 import { generateReceiptPdf } from '../../utils/receipt-pdf.js';
+import { parseTracking } from '../../utils/courier.js';
 
 export async function getReceiptData(fastify: FastifyInstance, orderNumber: string, phone: string) {
   const normalized = normalizePhone(phone);
@@ -24,7 +25,9 @@ export async function getReceiptData(fastify: FastifyInstance, orderNumber: stri
     throw { statusCode: 403, message: 'Phone number does not match this order' };
   }
 
-  return order;
+  // Only a real waybill reaches the customer — the box also holds operator
+  // notes such as "COD" (see utils/courier.ts).
+  return { ...order, trackingNumber: parseTracking(order.trackingNumber)?.number ?? null };
 }
 
 export async function getReceiptPdf(fastify: FastifyInstance, orderNumber: string, phone: string) {

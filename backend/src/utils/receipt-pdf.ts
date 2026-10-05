@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import path from 'path';
 import { getVariantDisplayName } from './product-addons.js';
+import { parseTracking } from './courier.js';
 
 interface ReceiptItem {
   quantity: number;
@@ -281,15 +282,15 @@ export async function generateReceiptPdf(
     }
 
     // === Tracking ===
-    if (
-      order.trackingNumber &&
-      (order.status === 'SHIPPED' || order.status === 'DELIVERED')
-    ) {
+    // Parsed, not printed raw: the box also holds operator notes ("COD") that
+    // are not a tracking number and must not land on a customer's receipt.
+    const parcel = parseTracking(order.trackingNumber);
+    if (parcel && (order.status === 'SHIPPED' || order.status === 'DELIVERED')) {
       y += 6;
       doc.font('Helvetica-Bold').fontSize(8).fillColor('#888888').text('SHIPPING', leftX, y);
       y += 14;
       doc.font('Helvetica').fontSize(9).fillColor('#444444');
-      doc.text(`Tracking: ${order.trackingNumber}`, leftX, y);
+      doc.text(`Tracking: ${parcel.courier ? `${parcel.courier} ` : ''}${parcel.number}`, leftX, y);
       y += 13;
     }
 

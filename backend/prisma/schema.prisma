@@ -237,6 +237,18 @@ model Order {
   discountCodeId        String?
   notes                 String?
   trackingNumber        String?
+  // When the order reached each step the customer sees on /track. Written by
+  // the `orders_stamp_progress` trigger (migration 20261006090000), never by
+  // application code: five different paths move status or payment (admin,
+  // assistant, gateway paid/failed, manual-pay cancel, the sweep) and a stamp
+  // any one of them forgot would be a hole in a customer's timeline. Entering
+  // a step stamps it; stepping back clears the stamps after it. Null means
+  // "not reached" or "reached before these columns existed" — never guessed.
+  paidAt                DateTime?
+  confirmedAt           DateTime?
+  shippedAt             DateTime?
+  deliveredAt           DateTime?
+  cancelledAt           DateTime?
   idempotencyKey        String?       @unique
   stockRestored         Boolean       @default(false)
   // Why an online order ended up FAILED. Set once, when the order is released.

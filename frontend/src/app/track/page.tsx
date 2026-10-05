@@ -1,158 +1,221 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { Search, Package, Truck, FileText, Clock } from 'lucide-react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { ArrowLeft, RotateCw, Search } from 'lucide-react';
 import posthog from 'posthog-js';
 import { lookupOrders } from '@/lib/api';
-import { formatPrice, formatDate, normalizePhone } from '@/lib/utils';
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@/lib/constants';
+import { cn, normalizePhone } from '@/lib/utils';
+import { forgetTrackedOrder, readTrackedOrder, rememberTrackedOrder } from '@/lib/tracked-order';
+import type { TrackedOrder } from '@/lib/order-pipeline';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Animate, Stagger } from '@/components/ui/Animate';
-import type { Order } from '@/types';
+import { Animate } from '@/components/ui/Animate';
+import { OrderPipeline, OrderPipelineSkeleton } from './OrderPipeline';
 
-// The lookup endpoint adds a route back to the hosted payment page for
-// unpaid bank-transfer orders — the one thing a customer can't otherwise
-// recover once they've left it.
-type TrackedOrder = Order & { paymentUrl?: string };
-
+// useSearchParams needs a Suspense boundary above it or the static build of
+// this route bails out to client rendering for the whole page.
 export default function TrackPage() {
-  const [phone, setPhone] = useState('');
-  const [orderNumber, setOrderNumber] = useState('');
-  const [orders, setOrders] = useState<TrackedOrder[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  return (
+    <Suspense fallback={null}>
+      <Track />
+    </Suspense>
+  );
+}
+
+type View =
+  | { kind: 'form' }
+  | { kind: 'loading' }
+  | { kind: 'result'; orders: TrackedOrder[]; phone: string; checkedAt: number };
+
+function Track() {
+  const params = useSearchParams();
+  // A returning customer lands on their order, not on a form. An ?order= link
+  // (from a message we sent) wins over whatever this browser remembers. Read
+  // during the first render: this subtree only ever renders in the browser
+  // (useSearchParams under Suspense), so there is no server markup to disagree.
+  const [resume] = useState(() => {
+    const linked = params.get('order');
+    const saved = readTrackedOrder();
+    return saved && (!linked || linked.toUpperCase() === saved.orderNumber.toUpperCase()) ? saved : null;
+  });
+  const [orderNumber, setOrderNumber] = useState(resume?.orderNumber ?? params.get('order') ?? '');
+  const [phone, setPhone] = useState(resume?.phone ?? '');
+  const [view, setView] = useState<View>(resume ? { kind: 'loading' } : { kind: 'form' });
+  const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const normalizedPhone = normalizePhone(phone);
-  const canSearch = normalizedPhone.length >= 10 || orderNumber.trim().length >= 3;
+  const canSearch = normalizedPhone.length >= 10 && orderNumber.trim().length >= 3;
 
-  const handleSearch = async (e: React.FormEvent) => {
+  // Not an async function: every setState lands in a promise callback, which
+  // is what keeps React's set-state-in-effect rule satisfied on the resume
+  // path (same pattern as the admin pages).
+  const lookup = useCallback((number: string, tel: string, source: 'form' | 'remembered' | 'refresh') =>
+    lookupOrders(tel, number)
+      .then((orders) => {
+        if (orders.length === 0) {
+          // A remembered order that no longer matches (deleted, or the phone
+          // was corrected) must not trap the customer on an empty page.
+          if (source === 'remembered') forgetTrackedOrder();
+          setView({ kind: 'form' });
+          setError(source === 'remembered' ? '' : 'We couldn’t find that order. Check the order number and use the phone number you checked out with.');
+          return;
+        }
+        setError('');
+        rememberTrackedOrder({ orderNumber: orders[0].orderNumber, phone: tel });
+        setView({ kind: 'result', orders, phone: tel, checkedAt: Date.now() });
+        if (source !== 'refresh') {
+          posthog.capture('order_tracked', { orders_found: orders.length, search_type: source });
+        }
+      })
+      .catch((err) => {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        setView((v) => (v.kind === 'result' ? v : { kind: 'form' }));
+        setError(
+          status === 429
+            ? 'Too many tries in a row. Wait a minute, then try again.'
+            : 'We couldn’t reach our system just now. Check your connection and try again.',
+        );
+      }), []);
+
+  useEffect(() => {
+    if (resume) void lookup(resume.orderNumber, resume.phone, 'remembered');
+  }, [resume, lookup]);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSearch) return;
-    setLoading(true);
-    try {
-      const result = await lookupOrders(
-        normalizedPhone.length >= 10 ? normalizedPhone : undefined,
-        orderNumber.trim() || undefined,
-      );
-      setOrders(result);
-      posthog.capture('order_tracked', {
-        orders_found: result.length,
-        search_type: normalizedPhone.length >= 10 ? 'phone' : 'order_number',
-      });
-    } catch {
-      setOrders([]);
-    } finally {
-      setLoading(false);
-      setSearched(true);
-    }
+    setView({ kind: 'loading' });
+    await lookup(orderNumber.trim().toUpperCase(), normalizedPhone, 'form');
+  };
+
+  const refresh = async () => {
+    if (view.kind !== 'result') return;
+    setRefreshing(true);
+    await lookup(view.orders[0].orderNumber, view.phone, 'refresh');
+    setRefreshing(false);
+  };
+
+  const trackAnother = () => {
+    forgetTrackedOrder();
+    setOrderNumber('');
+    setPhone('');
+    setError('');
+    setView({ kind: 'form' });
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <Animate variant="fadeUp" duration={0.6}>
-        <div className="text-center mb-8">
-          <Package className="w-12 h-12 text-text-muted mx-auto mb-4" />
-          <h1 className="font-display text-3xl font-bold mb-2">Track Your Order</h1>
-          <p className="text-text-secondary">Enter your order number or the phone number you used when placing your order.</p>
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+      <Animate variant="fadeUp" duration={0.5}>
+        <div className="mb-8">
+          <h1 className="font-display text-3xl font-bold">Track your order</h1>
+          <p className="text-text-secondary mt-1.5">
+            {view.kind === 'result'
+              ? 'Here’s where your order is right now.'
+              : 'See every step from payment to your door.'}
+          </p>
         </div>
       </Animate>
 
-      <Animate variant="fadeUp" delay={0.15} duration={0.5}>
-      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 mb-8">
-        <div className="relative flex-1">
-          <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-          <input
-            type="text"
-            value={orderNumber}
-            onChange={(e) => setOrderNumber(e.target.value)}
-            placeholder="Order number"
-            className="w-full pl-10 pr-4 py-3 rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-        </div>
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="012-3456789"
-            className="w-full pl-10 pr-4 py-3 rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-        </div>
-        <Button type="submit" disabled={loading || !canSearch} size="lg">
-          {loading ? 'Searching...' : 'Search'}
-        </Button>
-      </form>
-      </Animate>
+      {view.kind === 'loading' && <OrderPipelineSkeleton />}
 
-      {searched && orders !== null && (
-        orders.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-text-muted">No order found. Check your order number and phone number and try again.</p>
+      {view.kind === 'result' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <button
+              type="button"
+              onClick={trackAnother}
+              className="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" /> Track another order
+            </button>
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-60"
+              aria-label="Check for updates"
+            >
+              <RotateCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+              {refreshing ? 'Checking…' : 'Refresh'}
+            </button>
           </div>
-        ) : (
-          <Stagger className="space-y-4" stagger={0.08}>
-            {orders.map((order) => (
-              <div key={order.id} className="bg-surface rounded-xl border border-border p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="font-display font-bold">{order.orderNumber}</p>
-                    <p className="text-sm text-text-muted">{formatDate(order.createdAt)}</p>
-                  </div>
-                  <Badge className={ORDER_STATUS_COLORS[order.status]}>
-                    {ORDER_STATUS_LABELS[order.status]}
-                  </Badge>
-                </div>
-                {order.paymentUrl && (
-                  <div className="flex items-center justify-between gap-3 bg-warning/10 border border-warning/40 rounded-lg px-4 py-2.5 mb-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Clock className="w-4 h-4 text-warning shrink-0" />
-                      <p className="text-sm">Waiting for your bank transfer</p>
-                    </div>
-                    <a
-                      href={order.paymentUrl}
-                      className="shrink-0 inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-light transition-colors"
-                    >
-                      Complete payment
-                    </a>
-                  </div>
-                )}
-                {order.trackingNumber && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
-                  <div className="flex items-center gap-2 bg-surface-elevated rounded-lg px-4 py-2.5 mb-4">
-                    <Truck className="w-4 h-4 text-primary shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-xs text-text-muted">Tracking Number</p>
-                      <p className="text-sm font-semibold font-mono">{order.trackingNumber}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-2 mb-4">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex justify-between text-sm">
-                      <span className="text-text-secondary">{item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''} x{item.quantity}</span>
-                      <span>{formatPrice(item.unitPrice * item.quantity)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-border pt-3 flex items-center justify-between">
-                  <div className="font-semibold">
-                    <span>Total: </span>
-                    <span>{formatPrice(order.total)}</span>
-                  </div>
-                  <Link
-                    href={`/receipt/${order.orderNumber}${normalizedPhone.length >= 10 ? `?phone=${encodeURIComponent(normalizedPhone)}` : ''}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary bg-surface-elevated hover:bg-border rounded-lg transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> Receipt
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </Stagger>
-        )
+          {error && <p className="text-sm text-danger" role="alert">{error}</p>}
+          {view.orders.map((order) => (
+            <Animate key={order.id} variant="fadeUp" duration={0.45}>
+              <OrderPipeline order={order} phone={view.phone} />
+            </Animate>
+          ))}
+        </div>
       )}
+
+      {view.kind === 'form' && (
+        <Animate variant="fadeUp" delay={0.1} duration={0.5}>
+          <form onSubmit={submit} className="bg-surface rounded-2xl border border-border p-5 sm:p-7" noValidate>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                id="track-order"
+                label="Order number"
+                hint="In your confirmation email or WhatsApp"
+                value={orderNumber}
+                onChange={setOrderNumber}
+                placeholder="ASC2610/0012"
+                autoCapitalize="characters"
+                autoComplete="off"
+              />
+              <Field
+                id="track-phone"
+                label="Phone number"
+                hint="The one you used at checkout"
+                value={phone}
+                onChange={setPhone}
+                placeholder="012-345 6789"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+              />
+            </div>
+
+            {error && (
+              <p className="mt-4 rounded-lg bg-danger/[0.06] px-3.5 py-2.5 text-sm text-danger" role="alert">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="mt-5 w-full" disabled={!canSearch}>
+              <Search className="w-4 h-4" /> Track order
+            </Button>
+            <p className="mt-3 text-center text-xs text-text-muted">
+              We ask for both so only you can see your order.
+            </p>
+          </form>
+        </Animate>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  id, label, hint, value, onChange, ...input
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'id'>) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium mb-1.5">{label}</label>
+      <input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-describedby={`${id}-hint`}
+        className="w-full rounded-lg border border-border bg-surface px-3.5 py-3 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        {...input}
+      />
+      <p id={`${id}-hint`} className="mt-1.5 text-xs text-text-muted">{hint}</p>
     </div>
   );
 }

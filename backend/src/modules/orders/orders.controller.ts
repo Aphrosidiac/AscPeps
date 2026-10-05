@@ -11,7 +11,8 @@ import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { notifyOrder } from '../../utils/order-notify.js';
 import { newUnsubscribeToken } from '../../utils/marketing.js';
-import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage, resolveShippingFeeSen } from '../../utils/shipping-region.js';
+import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage, resolveShippingFeeSen, deliveryRegion } from '../../utils/shipping-region.js';
+import { parseTracking } from '../../utils/courier.js';
 import { MANUALPAY_GATEWAY, isManualPayEnabled } from '../../plugins/manualpay.js';
 import { resolveManualDiscount, type ManualDiscountInput } from '../../utils/manual-discount.js';
 
@@ -537,12 +538,28 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
       phone: true,
       status: true,
       paymentStatus: true,
+      paymentMethod: true,
       // Only to rebuild the hosted payment page URL below — never returned raw.
       paymentGateway: true,
       paymentRef: true,
+      // Only to pick the delivery estimate — the region is returned, the
+      // state itself is not.
+      state: true,
+      subtotal: true,
+      shippingFee: true,
+      discountAmount: true,
+      refundedAmount: true,
       total: true,
       trackingNumber: true,
       createdAt: true,
+      // The pipeline on /track: when each step was reached (see schema).
+      paidAt: true,
+      confirmedAt: true,
+      shippedAt: true,
+      deliveredAt: true,
+      cancelledAt: true,
+      // A hand delivery booked in the delivery diary. Driver notes stay out.
+      delivery: { select: { scheduledFor: true, durationMinutes: true, status: true, completedAt: true } },
       items: {
         select: {
           id: true,
@@ -560,10 +577,30 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
 
   // A wrong phone gets the identical empty result as a nonexistent order —
   // no oracle for probing which order numbers exist.
-  return orders
-    .filter((o) => normalizePhone(o.phone) === normalizedPhone)
-    .map(({ phone: _phone, paymentGateway, paymentRef, ...rest }) => ({
+  const owned = orders.filter((o) => normalizePhone(o.phone) === normalizedPhone);
+
+  // A hosted bank-transfer order whose screenshot is already in is not
+  // "waiting for payment" from the customer's side — it is waiting on us.
+  const sessionIds = owned
+    .filter((o) => o.paymentGateway === MANUALPAY_GATEWAY && o.paymentStatus === 'UNPAID' && o.paymentRef)
+    .map((o) => o.paymentRef as string);
+  const verifying = new Set(
+    sessionIds.length
+      ? (
+          await fastify.prisma.checkoutSession.findMany({
+            where: { id: { in: sessionIds }, status: 'PROOF_SUBMITTED' },
+            select: { id: true },
+          })
+        ).map((s) => s.id)
+      : [],
+  );
+
+  return owned
+    .map(({ phone: _phone, paymentGateway, paymentRef, state, trackingNumber, ...rest }) => ({
       ...rest,
+      region: deliveryRegion(state),
+      tracking: parseTracking(trackingNumber),
+      proofSubmitted: !!paymentRef && verifying.has(paymentRef),
       // The hosted bank-transfer page is the only place an unpaid order can
       // be paid, and its URL is easy to lose. Order number + phone is the
       // same proof of ownership the receipt page accepts, so hand it back.

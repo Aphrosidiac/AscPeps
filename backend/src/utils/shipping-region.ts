@@ -95,3 +95,17 @@ export function eastMalaysiaMinOrderMessage(minOrderSen: number): string {
   const rm = (minOrderSen / 100).toFixed(2).replace(/\.00$/, '');
   return `Orders to Sabah, Sarawak and Labuan require a minimum of RM${rm} in products. Please add more items to your cart.`;
 }
+
+// Klang Valley gets its own delivery estimate on the shipping page (1–2
+// business days, against 2–4 for the rest of the Peninsula). Same containment
+// match as isEastMalaysia; "kuala lumpur" never appears inside another state.
+const KLANG_VALLEY_STATES = ['selangor', 'kuala lumpur', 'putrajaya'];
+
+export type DeliveryRegion = 'klang-valley' | 'peninsular' | 'east';
+
+/** Which row of the shipping page's delivery-time table an order falls in. */
+export function deliveryRegion(state: string): DeliveryRegion {
+  if (isEastMalaysia(state)) return 'east';
+  const normalized = normalizeState(state);
+  return KLANG_VALLEY_STATES.some((s) => normalized.includes(s)) ? 'klang-valley' : 'peninsular';
+}
