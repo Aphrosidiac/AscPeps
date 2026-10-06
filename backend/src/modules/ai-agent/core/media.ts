@@ -15,7 +15,8 @@ import {
 } from '../../../utils/agent-media-store.js';
 import { documentPath } from '../../../utils/document-store.js';
 import { adminGetReceiptPdf } from '../../orders/receipt.controller.js';
-import { runReadOnlyQuery } from '../tools/reports.tools.js';
+import { runReadOnlyQuery, timezoneWarning } from '../tools/reports.tools.js';
+import { toMalaysiaIso } from '../tool-kit.js';
 import { sendWhatsAppFile, targetFromChatKey } from '../../../utils/whatsapp-send.js';
 import { extractFile, UnreadableFile } from './extract.js';
 import type { Attachment } from './run.js';
@@ -265,9 +266,14 @@ export async function earlierFile(fastify: FastifyInstance, threadId: string, me
  * model — it writes the query, the database fills the file — so an export of
  * 3,000 orders is exactly the 3,000 orders, not a transcription of them.
  */
-export async function reportFile(fastify: FastifyInstance, sql: string, title: string): Promise<OutboundFile & { rows: number; columns: string[] }> {
-  const rows = await runReadOnlyQuery(fastify.prisma, sql, 10_000);
-  if (!rows.length) throw new Error('The query returned no rows — there is nothing to put in a spreadsheet.');
+export async function reportFile(fastify: FastifyInstance, sql: string, title: string): Promise<OutboundFile & { rows: number; columns: string[]; timezoneWarning?: string }> {
+  const raw = await runReadOnlyQuery(fastify.prisma, sql, 10_000);
+  if (!raw.length) throw new Error('The query returned no rows — there is nothing to put in a spreadsheet.');
+  // Timestamps arrive as UTC ISO strings; the people opening this sheet live in
+  // Malaysia time, so that is what the cells say.
+  const rows = raw.map((r) =>
+    Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(v) ? toMalaysiaIso(v).slice(0, 16).replace('T', ' ') : v]))
+  );
   const columns = Object.keys(rows[0]);
   const sheet = XLSX.utils.json_to_sheet(rows, { header: columns });
   sheet['!cols'] = columns.map((c) => ({ wch: Math.min(40, Math.max(c.length, ...rows.slice(0, 200).map((r) => String(r[c] ?? '').length)) + 2) }));
@@ -281,6 +287,7 @@ export async function reportFile(fastify: FastifyInstance, sql: string, title: s
     source: 'report',
     rows: rows.length,
     columns,
+    ...(timezoneWarning(sql) ? { timezoneWarning: timezoneWarning(sql) } : {}),
   };
 }
 

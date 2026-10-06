@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { sha256, sniffType } from '../../utils/agent-media-store.js';
+import { mytDateKey } from '../../utils/delivery-slots.js';
 import { randomUUID } from 'crypto';
 import { getPaginationParams } from '../../utils/pagination.js';
 import { createReadStream, createWriteStream } from 'fs';
@@ -236,7 +237,7 @@ export async function uploadDocument(fastify: FastifyInstance, request: FastifyR
 export class DuplicateDocument extends Error {
   statusCode = 409;
   constructor(public existing: { id: string; title: string; kind: string; amount: number | null; occurredAt: Date; links: unknown[] }) {
-    super(`This exact file is already filed as "${existing.title}" (${existing.kind}, ${existing.occurredAt.toISOString().slice(0, 10)}).`);
+    super(`This exact file is already filed as "${existing.title}" (${existing.kind}, ${mytDateKey(existing.occurredAt)}).`);
   }
 }
 

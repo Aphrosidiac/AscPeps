@@ -15,6 +15,7 @@ import {
   saveFinancePartners,
 } from '../../admin/admin-finance.controller.js';
 import { fileReady, prepareFiling, shapeFiled } from './files.tools.js';
+import { mytDateKey } from '../../../utils/delivery-slots.js';
 
 // Finance tools move real money between real people, so every one of them
 // delegates to admin-finance.controller.ts — the balance maths ("owed = earned
@@ -309,7 +310,7 @@ export const financeTools: AgentTool[] = [
       const table: any = { funding: prisma.partnerFunding, repayment: prisma.partnerRepayment, payout: prisma.profitPayout };
       const row = await table[input.kind].findUnique({ where: { id: input.id } });
       if (!row) throw new Error(`No ${input.kind} with id ${input.id}.`);
-      return `delete the ${rm(row.amount)} ${input.kind} record dated ${new Date(row.occurredAt).toISOString().slice(0, 10)}`;
+      return `delete the ${rm(row.amount)} ${input.kind} record dated ${mytDateKey(new Date(row.occurredAt))}`;
     },
     run: async ({ fastify }, input) => {
       if (input.kind === 'funding') await deleteFunding(fastify, input.id);

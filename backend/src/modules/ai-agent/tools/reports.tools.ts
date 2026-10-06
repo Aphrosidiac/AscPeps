@@ -38,6 +38,20 @@ export function jsonSafe(value: unknown): unknown {
   return value;
 }
 
+// A timestamp column compared to a bare date, or bucketed by date, with no
+// shift to Malaysia time anywhere in the query. Reported back with the rows
+// rather than refused: the query may be deliberate, but the model must look.
+const TS_COLUMN = '"(createdAt|updatedAt|occurredAt|paidAt|confirmedAt|shippedAt|deliveredAt|cancelledAt|scheduledFor|completedAt|sentAt|deletedAt)"';
+const BARE_DATE_COMPARE = new RegExp(`${TS_COLUMN}\\s*(<=?|>=?|=|between)\\s*'\\d{4}-\\d{2}-\\d{2}`, 'i');
+const UNSHIFTED_BUCKET = new RegExp(`${TS_COLUMN}\\s*::\\s*date|(date_trunc|to_char|extract|date_part)\\s*\\([^)]*?${TS_COLUMN}`, 'i');
+const SHIFTED = /interval\s*'\s*8\s*hours?\s*'|at\s+time\s+zone/i;
+
+export function timezoneWarning(sql: string): string | undefined {
+  if (SHIFTED.test(sql)) return undefined;
+  if (!BARE_DATE_COMPARE.test(sql) && !UNSHIFTED_BUCKET.test(sql)) return undefined;
+  return 'This query uses UTC dates: timestamps are UTC, but Malaysian days start 8 hours earlier, so orders placed between midnight and 8am Malaysia time fall into the wrong day/month. Re-run it with the timestamp shifted, e.g. ("createdAt" + interval \'8 hours\') < \'2026-10-01\' or ("createdAt" + interval \'8 hours\')::date, before using these rows.';
+}
+
 /**
  * One SELECT, run so that it cannot write: the regexes catch obvious
  * mistakes and give a clear error, and the READ ONLY transaction is what
@@ -71,6 +85,19 @@ export async function runReadOnlyQuery(prisma: PrismaClient, rawSql: string, lim
 // only matters once the model actually reaches for SQL.
 const SCHEMA_NOTES = `
 All money columns are INTEGER CENTS. Divide by 100 for ringgit.
+
+ALL TIMESTAMPS ARE UTC ("createdAt", "occurredAt", "paidAt" … are
+timestamp-without-time-zone holding UTC). The business runs on MALAYSIA TIME,
+UTC+8, and every date an operator says ("before October", "on the 1st", "this
+month") is a Malaysian date. Never compare a timestamp to a bare date or cast
+one to ::date — '2026-10-01' against "createdAt" is 08:00 on 1 Oct in
+Malaysia, and every order placed between midnight and 8am lands in the wrong
+day or month. Shift first, every time:
+  ("createdAt" + interval '8 hours') < '2026-10-01'          -- before 1 Oct MYT
+  ("createdAt" + interval '8 hours')::date                   -- the Malaysian date
+  to_char("createdAt" + interval '8 hours', 'YYYY-MM')       -- the Malaysian month
+The order number's ASCyymm prefix is the Malaysian month the order was placed
+in — it is always right; if a date you computed disagrees, your date is wrong.
 
 categories(id, name, slug, "sortOrder")
 products(id, name, slug, "categoryId", description, benefits, "dosageInfo",
@@ -335,9 +362,12 @@ export const reportTools: AgentTool[] = [
       // Whitelist -> SQL fragment. The value never reaches the query as text,
       // so the enum is the only thing that can select a grouping.
       const grouping: Record<string, { expr: string; join: string }> = {
-        day: { expr: `to_char(o."createdAt", 'YYYY-MM-DD')`, join: '' },
-        week: { expr: `to_char(date_trunc('week', o."createdAt"), 'YYYY-MM-DD')`, join: '' },
-        month: { expr: `to_char(o."createdAt", 'YYYY-MM')`, join: '' },
+        // Malaysian days, weeks and months: "createdAt" is UTC, and bucketing
+        // it raw put every order placed between midnight and 8am MYT into the
+        // previous day — and on the 1st, into the previous month.
+        day: { expr: `to_char(o."createdAt" + interval '8 hours', 'YYYY-MM-DD')`, join: '' },
+        week: { expr: `to_char(date_trunc('week', o."createdAt" + interval '8 hours'), 'YYYY-MM-DD')`, join: '' },
+        month: { expr: `to_char(o."createdAt" + interval '8 hours', 'YYYY-MM')`, join: '' },
         state: { expr: `o.state`, join: '' },
         city: { expr: `o.city`, join: '' },
         paymentMethod: { expr: `o."paymentMethod"::text`, join: '' },
@@ -419,7 +449,9 @@ export const reportTools: AgentTool[] = [
         shown = shown.slice(0, Math.floor(shown.length / 2));
       }
 
+      const tz = timezoneWarning(String(input.sql));
       return {
+        ...(tz ? { timezoneWarning: tz } : {}),
         rowCount: safe.length,
         hitRowLimit: safe.length >= 200,
         showing: shown.length,

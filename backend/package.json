@@ -25,6 +25,7 @@
     "test:agent:grounding:e2e": "tsx scripts/test-agent-grounding.ts",
     "test:agent:documents": "tsx scripts/test-agent-documents.ts",
     "test:agent:files": "tsx scripts/test-agent-files.ts",
+    "test:agent:timezone": "tsx scripts/test-agent-timezone.ts",
     "audit:agent:grounding": "tsx scripts/audit-agent-grounding.ts",
     "test:payment-failure": "tsx scripts/test-payment-failure.ts"
   },

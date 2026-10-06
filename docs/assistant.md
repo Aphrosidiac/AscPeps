@@ -397,6 +397,21 @@ as text.
 
 ---
 
+## Time (Oct 2026)
+
+The database stores UTC; the business runs on Malaysia time (UTC+8). The model
+never sees UTC: `modelJson()` (tool-kit.ts) rewrites every ISO-UTC timestamp in
+a tool result to `…+08:00`, at every point a result reaches the model (live,
+history, guard evidence, approval notes). Raw SQL is where it can still go
+wrong — `describe_database` spells out the shift (`"createdAt" + interval '8
+hours'`) and `timezoneWarning()` flags a query that compares a timestamp to a
+bare date or buckets it by day without the shift. `sales_breakdown` buckets in
+Malaysian days; spreadsheet exports print Malaysia time. Incident: 6 Oct 2026,
+`"createdAt" < '2026-10-01'` ticked ASC2610/0001 (02:35 on 1 Oct MYT) as a
+September order. `npm run test:agent:timezone` replays it.
+
+---
+
 ## Environment
 
 ```bash

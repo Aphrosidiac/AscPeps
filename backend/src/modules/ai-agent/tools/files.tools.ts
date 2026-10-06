@@ -4,6 +4,7 @@ import { readAgentMedia } from '../../../utils/agent-media-store.js';
 import { createDocumentFromBytes, deleteDocument, DuplicateDocument, findDocumentByHash } from '../../admin/admin-documents.controller.js';
 import { FILEABLE_FROM_CHAT, FILEABLE_LABEL } from '../../../utils/document-store.js';
 import { sniffType } from '../../../utils/agent-media-store.js';
+import { mytDateKey } from '../../../utils/delivery-slots.js';
 import {
   deliverFile,
   documentFile,
@@ -59,7 +60,7 @@ const SOURCE_SCHEMA = {
   caption: { type: 'string', description: 'Optional one-line caption sent with the file.' },
 } as const;
 
-async function resolveSource(ctx: ToolContext, input: any): Promise<OutboundFile & { rows?: number; columns?: string[] }> {
+async function resolveSource(ctx: ToolContext, input: any): Promise<OutboundFile & { rows?: number; columns?: string[]; timezoneWarning?: string }> {
   const need = (field: string) => {
     if (!input[field]) throw new Error(`source "${input.source}" needs ${field}.`);
     return String(input[field]);
@@ -157,7 +158,7 @@ function describeExisting(d: any): string {
   const where = (d.links ?? []).map((l: any) =>
     l.order ? `order ${l.order.orderNumber}` : l.expense ? `the ${rm(l.expense.amount)} ${l.expense.category} expense "${l.expense.description}" (expenseId ${l.expense.id})` : null
   ).filter(Boolean);
-  return `It is already filed as "${d.title}" (${d.kind}${d.amount != null ? `, ${rm(d.amount)}` : ''}, dated ${new Date(d.occurredAt).toISOString().slice(0, 10)}, documentId ${d.id})${where.length ? `, against ${where.join(' and ')}` : ', against nothing yet'}. Do not file or record it again — tell the operator it is already in the books.`;
+  return `It is already filed as "${d.title}" (${d.kind}${d.amount != null ? `, ${rm(d.amount)}` : ''}, dated ${mytDateKey(new Date(d.occurredAt))}, documentId ${d.id})${where.length ? `, against ${where.join(' and ')}` : ', against nothing yet'}. Do not file or record it again — tell the operator it is already in the books.`;
 }
 
 export async function prepareFiling(ctx: ToolContext, mediaId: string): Promise<ReadyToFile> {
@@ -297,6 +298,7 @@ export const fileTools: AgentTool[] = [
         sent: true,
         ...sent,
         ...(file.rows != null ? { rows: file.rows, columns: file.columns } : {}),
+        ...(file.timezoneWarning ? { timezoneWarning: file.timezoneWarning } : {}),
         note: ctx.origin.kind === 'web' ? 'It is shown in the conversation as a download.' : 'It is in the chat now, above your reply. Do not paste its contents again.',
       };
     },

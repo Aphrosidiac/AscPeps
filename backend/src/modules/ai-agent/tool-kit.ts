@@ -275,3 +275,29 @@ export function summaryOnly(missing: string, detailTool: string): string {
 export function truncate(value: string, max = 4000): string {
   return value.length > max ? `${value.slice(0, max)}\n…[truncated, ${value.length} chars total]` : value;
 }
+
+// ---------------------------------------------------------------- time
+
+// Every timestamp in the database is UTC; the business runs on Malaysia time
+// (UTC+8, no daylight saving). Tool results reached the model as raw UTC
+// ("2026-09-30T18:35:13Z") and it was left to convert — on 6 Oct 2026 it read
+// an order placed at 02:35 on 1 October as a September one, ticked it under
+// "everything before October", then explained the correct ASC2610 number away
+// as a "UTC quirk" of the generator. So the model never sees UTC: any full
+// ISO-8601 UTC string in a tool result is rewritten to Malaysia time with its
+// offset, "2026-10-01T02:35:13+08:00", and the date it reads IS the Malaysian
+// date. Only whole-string timestamps are touched — text is left alone.
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+const MYT_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+export function toMalaysiaIso(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return `${new Date(t + MYT_OFFSET_MS).toISOString().slice(0, 19)}+08:00`;
+}
+
+/** JSON for the model's eyes: timestamps in Malaysia time. */
+export function modelJson(value: unknown): string {
+  const out = JSON.stringify(value, (_k, v) => (typeof v === 'string' && ISO_UTC.test(v) ? toMalaysiaIso(v) : v));
+  return out === undefined ? 'null' : out;
+}

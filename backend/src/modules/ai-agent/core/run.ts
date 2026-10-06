@@ -4,7 +4,7 @@ import { notifyRevalidate } from '../../../utils/revalidate.js';
 import { getTool, toolsFor, validateToolInput } from '../registry.js';
 import { DOMAINS, routeDomains, type Domain } from '../domains.js';
 import { memoryContext, coreMemoryText } from '../memory.js';
-import { isAudited, tierOf, truncate, type AgentActor, type AgentTool, type ChatOrigin, type Tier, type ToolContext } from '../tool-kit.js';
+import { isAudited, modelJson, tierOf, truncate, type AgentActor, type AgentTool, type ChatOrigin, type Tier, type ToolContext } from '../tool-kit.js';
 import { checkGrounding, parseGroundingMode, repairInstruction, GROUNDING_SUPPRESSED_REPLY, type GroundingViolation, type ToolResultRecord } from '../grounding.js';
 import { streamCompletion, type ToolCall, type WireMessage, type WireTool } from './provider.js';
 import { staticSystemPrompt, contextBlock, liveBrief, loadStoreState, type Channel } from './prompt.js';
@@ -497,7 +497,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   // send_file runs at read tier (anyone allowed to ask may have a file in
   // their own chat), so it is tracked here rather than as a write.
   const filesSent: string[] = approved.filter((a) => a.tool === 'forward_file').map((a) => a.tool);
-  for (const a of approved) toolResults.push({ tool: a.tool, result: truncate(JSON.stringify(a.output ?? {}), 6000) });
+  for (const a of approved) toolResults.push({ tool: a.tool, result: truncate(modelJson(a.output ?? {}), 6000) });
   let repairs = 0;
   let groundingEventId: string | null = null;
 
@@ -700,7 +700,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     const toolRow = await append(fastify, run.threadId, 'tool', { toolResults: results.map((r) => ({ id: r.id, name: r.name, output: r.output, isError: r.isError, ms: r.ms })) });
     emit(run, { type: 'message', message: toolRow });
     for (const r of results) {
-      const serialised = truncate(JSON.stringify(r.output), 6000);
+      const serialised = truncate(modelJson(r.output), 6000);
       messages.push({ role: 'tool', tool_call_id: r.id, content: serialised });
       if (r.name !== 'load_context') toolResults.push({ tool: r.name, result: serialised });
       if ((r.name === 'send_file' || r.name === 'forward_file') && !r.isError) filesSent.push(r.name);
@@ -751,7 +751,7 @@ function recentToolEvidence(rows: { seq: number; role: string; content: MessageC
     if (r.role !== 'tool' || !('toolResults' in r.content)) continue;
     for (const t of r.content.toolResults) {
       if (t.name === 'load_context' || !visible.has(t.id)) continue;
-      out.push({ tool: t.name, result: truncate(JSON.stringify(t.output), 6000) });
+      out.push({ tool: t.name, result: truncate(modelJson(t.output), 6000) });
     }
   }
   return out;
@@ -997,7 +997,7 @@ export async function approveAction(fastify: FastifyInstance, actionId: string, 
     'system',
     {
       text: ok
-        ? `${by.actor.name} APPROVED "${action.summary ?? action.tool}". It has been carried out. Result: ${truncate(JSON.stringify(output), 1500)}. Continue from here — tell the operator it is done, and finish anything that depended on it.`
+        ? `${by.actor.name} APPROVED "${action.summary ?? action.tool}". It has been carried out. Result: ${truncate(modelJson(output), 1500)}. Continue from here — tell the operator it is done, and finish anything that depended on it.`
         : `${by.actor.name} APPROVED "${action.summary ?? action.tool}" but it FAILED: ${String((output as any)?.error ?? 'unknown error')}. Tell the operator plainly that it did not happen.`,
     },
     by.actor
@@ -1089,7 +1089,7 @@ export function toWire(rows: { seq: number; role: string; content: MessageConten
         ...(a.reasoningDetails ? { reasoning_details: a.reasoningDetails } : {}),
       });
     } else if (role === 'tool') {
-      for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(JSON.stringify(r.output), 6000) });
+      for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(modelJson(r.output), 6000) });
     } else if (role === 'system') out.push({ role: 'system', content: (c as { text: string }).text });
   });
   return out;
