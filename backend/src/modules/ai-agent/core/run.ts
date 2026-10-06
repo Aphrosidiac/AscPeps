@@ -329,6 +329,9 @@ async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOp
   if (activeRun(threadId)) throw httpError('The assistant is still working on the last message', 409);
   const thread = await fastify.prisma.agentThread.findUnique({ where: { id: threadId } });
   if (!thread) throw httpError('Conversation not found', 404);
+  // Marked running with no run of ours behind it: the process that ran it is
+  // gone. Close that turn before this one starts.
+  if (thread.status === 'running' && !runs.has(threadId)) await repairInterruptedTurns(fastify, threadId);
 
   const text = input?.text;
   const userMessage = input
@@ -386,6 +389,81 @@ async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOp
       }, 60_000).unref?.();
     });
   return { userMessage };
+}
+
+// ---------------------------------------------------------------- interrupted turns
+
+// A turn lives in this process. When the process goes mid-turn (a deploy's
+// pm2 restart, a crash), the thread is left marked running, and if it went
+// between storing a step's tool calls and storing their results, the
+// transcript holds calls with no answer — which the provider refuses, every
+// turn after. Run at boot over every thread still marked running, and before
+// a new turn on one. Each unanswered call gets what actually happened, from
+// agent_actions: that row is written when a tool finishes, so a missing row
+// means it never did.
+export async function repairInterruptedTurns(fastify: FastifyInstance, threadId?: string): Promise<number> {
+  const threads = await fastify.prisma.agentThread.findMany({ where: { status: 'running', ...(threadId ? { id: threadId } : {}) }, select: { id: true } });
+  for (const { id } of threads) {
+    if (activeRun(id)) continue;
+    const rows = await fastify.prisma.agentMessage.findMany({ where: { threadId: id }, orderBy: { seq: 'asc' } });
+    const calls = unansweredToolCalls(rows.map((m) => ({ seq: m.seq, role: m.role, content: m.content as MessageContent })));
+    if (calls.length) {
+      const actions = await fastify.prisma.agentAction.findMany({ where: { threadId: id, callId: { in: calls.map((c) => c.id) } } });
+      const byCall = new Map(actions.map((a) => [a.callId, a]));
+      await append(fastify, id, 'tool', { toolResults: calls.map((c) => ({ id: c.id, name: c.name, ...interruptedResult(c.name, byCall.get(c.id)), ms: 0 })) });
+    }
+    await append(fastify, id, 'system', { text: 'The server restarted in the middle of this reply, so it stopped here.' });
+    await fastify.prisma.agentThread.update({ where: { id }, data: { status: 'idle', turns: { increment: 1 } } });
+    fastify.log.warn({ threadId: id, unanswered: calls.map((c) => c.name) }, 'agent turn interrupted by a restart; closed');
+  }
+  return threads.length;
+}
+
+// Tool calls in the latest turn (after the operator's last message) that
+// have no result stored.
+export function unansweredToolCalls(rows: { seq: number; role: string; content: MessageContent }[]): { id: string; name: string }[] {
+  let from = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].role === 'user') {
+      from = i;
+      break;
+    }
+  }
+  const turn = rows.slice(from);
+  const answered = new Set<string>();
+  for (const r of turn) if (r.role === 'tool' && 'toolResults' in r.content) for (const t of r.content.toolResults) answered.add(t.id);
+  const out: { id: string; name: string }[] = [];
+  for (const r of turn) {
+    if (r.role !== 'assistant' || !('toolCalls' in r.content) || !r.content.toolCalls) continue;
+    for (const t of r.content.toolCalls) if (!answered.has(t.id)) out.push({ id: t.id, name: t.name });
+  }
+  return out;
+}
+
+// What the model is told about a call the restart cut off.
+export function interruptedResult(
+  name: string,
+  action: { id: string; status: string; output: unknown; error: string | null; summary: string | null } | undefined
+): { output: unknown; isError: boolean } {
+  const tool = getTool(name);
+  if (!action) {
+    const changesThings = !!tool && tierOf(tool) !== 'read';
+    return {
+      output: {
+        error: changesThings
+          ? 'The server restarted before this finished. It may or may not have taken effect — check the current state before running it again.'
+          : 'The server restarted before this finished. Run it again if you still need it.',
+      },
+      isError: true,
+    };
+  }
+  if (action.status === 'pending') {
+    return { output: { pending: true, actionId: action.id, wouldDo: action.summary, note: "This is waiting on the operator's approval." }, isError: false };
+  }
+  if (action.status === 'failed') return { output: { error: action.error || 'This failed.' }, isError: true };
+  if (action.status === 'done') return { output: action.output ?? { ok: true }, isError: false };
+  // Declined, expired or undone since.
+  return { output: { status: action.status, note: `This was ${action.status}.` }, isError: false };
 }
 
 function titleFrom(text: string): string {
@@ -450,12 +528,17 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   }
   // A compaction summary was written by a model from that same data.
   for (const r of rows) if (r.role === 'system' && 'replaces' in r.content) untrustedSeen.push(r.content.summary);
+  // Ordered for the provider's prefix cache: what changes least comes first.
+  // The live brief carries the time to the minute, so it goes after the
+  // transcript — ahead of it, every turn re-billed the whole conversation at
+  // the uncached price. Next turn it is gone from here and the transcript it
+  // followed is a cached prefix.
   const messages: WireMessage[] = [
     { role: 'system', content: staticSystemPrompt() },
     { role: 'system', content: await memoryContext(fastify.prisma) },
     { role: 'system', content: contextBlock(activeDomains) },
-    { role: 'system', content: liveBrief(actor, channel, store) },
     ...toWire(rows, { isGroup }),
+    { role: 'system', content: liveBrief(actor, channel, store) },
   ];
 
   // Rebuilt whenever load_context widens the active domains, so the tools it
@@ -507,6 +590,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   let escalated = false;
   let invalidStreak = 0;
   let inputTokens = 0;
+  let cacheReadTokens = 0;
   let outputTokens = 0;
   let costUsd = 0;
   let nudged = false;
@@ -553,6 +637,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     }
 
     inputTokens += result.usage.input + result.usage.cacheRead;
+    cacheReadTokens += result.usage.cacheRead;
     outputTokens += result.usage.output;
     costUsd += result.usage.costUsd;
 
@@ -729,7 +814,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
 
   await fastify.prisma.agentThread.update({
     where: { id: run.threadId },
-    data: { model, inputTokens: { increment: inputTokens }, outputTokens: { increment: outputTokens }, costUsd: { increment: costUsd }, lastMessageAt: new Date() },
+    data: { model, inputTokens: { increment: inputTokens }, cacheReadTokens: { increment: cacheReadTokens }, outputTokens: { increment: outputTokens }, costUsd: { increment: costUsd }, lastMessageAt: new Date() },
   });
   emit(run, { type: 'done', usage: { input: inputTokens, output: outputTokens, costUsd } });
 }
@@ -1056,24 +1141,30 @@ export async function livePendingActions(fastify: FastifyInstance, threadId: str
 
 // The stored transcript, in the wire shape. Tool results are re-serialised
 // exactly as they were given, so what the model saw is what it sees again. A
-// compaction row stands in for the range it replaced: those rows stay in the
-// table for the operator, and leave the model's view. Transient rows (a
-// retracted draft, the repair instruction that followed it, a one-turn note)
-// were for the turn they happened in and are not replayed.
+// compaction row stands in for the range it replaced, at the place that range
+// began: those rows stay in the table for the operator, and leave the model's
+// view. (The summary row itself is appended last, so rendering it at its own
+// seq put "EARLIER IN THIS CONVERSATION" after the operator's newest message.)
+// Transient rows (a retracted draft, the repair instruction that followed it,
+// a one-turn note) were for the turn they happened in and are not replayed.
 export function toWire(rows: { seq: number; role: string; content: MessageContent }[], opts: { isGroup: boolean } = { isGroup: false }): WireMessage[] {
   const out: WireMessage[] = [];
   const hidden = new Set<number>();
-  for (const r of rows) {
-    if (r.role === 'system' && 'replaces' in r.content) for (let s = r.content.replaces[0]; s <= r.content.replaces[1]; s++) hidden.add(s);
-  }
+  const summaries = rows
+    .filter((r) => r.role === 'system' && 'replaces' in r.content && r.content.summary !== SUPERSEDED)
+    .map((r) => ({ seq: r.seq, ...(r.content as { summary: string; replaces: [number, number] }), shown: false }));
+  for (const s of summaries) for (let n = s.replaces[0]; n <= s.replaces[1]; n++) hidden.add(n);
   rows.forEach(({ seq, role, content: c }) => {
+    for (const s of summaries) {
+      if (!s.shown && (seq >= s.replaces[0] || seq === s.seq)) {
+        s.shown = true;
+        out.push({ role: 'system', content: summaryBlock(s.summary) });
+      }
+    }
     if (hidden.has(seq)) return;
+    if (role === 'system' && 'replaces' in c) return;
     if ('transient' in c && c.transient) return;
     if ('retracted' in c && c.retracted) return;
-    if (role === 'system' && 'replaces' in c) {
-      out.push({ role: 'system', content: summaryBlock(c.summary) });
-      return;
-    }
     if (role === 'user') {
       const u = c as UserContent;
       // In a group, several people share one thread — without the name the
@@ -1092,6 +1183,47 @@ export function toWire(rows: { seq: number; role: string; content: MessageConten
       for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(modelJson(r.output), 6000) });
     } else if (role === 'system') out.push({ role: 'system', content: (c as { text: string }).text });
   });
+  return pairToolMessages(out);
+}
+
+// Every provider on the OpenAI wire refuses a request where a tool call has
+// no result, or a result has no call, with a 400 — and the next turn rebuilds
+// the same transcript, so one broken pair takes the whole thread down for
+// good. A WhatsApp thread is one per chat, forever. Breaks the store can
+// hold: a compaction range that ended between a call and its result, a
+// process that died between persisting the call and persisting the result,
+// a system row (an approval made mid-run) landing between the two.
+//
+// So the wire is made well-formed on the way out: each call's results go
+// straight after it, a call with no result is dropped from the message (and
+// the message with it, if nothing else is left), a result with no call is
+// dropped. repairInterruptedTurn writes the honest result for a call cut off
+// by a restart; this is the last line, so nothing reaches the provider broken.
+export function pairToolMessages(msgs: WireMessage[]): WireMessage[] {
+  const out: WireMessage[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.role === 'tool') continue; // placed with its call below, or an orphan
+    if (m.role !== 'assistant' || !m.tool_calls?.length) {
+      out.push(m);
+      continue;
+    }
+    // A call's results are the tool messages before the next assistant or
+    // operator message.
+    const results = new Map<string, WireMessage>();
+    for (let j = i + 1; j < msgs.length && msgs[j].role !== 'assistant' && msgs[j].role !== 'user'; j++) {
+      const r = msgs[j];
+      if (r.role === 'tool' && r.tool_call_id && !results.has(r.tool_call_id)) results.set(r.tool_call_id, r);
+    }
+    const answered = m.tool_calls.filter((t) => results.has(t.id));
+    if (answered.length) {
+      out.push({ ...m, tool_calls: answered });
+      for (const t of answered) out.push(results.get(t.id)!);
+    } else if (m.content) {
+      const { tool_calls: _dropped, ...rest } = m;
+      out.push(rest);
+    }
+  }
   return out;
 }
 
@@ -1141,6 +1273,22 @@ export function summaryBlock(summary: string): string {
 const COMPACT_AT_CHARS = 100_000;
 const COMPACT_KEEP = 12;
 const MAX_SUMMARY_CHARS = 6000;
+// What a summary row is rewritten to once a newer one covers its range.
+const SUPERSEDED = '(superseded)';
+
+// The last seq to compact: roughly all but the last `keep` rows, moved back
+// until the kept tail does not open on a tool result. A cut between a call
+// and its result would leave the result in view with its call summarised
+// away — a request the provider refuses (see pairToolMessages). System rows
+// (an approval landing mid-run) can sit between the two, so they are looked
+// past. Null when there is nothing safe to compact.
+export function compactionEnd(rows: { seq: number; role: string }[], keep: number): number | null {
+  for (let i = rows.length - 1 - keep; i >= 0; i--) {
+    const next = rows.slice(i + 1).find((r) => r.role !== 'system');
+    if (next?.role !== 'tool') return rows[i].seq;
+  }
+  return null;
+}
 
 const SUMMARY_SYSTEM = `You are compacting the transcript of a conversation between a shop operator and their admin assistant, so the assistant can keep working after the older messages are dropped.
 
@@ -1168,8 +1316,8 @@ async function compactIfNeeded(fastify: FastifyInstance, threadId: string): Prom
 
   const lastSummary = [...rows].reverse().find((r) => r.role === 'system' && 'replaces' in (r.content as object));
   const from = lastSummary ? (lastSummary.content as { replaces: [number, number] }).replaces[1] + 1 : rows[0].seq;
-  const to = rows[rows.length - 1 - COMPACT_KEEP].seq;
-  if (to <= from) return;
+  const to = compactionEnd(typed, COMPACT_KEEP);
+  if (to === null || to <= from) return;
   const range = typed.filter((r) => r.seq >= from && r.seq <= to);
   const transcript = toWire(range)
     .map((m) => `${m.role.toUpperCase()}: ${(m.content ?? (m.tool_calls ? `called ${m.tool_calls.map((t) => t.function.name).join(', ')}` : '')).slice(0, 3000)}`)
@@ -1197,7 +1345,7 @@ async function compactIfNeeded(fastify: FastifyInstance, threadId: string): Prom
       summary: text.slice(0, MAX_SUMMARY_CHARS),
       replaces: [lastSummary ? (lastSummary.content as { replaces: [number, number] }).replaces[0] : from, to],
     });
-    if (lastSummary) await fastify.prisma.agentMessage.update({ where: { id: lastSummary.id }, data: { content: { summary: '(superseded)', replaces: [0, 0] } } });
+    if (lastSummary) await fastify.prisma.agentMessage.update({ where: { id: lastSummary.id }, data: { content: { summary: SUPERSEDED, replaces: [0, 0] } } });
     fastify.log.info({ threadId, from, to, summaryChars: text.length }, 'agent thread compacted');
   } catch (err) {
     fastify.log.error({ err, threadId }, 'agent compaction failed — continuing uncompacted');
@@ -1211,7 +1359,7 @@ async function compactIfNeeded(fastify: FastifyInstance, threadId: string): Prom
 function trimHistory(messages: WireMessage[]) {
   let size = messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
   if (size <= MAX_HISTORY_CHARS) return;
-  for (let i = 4; i < messages.length - 6 && size > MAX_HISTORY_CHARS * 0.7; i++) {
+  for (let i = 3; i < messages.length - 6 && size > MAX_HISTORY_CHARS * 0.7; i++) {
     const m = messages[i];
     if (m.role === 'tool' && m.content && m.content.length > 200) {
       size -= m.content.length - 60;

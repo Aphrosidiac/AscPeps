@@ -97,13 +97,18 @@ WhatsApp confirmations.
 1. **Compact if needed.** Past 100k characters of model-visible transcript,
    everything but the last 12 rows is summarised into a system row that
    records which range it replaces. Rows are never deleted; the operator still
-   sees the whole conversation.
+   sees the whole conversation. The cut moves back until the kept tail does
+   not open on a tool result (`compactionEnd`), and the summary is rendered
+   where its range began, not at its own (newest) seq.
 2. **Route.** `routeDomains` over the last five text rows picks the areas
    whose tools and business rules go in front of the model. `load_context`
    widens it mid-turn; `CORE_TOOL_NAMES` are always there.
-3. **Build the prompt.** Static prompt (the cached prefix) · memory (core/ in full, the rest listed) ·
-   context block · live brief (who, channel, time, store switches) · the
-   transcript in wire form.
+3. **Build the prompt.** Static prompt · memory (core/ in full, the rest
+   listed) · context block · the transcript in wire form · live brief (who,
+   channel, time, store switches). Ordered for the provider's prefix cache:
+   the brief carries the time to the minute, so it goes last — ahead of the
+   transcript, every turn re-billed the whole conversation uncached. A
+   thread's `cacheReadTokens` is the part of `inputTokens` served from cache.
 4. **Step**, up to 16 times: stream a completion; persist the assistant row
    before doing anything it asked; validate every tool call against its
    schema (`z.fromJSONSchema` over the same JSON schema the model was shown;
@@ -139,6 +144,27 @@ WhatsApp confirmations.
 Every event (`text`, `reasoning`, `tool_start`, `tool_end`, `approval`,
 `message`, `step`, `done`, `error`) is numbered and kept for a minute after
 the run, so a client that drops mid-turn resumes from its last id.
+
+### A well-formed request, always
+
+A tool call with no result, or a result with no call, is a 400 from every
+provider on the OpenAI wire — and the next turn rebuilds the same transcript,
+so one broken pair would take a thread down for good (a WhatsApp thread is
+one per chat, forever). `toWire` ends in `pairToolMessages`: each call's
+results go straight after it, an unanswered call is dropped from the
+message, a result with no call is dropped. That is the last line; the store
+should not hold a broken pair in the first place:
+
+- **Compaction** never cuts between a call and its result (above).
+- **A restart mid-turn** (a deploy, a crash) leaves the thread marked
+  `running` and can leave calls with no stored result. `repairInterruptedTurns`
+  runs at boot over every thread still marked running, and before a new turn
+  on one. Each unanswered call gets what actually happened, from
+  `agent_actions` (written when a tool finishes): a finished write its real
+  result, a failure its error, a parked action "waiting on approval", and a
+  call with no record "may or may not have taken effect — check before running
+  it again" (a read: "run it again"). Then a system row — "The server restarted
+  in the middle of this reply, so it stopped here." — and the thread is idle.
 
 ### Approvals
 
@@ -443,6 +469,7 @@ npm run test:agent:security    # 10 — includes a planted "remember this" that 
 npm run test:agent:e2e         # 23 scenarios, real model; two are known to flake on model variance
 E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name contains the string
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
+npm run test:agent:wire        # 29, no model or db — call/result pairing, the compaction cut, summary placement, restart repair
 npm run test:agent:files       # 56 — every format, storage, send/forward/file/record tools, 16 real-model turns incl. bookkeeping
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time

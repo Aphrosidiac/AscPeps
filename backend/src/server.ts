@@ -49,6 +49,7 @@ import whatsappRoutes from './modules/whatsapp/whatsapp.routes.js';
 import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import assistantRoutes from './modules/ai-agent/assistant.routes.js';
 import { purgeOldMedia } from './modules/ai-agent/core/media.js';
+import { repairInterruptedTurns } from './modules/ai-agent/core/run.js';
 import { maybeReflect } from './modules/ai-agent/reflect.js';
 import { maybeDigest } from './modules/ai-agent/digest.js';
 import { maybeMonthEnd } from './utils/month-end.js';
@@ -216,6 +217,16 @@ await fastify.register(assistantRoutes, { prefix: '/api/v1/admin/assistant' });
 await fastify.register(internalAgentRoutes, { prefix: '/api/v1/internal/agent' });
 
 try {
+  // A deploy restarts this process, and a turn the assistant was in the
+  // middle of went with it. Close those before anything can start a new one.
+  // Never what keeps the API down: a thread it misses is repaired before its
+  // next turn anyway.
+  const interrupted = await repairInterruptedTurns(fastify).catch((err) => {
+    fastify.log.error({ err }, 'repairing interrupted assistant turns failed');
+    return 0;
+  });
+  if (interrupted) fastify.log.warn(`closed ${interrupted} assistant turn(s) interrupted by the restart`);
+
   await fastify.listen({ port: env.PORT, host: env.HOST });
   fastify.log.info(`Ascend MY API running on http://${env.HOST}:${env.PORT}`);
 

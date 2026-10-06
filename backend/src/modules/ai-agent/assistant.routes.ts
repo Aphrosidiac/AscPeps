@@ -63,6 +63,7 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
         pending: t._count.actions,
         model: t.model,
         inputTokens: t.inputTokens,
+        cacheReadTokens: t.cacheReadTokens,
         outputTokens: t.outputTokens,
         costUsd: t.costUsd,
         turns: t.turns,
