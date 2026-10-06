@@ -1,5 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
-import { clampLimit, listResult, money, parseDate, rm, summaryOnly, toCents } from '../tool-kit.js';
+import { audited, clampLimit, listResult, money, parseDate, rm, summaryOnly, toCents } from '../tool-kit.js';
 import {
   adminDeleteOrder,
   adminGetOrder,
@@ -160,6 +160,9 @@ function orderSummary(o: any, activeGateway?: string) {
     trackingNumber: o.trackingNumber,
     createdAt: o.createdAt,
     deleted: !!o.deletedAt,
+    // The order's profit has actually been paid out to the people in its
+    // split. Ticked by hand (dashboard or set_profit_shared).
+    profitShared: !!o.profitShared,
   };
 }
 
@@ -487,12 +490,26 @@ export const orderTools: AgentTool[] = [
           description:
             'Only paid, live orders where at least one line has no cost entered yet — the ones whose profit and partner split are unknown. Use set_order_costs to fill them in.',
         },
+        profitShared: {
+          type: 'boolean',
+          description:
+            'false = paid, live orders whose profit has NOT been paid out to the partners yet (the "Profit Shared" box unticked); true = ones already ticked. Use before set_profit_shared to find what is left to share.',
+        },
         limit: { type: 'number' },
       },
     },
     run: async ({ prisma }, input) => {
       const where: any =
         input.status === 'DELETED' ? { deletedAt: { not: null } } : { deletedAt: null };
+      if (typeof input.profitShared === 'boolean') {
+        where.profitShared = input.profitShared;
+        // "Not shared yet" only means something for money that came in: an
+        // unpaid or cancelled order has no profit to hand out.
+        if (!input.profitShared) {
+          where.paymentStatus = input.paymentStatus ?? 'PAID';
+          where.status = input.status && input.status !== 'DELETED' ? input.status : { notIn: ['CANCELLED'] };
+        }
+      }
       if (input.status && input.status !== 'DELETED') where.status = input.status;
       if (input.paymentStatus) where.paymentStatus = input.paymentStatus;
       if (input.missingCosts) {
@@ -892,6 +909,76 @@ export const orderTools: AgentTool[] = [
           capitalPutIn: money(s.capitalAmount),
         })),
       };
+    },
+  },
+
+  {
+    name: 'set_profit_shared',
+    description:
+      'Tick (or untick) "Profit Shared" on one or more orders — the record that the order\'s profit has actually been paid out to the people in its split. It is a manual assertion: the system cannot see money leave the account, so only tick what the operator says has been paid out. Several orders go in ONE call (orderRefs). Unticking is shared: false. Changes nothing else — costs, splits and payouts stay as they are.',
+    write: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        orderRefs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100, description: 'Order numbers (ASC2610/0003) or ids.' },
+        shared: { type: 'boolean', description: 'true = tick (profit paid out). false = untick. Defaults to true.' },
+      },
+      required: ['orderRefs'],
+    },
+    summarize: async ({ prisma }, input) => {
+      const n = input.orderRefs?.length ?? 0;
+      return `${input.shared === false ? 'untick' : 'tick'} Profit Shared on ${n} order${n === 1 ? '' : 's'}`;
+    },
+    run: async ({ fastify, prisma }, input) => {
+      const shared = input.shared !== false;
+      // Every reference resolved before anything changes: one typo must not
+      // leave half a batch ticked.
+      const refs: string[] = [...new Set<string>(input.orderRefs.map((r: unknown) => String(r).trim()))];
+      const orders = [];
+      for (const ref of refs) {
+        const o = await resolveOrder(prisma, ref);
+        if (o.deletedAt) throw new Error(`Order ${o.orderNumber} is deleted — restore it first.`);
+        orders.push(o);
+      }
+      const unique = [...new Map(orders.map((o: any) => [o.id, o])).values()] as any[];
+
+      const before = unique.map((o) => ({ orderId: o.id, orderNumber: o.orderNumber, profitShared: !!o.profitShared }));
+      const changed = unique.filter((o) => !!o.profitShared !== shared);
+      // The same write the dashboard's checkbox makes.
+      for (const o of changed) await adminUpdateOrder(fastify, o.id, { profitShared: shared });
+
+      // Not refused — the dashboard does not refuse either — but said out loud,
+      // because ticking these usually means something was missed.
+      const warnings: string[] = [];
+      if (shared) {
+        const detail = await prisma.order.findMany({
+          where: { id: { in: changed.map((o) => o.id) } },
+          select: { orderNumber: true, status: true, paymentStatus: true, items: { select: { unitCost: true } }, profitShares: { select: { id: true } } },
+        });
+        for (const d of detail) {
+          if (d.paymentStatus !== 'PAID' || d.status === 'CANCELLED') warnings.push(`${d.orderNumber} is ${d.status === 'CANCELLED' ? 'cancelled' : d.paymentStatus.toLowerCase()} — there is no profit on it to share.`);
+          else if (d.items.some((i) => i.unitCost == null)) warnings.push(`${d.orderNumber} still has lines with no cost entered, so its profit is not known yet.`);
+          else if (!d.profitShares.length) warnings.push(`${d.orderNumber} has no profit split recorded (set_order_profit_shares).`);
+        }
+      }
+
+      const result = {
+        shared,
+        ticked: shared ? changed.map((o) => o.orderNumber) : [],
+        unticked: shared ? [] : changed.map((o) => o.orderNumber),
+        alreadyThatWay: unique.filter((o) => !!o.profitShared === shared).map((o) => o.orderNumber),
+        ...(warnings.length ? { warnings } : {}),
+      };
+      return audited(result, before, { shared, orderIds: changed.map((o) => o.id) });
+    },
+    undo: async ({ fastify }, action) => {
+      const before: { orderId: string; orderNumber: string; profitShared: boolean }[] = action.before ?? [];
+      const touched = new Set<string>(action.after?.orderIds ?? []);
+      const restore = before.filter((b) => touched.has(b.orderId));
+      for (const b of restore) await adminUpdateOrder(fastify, b.orderId, { profitShared: b.profitShared });
+      return restore.length
+        ? `Put Profit Shared back as it was on ${restore.map((b) => b.orderNumber).join(', ')}.`
+        : 'Nothing had changed, so nothing to put back.';
     },
   },
 

@@ -429,6 +429,47 @@ await check('set_order_items refuses a cancelled order', async () => {
   throw new Error('edited an order whose stock was already returned');
 });
 
+await check('set_profit_shared ticks a batch, warns, and undoes', async () => {
+  exercised.add('set_profit_shared');
+  const t = getTool('set_profit_shared')!;
+  const orders = await prisma.order.findMany({ where: { deletedAt: null, paymentStatus: 'PAID', status: { not: 'CANCELLED' } }, take: 2, orderBy: { createdAt: 'desc' } });
+  const unpaid = await prisma.order.findFirst({ where: { deletedAt: null, paymentStatus: { not: 'PAID' } } });
+  assert(orders.length === 2 && unpaid, 'dev db needs two paid orders and an unpaid one');
+  const all = [...orders, unpaid!];
+  const original = new Map(all.map((o) => [o.id, o.profitShared]));
+  await prisma.order.updateMany({ where: { id: { in: all.map((o) => o.id) } }, data: { profitShared: false } });
+  try {
+    const out: any = await t.run(ctx, { orderRefs: [orders[0].orderNumber, orders[1].orderNumber.toLowerCase(), unpaid!.orderNumber] });
+    const after = await prisma.order.findMany({ where: { id: { in: all.map((o) => o.id) } }, select: { id: true, profitShared: true } });
+    assert(after.every((o) => o.profitShared), 'not every order was ticked');
+    assert(out.result.ticked.length === 3, `ticked ${out.result.ticked}`);
+    assert(out.result.warnings?.some((w: string) => w.startsWith(unpaid!.orderNumber) && /no profit/.test(w)), `no warning for the unpaid order: ${JSON.stringify(out.result.warnings)}`);
+
+    const again: any = await t.run(ctx, { orderRefs: [orders[0].orderNumber] });
+    assert(again.result.alreadyThatWay.includes(orders[0].orderNumber) && !again.result.ticked.length, 'a second tick changed something');
+
+    await t.undo!(ctx, { input: {}, before: out.before, after: out.after });
+    const undone = await prisma.order.findMany({ where: { id: { in: all.map((o) => o.id) } }, select: { profitShared: true } });
+    assert(undone.every((o) => !o.profitShared), 'undo did not put them back');
+
+    const bad = await t.run(ctx, { orderRefs: [orders[0].orderNumber, 'ASC9999/9999'] }).then(() => 'ran', (e: any) => e.message);
+    assert(/No order|not found|matching/i.test(bad), `bad ref: ${bad}`);
+    const still = await prisma.order.findUnique({ where: { id: orders[0].id } });
+    assert(!still!.profitShared, 'a batch with a bad reference half-applied');
+    return '3 ticked in one call, unpaid one warned, idempotent, undone, all-or-nothing on a bad ref';
+  } finally {
+    for (const [id, v] of original) await prisma.order.update({ where: { id }, data: { profitShared: v } });
+  }
+});
+
+await check('list_orders profitShared:false lists paid orders left to share', async () => {
+  const r: any = await run('list_orders', { profitShared: false, limit: 50 });
+  assert(r.orders.every((o: any) => o.profitShared === false && o.paymentStatus === 'PAID' && o.status !== 'CANCELLED'), 'wrong rows');
+  const expected = await prisma.order.count({ where: { deletedAt: null, profitShared: false, paymentStatus: 'PAID', status: { notIn: ['CANCELLED'] } } });
+  assert(r.matched === expected, `matched ${r.matched}, expected ${expected}`);
+  return `${r.matched} paid orders not yet shared`;
+});
+
 await check('set_order_profit_shares rejects != 100%', async () => {
   const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null } });
   try {

@@ -92,6 +92,8 @@ const KEYWORDS: Record<Domain, string[]> = {
     'quantity', 'kuantiti', 'qty', 'change order', 'tukar order', 'add to order',
     // "cost it from Chris" — set_order_costs with a supplier on the line.
     'supplier', 'pembekal',
+    // "tick profit shared on September's orders" — set_profit_shared.
+    'shared', 'share', 'kongsi', 'tick',
   ],
   finance: [
     'expense', 'perbelanjaan', 'belanja', 'spending', 'funding', 'capital',
