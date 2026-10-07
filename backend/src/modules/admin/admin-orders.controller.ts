@@ -8,6 +8,7 @@ import { capturePurchase } from '../../utils/posthog.js';
 import { isOnlineMethod } from '../../utils/payment-gateway.js';
 import { computeGatewayFee } from '../../utils/gateway-fee.js';
 import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
+import { notifyOrder } from '../../utils/order-notify.js';
 import { carryDiscount, goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
@@ -627,14 +628,24 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     // but an online order confirmed by hand here still carried a processor fee.
     updateData.gatewayFee = await computeGatewayFee(fastify, order.paymentGateway, order.total);
 
-    const updated = await fastify.prisma.$transaction(async (tx) => {
-      const row = await tx.order.update({ where: { id }, data: updateData });
-      await enqueueEmail(tx, row, 'PAYMENT_RECEIPT');
-      return row;
+    // Guarded like applyPaid: two clicks (or a click and Abby) racing each
+    // other move it once, so the receipt, the revenue event and the "paid"
+    // notice each happen once. The loser gets the row as the winner left it.
+    const moved = await fastify.prisma.$transaction(async (tx) => {
+      const { count } = await tx.order.updateMany({ where: { id, paymentStatus: { not: 'PAID' } }, data: updateData });
+      const row = await tx.order.findUniqueOrThrow({ where: { id } });
+      if (count > 0) await enqueueEmail(tx, row, 'PAYMENT_RECEIPT');
+      return { row, count };
     });
+    const updated = moved.row;
+    if (moved.count === 0) return updated;
     // Manual confirmation is a real payment — WhatsApp orders never reach
     // applyPaid, so without this they'd be invisible in revenue reporting.
     capturePurchase(fastify, updated);
+    // The operators' "order paid" notice (Routines → Order notice) — for a
+    // manual order this is the real one; the notice at creation only said it
+    // was placed.
+    void notifyOrder(fastify, updated.id, 'paid');
     // A hosted-checkout order confirmed by hand (screenshot came over
     // WhatsApp, or the bank statement was checked): close the payment page to
     // match, without the gateway's onPaid running applyPaid a second time.

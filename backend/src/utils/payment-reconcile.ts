@@ -80,10 +80,11 @@ export async function applyPaid(
     // UNPAID -> PAID transition emits revenue, so duplicate callbacks and
     // reconcile sweeps can't double-count.
     capturePurchase(fastify, order);
-    // The operators' WhatsApp line for a paid online/crypto order (Routines →
-    // Order notice). Here and not at creation because the customer settles
-    // on the gateway minutes after checkout, and may not settle at all. The
-    // guard above makes it once per order.
+    // The operators' "order paid" notice (Routines → Order notice). For an
+    // online/crypto order this is its only notice — the customer settles on
+    // the gateway minutes after checkout, and may not settle at all; for a
+    // hosted manual order approved in ManualPay it follows the "placed" one.
+    // The guard above makes it once per order.
     void notifyOrder(fastify, order.id, 'paid');
   }
   return transitioned;

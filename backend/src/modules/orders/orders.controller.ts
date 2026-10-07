@@ -501,10 +501,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     }
   }
 
-  // The operators' WhatsApp line for a new order (Routines → Order notice).
-  // Only a manual-payment order is announced here — it needs a person to
-  // confirm the transfer; an online one is announced when it is paid, from
-  // applyPaid. After the payment session so the notice never delays the
+  // The operators' "new order, awaiting payment" notice (Routines → Order
+  // notice). Only a manual-payment order is announced here — it needs a
+  // person to confirm the transfer, and is announced again as paid when they
+  // mark it; an online one is announced only when paid, from applyPaid. After the payment session so the notice never delays the
   // customer's redirect, and fire-and-forget so it can never fail the order.
   void notifyOrder(fastify, order.id, 'created');
 

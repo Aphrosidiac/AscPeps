@@ -10,7 +10,7 @@ import { deleteMemory, listMemory, readMemory, writeMemory } from './memory.js';
 import { runReflection } from './reflect.js';
 import { computeMonthEnd, currentMonth, monthEndText, sendMonthEnd } from '../../utils/month-end.js';
 import { startDigest } from './digest.js';
-import { orderNoticeText, testOrderNotice } from '../../utils/order-notify.js';
+import { latestOrderFor, orderNoticeText, testOrderNotice } from '../../utils/order-notify.js';
 import { env } from '../../config/env.js';
 import { deleteAgentMedia, readAgentMedia } from '../../utils/agent-media-store.js';
 import { attachmentFor, ingestFile, MAX_INBOUND_BYTES } from './core/media.js';
@@ -329,20 +329,22 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
 
   // ── Order notice ──
   //
-  // A preview of what the recipients would get for the latest order, and a
-  // test send of it to whoever is switched on — so the routine is checked
-  // before the first real order arrives at 2am. The test goes out as the
-  // notice that order's payment method produces (manual → "new order",
-  // online → "paid"), so it is the real thing, not a sample.
+  // Both notices as they would read for real orders — the latest manual
+  // order as "placed", the latest paid order as "paid" — and a test send of
+  // the latest order's notice as it stands, to whoever is switched on, so the
+  // routine is checked before the first real order arrives at 2am.
   fastify.get('/order-notify/preview', async () => {
-    const latest = await fastify.prisma.order.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true } });
-    return { text: latest ? await orderNoticeText(fastify, latest.id) : null };
+    const [placed, paid] = await Promise.all([latestOrderFor(fastify, 'created'), latestOrderFor(fastify, 'paid')]);
+    return {
+      placed: placed ? await orderNoticeText(fastify, placed.id, 'created') : null,
+      paid: paid ? await orderNoticeText(fastify, paid.id, 'paid') : null,
+    };
   });
 
   fastify.post('/order-notify/test', async (_request, reply) => {
-    const latest = await fastify.prisma.order.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true } });
-    if (!latest) return reply.status(404).send({ message: 'No order to send a notice for' });
-    return testOrderNotice(fastify, latest.id);
+    const result = await testOrderNotice(fastify);
+    if (result.skipped === 'no-order') return reply.status(404).send({ message: 'No order to send a notice for' });
+    return result;
   });
 
   // ── Month-end wrap ──

@@ -6,7 +6,7 @@ import { CalendarCheck, Loader2, MoonStar, ShoppingBag, Sunrise, X } from 'lucid
 import { cn } from '@/lib/utils';
 import { Toggle, SelectInput } from '@/components/admin/ui';
 import { adminAgentOperators, adminAgentSaveGroup, adminAgentSaveOperator, adminGetSettings, adminUpdateSettings } from '@/lib/api';
-import { runDigest, runReflection, errorMessage, orderNoticePreview, orderNoticeTest, monthEndPreview, monthEndSend } from '@/lib/assistant';
+import { runDigest, runReflection, errorMessage, orderNoticePreview, orderNoticeTest, monthEndPreview, monthEndSend, type OrderNoticePreview } from '@/lib/assistant';
 
 // The assistant's scheduled jobs, switched here rather than in the
 // environment: the nightly memory tidy-up (3am), the morning brief, and the
@@ -198,7 +198,7 @@ export function RoutinesPanel({
     );
   };
 
-  const [preview, setPreview] = useState<string | null | undefined>(undefined);
+  const [preview, setPreview] = useState<OrderNoticePreview | undefined>(undefined);
   const loadPreview = () => {
     orderNoticePreview(token)
       .then(setPreview)
@@ -336,7 +336,7 @@ export function RoutinesPanel({
                   <ShoppingBag className="h-4 w-4 text-text-muted" strokeWidth={1.5} /> Order notice
                 </span>
               }
-              description="One WhatsApp line — number, customer, items, total, payment, link — at the moment the order needs you: a bank-transfer order as soon as it is placed (you confirm it in chat), an online or crypto order once it is paid, never while the customer is still on the gateway. Written by the system, not the assistant — instant and always right; ask Abby about the order after."
+              description="A WhatsApp message — customer, items, total, payment, link — when an order needs you. A bank-transfer order is announced as soon as it is placed, marked awaiting payment, then again as paid when you mark it paid. An online or crypto order is announced once, when it is paid — never while the customer is still on the gateway. Written by the system, not the assistant — instant and always right; ask Abby about the order after."
             />
             <div className="pl-14">
               <p className="text-[12px] font-medium uppercase tracking-wide text-text-secondary">Sent to</p>
@@ -357,12 +357,22 @@ export function RoutinesPanel({
                 </button>
               </div>
               {preview !== undefined && (
-                <pre className="view-in mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[8px] border border-border bg-surface-elevated px-3 py-2 text-[12px] leading-4 text-text-primary">
-                  {preview ?? 'No order to preview yet.'}
-                </pre>
+                <div className="view-in mt-2 space-y-2">
+                  {([
+                    ['Placed', preview.placed, 'No bank-transfer order yet.'],
+                    ['Paid', preview.paid, 'No paid order yet.'],
+                  ] as const).map(([title, text, empty]) => (
+                    <div key={title} className="min-w-0">
+                      <p className="mb-1 text-[12px] font-medium text-text-secondary">{title}</p>
+                      <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[8px] border border-border bg-surface-elevated px-3 py-2 text-[12px] leading-4 text-text-primary">
+                        {text ?? empty}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
               )}
               <p className="mt-1.5 text-[12px] leading-4 text-text-secondary">
-                A test sends the latest order’s notice, exactly as it would go out, to whoever is switched on.
+                A test sends the latest order’s notice as it stands — placed or paid — to whoever is switched on.
               </p>
             </div>
           </section>
