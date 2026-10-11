@@ -604,7 +604,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'update_order',
     description:
-      'Change an order\'s status, payment status, tracking number or notes. Side effects are handled automatically: cancelling or failing an order restores its stock, marking it REFUNDED also triggers the Billplz refund where applicable, and marking it PAID queues the receipt email and records the revenue.',
+      'Change an order\'s status, payment status, tracking number or notes. To mark an order paid, use mark_order_paid instead. Side effects are handled automatically: cancelling or failing an order restores its stock, marking it REFUNDED also triggers the Billplz refund where applicable, and marking it PAID queues the receipt email and records the revenue. Notes are ADDED under the existing note (which is often the customer\'s own delivery instruction), never written over it, unless replaceNotes is true.',
     write: true,
     input_schema: {
       type: 'object',
@@ -613,7 +613,8 @@ export const orderTools: AgentTool[] = [
         status: { type: 'string', enum: ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED'] },
         paymentStatus: { type: 'string', enum: ['UNPAID', 'PAID', 'FAILED', 'REFUNDED'] },
         trackingNumber: { type: 'string' },
-        notes: { type: 'string' },
+        notes: { type: 'string', description: 'A line to add to the order\'s notes. Does NOT change payment status.' },
+        replaceNotes: { type: 'boolean', description: 'true = write over the existing notes instead of adding a line. Only when the operator asks to change or clear the note.' },
       },
       required: ['orderRef'],
     },
@@ -625,10 +626,31 @@ export const orderTools: AgentTool[] = [
     run: async ({ fastify, prisma }, input) => {
       const order = await resolveOrder(prisma, input.orderRef);
       const body: any = {};
-      for (const k of ['status', 'paymentStatus', 'trackingNumber', 'notes']) {
-        if (input[k] !== undefined) body[k] = input[k];
+      // Only what actually differs. A field already at the asked value is not
+      // a change, and a call made of nothing but those is refused below — on
+      // 10–11 Oct 2026 the model re-sent the same notes-only call 40 times
+      // believing it was marking the order paid, and each "changed: notes"
+      // success told it the call had worked.
+      for (const k of ['status', 'paymentStatus', 'trackingNumber']) {
+        if (input[k] !== undefined && input[k] !== order[k]) body[k] = input[k];
       }
-      if (!Object.keys(body).length) throw new Error('Nothing to update — pass at least one field.');
+      const notes = typeof input.notes === 'string' ? input.notes.trim() : undefined;
+      if (notes !== undefined) {
+        const current: string = order.notes ?? '';
+        if (input.replaceNotes === true) {
+          if (notes !== current) body.notes = notes;
+        } else if (notes && !current.includes(notes)) {
+          body.notes = current.trim() ? `${current.trim()}\n${notes}` : notes;
+        }
+      }
+      if (!Object.keys(body).length) {
+        const asked = ['status', 'paymentStatus', 'trackingNumber', 'notes'].filter((k) => input[k] !== undefined);
+        if (!asked.length) throw new Error('Nothing to update — pass at least one field.');
+        throw new Error(
+          `Nothing changed: ${order.orderNumber} already has ${asked.map((k) => (k === 'notes' ? 'that note' : `${k} ${order[k] ?? 'empty'}`)).join(', ')}. ` +
+            `Its payment status is ${order.paymentStatus}. A note never changes payment status — to mark it paid, call mark_order_paid.`
+        );
+      }
 
       const updated: any = await adminUpdateOrder(fastify, order.id, body);
       return {
@@ -642,6 +664,65 @@ export const orderTools: AgentTool[] = [
               : body.paymentStatus === 'REFUNDED'
                 ? 'Stock restored. If this was a ToyyibPay order, the actual refund must still be issued manually in the ToyyibPay dashboard.'
                 : undefined,
+      };
+    },
+  },
+
+  {
+    // Its own tool because it is the commonest write in the group ("Paid" in
+    // reply to an order notice) and, as an optional enum on update_order, the
+    // one a flash model could leave out — GLM 5.3 Flash sent notes-only
+    // update_order calls for two days, never the paymentStatus it reasoned
+    // about. Nothing here can be forgotten: the tool IS the change.
+    name: 'mark_order_paid',
+    description:
+      'Mark one or more orders PAID — the money genuinely arrived (an operator confirmed the bank transfer, replied "Paid" / "dah bayar" to an order notice, or sent the slip). Several orders go in ONE call. Same effect as the dashboard: the receipt email is queued, revenue recorded, and the "Order paid" notice goes to the group. Orders already paid are reported, not touched. Refused on a cancelled or refunded order.',
+    write: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        orderRefs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50, description: 'Order numbers (ASC2610/0017) or ids.' },
+        note: { type: 'string', description: 'Optional line added under the order\'s notes, e.g. "Paid by bank transfer, confirmed by Asywa". The existing note is kept.' },
+      },
+      required: ['orderRefs'],
+    },
+    summarize: async (_ctx, input) => {
+      const refs: string[] = input.orderRefs ?? [];
+      return `mark ${refs.join(', ')} paid`;
+    },
+    run: async ({ fastify, prisma }, input) => {
+      const refs: string[] = [...new Set<string>((input.orderRefs ?? []).map((r: unknown) => String(r).trim()).filter(Boolean))];
+      if (!refs.length) throw new Error('Pass at least one order in orderRefs.');
+      // Every reference resolved and checked before anything changes: one
+      // typo must not leave half a batch paid.
+      const orders: any[] = [];
+      for (const ref of refs) {
+        const o = await resolveOrder(prisma, ref);
+        if (o.deletedAt) throw new Error(`Order ${o.orderNumber} is deleted — restore it first.`);
+        if (o.paymentStatus === 'REFUNDED') throw new Error(`${o.orderNumber} is refunded — it cannot be marked paid again.`);
+        if (o.status === 'CANCELLED') throw new Error(`${o.orderNumber} is cancelled — its stock went back; reopen it on the dashboard first if the customer did pay.`);
+        orders.push(o);
+      }
+      const unique = [...new Map(orders.map((o) => [o.id, o])).values()];
+      const toPay = unique.filter((o) => o.paymentStatus !== 'PAID');
+      const note = typeof input.note === 'string' ? input.note.trim() : '';
+
+      const paid: any[] = [];
+      for (const o of toPay) {
+        const body: any = { paymentStatus: 'PAID' };
+        const current: string = o.notes ?? '';
+        if (note && !current.includes(note)) body.notes = current.trim() ? `${current.trim()}\n${note}` : note;
+        const updated: any = await adminUpdateOrder(fastify, o.id, body);
+        paid.push(updated);
+      }
+      const gateway = await activeGatewayName(prisma);
+      return {
+        markedPaid: paid.map((u) => ({
+          ...orderSummary(u, gateway),
+          receipt: u.email ? 'receipt email queued' : 'no email on the order, so no receipt was sent',
+        })),
+        alreadyPaid: unique.filter((o) => o.paymentStatus === 'PAID').map((o) => o.orderNumber),
+        note: paid.length ? 'Revenue recorded for each order marked paid.' : 'Nothing to do — every order named was already paid.',
       };
     },
   },

@@ -183,6 +183,47 @@ await check('update_order (tracking + notes)', async () => {
   return 'set and restored';
 });
 
+await check('update_order adds notes, never overwrites', async () => {
+  const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null } });
+  const before = { notes: o.notes };
+  await prisma.order.update({ where: { id: o.id }, data: { notes: 'G6 Hotel address' } });
+  await run('update_order', { orderRef: o.orderNumber, notes: 'Paid via bank transfer' });
+  const mid = await prisma.order.findUniqueOrThrow({ where: { id: o.id } });
+  assert(mid.notes === 'G6 Hotel address\nPaid via bank transfer', `notes are "${mid.notes}"`);
+  // The same note again changes nothing — refused, and the refusal names
+  // the payment status and the tool that actually marks it paid.
+  let refused = '';
+  await run('update_order', { orderRef: o.orderNumber, notes: 'Paid via bank transfer' }).catch((e: any) => (refused = e.message));
+  assert(/Nothing changed/.test(refused) && /mark_order_paid/.test(refused), `repeat not refused: "${refused}"`);
+  await run('update_order', { orderRef: o.orderNumber, notes: 'only this', replaceNotes: true });
+  const replaced = await prisma.order.findUniqueOrThrow({ where: { id: o.id } });
+  assert(replaced.notes === 'only this', `replaceNotes gave "${replaced.notes}"`);
+  await prisma.order.update({ where: { id: o.id }, data: before });
+  return 'appended, repeat refused, replace on request (restored)';
+});
+
+await check('mark_order_paid', async () => {
+  const o = await prisma.order.findFirst({
+    where: { deletedAt: null, paymentMethod: 'WHATSAPP', paymentStatus: 'UNPAID', status: { not: 'CANCELLED' } },
+  });
+  if (!o) return 'skipped (no unpaid WhatsApp order)';
+  const before = { paymentStatus: o.paymentStatus, notes: o.notes, email: o.email, paidAt: o.paidAt, gatewayFee: o.gatewayFee };
+  // No email for the run: the receipt would really be queued.
+  await prisma.order.update({ where: { id: o.id }, data: { email: null, notes: 'G6 Hotel address' } });
+  const res: any = await run('mark_order_paid', { orderRefs: [o.orderNumber], note: 'Paid, confirmed by Asywa' });
+  const mid = await prisma.order.findUniqueOrThrow({ where: { id: o.id } });
+  assert(mid.paymentStatus === 'PAID', `still ${mid.paymentStatus}`);
+  assert(mid.notes === 'G6 Hotel address\nPaid, confirmed by Asywa', `notes are "${mid.notes}"`);
+  assert(res.markedPaid?.length === 1, 'markedPaid missing');
+  const again: any = await run('mark_order_paid', { orderRefs: [o.orderNumber] });
+  assert(again.alreadyPaid?.includes(o.orderNumber) && !again.markedPaid.length, 'second call should report alreadyPaid');
+  let refused = '';
+  await run('mark_order_paid', { orderRefs: [o.orderNumber, 'ASC9999/9999'] }).catch((e: any) => (refused = e.message));
+  assert(refused, 'a bad reference in the batch should refuse the whole call');
+  await prisma.order.update({ where: { id: o.id }, data: before });
+  return 'paid once, note kept, second call no-op, bad ref refuses batch (restored)';
+});
+
 await check('update_order CANCELLED restores stock', async () => {
   // Use a PENDING order so cancelling is meaningful and reversible.
   const o = await prisma.order.findFirst({

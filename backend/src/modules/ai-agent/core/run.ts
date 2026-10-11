@@ -595,6 +595,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   let costUsd = 0;
   let nudged = false;
   let emptyRetried = false;
+  const writesMade = new Set<string>();
+  let repeatedWrites = 0;
+  let stopRepeats = false;
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     if (run.abort.signal.aborted) break;
@@ -613,7 +616,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       result = await streamCompletion({
         model,
         messages,
-        tools: step === MAX_STEPS ? [] : wire,
+        tools: step === MAX_STEPS || stopRepeats ? [] : wire,
         effort: modelSettings.effort,
         maxTokens: MAX_TOKENS_PER_STEP,
         signal: run.abort.signal,
@@ -777,8 +780,38 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       };
     });
 
-    // Run the tools — all of them together, each on its own clock.
-    const results = [...contextResults, ...(await Promise.all(toolCalls.map((c) => executeTool(fastify, run, ctx, c, outcome))))];
+    // Run the tools — all of them together, each on its own clock. A write
+    // already made this turn with the very same arguments is refused, not
+    // run again: a model that has locked onto its own previous call (GLM 5.3
+    // Flash, 10–11 Oct 2026: forty identical notes-only update_order calls
+    // while its reasoning said "include paymentStatus") only breaks out when
+    // the result stops agreeing with it.
+    const results = [
+      ...contextResults,
+      ...(await Promise.all(
+        toolCalls.map((c) => {
+          const tool = getTool(c.name);
+          if (tool && tierOf(tool) !== 'read' && writesMade.has(callKey(c))) {
+            repeatedWrites++;
+            return Promise.resolve<ToolOutcome>({
+              id: c.id,
+              name: c.name,
+              output: {
+                error: `Refused: you already made exactly this ${c.name} call (same arguments) earlier in this turn — its result is above. Repeating it changes nothing. If the order is not in the state you meant, the arguments are what is wrong — use different fields or a different tool. Otherwise stop and tell the operator plainly what was and was not done.`,
+              },
+              isError: true,
+              invalid: false,
+              ms: 0,
+            });
+          }
+          return executeTool(fastify, run, ctx, c, outcome);
+        })
+      )),
+    ];
+    for (const c of toolCalls) {
+      const tool = getTool(c.name);
+      if (tool && tierOf(tool) !== 'read') writesMade.add(callKey(c));
+    }
     const invalid = results.filter((r) => r.invalid).length;
     invalidStreak = invalid === results.length && results.length > 0 ? invalidStreak + 1 : 0;
 
@@ -802,6 +835,11 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     // so they read as instruction rather than as data the model may weigh.
     if (contextResults.some((r) => r.loadedContext)) messages.push({ role: 'system', content: contextBlock(activeDomains) });
 
+    if (repeatedWrites >= 2 && !stopRepeats) {
+      stopRepeats = true;
+      fastify.log.warn({ threadId: run.threadId, model, repeatedWrites }, 'agent repeated the same write call; ending the turn');
+      messages.push({ role: 'system', content: 'You have repeated the same write call several times. Do not call any more tools. Answer the operator now: say exactly what changed and what did not, from the tool results.' });
+    }
     if (invalidStreak >= 2 && !escalated && escalationModel && escalationModel !== model) {
       fastify.log.warn({ threadId: run.threadId, model }, `two steps of invalid tool calls; escalating to ${escalationModel}`);
       model = escalationModel;
@@ -851,6 +889,14 @@ function latestUserText(rows: { role: string; content: MessageContent }[]): stri
     if (r.role === 'user' && 'text' in r.content) return userMessageText(r.content as UserContent);
   }
   return '';
+}
+
+// A call's identity for repeat detection: tool name plus its arguments with
+// keys sorted, so the same request with keys in another order still matches.
+function callKey(c: { name: string; input: unknown }): string {
+  const sort = (v: unknown): unknown =>
+    Array.isArray(v) ? v.map(sort) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, sort((v as any)[k])])) : v;
+  return `${c.name}:${JSON.stringify(sort(c.input))}`;
 }
 
 function parseArgs(c: ToolCall): unknown {

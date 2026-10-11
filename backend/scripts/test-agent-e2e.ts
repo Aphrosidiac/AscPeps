@@ -26,7 +26,7 @@ let pass = 0;
 let fail = 0;
 const failures: string[] = [];
 
-async function send(text: string, opts: { from?: string; group?: string; mentions?: boolean } = {}) {
+async function send(text: string, opts: { from?: string; group?: string; mentions?: boolean; quoted?: { text: string; fromBot?: boolean } } = {}) {
   const res = await fetch(`${API}/api/v1/internal/agent/inbound`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
@@ -38,6 +38,7 @@ async function send(text: string, opts: { from?: string; group?: string; mention
       groupJid: opts.group,
       groupSubject: opts.group ? 'Ops Group' : undefined,
       mentionsBot: opts.mentions ?? true,
+      ...(opts.quoted ? { quoted: opts.quoted } : {}),
     }),
     signal: AbortSignal.timeout(180_000),
   });
@@ -681,6 +682,77 @@ await scenario('costing a line from the supplier price list records the supplier
     tools: rows.map((t) => `${t.toolName}${t.ok ? '' : '✗'}`),
   };
 });
+
+// 10–11 Oct 2026 on prod: "Paid" in reply to the awaiting-payment notice got
+// forty notes-only update_order calls, the order left UNPAID and the
+// customer's delivery note written over. The reply must mark it paid, once,
+// and keep the note — on a clean thread, and on one carrying that failure,
+// since prod's group thread still does.
+async function paidReply(poisoned: boolean) {
+  await reset();
+  const order = await prisma.order.findFirst({
+    where: { deletedAt: null, paymentMethod: 'WHATSAPP', paymentGateway: null, paymentStatus: { in: ['UNPAID', 'PAID'] }, status: { not: 'CANCELLED' }, stockRestored: false, items: { some: {} } },
+    include: { items: { include: { variant: { include: { product: true } } } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!order) return { ok: false, detail: 'no live WhatsApp order in dev db' };
+  const before = { status: order.status, paymentStatus: order.paymentStatus, notes: order.notes, email: order.email, paidAt: order.paidAt, gatewayFee: order.gatewayFee };
+  // Put it back to how a fresh WhatsApp order arrives, and take its email off
+  // for the run: dev's API sends its outbox for real.
+  await prisma.order.update({ where: { id: order.id }, data: { status: 'PENDING', paymentStatus: 'UNPAID', paidAt: null, notes: 'G6 Hotel address', email: null } });
+
+  const notice = [
+    '🕓 *NEW ORDER · AWAITING PAYMENT*',
+    `*${order.orderNumber}* · *RM ${(order.total / 100).toFixed(2)}*`,
+    '',
+    `👤 ${order.customerName}`,
+    '',
+    '*Items*',
+    ...order.items.map((i) => `• ${i.quantity}× ${i.variant.product.name} ${i.variant.size ?? ''}`.trim()),
+    '',
+    '💳 Bank transfer via WhatsApp',
+    '📝 G6 Hotel address',
+    '_Not paid yet. Mark it paid once the transfer is confirmed._',
+    '',
+    `http://localhost:3100/admin/orders/${order.id}`,
+  ].join('\n');
+
+  if (poisoned) {
+    // The prod transcript's shape: "Paid", then the same notes-only call and
+    // its "changed: notes" result, over and over, then an apology.
+    const thread = await prisma.agentThread.create({ data: { id: `e2e-poisoned-${Date.now()}`, kind: 'chat', chatKey: 'dm:0123456789', title: 'Test Operator · WhatsApp' } });
+    const call = { orderRef: order.orderNumber, notes: 'Paid via bank transfer, confirmed in WhatsApp' };
+    const rows: { role: string; content: any }[] = [{ role: 'user', content: { text: 'Paid', quoted: { from: 'you', text: notice }, sender: 'Test Operator' } }];
+    for (let i = 0; i < 6; i++) {
+      const id = `call_poison_${i}`;
+      rows.push({ role: 'assistant', content: { toolCalls: [{ id, raw: JSON.stringify(call), name: 'update_order', input: call }] } });
+      rows.push({ role: 'tool', content: { toolResults: [{ id, ms: 4, name: 'update_order', output: { orderNumber: order.orderNumber, status: 'PENDING', paymentStatus: 'UNPAID', changed: ['notes'] }, isError: false }] } });
+    }
+    rows.push({ role: 'assistant', content: { text: `I could not mark ${order.orderNumber} paid — every attempt only touched the notes. Please tick it PAID on the dashboard.` } });
+    await prisma.agentMessage.createMany({ data: rows.map((r, i) => ({ id: `${thread.id}-${i}`, threadId: thread.id, seq: i + 1, role: r.role, content: r.content, actorName: r.role === 'user' ? 'Test Operator' : null })) });
+  }
+
+  const started = new Date();
+  const r = await send('Paid', { quoted: { text: notice, fromBot: true } });
+  const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+  const rows = await toolsSince(started);
+  await prisma.emailOutbox.deleteMany({ where: { orderId: order.id, createdAt: { gt: started } } });
+  await prisma.order.update({ where: { id: order.id }, data: before });
+
+  const writes = rows.filter((t) => t.tier !== 'read');
+  const ok = after.paymentStatus === 'PAID' && (after.notes ?? '').includes('G6 Hotel address') && writes.length <= 2;
+  return {
+    ok,
+    detail: ok
+      ? `${order.orderNumber} PAID, note kept ("${after.notes?.replace(/\n/g, ' / ')}"), ${writes.length} write call(s) (restored)`
+      : `paymentStatus ${after.paymentStatus}, notes "${after.notes}", ${writes.length} write calls`,
+    reply: r.text,
+    tools: rows.map((t) => `${t.toolName}${t.ok ? '' : '✗'}`),
+  };
+}
+
+await scenario('"Paid" in reply to an order notice marks it paid and keeps the note', () => paidReply(false));
+await scenario('"Paid" after a thread full of failed notes-only calls still marks it paid', () => paidReply(true));
 
 // ---------------------------------------------------------------- summary
 

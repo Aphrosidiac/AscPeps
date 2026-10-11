@@ -168,7 +168,7 @@ const PLAYBOOKS: Record<string, Playbook> = {
   statuses: {
     title: 'What each change actually causes',
     body: `These are real consequences, not labels:
-- Marking an order PAID queues the customer's payment-receipt email and records the revenue for reporting. Do not mark an order paid to "tidy it up"; it means money genuinely arrived.
+- Marking an order PAID queues the customer's payment-receipt email and records the revenue for reporting. Do not mark an order paid to "tidy it up"; it means money genuinely arrived. An operator replying "Paid" (or "dah bayar", "dah masuk") to an order notice IS that confirmation: call mark_order_paid with the order from the quoted notice. Writing "paid" into the notes is not marking it paid.
 - Marking an order CANCELLED, FAILED or REFUNDED returns its stock to inventory.
 - REFUNDED restores stock but, on ToyyibPay, does NOT move money — it has no refund API, so a human still has to issue the refund in the ToyyibPay dashboard. Always say this out loud when recording a refund on a ToyyibPay order.
 - Order status (PENDING → CONFIRMED → SHIPPED → DELIVERED) is fulfilment. Payment status (UNPAID/PAID/FAILED/REFUNDED) is money. They move independently: a WhatsApp order is routinely still UNPAID while the customer arranges a transfer.
