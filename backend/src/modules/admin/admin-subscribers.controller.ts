@@ -14,18 +14,22 @@ const listQuerySchema = z.object({
   search: z.string().optional(),
   status: z.enum(['SUBSCRIBED', 'UNSUBSCRIBED']).optional(),
   source: z.enum(['FOOTER', 'CHECKOUT', 'ADMIN']).optional(),
+  // 'contacts' = the order customers campaigns reached (source ORDER), the
+  // "sent but not subscribed" view. Default is the list proper.
+  list: z.enum(['subscribers', 'contacts']).optional(),
 });
 
 function buildWhere(query: Record<string, string>): Prisma.SubscriberWhereInput {
-  const { search, status, source } = listQuerySchema.parse(query);
+  const { search, status, source, list } = listQuerySchema.parse(query);
   // Rows a CUSTOMERS campaign created for paid customers (source ORDER) are
   // not subscribers: nobody signed up. They exist only so those customers
   // carry an unsubscribe token and an opt-out sticks. They never appear on
   // the list, in its numbers, or in the export.
-  const where: Prisma.SubscriberWhereInput = { source: { not: 'ORDER' } };
+  const where: Prisma.SubscriberWhereInput =
+    list === 'contacts' ? { source: 'ORDER' } : { source: { not: 'ORDER' } };
   if (search) where.email = { contains: search, mode: 'insensitive' };
   if (status) where.status = status;
-  if (source) where.source = source;
+  if (source && list !== 'contacts') where.source = source;
   return where;
 }
 
@@ -78,6 +82,38 @@ export async function adminListSubscribers(fastify: FastifyInstance, query: Reco
  * that answers "is the capture actually working" — a lifetime total keeps
  * looking healthy long after the signup form has stopped converting.
  */
+/**
+ * Customers emailed: paid customers a campaign reached without them ever
+ * signing up. Each with whether they can still be reached and which
+ * campaigns got to them. Not paginated — this is bounded by the customer
+ * base, and a partial list of who was mailed is worse than none.
+ */
+export async function adminListContacts(fastify: FastifyInstance, query: Record<string, string>) {
+  const where = buildWhere({ ...query, list: 'contacts' });
+  const [rows, reachable, optedOut] = await Promise.all([
+    fastify.prisma.subscriber.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 2000,
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        createdAt: true,
+        unsubscribedAt: true,
+        unsubscribeReason: true,
+        campaignRecipients: {
+          orderBy: { createdAt: 'desc' },
+          select: { status: true, sentAt: true, campaign: { select: { id: true, name: true, subject: true } } },
+        },
+      },
+    }),
+    fastify.prisma.subscriber.count({ where: { source: 'ORDER', status: 'SUBSCRIBED' } }),
+    fastify.prisma.subscriber.count({ where: { source: 'ORDER', status: 'UNSUBSCRIBED' } }),
+  ]);
+  return { data: rows, stats: { reachable, optedOut } };
+}
+
 /** Rows that are real signups — everything except campaign-made ORDER rows. */
 const SIGNUPS = { source: { not: 'ORDER' as const } };
 

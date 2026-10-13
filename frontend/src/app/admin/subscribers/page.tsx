@@ -20,7 +20,8 @@ import { formatDate, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Animate } from '@/components/ui/Animate';
-import { PageHeader } from '@/components/admin/ui';
+import { PageHeader, TabBar } from '@/components/admin/ui';
+import { CustomersEmailed } from './CustomersEmailed';
 
 type WelcomeStatus = 'PENDING' | 'SENT' | 'FAILED' | 'DELIVERED' | 'BOUNCED' | 'COMPLAINED';
 
@@ -96,6 +97,7 @@ export default function AdminSubscribersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'' | 'SUBSCRIBED' | 'UNSUBSCRIBED'>('SUBSCRIBED');
+  const [view, setView] = useState<'subscribers' | 'contacts'>('subscribers');
   const [newEmail, setNewEmail] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
@@ -175,15 +177,18 @@ export default function AdminSubscribersPage() {
       <Animate variant="fadeUp">
         <PageHeader
           title="Subscribers"
-          subtitle="The marketing email list"
+          subtitle={view === 'subscribers' ? 'The marketing email list' : 'Sent a campaign, never subscribed'}
           actions={
             <Button
               variant="outline"
               onClick={() => {
                 if (!token) return;
                 const params: Record<string, string> = {};
-                if (search) params.search = search;
-                if (statusFilter) params.status = statusFilter;
+                if (view === 'contacts') params.list = 'contacts';
+                else {
+                  if (search) params.search = search;
+                  if (statusFilter) params.status = statusFilter;
+                }
                 adminExportSubscribers(token, params);
               }}
             >
@@ -193,6 +198,20 @@ export default function AdminSubscribersPage() {
         />
       </Animate>
 
+      <TabBar
+        className="mb-6"
+        tabs={[
+          { id: 'subscribers', label: 'Subscribers' },
+          { id: 'contacts', label: 'Customers emailed' },
+        ]}
+        current={view}
+        onSelect={setView}
+      />
+
+      {view === 'contacts' ? (
+        <CustomersEmailed token={token} />
+      ) : (
+        <>
       <Animate variant="fadeUp" delay={0.05}>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
           {statCards.map((card) => (
@@ -409,6 +428,8 @@ export default function AdminSubscribersPage() {
             </table>
           </div>
         </Animate>
+      )}
+        </>
       )}
 
       {flowTarget && (

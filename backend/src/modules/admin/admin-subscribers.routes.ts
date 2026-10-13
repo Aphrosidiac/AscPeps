@@ -8,6 +8,7 @@ import {
   adminDeleteSubscriber,
   adminExportSubscribers,
   adminPreviewWelcome,
+  adminListContacts,
 } from './admin-subscribers.controller.js';
 
 export default async function adminSubscriberRoutes(fastify: FastifyInstance) {
@@ -18,6 +19,10 @@ export default async function adminSubscriberRoutes(fastify: FastifyInstance) {
   );
 
   fastify.get('/stats', async () => adminSubscriberStats(fastify));
+
+  fastify.get('/contacts', async (request) =>
+    adminListContacts(fastify, request.query as Record<string, string>)
+  );
 
   fastify.get('/preview-welcome', async (request) =>
     adminPreviewWelcome(fastify, request.query as Record<string, string>)

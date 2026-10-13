@@ -515,6 +515,28 @@ export const unsubscribeNewsletter = (token: string) =>
 export const adminGetSubscribers = (token: string, params?: Record<string, string>) =>
   api.get('/api/v1/admin/subscribers', { ...auth(token), params }).then((r) => r.data);
 
+export interface ContactRow {
+  id: string;
+  email: string;
+  status: 'SUBSCRIBED' | 'UNSUBSCRIBED';
+  createdAt: string;
+  unsubscribedAt: string | null;
+  unsubscribeReason: string | null;
+  campaignRecipients: {
+    status: string;
+    sentAt: string | null;
+    campaign: { id: string; name: string; subject: string };
+  }[];
+}
+
+export const adminGetContacts = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{ data: ContactRow[]; stats: { reachable: number; optedOut: number } }>('/api/v1/admin/subscribers/contacts', {
+      ...auth(token),
+      params,
+    })
+    .then((r) => r.data);
+
 export const adminSubscriberStats = (token: string) =>
   api.get('/api/v1/admin/subscribers/stats', auth(token)).then((r) => r.data);
 
