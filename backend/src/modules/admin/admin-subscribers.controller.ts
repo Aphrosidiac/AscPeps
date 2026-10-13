@@ -13,12 +13,16 @@ const MAX_WELCOME_ATTEMPTS = 4;
 const listQuerySchema = z.object({
   search: z.string().optional(),
   status: z.enum(['SUBSCRIBED', 'UNSUBSCRIBED']).optional(),
-  source: z.enum(['FOOTER', 'CHECKOUT', 'ADMIN', 'ORDER']).optional(),
+  source: z.enum(['FOOTER', 'CHECKOUT', 'ADMIN']).optional(),
 });
 
 function buildWhere(query: Record<string, string>): Prisma.SubscriberWhereInput {
   const { search, status, source } = listQuerySchema.parse(query);
-  const where: Prisma.SubscriberWhereInput = {};
+  // Rows a CUSTOMERS campaign created for paid customers (source ORDER) are
+  // not subscribers: nobody signed up. They exist only so those customers
+  // carry an unsubscribe token and an opt-out sticks. They never appear on
+  // the list, in its numbers, or in the export.
+  const where: Prisma.SubscriberWhereInput = { source: { not: 'ORDER' } };
   if (search) where.email = { contains: search, mode: 'insensitive' };
   if (status) where.status = status;
   if (source) where.source = source;
@@ -74,21 +78,25 @@ export async function adminListSubscribers(fastify: FastifyInstance, query: Reco
  * that answers "is the capture actually working" — a lifetime total keeps
  * looking healthy long after the signup form has stopped converting.
  */
+/** Rows that are real signups — everything except campaign-made ORDER rows. */
+const SIGNUPS = { source: { not: 'ORDER' as const } };
+
 export async function adminSubscriberStats(fastify: FastifyInstance) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [subscribed, unsubscribed, last30Days, pendingWelcome, delivered, deliveryIssues, bySource] = await Promise.all([
-    fastify.prisma.subscriber.count({ where: { status: 'SUBSCRIBED' } }),
-    fastify.prisma.subscriber.count({ where: { status: 'UNSUBSCRIBED' } }),
+    fastify.prisma.subscriber.count({ where: { status: 'SUBSCRIBED', ...SIGNUPS } }),
+    fastify.prisma.subscriber.count({ where: { status: 'UNSUBSCRIBED', ...SIGNUPS } }),
     // Rows added from orders by a campaign are not signups — counting them
     // would make one customer send look like a month of the form working.
-    fastify.prisma.subscriber.count({ where: { createdAt: { gte: since }, source: { not: 'ORDER' } } }),
-    fastify.prisma.subscriber.count({ where: { welcomeSentAt: null, status: 'SUBSCRIBED', source: { not: 'ORDER' } } }),
-    fastify.prisma.subscriber.count({ where: { welcomeStatus: 'DELIVERED' } }),
+    fastify.prisma.subscriber.count({ where: { createdAt: { gte: since }, ...SIGNUPS } }),
+    fastify.prisma.subscriber.count({ where: { welcomeSentAt: null, status: 'SUBSCRIBED', ...SIGNUPS } }),
+    fastify.prisma.subscriber.count({ where: { welcomeStatus: 'DELIVERED', ...SIGNUPS } }),
     // Two ways a welcome ends up needing a human: Resend/the recipient's
     // server rejected the send outright (bounced/complained), or the sweep
     // gave up retrying before it ever got a resendId to track (exhausted).
     fastify.prisma.subscriber.count({
       where: {
+        ...SIGNUPS,
         OR: [
           { welcomeStatus: { in: ['BOUNCED', 'COMPLAINED'] } },
           { welcomeSentAt: null, welcomeAttempts: { gte: MAX_WELCOME_ATTEMPTS } },
@@ -97,7 +105,7 @@ export async function adminSubscriberStats(fastify: FastifyInstance) {
     }),
     fastify.prisma.subscriber.groupBy({
       by: ['source'],
-      where: { status: 'SUBSCRIBED' },
+      where: { status: 'SUBSCRIBED', ...SIGNUPS },
       _count: { _all: true },
     }),
   ]);
@@ -186,6 +194,16 @@ const createSchema = z.object({
 export async function adminCreateSubscriber(fastify: FastifyInstance, body: unknown) {
   const { email } = createSchema.parse(body);
   const existing = await fastify.prisma.subscriber.findUnique({ where: { email } });
+  // A paid customer a campaign reached is not on the list yet; adding them by
+  // hand makes them a real subscriber. One who opted out stays out — consent
+  // is theirs to give back, through the signup form.
+  if (existing?.source === 'ORDER' && existing.status === 'SUBSCRIBED') {
+    return fastify.prisma.subscriber.update({
+      where: { id: existing.id },
+      data: { source: 'ADMIN' },
+      select: { id: true, email: true, status: true, source: true, createdAt: true },
+    });
+  }
   if (existing) throw { statusCode: 409, message: 'That address is already on the list' };
 
   return fastify.prisma.subscriber.create({

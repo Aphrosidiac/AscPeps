@@ -47,7 +47,7 @@ export async function subscribe(fastify: FastifyInstance, body: unknown) {
 
   const existing = await fastify.prisma.subscriber.findUnique({
     where: { email: data.email },
-    select: { id: true, status: true },
+    select: { id: true, status: true, source: true },
   });
 
   if (!existing) {
@@ -59,6 +59,24 @@ export async function subscribe(fastify: FastifyInstance, body: unknown) {
       },
     });
     fastify.log.info({ source: data.source }, 'newsletter signup');
+    return { ok: true };
+  }
+
+  if (existing.source === 'ORDER') {
+    // A paid customer a campaign reached, now signing up for themselves: this
+    // is the signup, so the row becomes a real subscriber from this form —
+    // including someone who had opted out of the customer mail.
+    await fastify.prisma.subscriber.update({
+      where: { id: existing.id },
+      data: {
+        source: data.source as SubscriberSource,
+        status: 'SUBSCRIBED',
+        unsubscribedAt: null,
+        unsubscribeReason: null,
+        createdAt: new Date(),
+      },
+    });
+    fastify.log.info({ source: data.source }, 'newsletter signup (was an order customer)');
     return { ok: true };
   }
 

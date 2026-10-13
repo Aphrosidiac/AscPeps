@@ -94,12 +94,17 @@ async function paidBuyerEmails(fastify: FastifyInstance): Promise<string[]> {
 async function resolveAudience(
   fastify: FastifyInstance,
   audience: CampaignAudience
-): Promise<{ existing: { id: string; email: string }[]; toAdd: string[] }> {
-  const base = { status: 'SUBSCRIBED' as const };
-  if (audience === 'ALL' || audience === 'CUSTOMERS') {
-    const existing = await fastify.prisma.subscriber.findMany({ where: base, select: { id: true, email: true } });
-    if (audience === 'ALL') return { existing, toAdd: [] };
+): Promise<{ existing: { id: string; email: string; source: string }[]; toAdd: string[] }> {
+  // The list proper: people who signed up. ORDER rows (paid customers a
+  // CUSTOMERS campaign reached) are never subscribers, so "Everyone" and its
+  // cuts can't grow just because a customer campaign went out.
+  const signups = { status: 'SUBSCRIBED' as const, source: { not: 'ORDER' as const } };
+  const select = { id: true, email: true, source: true };
 
+  if (audience === 'CUSTOMERS') {
+    // Signups, plus order customers still reachable (an ORDER row that opted
+    // out is UNSUBSCRIBED and stays out), plus paid customers with no row.
+    const existing = await fastify.prisma.subscriber.findMany({ where: { status: 'SUBSCRIBED' }, select });
     const buyers = await paidBuyerEmails(fastify);
     const known = await fastify.prisma.subscriber.findMany({
       where: { email: { in: buyers } },
@@ -109,13 +114,14 @@ async function resolveAudience(
     return { existing, toAdd: buyers.filter((e) => !knownSet.has(e)) };
   }
 
+  if (audience === 'ALL') {
+    return { existing: await fastify.prisma.subscriber.findMany({ where: signups, select }), toAdd: [] };
+  }
+
   const buyerEmails = await paidBuyerEmails(fastify);
   const existing = await fastify.prisma.subscriber.findMany({
-    where: {
-      ...base,
-      email: audience === 'BUYERS' ? { in: buyerEmails } : { notIn: buyerEmails },
-    },
-    select: { id: true, email: true },
+    where: { ...signups, email: audience === 'BUYERS' ? { in: buyerEmails } : { notIn: buyerEmails } },
+    select,
   });
   return { existing, toAdd: [] };
 }
@@ -156,7 +162,11 @@ const OPEN_ORDER_STATUSES = new Set(['PENDING', 'CONFIRMED', 'SHIPPED']);
 export async function buildRecipients(fastify: FastifyInstance, rules: ExclusionRules): Promise<AudienceRow[]> {
   const { existing, toAdd } = await resolveAudience(fastify, rules.audience);
   const base = [
-    ...existing.map((r) => ({ email: r.email, subscriberId: r.id as string | null, kind: 'SUBSCRIBER' as const })),
+    ...existing.map((r) => ({
+      email: r.email,
+      subscriberId: r.id as string | null,
+      kind: (r.source === 'ORDER' ? 'ORDER' : 'SUBSCRIBER') as 'SUBSCRIBER' | 'ORDER',
+    })),
     ...toAdd.map((email) => ({ email, subscriberId: null, kind: 'ORDER' as const })),
   ];
   if (base.length === 0) return [];
