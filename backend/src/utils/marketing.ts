@@ -29,6 +29,19 @@ export async function isMarketingEnabled(prisma: PrismaLike): Promise<boolean> {
 }
 
 /**
+ * The welcome email has its own switch, below the marketing one, and it is
+ * OFF unless the `welcome_emails_enabled` row says otherwise. The list is
+ * mailed through campaigns only for now; turning this on later sends a
+ * welcome to every subscriber who never had one, however long ago they
+ * joined, so clear that backlog first.
+ */
+export async function isWelcomeEnabled(prisma: PrismaLike): Promise<boolean> {
+  if (!(await isMarketingEnabled(prisma))) return false;
+  const setting = await prisma.setting.findUnique({ where: { key: 'welcome_emails_enabled' } });
+  return setting?.value === 'true';
+}
+
+/**
  * 32 url-safe characters from the CSPRNG. Long enough that guessing one to
  * unsubscribe a stranger is not a thing, short enough to survive being
  * wrapped by a mail client mid-URL.

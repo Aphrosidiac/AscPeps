@@ -552,8 +552,14 @@ export const adminGetCampaigns = (token: string, params?: Record<string, string>
 export const adminGetCampaign = (token: string, id: string) =>
   api.get(`/api/v1/admin/campaigns/${id}`, auth(token)).then((r) => r.data);
 
+export const adminPreviewCampaign = (token: string, id: string, as?: 'order') =>
+  api.get<{ subject: string; html: string; text: string }>(`/api/v1/admin/campaigns/${id}/preview`, {
+    ...auth(token),
+    params: as ? { as } : undefined,
+  }).then((r) => r.data);
+
 export const adminAudienceCount = (token: string, audience: string) =>
-  api.get<{ audience: string; count: number }>('/api/v1/admin/campaigns/audience-count', {
+  api.get<{ audience: string; count: number; fromOrders: number }>('/api/v1/admin/campaigns/audience-count', {
     ...auth(token),
     params: { audience },
   }).then((r) => r.data);

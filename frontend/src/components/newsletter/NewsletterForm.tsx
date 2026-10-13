@@ -71,7 +71,7 @@ export function NewsletterForm({
         )}
       >
         <Check className="w-4 h-4 mt-0.5 shrink-0 text-success" aria-hidden />
-        <span>Check your inbox — your reference links are on the way.</span>
+        <span>You&apos;re on the list. Restocks and new batch COAs will land in your inbox.</span>
       </p>
     );
   }

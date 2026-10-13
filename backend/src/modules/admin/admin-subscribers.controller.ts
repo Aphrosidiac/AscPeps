@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
-import { newUnsubscribeToken, unsubscribeUrl } from '../../utils/marketing.js';
+import { newUnsubscribeToken, unsubscribeUrl, isWelcomeEnabled } from '../../utils/marketing.js';
 import { renderWelcome, type WelcomeDiscount } from '../../emails/welcome.js';
 
 // Mirrors the welcome sweep's own ceiling (utils/marketing-worker.ts) so the
@@ -13,7 +13,7 @@ const MAX_WELCOME_ATTEMPTS = 4;
 const listQuerySchema = z.object({
   search: z.string().optional(),
   status: z.enum(['SUBSCRIBED', 'UNSUBSCRIBED']).optional(),
-  source: z.enum(['FOOTER', 'CHECKOUT', 'ADMIN']).optional(),
+  source: z.enum(['FOOTER', 'CHECKOUT', 'ADMIN', 'ORDER']).optional(),
 });
 
 function buildWhere(query: Record<string, string>): Prisma.SubscriberWhereInput {
@@ -79,8 +79,10 @@ export async function adminSubscriberStats(fastify: FastifyInstance) {
   const [subscribed, unsubscribed, last30Days, pendingWelcome, delivered, deliveryIssues, bySource] = await Promise.all([
     fastify.prisma.subscriber.count({ where: { status: 'SUBSCRIBED' } }),
     fastify.prisma.subscriber.count({ where: { status: 'UNSUBSCRIBED' } }),
-    fastify.prisma.subscriber.count({ where: { createdAt: { gte: since } } }),
-    fastify.prisma.subscriber.count({ where: { welcomeSentAt: null, status: 'SUBSCRIBED' } }),
+    // Rows added from orders by a campaign are not signups — counting them
+    // would make one customer send look like a month of the form working.
+    fastify.prisma.subscriber.count({ where: { createdAt: { gte: since }, source: { not: 'ORDER' } } }),
+    fastify.prisma.subscriber.count({ where: { welcomeSentAt: null, status: 'SUBSCRIBED', source: { not: 'ORDER' } } }),
     fastify.prisma.subscriber.count({ where: { welcomeStatus: 'DELIVERED' } }),
     // Two ways a welcome ends up needing a human: Resend/the recipient's
     // server rejected the send outright (bounced/complained), or the sweep
@@ -105,6 +107,7 @@ export async function adminSubscriberStats(fastify: FastifyInstance) {
     unsubscribed,
     last30Days,
     pendingWelcome,
+    welcomeEnabled: await isWelcomeEnabled(fastify.prisma),
     delivered,
     deliveryIssues,
     bySource: Object.fromEntries(bySource.map((r) => [r.source, r._count._all])),

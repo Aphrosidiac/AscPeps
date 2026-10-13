@@ -8,6 +8,7 @@ import {
   adminDeleteCampaign,
   adminSendTestCampaign,
   adminSendCampaign,
+  adminPreviewCampaign,
 } from './admin-campaigns.controller.js';
 
 export default async function adminCampaignRoutes(fastify: FastifyInstance) {
@@ -25,6 +26,11 @@ export default async function adminCampaignRoutes(fastify: FastifyInstance) {
   fastify.get('/:id', async (request) => {
     const { id } = request.params as { id: string };
     return adminGetCampaign(fastify, id);
+  });
+
+  fastify.get('/:id/preview', async (request) => {
+    const { id } = request.params as { id: string };
+    return adminPreviewCampaign(fastify, id, request.query as Record<string, string>);
   });
 
   fastify.post('/', async (request) => adminCreateCampaign(fastify, request.body));

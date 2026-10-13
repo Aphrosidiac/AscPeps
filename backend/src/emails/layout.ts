@@ -109,6 +109,15 @@ export function emailThumbUrl(imageUrl?: string | null): string | null {
   return `${abs}?v=${ASSET_VERSION}`;
 }
 
+/** Stored product image -> the 640x512 campaign-card JPEG sibling, absolute.
+ *  See writeEmailCard() in admin-upload.routes.ts. */
+export function emailCardUrl(imageUrl?: string | null): string | null {
+  if (!imageUrl) return null;
+  const jpg = imageUrl.replace(/\.[^./]+$/, '') + '.card.jpg';
+  const abs = jpg.startsWith('http') ? jpg : `${ASSETS}${jpg.startsWith('/') ? '' : '/'}${jpg}`;
+  return `${abs}?v=${ASSET_VERSION}`;
+}
+
 // Order shape the templates render. `imageUrl` is optional because not every
 // caller's Prisma include selects it yet, and because 12 of 69 variants have no
 // image at all — both cases fall through to the placeholder tile.
@@ -372,9 +381,11 @@ function renderPreheader(text: string): string {
  * unsubscribe link styled to hide is the thing that earns a spam complaint
  * instead of a quiet opt-out, and a complaint costs far more.
  */
-function renderUnsubscribe(url: string): string {
+export const UNSUBSCRIBE_REASON_SIGNUP = "You're receiving this because you signed up for Ascend MY updates.";
+
+function renderUnsubscribe(url: string, reason: string): string {
   return `<p class="muted" style="margin:12px 0 0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">
-              You're receiving this because you signed up for Ascend MY updates.<br>
+              ${escapeHtml(reason)}<br>
               <a href="${escapeHtml(url)}" class="muted" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>
             </p>`;
 }
@@ -386,6 +397,9 @@ export interface LayoutOptions {
   settings: Record<string, string>;
   /** Marketing mail only. See renderUnsubscribe. */
   unsubscribeUrl?: string;
+  /** Why this person is on the list, said truthfully above the unsubscribe
+   *  link — someone added from an order never signed up for anything. */
+  unsubscribeReason?: string;
   /** The trust strip above the footer. On by default; off for mail where it
    *  would read as a sales pitch (the email verification mail, mainly). */
   trust?: boolean;
@@ -453,6 +467,7 @@ a.ink { color:#0A0A0A !important; }
   .btn-a      { color:#0A0A0A !important; }
   .code-box   { border-color:#f5f5f5 !important; }
   .thumb-empty{ background-color:#262626 !important; }
+  .tile       { background-color:#1c1c1c !important; }
 }
 /* Outlook.com and Outlook for Android rewrite the document and prefix it with
    these attributes instead of honouring the media query above. */
@@ -470,6 +485,7 @@ a.ink { color:#0A0A0A !important; }
 [data-ogsc] .eyebrow    { border-bottom-color:#f5f5f5 !important; }
 [data-ogsc] .code-box   { border-color:#f5f5f5 !important; }
 [data-ogsc] .thumb-empty{ background-color:#262626 !important; }
+[data-ogsc] .tile       { background-color:#1c1c1c !important; }
 
 /* Refinement only — never the thing standing between the layout and a phone.
    The Gmail app renders mail from non-Google accounts with <style> stripped
@@ -506,7 +522,7 @@ ${o.body}
             <p class="muted" style="margin:0;font-family:${FONT};font-size:11px;line-height:1.7;color:${MUTED};">
               ${disclaimer}<br>
               <a href="${SITE_URL}" class="muted" style="color:${MUTED};text-decoration:underline;">ascendpeptides.my</a>
-            </p>${o.unsubscribeUrl ? renderUnsubscribe(o.unsubscribeUrl) : ''}
+            </p>${o.unsubscribeUrl ? renderUnsubscribe(o.unsubscribeUrl, o.unsubscribeReason ?? UNSUBSCRIBE_REASON_SIGNUP) : ''}
           </td>
         </tr>
       </table>

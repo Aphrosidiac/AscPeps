@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Download, Mail, Plus, RefreshCw, Search, Trash2, UserMinus, AlertTriangle,
-  X, Info, Send, CheckCircle2, Clock, XCircle, Eye, ShieldAlert,
+  X, Info, Send, CheckCircle2, Clock, XCircle, Eye, ShieldAlert, MinusCircle,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -28,7 +28,7 @@ interface Subscriber {
   id: string;
   email: string;
   status: 'SUBSCRIBED' | 'UNSUBSCRIBED';
-  source: 'FOOTER' | 'CHECKOUT' | 'ADMIN';
+  source: 'FOOTER' | 'CHECKOUT' | 'ADMIN' | 'ORDER';
   createdAt: string;
   unsubscribedAt: string | null;
   unsubscribeReason: string | null;
@@ -48,6 +48,7 @@ interface Stats {
   unsubscribed: number;
   last30Days: number;
   pendingWelcome: number;
+  welcomeEnabled: boolean;
   delivered: number;
   deliveryIssues: number;
   bySource: Record<string, number>;
@@ -57,22 +58,30 @@ const SOURCE_LABELS: Record<Subscriber['source'], string> = {
   FOOTER: 'Site',
   CHECKOUT: 'Checkout',
   ADMIN: 'Added by hand',
+  ORDER: 'From an order',
 };
 
 // One badge per row, driven by the same fields the flow drawer reads — the
 // list and the drawer never disagree about what state a subscriber is in.
-function welcomeBadge(s: Subscriber): { label: string; color: string; icon: typeof Send } {
+// `welcomeOn` is the welcome_emails_enabled switch. While it is off, an
+// unsent welcome is not "queued" — nothing is coming — and saying so would
+// send someone looking for a stuck worker.
+function welcomeBadge(s: Subscriber, welcomeOn: boolean): { label: string; color: string; icon: typeof Send } {
+  if (s.source === 'ORDER') return { label: 'None', color: 'bg-surface-elevated text-text-muted', icon: MinusCircle };
   if (s.welcomeStatus === 'DELIVERED') return { label: 'Delivered', color: 'bg-green-100 text-green-800', icon: CheckCircle2 };
   if (s.welcomeStatus === 'BOUNCED') return { label: 'Bounced', color: 'bg-red-100 text-red-700', icon: XCircle };
   if (s.welcomeStatus === 'COMPLAINED') return { label: 'Marked as spam', color: 'bg-red-100 text-red-700', icon: ShieldAlert };
   if (s.welcomeStatus === 'SENT') return { label: 'Sent', color: 'bg-blue-100 text-blue-800', icon: Send };
   if (s.welcomeExhausted) return { label: 'Failed', color: 'bg-red-100 text-red-700', icon: XCircle };
   if (s.welcomeError) return { label: `Retrying ×${s.welcomeAttempts}`, color: 'bg-amber-100 text-amber-800', icon: RefreshCw };
+  if (!welcomeOn) return { label: 'Off', color: 'bg-surface-elevated text-text-muted', icon: MinusCircle };
   return { label: 'Queued', color: 'bg-surface-elevated text-text-secondary', icon: Clock };
 }
 
 const WELCOME_LEGEND = [
   ['Queued', 'Signed up. Waiting for the welcome sweep to pick it up (runs every few minutes).'],
+  ['Off', 'Welcome emails are switched off, so none will be sent. The list is mailed through campaigns.'],
+  ['None', 'Added from an order by a campaign, not a signup form. Never gets a welcome.'],
   ['Retrying ×N', 'Send failed at least once — the sweep is backing off and will try again automatically.'],
   ['Sent', 'Handed off to our email provider (Resend). Waiting for delivery confirmation.'],
   ['Delivered', "Confirmed accepted by the recipient's mail server."],
@@ -154,7 +163,7 @@ export default function AdminSubscribersPage() {
     ? [
         { label: 'Subscribed', value: stats.subscribed },
         { label: 'Joined (30 days)', value: stats.last30Days },
-        { label: 'Awaiting welcome', value: stats.pendingWelcome },
+        { label: 'Awaiting welcome', value: stats.welcomeEnabled ? stats.pendingWelcome : 'Off' },
         { label: 'Delivered', value: stats.delivered },
         { label: 'Delivery issues', value: stats.deliveryIssues, accent: stats.deliveryIssues > 0 },
         { label: 'Unsubscribed', value: stats.unsubscribed },
@@ -311,7 +320,7 @@ export default function AdminSubscribersPage() {
               </thead>
               <tbody>
                 {subscribers.map((s) => {
-                  const welcome = welcomeBadge(s);
+                  const welcome = welcomeBadge(s, stats?.welcomeEnabled ?? false);
                   return (
                     <tr
                       key={s.id}
@@ -405,6 +414,7 @@ export default function AdminSubscribersPage() {
       {flowTarget && (
         <SubscriberFlowDrawer
           subscriber={flowTarget}
+          welcomeOn={stats?.welcomeEnabled ?? false}
           token={token}
           onClose={() => setFlowTarget(null)}
           onRetry={() => token && act(adminRetryWelcomeEmail(token, flowTarget.id))}
@@ -456,10 +466,13 @@ interface TimelineStep {
 // webhook (resend-webhook.controller.ts) reports delivery back. Every step here
 // maps to one of those, in order, so "what did the user do to get here" always
 // has a concrete answer.
-function buildTimeline(s: Subscriber): TimelineStep[] {
+function buildTimeline(s: Subscriber, welcomeOn: boolean): TimelineStep[] {
   const steps: TimelineStep[] = [
-    { label: 'Signed up', timestamp: s.createdAt, state: 'done', detail: `via ${SOURCE_LABELS[s.source]}` },
+    s.source === 'ORDER'
+      ? { label: 'Added from an order', timestamp: s.createdAt, state: 'done', detail: 'A paid customer, added when a campaign was sent to all customers.' }
+      : { label: 'Signed up', timestamp: s.createdAt, state: 'done', detail: `via ${SOURCE_LABELS[s.source]}` },
   ];
+  if (s.source === 'ORDER') return steps;
 
   if (!s.welcomeSentAt) {
     if (s.welcomeExhausted) {
@@ -476,6 +489,8 @@ function buildTimeline(s: Subscriber): TimelineStep[] {
         state: 'error',
         detail: `Last error: ${s.welcomeError}. The sweep will try again automatically.`,
       });
+    } else if (!welcomeOn) {
+      steps.push({ label: 'Welcome emails off', timestamp: null, state: 'current', detail: 'Nothing will be sent until the welcome switch is turned on.' });
     } else {
       steps.push({ label: 'Queued', timestamp: null, state: 'current', detail: 'Waiting for the welcome sweep to send it.' });
     }
@@ -505,9 +520,10 @@ function TimelineDot({ state }: { state: TimelineStep['state'] }) {
 }
 
 function SubscriberFlowDrawer({
-  subscriber, token, onClose, onRetry, onUnsubscribe,
+  subscriber, welcomeOn, token, onClose, onRetry, onUnsubscribe,
 }: {
   subscriber: Subscriber;
+  welcomeOn: boolean;
   token: string | null;
   onClose: () => void;
   onRetry: () => void;
@@ -526,8 +542,8 @@ function SubscriberFlowDrawer({
     return () => { stale = true; };
   }, [tab, token, subscriber.id, preview]);
 
-  const timeline = buildTimeline(subscriber);
-  const welcome = welcomeBadge(subscriber);
+  const timeline = buildTimeline(subscriber, welcomeOn);
+  const welcome = welcomeBadge(subscriber, welcomeOn);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">

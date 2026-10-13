@@ -64,6 +64,9 @@ export interface SendEmailParams {
   subject: string;
   html: string;
   attachments?: { filename: string; content: Buffer }[];
+  // Plain-text alternative. Marketing sends carry one: an HTML-only bulk
+  // message is a mild spam signal, and it is what a text-only client shows.
+  text?: string;
   // Extra RFC headers. Only marketing mail uses this, to carry the
   // List-Unsubscribe pair (see utils/marketing.ts) that Gmail and Yahoo now
   // require on bulk sends — omitting it is itself treated as a spam signal.
@@ -89,6 +92,7 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string }
     to: params.to,
     subject: params.subject,
     html: params.html,
+    text: params.text,
     attachments: params.attachments,
     headers: params.headers,
   });

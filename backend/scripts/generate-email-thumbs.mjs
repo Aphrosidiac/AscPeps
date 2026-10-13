@@ -10,6 +10,9 @@
  * existed. Without it, product thumbnails in the mail templates fall back to
  * the placeholder tile for the entire existing catalogue.
  *
+ * It also writes the `<id>.card.jpg` sibling (640x512) that campaign product
+ * cards use — same reason, larger picture.
+ *
  * Idempotent: skips any thumb that already exists unless --force is passed.
  * Safe to re-run. Run on the box that owns the uploads directory:
  *
@@ -27,6 +30,47 @@ const EMAIL_THUMB_WIDTH = 160;
 const EMAIL_THUMB_QUALITY = 80;
 const thumbName = (f) => f.replace(/\.[^.]+$/, '') + '.email.jpg';
 
+// Mirrors writeEmailCard() in admin-upload.routes.ts.
+const EMAIL_CARD_WIDTH = 640;
+const EMAIL_CARD_HEIGHT = 512;
+const EMAIL_CARD_QUALITY = 82;
+const EMAIL_CARD_BIAS = 0.82;
+const cardName = (f) => f.replace(/\.[^.]+$/, '') + '.card.jpg';
+
+// Each output: its file name, and how to make it from the source.
+const OUTPUTS = [
+  {
+    name: thumbName,
+    make: (src, dest) =>
+      sharp(src)
+        .rotate()
+        .resize({ width: EMAIL_THUMB_WIDTH, withoutEnlargement: true })
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: EMAIL_THUMB_QUALITY, mozjpeg: true })
+        .toFile(dest),
+  },
+  {
+    name: cardName,
+    make: async (src, dest) => {
+      const { data, info } = await sharp(src)
+        .rotate()
+        .resize({ width: EMAIL_CARD_WIDTH })
+        .flatten({ background: '#ffffff' })
+        .toBuffer({ resolveWithObject: true });
+      const out =
+        info.height >= EMAIL_CARD_HEIGHT
+          ? sharp(data).extract({
+              left: 0,
+              top: Math.round((info.height - EMAIL_CARD_HEIGHT) * EMAIL_CARD_BIAS),
+              width: info.width,
+              height: EMAIL_CARD_HEIGHT,
+            })
+          : sharp(data).resize({ width: EMAIL_CARD_WIDTH, height: EMAIL_CARD_HEIGHT, fit: 'cover' });
+      return out.jpeg({ quality: EMAIL_CARD_QUALITY, mozjpeg: true }).toFile(dest);
+    },
+  },
+];
+
 const uploadsDir = path.resolve(process.cwd(), 'uploads/products');
 
 const exists = (p) => access(p).then(() => true, () => false);
@@ -39,37 +83,34 @@ async function main() {
   }
 
   const files = (await readdir(uploadsDir))
-    // Only real source images. `.email.jpg` files are our own output — picking
-    // them up again would generate `<id>.email.email.jpg` on every run.
-    .filter((f) => /\.(webp|jpe?g|png|avif)$/i.test(f) && !f.endsWith('.email.jpg'));
+    // Only real source images. `.email.jpg` / `.card.jpg` files are our own
+    // output — picking them up again would generate `<id>.email.email.jpg`.
+    .filter((f) => /\.(webp|jpe?g|png|avif)$/i.test(f) && !f.endsWith('.email.jpg') && !f.endsWith('.card.jpg'));
 
   let made = 0, skipped = 0, failed = 0, bytes = 0;
 
   for (const f of files) {
     const src = path.join(uploadsDir, f);
-    const dest = path.join(uploadsDir, thumbName(f));
+    for (const out of OUTPUTS) {
+      const dest = path.join(uploadsDir, out.name(f));
 
-    if (!FORCE && (await exists(dest))) { skipped++; continue; }
-    if (DRY) { console.log(`would write ${thumbName(f)}`); made++; continue; }
+      if (!FORCE && (await exists(dest))) { skipped++; continue; }
+      if (DRY) { console.log(`would write ${out.name(f)}`); made++; continue; }
 
-    try {
-      await sharp(src)
-        .rotate()
-        .resize({ width: EMAIL_THUMB_WIDTH, withoutEnlargement: true })
-        .flatten({ background: '#ffffff' })
-        .jpeg({ quality: EMAIL_THUMB_QUALITY, mozjpeg: true })
-        .toFile(dest);
-      bytes += (await stat(dest)).size;
-      made++;
-    } catch (err) {
-      console.error(`FAILED ${f}: ${err.message}`);
-      failed++;
+      try {
+        await out.make(src, dest);
+        bytes += (await stat(dest)).size;
+        made++;
+      } catch (err) {
+        console.error(`FAILED ${out.name(f)}: ${err.message}`);
+        failed++;
+      }
     }
   }
 
   console.log(
     `\n${DRY ? '[dry run] ' : ''}${files.length} source images — ` +
-      `${made} thumb(s) ${DRY ? 'to write' : 'written'}, ${skipped} already present, ${failed} failed` +
+      `${made} file(s) ${DRY ? 'to write' : 'written'}, ${skipped} already present, ${failed} failed` +
       (bytes ? ` (${(bytes / 1024).toFixed(0)}KB total, ${(bytes / made / 1024).toFixed(1)}KB avg)` : '')
   );
   if (failed) process.exitCode = 1;

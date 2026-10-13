@@ -1348,6 +1348,10 @@ enum SubscriberSource {
   FOOTER
   CHECKOUT
   ADMIN
+  // Added at send time by a CUSTOMERS campaign: someone with a paid order who
+  // never used a signup form. The row exists so they carry an unsubscribe
+  // token like everyone else, and so an opt-out sticks for every later send.
+  ORDER
 }
 
 // One marketing send. Content is a plain-text body plus an optional single
@@ -1366,6 +1370,17 @@ model Campaign {
   body      String
   ctaLabel  String?
   ctaUrl    String?
+
+  // Hero. `headline` falls back to the subject when empty; `subhead` is the
+  // muted second clause, `badge` the status chip above both.
+  headline String?
+  subhead  String?
+  badge    String?
+  // Products to feature, in display order: the first is the large spotlight,
+  // the rest a two-up grid. Ids only — name, price, photo and stock are read
+  // at send time, so an email never quotes a price or stock level that has
+  // since changed.
+  productIds String[] @default([])
 
   audience CampaignAudience @default(ALL)
   status   CampaignStatus   @default(DRAFT)
@@ -1391,6 +1406,9 @@ enum CampaignAudience {
   BUYERS
   // Subscribers with no paid order — the "you signed up but never bought" cut.
   NON_BUYERS
+  // Every subscriber plus every paid customer who never signed up. Anyone who
+  // unsubscribed stays out.
+  CUSTOMERS
 }
 
 enum CampaignStatus {

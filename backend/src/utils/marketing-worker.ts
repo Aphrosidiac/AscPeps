@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { Subscriber, CampaignRecipient, Campaign } from '@prisma/client';
 import { sendEmail, marketingFrom } from './email.js';
-import { isMarketingEnabled, listUnsubscribeHeaders, unsubscribeUrl, newWelcomeCode } from './marketing.js';
+import { isMarketingEnabled, isWelcomeEnabled, listUnsubscribeHeaders, unsubscribeUrl, newWelcomeCode } from './marketing.js';
 import { renderWelcome, type WelcomeDiscount } from '../emails/welcome.js';
-import { renderCampaign } from '../emails/campaign.js';
+import { renderCampaign, loadCampaignProducts, unsubscribeReasonFor, type CampaignProduct } from '../emails/campaign.js';
 
 // Resend's account-level ceiling is 2 requests/second. Pacing at 550ms keeps
 // a burst comfortably under it without needing a token bucket — going over
@@ -152,13 +152,17 @@ let welcomeRunning = false;
  * `welcomeError` for the admin list to show.
  */
 export async function processWelcomeEmails(fastify: FastifyInstance): Promise<void> {
-  if (welcomeRunning || !(await isMarketingEnabled(fastify.prisma))) return;
+  if (welcomeRunning || !(await isWelcomeEnabled(fastify.prisma))) return;
   welcomeRunning = true;
   try {
     const due = await fastify.prisma.subscriber.findMany({
       where: {
         welcomeSentAt: null,
         status: 'SUBSCRIBED',
+        // Added from an order, not a signup form: there is nothing to welcome
+        // them to, and a discount code minted for them would be a gift nobody
+        // asked to hand out.
+        source: { not: 'ORDER' },
         welcomeAttempts: { lt: MAX_ATTEMPTS },
       },
       orderBy: { createdAt: 'asc' },
@@ -181,7 +185,8 @@ export async function processWelcomeEmails(fastify: FastifyInstance): Promise<vo
 async function processCampaignRecipient(
   fastify: FastifyInstance,
   row: CampaignRecipient & { campaign: Campaign; subscriber: Subscriber },
-  settings: Record<string, string>
+  settings: Record<string, string>,
+  products: CampaignProduct[]
 ): Promise<void> {
   // Someone who left the list between the send being queued and this row
   // coming up must not be mailed. Materialising recipients up front is what
@@ -197,12 +202,18 @@ async function processCampaignRecipient(
 
   try {
     const url = unsubscribeUrl(row.subscriber.unsubscribeToken);
-    const { subject, html } = renderCampaign(row.campaign, url, settings);
+    const { subject, html, text } = renderCampaign(row.campaign, {
+      unsubscribeUrl: url,
+      settings,
+      products,
+      reason: unsubscribeReasonFor(row.subscriber.source),
+    });
 
     const { id: resendId } = await sendEmail({
       to: row.toEmail,
       subject,
       html,
+      text,
       from: marketingFrom(),
       headers: listUnsubscribeHeaders(row.subscriber.unsubscribeToken),
     });
@@ -249,9 +260,17 @@ export async function processCampaigns(fastify: FastifyInstance): Promise<void> 
     if (rows.length > 0) {
       const settingsRows = await fastify.prisma.setting.findMany();
       const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+      // Products read once per campaign per batch, not once per recipient:
+      // the same 40 people see the same prices, and it is one query, not 40.
+      const productsByCampaign = new Map<string, CampaignProduct[]>();
+      for (const row of rows) {
+        if (!productsByCampaign.has(row.campaignId)) {
+          productsByCampaign.set(row.campaignId, await loadCampaignProducts(fastify.prisma, row.campaign.productIds));
+        }
+      }
       for (const [index, row] of rows.entries()) {
         if (index > 0) await sleep(SEND_SPACING_MS);
-        await processCampaignRecipient(fastify, row, settings);
+        await processCampaignRecipient(fastify, row, settings, productsByCampaign.get(row.campaignId) ?? []);
       }
     }
 

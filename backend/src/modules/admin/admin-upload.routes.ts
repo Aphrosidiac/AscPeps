@@ -31,6 +31,50 @@ export function emailThumbFilename(filename: string): string {
   return filename.replace(/\.[^.]+$/, '') + '.email.jpg';
 }
 
+// The campaign product cards need a picture an order of magnitude larger than
+// the 56px order-line thumb: 528px wide at most, so 640 covers it at ~1.2x
+// and the half-width grid tiles at 2.4x. Cropped to 5:4 rather than kept
+// square — a square photo that wide is a full phone screen of vial before the
+// reader reaches a price. Not sharp's "attention" crop, which took the vial's
+// cap off. Measured on the studio shots at 640px: the cap starts at y=123 and
+// the corner pill mark ends at y=599, so a 512px window has to start between
+// 88 and 123. Taking 82% of the spare height from the top starts it at 105,
+// leaving the same margin above the cap as below the mark.
+const EMAIL_CARD_WIDTH = 640;
+const EMAIL_CARD_HEIGHT = 512;
+const EMAIL_CARD_QUALITY = 82;
+const EMAIL_CARD_BIAS = 0.82;
+
+/** `<id>.webp` -> `<id>.card.jpg`. Mirrored by emailCardUrl() in emails/layout.ts. */
+export function emailCardFilename(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '') + '.card.jpg';
+}
+
+/** Writes the campaign-card JPEG sibling. Never throws, same as the thumb:
+ *  a missing card falls back to the typographic tile. */
+export async function writeEmailCard(sourcePath: string, destPath: string): Promise<boolean> {
+  try {
+    const { data, info } = await sharp(sourcePath)
+      .rotate()
+      .resize({ width: EMAIL_CARD_WIDTH })
+      .flatten({ background: '#ffffff' })
+      .toBuffer({ resolveWithObject: true });
+    const out =
+      info.height >= EMAIL_CARD_HEIGHT
+        ? sharp(data).extract({
+            left: 0,
+            top: Math.round((info.height - EMAIL_CARD_HEIGHT) * EMAIL_CARD_BIAS),
+            width: info.width,
+            height: EMAIL_CARD_HEIGHT,
+          })
+        : sharp(data).resize({ width: EMAIL_CARD_WIDTH, height: EMAIL_CARD_HEIGHT, fit: 'cover' });
+    await out.jpeg({ quality: EMAIL_CARD_QUALITY, mozjpeg: true }).toFile(destPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Writes the email-safe JPEG sibling. Never throws — a missing thumb degrades
  *  to the placeholder tile in the mail template, which is not worth failing an
  *  upload over. */
@@ -124,6 +168,10 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     await writeEmailThumb(
       path.join(uploadsDir, filename),
       path.join(uploadsDir, emailThumbFilename(filename))
+    );
+    await writeEmailCard(
+      path.join(uploadsDir, filename),
+      path.join(uploadsDir, emailCardFilename(filename))
     );
     await unlink(tmppath).catch(() => {});
 
