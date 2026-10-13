@@ -42,6 +42,16 @@ const campaignFields = z.object({
   // the email stops having a point.
   productIds: z.array(z.string().min(1).max(40)).max(7).optional(),
   audience: z.enum(AUDIENCES),
+  excludeOrderedWithinDays: z.number().int().min(1).max(365).nullable().optional(),
+  excludeOpenOrders: z.boolean().optional(),
+  excludeBoughtProductIds: z.array(z.string().min(1).max(40)).max(30).optional(),
+  // Stored normalised, the same way Subscriber.email is, so a match is an
+  // exact string compare and "A@x.com" cannot slip past "a@x.com".
+  excludeEmails: z
+    .array(z.string().trim().toLowerCase().email().max(200))
+    .max(1000)
+    .optional()
+    .transform((v) => (v ? [...new Set(v)] : v)),
 });
 
 const campaignSchema = campaignFields.extend({ audience: z.enum(AUDIENCES).default('ALL') });
@@ -108,6 +118,120 @@ async function resolveAudience(
     select: { id: true, email: true },
   });
   return { existing, toAdd: [] };
+}
+
+export type ExclusionReason = 'manual' | 'recent' | 'open' | 'bought';
+
+export interface AudienceRow {
+  email: string;
+  /** Null for a paid customer with no subscriber row yet — created on send. */
+  subscriberId: string | null;
+  kind: 'SUBSCRIBER' | 'ORDER';
+  paidOrders: number;
+  lastPaidAt: Date | null;
+  excluded: ExclusionReason | null;
+}
+
+interface ExclusionRules {
+  audience: CampaignAudience;
+  excludeOrderedWithinDays: number | null;
+  excludeOpenOrders: boolean;
+  excludeBoughtProductIds: string[];
+  excludeEmails: string[];
+}
+
+// Paid, not yet delivered or cancelled: the parcel is still on its way.
+const OPEN_ORDER_STATUSES = new Set(['PENDING', 'CONFIRMED', 'SHIPPED']);
+
+/**
+ * Everyone the audience reaches, each marked with the first exclusion that
+ * removes them, if any. The single source for the composer's recipient list,
+ * its counts, and the send itself — so the number on the button is the number
+ * that goes out, and every excluded person has a stated reason.
+ *
+ * A specific exclusion is checked first because it is the most deliberate:
+ * someone removed by hand should read "excluded by you", not by whichever
+ * broad rule also happened to catch them.
+ */
+export async function buildRecipients(fastify: FastifyInstance, rules: ExclusionRules): Promise<AudienceRow[]> {
+  const { existing, toAdd } = await resolveAudience(fastify, rules.audience);
+  const base = [
+    ...existing.map((r) => ({ email: r.email, subscriberId: r.id as string | null, kind: 'SUBSCRIBER' as const })),
+    ...toAdd.map((email) => ({ email, subscriberId: null, kind: 'ORDER' as const })),
+  ];
+  if (base.length === 0) return [];
+
+  const orders = await fastify.prisma.order.findMany({
+    where: { paymentStatus: 'PAID', deletedAt: null, email: { not: null } },
+    select: { email: true, status: true, paidAt: true, createdAt: true },
+  });
+  const stats = new Map<string, { paidOrders: number; lastPaidAt: Date | null; open: boolean }>();
+  for (const o of orders) {
+    const e = o.email!.trim().toLowerCase();
+    const at = o.paidAt ?? o.createdAt;
+    const cur = stats.get(e) ?? { paidOrders: 0, lastPaidAt: null, open: false };
+    cur.paidOrders += 1;
+    if (!cur.lastPaidAt || at > cur.lastPaidAt) cur.lastPaidAt = at;
+    if (OPEN_ORDER_STATUSES.has(o.status)) cur.open = true;
+    stats.set(e, cur);
+  }
+
+  let bought = new Set<string>();
+  if (rules.excludeBoughtProductIds.length) {
+    const items = await fastify.prisma.orderItem.findMany({
+      where: {
+        variant: { productId: { in: rules.excludeBoughtProductIds } },
+        order: { paymentStatus: 'PAID', deletedAt: null, email: { not: null } },
+      },
+      select: { order: { select: { email: true } } },
+    });
+    bought = new Set(items.map((i) => i.order.email!.trim().toLowerCase()));
+  }
+
+  const manual = new Set(rules.excludeEmails.map((e) => e.trim().toLowerCase()));
+  const since = rules.excludeOrderedWithinDays
+    ? new Date(Date.now() - rules.excludeOrderedWithinDays * 24 * 60 * 60 * 1000)
+    : null;
+
+  return base.map((r) => {
+    const st = stats.get(r.email);
+    let excluded: ExclusionReason | null = null;
+    if (manual.has(r.email)) excluded = 'manual';
+    else if (since && st?.lastPaidAt && st.lastPaidAt >= since) excluded = 'recent';
+    else if (rules.excludeOpenOrders && st?.open) excluded = 'open';
+    else if (bought.has(r.email)) excluded = 'bought';
+    return { ...r, paidOrders: st?.paidOrders ?? 0, lastPaidAt: st?.lastPaidAt ?? null, excluded };
+  });
+}
+
+/**
+ * The composer's audience panel: every person the base audience reaches,
+ * who is excluded and why, and the totals. Rules come from the saved
+ * campaign; the composer saves before it asks.
+ */
+export async function adminCampaignAudience(fastify: FastifyInstance, id: string) {
+  const campaign = await fastify.prisma.campaign.findUnique({ where: { id } });
+  if (!campaign) throw { statusCode: 404, message: 'Campaign not found' };
+  if (campaign.status !== 'DRAFT') {
+    // A sent campaign's audience is its recipient rows, not a live query —
+    // people have joined and left since.
+    throw { statusCode: 400, message: 'This campaign has already been sent' };
+  }
+
+  const rows = await buildRecipients(fastify, campaign);
+  const reasons: Record<ExclusionReason, number> = { manual: 0, recent: 0, open: 0, bought: 0 };
+  for (const r of rows) if (r.excluded) reasons[r.excluded] += 1;
+  const included = rows.filter((r) => !r.excluded);
+
+  return {
+    total: rows.length,
+    included: included.length,
+    excluded: rows.length - included.length,
+    reasons,
+    subscribers: included.filter((r) => r.kind === 'SUBSCRIBER').length,
+    fromOrders: included.filter((r) => r.kind === 'ORDER').length,
+    rows: rows.sort((a, b) => (b.lastPaidAt?.getTime() ?? 0) - (a.lastPaidAt?.getTime() ?? 0)),
+  };
 }
 
 export async function adminListCampaigns(fastify: FastifyInstance, query: Record<string, string>) {
@@ -241,10 +365,12 @@ export async function adminSendCampaign(fastify: FastifyInstance, id: string) {
     throw { statusCode: 400, message: 'This campaign has already been sent' };
   }
 
-  const { existing, toAdd } = await resolveAudience(fastify, campaign.audience);
-  if (existing.length + toAdd.length === 0) {
+  const rows = (await buildRecipients(fastify, campaign)).filter((r) => !r.excluded);
+  if (rows.length === 0) {
     throw { statusCode: 400, message: 'That audience currently has nobody in it' };
   }
+  const existing = rows.filter((r) => r.subscriberId).map((r) => ({ id: r.subscriberId!, email: r.email }));
+  const toAdd = rows.filter((r) => !r.subscriberId).map((r) => r.email);
 
   const recipients = await fastify.prisma.$transaction(async (tx) => {
     // Customers who never signed up get a subscriber row now, so they carry

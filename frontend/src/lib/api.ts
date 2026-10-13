@@ -552,6 +552,26 @@ export const adminGetCampaigns = (token: string, params?: Record<string, string>
 export const adminGetCampaign = (token: string, id: string) =>
   api.get(`/api/v1/admin/campaigns/${id}`, auth(token)).then((r) => r.data);
 
+export interface CampaignAudienceDetail {
+  total: number;
+  included: number;
+  excluded: number;
+  reasons: { manual: number; recent: number; open: number; bought: number };
+  subscribers: number;
+  fromOrders: number;
+  rows: {
+    email: string;
+    subscriberId: string | null;
+    kind: 'SUBSCRIBER' | 'ORDER';
+    paidOrders: number;
+    lastPaidAt: string | null;
+    excluded: 'manual' | 'recent' | 'open' | 'bought' | null;
+  }[];
+}
+
+export const adminCampaignAudience = (token: string, id: string) =>
+  api.get<CampaignAudienceDetail>(`/api/v1/admin/campaigns/${id}/audience`, auth(token)).then((r) => r.data);
+
 export const adminPreviewCampaign = (token: string, id: string, as?: 'order') =>
   api.get<{ subject: string; html: string; text: string }>(`/api/v1/admin/campaigns/${id}/preview`, {
     ...auth(token),

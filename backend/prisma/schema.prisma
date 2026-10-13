@@ -1383,6 +1383,15 @@ model Campaign {
   productIds String[] @default([])
 
   audience CampaignAudience @default(ALL)
+
+  // Exclusions, applied on top of the audience at send time. Broad rules
+  // first: anyone with a paid order in the last N days; anyone with a paid
+  // order still on its way (not yet delivered or cancelled); anyone who has
+  // ever bought one of these products. Then specific people, by address.
+  excludeOrderedWithinDays Int?
+  excludeOpenOrders        Boolean  @default(false)
+  excludeBoughtProductIds  String[] @default([])
+  excludeEmails            String[] @default([])
   status   CampaignStatus   @default(DRAFT)
 
   // Frozen at send time, not computed on read: the audience keeps moving

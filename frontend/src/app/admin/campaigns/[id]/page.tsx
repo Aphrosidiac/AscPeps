@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Send, TestTube2, Trash2, Users, Check, AlertTriangle, Loader2,
+  Send, TestTube2, Trash2, Check, AlertTriangle, Loader2,
   ArrowUp, ArrowDown, X, Plus, Search, Monitor, Smartphone,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,7 +14,6 @@ import {
   adminDeleteCampaign,
   adminSendTestCampaign,
   adminSendCampaign,
-  adminAudienceCount,
   adminPreviewCampaign,
   adminGetProducts,
 } from '@/lib/api';
@@ -26,8 +25,7 @@ import { Animate } from '@/components/ui/Animate';
 import { PageHeader } from '@/components/admin/ui';
 import { EmailPreview, InboxRow } from '@/components/admin/EmailPreview';
 import { AUDIENCE_LABELS } from '../page';
-
-type Audience = 'ALL' | 'BUYERS' | 'NON_BUYERS' | 'CUSTOMERS';
+import { AudiencePanel, type Audience, type AudienceSettings } from './AudiencePanel';
 
 interface Campaign {
   id: string;
@@ -42,19 +40,16 @@ interface Campaign {
   ctaUrl: string | null;
   productIds: string[];
   audience: Audience;
+  excludeOrderedWithinDays: number | null;
+  excludeOpenOrders: boolean;
+  excludeBoughtProductIds: string[];
+  excludeEmails: string[];
   status: 'DRAFT' | 'SENDING' | 'SENT';
   recipientCount: number;
   sentAt: string | null;
   delivery: Record<string, number>;
 }
 
-const AUDIENCE_HINTS: Record<Audience, string> = {
-  ALL: 'Everyone currently subscribed.',
-  BUYERS: 'Subscribers whose address is on at least one paid order.',
-  NON_BUYERS: 'Subscribers who have never completed an order — the follow-up cut.',
-  CUSTOMERS:
-    'Every subscriber, plus every paid customer who never signed up. Anyone who unsubscribed stays out, and the footer tells order customers why they got it.',
-};
 
 // From the cold-email study the plan was built on: subjects under 30
 // characters opened best, bodies under 100 words got replies. Shown as
@@ -103,8 +98,13 @@ export default function AdminCampaignDetailPage() {
     ctaUrl: '',
     productIds: [] as string[],
     audience: 'ALL' as Audience,
+    excludeOrderedWithinDays: null as number | null,
+    excludeOpenOrders: false,
+    excludeBoughtProductIds: [] as string[],
+    excludeEmails: [] as string[],
   });
   const [fromOrders, setFromOrders] = useState(0);
+  const [excludedCount, setExcludedCount] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
@@ -129,6 +129,10 @@ export default function AdminCampaignDetailPage() {
           ctaUrl: data.ctaUrl ?? '',
           productIds: data.productIds ?? [],
           audience: data.audience,
+          excludeOrderedWithinDays: data.excludeOrderedWithinDays ?? null,
+          excludeOpenOrders: data.excludeOpenOrders ?? false,
+          excludeBoughtProductIds: data.excludeBoughtProductIds ?? [],
+          excludeEmails: data.excludeEmails ?? [],
         });
       })
       .catch(() => {})
@@ -139,23 +143,6 @@ export default function AdminCampaignDetailPage() {
     load();
   }, [load]);
 
-  // The headcount is fetched live rather than stored, because it is decision
-  // support: what matters when someone is about to press Send is how many
-  // people that audience means *right now*.
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-    adminAudienceCount(token, form.audience)
-      .then((r) => {
-        if (cancelled) return;
-        setAudienceCount(r.count);
-        setFromOrders(r.fromOrders ?? 0);
-      })
-      .catch(() => !cancelled && setAudienceCount(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [token, form.audience]);
 
   // The catalogue for the product picker. Add-on-only supplies (swabs,
   // syringes) are left out — nobody opens an email for a swab.
@@ -200,6 +187,10 @@ export default function AdminCampaignDetailPage() {
         ctaUrl: next.ctaUrl || null,
         productIds: next.productIds,
         audience: next.audience,
+        excludeOrderedWithinDays: next.excludeOrderedWithinDays,
+        excludeOpenOrders: next.excludeOpenOrders,
+        excludeBoughtProductIds: next.excludeBoughtProductIds,
+        excludeEmails: next.excludeEmails,
       });
       setSavedAt(Date.now());
     } catch {
@@ -319,7 +310,7 @@ export default function AdminCampaignDetailPage() {
         />
       </Animate>
 
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6 items-start">
         {/* ---------------- Left: the work ---------------- */}
         <Animate variant="fadeUp" delay={0.05}>
           {isDraft ? (
@@ -460,43 +451,29 @@ export default function AdminCampaignDetailPage() {
                 />
               </Step>
 
-              <Step n={5} title="Audience">
-                <div className="space-y-2">
-                  {(Object.keys(AUDIENCE_LABELS) as Audience[]).map((value) => (
-                    <label
-                      key={value}
-                      className={cn(
-                        'flex items-start gap-2.5 p-3 rounded-lg border transition-colors cursor-pointer',
-                        form.audience === value ? 'border-primary bg-primary/5' : 'border-border hover:border-border-hover'
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="audience"
-                        checked={form.audience === value}
-                        onChange={() => {
-                          setForm((f) => ({ ...f, audience: value }));
-                          setAudienceCount(null);
-                          save({ audience: value });
-                        }}
-                        className="mt-0.5"
-                      />
-                      <span>
-                        <span className="block text-sm font-medium">{AUDIENCE_LABELS[value]}</span>
-                        <span className="block text-xs text-text-muted mt-0.5 leading-relaxed">{AUDIENCE_HINTS[value]}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 pt-1 text-sm">
-                  <Users className="w-4 h-4 text-text-muted" />
-                  <span className="text-text-secondary">
-                    {audienceCount === null ? 'Counting…' : people(audienceCount)}
-                    {audienceCount !== null && form.audience === 'CUSTOMERS' && fromOrders > 0 && (
-                      <span className="text-text-muted"> · {fromOrders} added from orders on send</span>
-                    )}
-                  </span>
-                </div>
+              <Step n={5} title="Audience" hint="Who it goes to, who it doesn't, and the exact list.">
+                <AudiencePanel
+                  token={token}
+                  campaignId={id}
+                  products={products}
+                  refreshKey={savedAt}
+                  value={{
+                    audience: form.audience,
+                    excludeOrderedWithinDays: form.excludeOrderedWithinDays,
+                    excludeOpenOrders: form.excludeOpenOrders,
+                    excludeBoughtProductIds: form.excludeBoughtProductIds,
+                    excludeEmails: form.excludeEmails,
+                  }}
+                  onChange={(patch: Partial<AudienceSettings>) => {
+                    setForm((f) => ({ ...f, ...patch }));
+                    save(patch);
+                  }}
+                  onCount={(n, orders, excluded) => {
+                    setAudienceCount(n);
+                    setFromOrders(orders);
+                    setExcludedCount(excluded);
+                  }}
+                />
               </Step>
 
               <Step n={6} title="Test, then send">
@@ -642,7 +619,8 @@ export default function AdminCampaignDetailPage() {
             </h2>
             <p className="text-sm text-text-secondary mt-2 leading-relaxed">
               &ldquo;{form.subject}&rdquo; goes to {AUDIENCE_LABELS[form.audience].toLowerCase()}
-              {form.audience === 'CUSTOMERS' && fromOrders > 0 ? `, including ${fromOrders} customers added from orders` : ''}.
+              {form.audience === 'CUSTOMERS' && fromOrders > 0 ? `, including ${fromOrders} customers added from orders` : ''}
+              {excludedCount > 0 ? `, with ${excludedCount} excluded` : ''}.
               This cannot be undone or recalled. Type <span className="font-mono font-semibold">SEND</span> to confirm.
             </p>
             <input
