@@ -126,7 +126,7 @@ export interface UserContent {
 
 export type MessageContent =
   | UserContent
-  | { text?: string; reasoning?: string; toolCalls?: { id: string; name: string; input: unknown; raw?: string }[]; reasoningDetails?: unknown[]; guard?: GuardNote; retracted?: boolean }
+  | { text?: string; reasoning?: string; toolCalls?: { id: string; name: string; input: unknown; raw?: string }[]; reasoningDetails?: unknown[]; guard?: GuardNote; retracted?: boolean; provider?: string }
   | { toolResults: { id: string; name: string; output: unknown; isError: boolean; ms: number }[] }
   | { text: string; transient?: boolean; error?: boolean }
   | { summary: string; replaces: [number, number] };
@@ -727,7 +727,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
         }
       }
 
-      const stored = await append(fastify, run.threadId, 'assistant', { text, ...(result.reasoning ? { reasoning: result.reasoning } : {}), ...(guard ? { guard } : {}) });
+      const stored = await append(fastify, run.threadId, 'assistant', { text, ...(result.reasoning ? { reasoning: result.reasoning } : {}), ...(guard ? { guard } : {}), ...(result.provider ? { provider: result.provider } : {}) });
       emit(run, { type: 'message', message: stored });
       outcome.text = text;
       break;
@@ -739,6 +739,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       ...(result.reasoning ? { reasoning: result.reasoning } : {}),
       toolCalls: calls,
       ...(result.reasoningDetails ? { reasoningDetails: result.reasoningDetails } : {}),
+      ...(result.provider ? { provider: result.provider } : {}),
     });
     emit(run, { type: 'message', message: stored });
     messages.push({

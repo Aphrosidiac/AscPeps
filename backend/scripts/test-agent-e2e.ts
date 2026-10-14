@@ -754,6 +754,45 @@ async function paidReply(poisoned: boolean) {
 await scenario('"Paid" in reply to an order notice marks it paid and keeps the note', () => paidReply(false));
 await scenario('"Paid" after a thread full of failed notes-only calls still marks it paid', () => paidReply(true));
 
+// 14 Oct 2026 on prod: "mark everything that is shipping to delivered" got
+// nine notes-only update_order calls, status never sent — the upstream host
+// OpenRouter routed to (inference-net) drops optional enum arguments. Every
+// shipped order must end DELIVERED, and the turn's model steps must say who
+// served them.
+await scenario('"mark everything shipping to delivered" moves every shipped order', async () => {
+  await reset();
+  const picked = await prisma.order.findMany({
+    where: { deletedAt: null, paymentStatus: 'PAID', status: { in: ['CONFIRMED', 'DELIVERED'] }, stockRestored: false },
+    orderBy: { createdAt: 'desc' },
+    take: 3,
+  });
+  const already = await prisma.order.findMany({ where: { deletedAt: null, status: 'SHIPPED' } });
+  const touched = [...new Map([...picked, ...already].map((o) => [o.id, o])).values()];
+  if (picked.length < 2) return { ok: false, detail: 'need 2+ paid orders in dev db' };
+  // Emails off for the run: dev's API sends its outbox for real.
+  for (const o of touched) await prisma.order.update({ where: { id: o.id }, data: { status: 'SHIPPED', email: null } });
+
+  const started = new Date();
+  const r = await send('ab mark in everything that is shipping to delivered');
+  const after = await prisma.order.findMany({ where: { id: { in: touched.map((o) => o.id) } } });
+  const rows = await toolsSince(started);
+  const steps = await prisma.agentMessage.findMany({ where: { role: 'assistant', createdAt: { gt: started }, thread: { chatKey: 'dm:0123456789' } }, select: { content: true } });
+  await prisma.emailOutbox.deleteMany({ where: { orderId: { in: touched.map((o) => o.id) }, createdAt: { gt: started } } });
+  for (const o of touched) await prisma.order.update({ where: { id: o.id }, data: { status: o.status, email: o.email, notes: o.notes } });
+
+  const left = after.filter((o) => o.status !== 'DELIVERED').map((o) => `${o.orderNumber} ${o.status}`);
+  const providers = [...new Set(steps.map((s) => (s.content as any)?.provider ?? '(none)'))];
+  const ok = !left.length && !providers.includes('(none)') && !providers.some((p) => /inference/i.test(p));
+  return {
+    ok,
+    detail: ok
+      ? `${after.length} shipped → DELIVERED, served by ${providers.join(', ')} (restored)`
+      : `${left.length ? `still not delivered: ${left.join(', ')}` : 'all delivered'}; providers ${providers.join(', ')}`,
+    reply: r.text,
+    tools: rows.map((t) => `${t.toolName}${t.ok ? '' : '✗'}`),
+  };
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log('\n' + '='.repeat(70));

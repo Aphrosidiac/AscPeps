@@ -646,9 +646,14 @@ export const orderTools: AgentTool[] = [
       if (!Object.keys(body).length) {
         const asked = ['status', 'paymentStatus', 'trackingNumber', 'notes'].filter((k) => input[k] !== undefined);
         if (!asked.length) throw new Error('Nothing to update — pass at least one field.');
+        // Name the fields a note did NOT change, as they stand — the model that
+        // sent a note believing it set the status needs to see the status.
+        // Pointing it at mark_order_paid regardless sent a "mark delivered"
+        // turn (14 Oct 2026) chasing payment instead.
         throw new Error(
           `Nothing changed: ${order.orderNumber} already has ${asked.map((k) => (k === 'notes' ? 'that note' : `${k} ${order[k] ?? 'empty'}`)).join(', ')}. ` +
-            `Its payment status is ${order.paymentStatus}. A note never changes payment status — to mark it paid, call mark_order_paid.`
+            `It is ${order.status}, payment ${order.paymentStatus}. A note never changes either: to change the status pass status (e.g. "DELIVERED")` +
+            (order.paymentStatus === 'PAID' ? '.' : '; to mark it paid call mark_order_paid.')
         );
       }
 

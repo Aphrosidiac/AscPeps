@@ -1,5 +1,6 @@
 import { env } from '../../../config/env.js';
 import { effortFor, supportsEffort } from './models.js';
+import { providerRouting } from './provider.js';
 
 // The assistant's eyes. The everyday model is text-only, so a picture an
 // operator sends is turned into text here — once, before the turn — and the
@@ -48,6 +49,7 @@ export async function readImage(image: InboundImage, opts: { signal?: AbortSigna
     ],
     max_tokens: 1500,
     usage: { include: true },
+    ...providerRouting(),
     // Low, not none: GLM refuses to switch reasoning off, and a moment of it
     // is what buys the speaker attribution.
     ...(supportsEffort(model) ? { reasoning: { effort: effortFor(model, 'low') } } : {}),

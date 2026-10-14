@@ -191,10 +191,17 @@ await check('update_order adds notes, never overwrites', async () => {
   const mid = await prisma.order.findUniqueOrThrow({ where: { id: o.id } });
   assert(mid.notes === 'G6 Hotel address\nPaid via bank transfer', `notes are "${mid.notes}"`);
   // The same note again changes nothing — refused, and the refusal names
-  // the payment status and the tool that actually marks it paid.
+  // the order's status and payment as they stand, how to change the status,
+  // and mark_order_paid only when the order is not already paid.
   let refused = '';
   await run('update_order', { orderRef: o.orderNumber, notes: 'Paid via bank transfer' }).catch((e: any) => (refused = e.message));
-  assert(/Nothing changed/.test(refused) && /mark_order_paid/.test(refused), `repeat not refused: "${refused}"`);
+  assert(
+    /Nothing changed/.test(refused) &&
+      refused.includes(`It is ${o.status}, payment ${o.paymentStatus}`) &&
+      /pass status/.test(refused) &&
+      /mark_order_paid/.test(refused) === (o.paymentStatus !== 'PAID'),
+    `repeat not refused: "${refused}"`
+  );
   await run('update_order', { orderRef: o.orderNumber, notes: 'only this', replaceNotes: true });
   const replaced = await prisma.order.findUniqueOrThrow({ where: { id: o.id } });
   assert(replaced.notes === 'only this', `replaceNotes gave "${replaced.notes}"`);

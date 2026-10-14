@@ -106,6 +106,12 @@ const envSchema = z.object({
   // usable (verified on HarvestGrow with a 20-token budget). Raise it once
   // the budget is generous and the Thinking disclosure is wanted.
   AGENT_REASONING_EFFORT: z.enum(['none', 'low', 'medium', 'high']).default('none'),
+  // OpenRouter upstream providers never to route to, comma-separated slugs.
+  // inference-net (GLM 5.3 Flash, fp4) never emits an optional enum tool
+  // argument: update_order arrived notes-only — no status, no paymentStatus —
+  // every time, while every other GLM endpoint set it (forced-provider test,
+  // 14 Oct 2026). Set to an empty string to allow every provider.
+  AGENT_PROVIDER_IGNORE: z.string().default('inference-net'),
   // The model that reads pictures operators send over WhatsApp. The everyday
   // model (DeepSeek V4 Flash) is text-only on OpenRouter, so a picture is
   // transcribed here first and the transcript goes on the operator's message,

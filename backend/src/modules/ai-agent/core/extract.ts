@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { env } from '../../../config/env.js';
 import { readImage } from './vision.js';
+import { providerRouting } from './provider.js';
 import type { SniffedType } from '../../../utils/agent-media-store.js';
 
 // Turning a file into text the assistant can work from.
@@ -160,6 +161,7 @@ async function ocrPdf(bytes: Buffer, fileName: string): Promise<Extraction> {
       plugins: [{ id: 'file-parser', pdf: { engine: 'mistral-ocr' } }],
       max_tokens: 16_000,
       usage: { include: true },
+      ...providerRouting(),
     }),
     signal: AbortSignal.timeout(150_000),
   });

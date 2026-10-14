@@ -366,6 +366,18 @@ provider omits it), Claude Sonnet 5 (finance and customer-facing judgement).
 Escalation: DeepSeek V4 Pro, Claude Opus 5. Any other OpenRouter id can be
 saved through the API; it simply shows no price.
 
+**Who serves it.** A model id names a model, not a host: OpenRouter routes
+each call to one of dozens of upstream providers (different quantisations,
+different tool-call parsers) and keeps a long prompt on the same one for its
+cache, so one bad host fails the same thread every time. Every request (chat,
+vision, PDF OCR) carries `provider.ignore` from `AGENT_PROVIDER_IGNORE`, and
+each stored assistant step records `provider`. 14 Oct 2026: inference-net's
+GLM 5.3 Flash never emitted an optional enum argument. `update_order` arrived
+notes-only (no `status`, no `paymentStatus`) on every call, which caused both
+the 10–11 Oct "Paid" loop and the 14 Oct "mark delivered" failure. All other
+GLM hosts set the field. When a model drops arguments, force each host with
+`provider: { only: [tag], allow_fallbacks: false }` before blaming the prompt.
+
 ## Files (Oct 2026)
 
 Abby reads files, sends files, and keeps the books from them — over WhatsApp
@@ -445,6 +457,7 @@ OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=deepseek/deepseek-v4-flash   # fallback when agent_model is unset
 OPENROUTER_ESCALATION_MODEL=                  # fallback when agent_escalation_model is unset
 AGENT_REASONING_EFFORT=none                   # fallback; none | low | medium | high
+AGENT_PROVIDER_IGNORE=inference-net            # OpenRouter hosts never routed to; empty = any
 AGENT_VISION_MODEL=z-ai/glm-5.3-flash         # reads pictures sent over WhatsApp
 AGENT_GROUNDING_MODE=shadow                   # off | shadow | enforce
 AGENT_MAX_FILE_MB=20                          # largest document taken in (worker reads it too)

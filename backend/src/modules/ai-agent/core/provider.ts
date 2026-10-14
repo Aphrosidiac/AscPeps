@@ -18,6 +18,18 @@ import { effortFor, supportsEffort } from './models.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+/**
+ * OpenRouter's `provider` routing for every request this module family makes.
+ * A model id names a model, not who serves it: OpenRouter picks among dozens
+ * of upstream hosts (different quantisations, different tool-call parsers)
+ * and keeps a long prompt on the same one for its cache — so one bad host
+ * fails the same thread every time. See AGENT_PROVIDER_IGNORE.
+ */
+export function providerRouting(): { provider: { ignore: string[] } } | Record<string, never> {
+  const ignore = env.AGENT_PROVIDER_IGNORE.split(',').map((s) => s.trim()).filter(Boolean);
+  return ignore.length ? { provider: { ignore } } : {};
+}
+
 export interface WireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
@@ -55,6 +67,9 @@ export interface CompletionResult {
   finishReason: string;
   usage: Usage;
   model: string;
+  // The upstream host OpenRouter routed this call to ("Z.AI", "Wafer"), when
+  // it said. Stored on the message so a host-specific fault can be traced.
+  provider?: string;
 }
 
 export interface StreamHandlers {
@@ -91,6 +106,7 @@ export async function streamCompletion(opts: CompletionOptions): Promise<Complet
     max_tokens: opts.maxTokens,
     stream: true,
     usage: { include: true },
+    ...providerRouting(),
     // `none` is the value the non-streaming agent always sent — see the note
     // on AGENT_REASONING_EFFORT in config/env.ts. A model that takes no
     // reasoning parameter at all (Haiku) is not sent one.
@@ -150,6 +166,7 @@ export async function streamCompletion(opts: CompletionOptions): Promise<Complet
       }
       if (chunk.error) throw new Error(String(chunk.error.message ?? 'The model stream reported an error'));
       if (chunk.model) out.model = chunk.model;
+      if (typeof chunk.provider === 'string' && chunk.provider) out.provider = chunk.provider;
       if (chunk.usage) {
         const cached = Number(chunk.usage.prompt_tokens_details?.cached_tokens ?? 0);
         out.usage = {
