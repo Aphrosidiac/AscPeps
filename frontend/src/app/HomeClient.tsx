@@ -114,7 +114,7 @@ export function HomeClient({
                 onTouchStart={triggerJiggle}
               />
             </Animate>
-            <Animate variant="fadeUp" delay={0.45} duration={0.7} className="md:hidden flex justify-center">
+            <Animate variant="fadeUp" delay={0.45} duration={0.7} className="md:hidden flex justify-center -mt-2">
               <Link href="/products">
                 <Button variant="secondary" size="lg">
                   Browse Products <ArrowRight className="w-4 h-4" />
