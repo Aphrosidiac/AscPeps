@@ -10,25 +10,8 @@ import { Animate, Stagger } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { BannerStrip } from '@/components/ui/BannerStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
-import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
 import type { Product, Category, Insight } from '@/types';
-
-const GREEN_ACCENT: HardsellAccent = {
-  solid: '#15803d',
-  bright: '#22c55e',
-  glow: 'rgba(21,128,61,0.2)',
-  shadow: 'rgba(21,128,61,0.45)',
-  shadowHover: 'rgba(21,128,61,0.6)',
-};
-
-const BLUE_ACCENT: HardsellAccent = {
-  solid: '#1e40af',
-  bright: '#3b82f6',
-  glow: 'rgba(30,64,175,0.2)',
-  shadow: 'rgba(30,64,175,0.45)',
-  shadowHover: 'rgba(30,64,175,0.6)',
-};
 
 interface HomeClientProps {
   products: Product[];
@@ -167,7 +150,6 @@ export function HomeClient({
             researchArticle: hardsellResearchArticle,
             headline: hardsellHeadline,
             subheadline: hardsellSubheadline,
-            accent: GREEN_ACCENT,
           },
           hardsellSlide2Product && {
             product: hardsellSlide2Product,
@@ -176,7 +158,6 @@ export function HomeClient({
             researchArticle: null,
             headline: hardsellSlide2Headline,
             subheadline: hardsellSlide2Subheadline,
-            accent: BLUE_ACCENT,
           },
         ].filter((s): s is NonNullable<typeof s> => Boolean(s));
 
