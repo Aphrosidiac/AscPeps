@@ -87,14 +87,17 @@ export const metadata: Metadata = {
     canonical: 'https://ascendpeptides.my',
   },
   manifest: '/manifest.json',
+  // Rising A mark from the brand kit (brand/production/Ascend-MY-Brand-Kit,
+  // 07_DEVELOPMENT/public), not the retired pill. /apple-touch-icon.png also
+  // sits at the root because iOS requests that path whatever the head says.
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: '48x48' },
-      { url: '/favicon.png', sizes: '48x48', type: 'image/png' },
-      { url: '/images/pill-icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/images/pill-icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/images/pill-icon-192.png',
+    apple: '/apple-touch-icon.png',
   },
   verification: {},
 };
