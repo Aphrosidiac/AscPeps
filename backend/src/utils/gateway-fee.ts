@@ -34,6 +34,10 @@ export interface FeeRule {
  * absorbs the DuitNow QR charge too (chargeDuitNowQR=0 in utils/toyyibpay.ts),
  * so the fee is ours either way. Billplz's FPX rate is the same shape.
  *
+ * CHIP is the exception to "a rule": it states the fee on the payment itself,
+ * and that figure is what gets stamped (see applyPaid). Its rule here only
+ * covers an order confirmed some other way.
+ *
  * BTCPay is self-hosted: there is no processor and no cut, so its zero is a
  * real figure rather than a placeholder. Orders with no gateway at all
  * (WhatsApp, manual bank transfer) never reach this table and stay at zero.
@@ -46,6 +50,10 @@ const DEFAULT_RULES: Record<string, FeeRule> = {
   toyyibpay: { flat: 100, bps: 0 },
   billplz: { flat: 100, bps: 0 },
   btcpay: { flat: 0, bps: 0 },
+  // CHIP reports the real fee on every paid purchase (payment.fee_amount) and
+  // applyPaid records that instead, so this is only the fallback for a payment
+  // confirmed without it (marked paid by hand). Published FPX B2C rate: RM1.
+  chip: { flat: 100, bps: 0 },
 };
 
 export function settingKeys(gateway: string): { flat: string; bps: string } {

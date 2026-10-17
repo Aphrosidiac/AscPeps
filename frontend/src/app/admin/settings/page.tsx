@@ -259,10 +259,11 @@ export default function AdminSettingsPage() {
                 <CardHeader title="Online payment" description="Card, FPX and e-wallets through a gateway. Credentials live in the server environment, not here." />
                 <CardBody className="space-y-5">
                   <Toggle checked={on('online_payment_enabled')} onChange={setBool('online_payment_enabled')} label="Accept online payment at checkout" />
-                  <Field label="Gateway" htmlFor="payment_gateway" className="max-w-xs">
+                  <Field label="Gateway" htmlFor="payment_gateway" className="max-w-sm">
                     <SelectInput id="payment_gateway" value={settings.payment_gateway || 'billplz'} onChange={setText('payment_gateway')}>
                       <option value="billplz">Billplz — FPX, e-wallets, cards</option>
                       <option value="toyyibpay">ToyyibPay — FPX, cards</option>
+                      <option value="chip">CHIP — FPX, DuitNow QR, e-wallets, cards</option>
                     </SelectInput>
                   </Field>
                 </CardBody>

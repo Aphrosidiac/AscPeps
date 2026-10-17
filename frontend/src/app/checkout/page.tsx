@@ -148,7 +148,7 @@ export default function CheckoutPage() {
   const [eastShippingFee, setEastShippingFee] = useState('');
   // Fiat gateway only. Crypto is never a value here — it's a payment method,
   // not a choice of online gateway.
-  const [paymentGateway, setPaymentGateway] = useState<'billplz' | 'toyyibpay'>('billplz');
+  const [paymentGateway, setPaymentGateway] = useState<'billplz' | 'toyyibpay' | 'chip'>('billplz');
   // Kept out of `form` because `form` is spread straight into createOrder and
   // this is a separate consent flag, not an order field. Unticked by default:
   // a pre-ticked box is not an opt-in.
@@ -195,7 +195,7 @@ export default function CheckoutPage() {
       setShippingFee(s.shipping_fee || '');
       setEastMinOrder(s.east_malaysia_min_order || '');
       setEastShippingFee(s.east_malaysia_shipping_fee || '');
-      if (s.payment_gateway === 'billplz' || s.payment_gateway === 'toyyibpay') {
+      if (s.payment_gateway === 'billplz' || s.payment_gateway === 'toyyibpay' || s.payment_gateway === 'chip') {
         setPaymentGateway(s.payment_gateway);
       }
     }).catch(() => {});
@@ -566,7 +566,13 @@ export default function CheckoutPage() {
                 // The bare "FPX via ToyyibPay" was a single short line between
                 // two three-line cards, which read as a gap rather than as the
                 // middle of a set.
-                description={paymentGateway === 'toyyibpay' ? 'Pay by FPX online banking via ToyyibPay' : 'Pay by FPX or card via Billplz'}
+                description={
+                  paymentGateway === 'toyyibpay'
+                    ? 'Pay by FPX online banking via ToyyibPay'
+                    : paymentGateway === 'chip'
+                      ? 'Pay by FPX, DuitNow QR, e-wallet or card via CHIP'
+                      : 'Pay by FPX or card via Billplz'
+                }
                 note={onlinePaymentEnabled ? undefined : 'Currently unavailable. Please use WhatsApp checkout.'}
                 accent="blue"
                 selected={paymentMethod === 'BILLPLZ'}

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { EmailOutbox } from '@prisma/client';
 import { env } from '../config/env.js';
+import { getGatewayByBillId } from './payment-gateway.js';
 import { isEmailEnabled, sendEmail } from './email.js';
 import { generateReceiptPdf } from './receipt-pdf.js';
 import { renderOrderConfirmation } from '../emails/order-confirmation.js';
@@ -32,6 +33,8 @@ export function reconstructPaymentUrl(order: { paymentGateway: string | null; pa
     const host = env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com' : 'https://www.billplz.com';
     return `${host}/bills/${order.paymentRef}`;
   }
+  // CHIP's checkout URL is derivable from the purchase id (gate.chip-in.asia/p/<id>/).
+  if (order.paymentGateway === 'chip') return getGatewayByBillId(order.paymentRef, 'chip')?.billUrl(order.paymentRef);
   // The hosted manual checkout is ours, so its page is always re-openable.
   if (order.paymentGateway === 'manualpaygate') {
     return `${env.FRONTEND_URL}/pay/${order.paymentRef}`;

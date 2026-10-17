@@ -27,6 +27,11 @@ const RELEASE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 h — give up and restock
 // would leave us holding the customer's money on an order marked FAILED.
 // Holding stock for a day is the much cheaper error.
 const CRYPTO_RELEASE_AFTER_MS = 24 * 60 * 60 * 1000; // 24 h — give up and restock
+// A gateway that reports a payment still with the acquirer (CHIP's
+// pending_execute) holds the release past the normal window — releasing then
+// could take money for an order we've just cancelled. Capped, because an
+// acquirer that never answers must not hold stock forever.
+const IN_FLIGHT_RELEASE_AFTER_MS = 24 * 60 * 60 * 1000; // 24 h
 // WhatsApp checkouts have no gateway to verify against — an order the admin
 // never confirmed just holds its reserved stock forever. Generous window
 // because confirmation is a manual chat exchange, not an instant callback.
@@ -58,13 +63,18 @@ export async function applyPaid(
     discountAmount: number;
     paymentMethod: string;
     paymentGateway: string | null;
-  }
+  },
+  /** `fee`: what the gateway reports it actually kept (CHIP does), in sen. */
+  opts: { fee?: number } = {}
 ): Promise<boolean> {
   // Stamped at the transition rather than derived on read: what it cost to
   // collect this payment is a fact about this order, and must not move when the
-  // rate is edited later. Resolved before the transaction so a settings read
-  // can't hold it open.
-  const gatewayFee = await computeGatewayFee(fastify, order.paymentGateway, order.total);
+  // rate is edited later. A figure reported on the payment itself beats the
+  // configured rate, which only estimates it. Resolved before the transaction
+  // so a settings read can't hold it open.
+  const reportedFee =
+    opts.fee != null && Number.isInteger(opts.fee) && opts.fee >= 0 ? Math.min(opts.fee, order.total) : undefined;
+  const gatewayFee = reportedFee ?? (await computeGatewayFee(fastify, order.paymentGateway, order.total));
 
   const transitioned = await fastify.prisma.$transaction(async (tx) => {
     const { count } = await tx.order.updateMany({
@@ -195,10 +205,11 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
     if (!gateway) continue;
 
     try {
-      const { paid, failureReason, channel } = await gateway.verifyPaid(order.paymentRef);
+      const { paid, failureReason, channel, pending, fee } = await gateway.verifyPaid(order.paymentRef);
+      const releaseAt = pending ? Math.max(releaseAfterMs, IN_FLIGHT_RELEASE_AFTER_MS) : releaseAfterMs;
       if (paid) {
-        await applyPaid(fastify, order);
-      } else if (order.createdAt.getTime() < now - releaseAfterMs) {
+        await applyPaid(fastify, order, { fee });
+      } else if (order.createdAt.getTime() < now - releaseAt) {
         // Classified from the same re-query that just decided the order's fate,
         // so this costs no extra gateway call. Note that seeing a decline here
         // deliberately does NOT shorten the release window: ToyyibPay bills stay

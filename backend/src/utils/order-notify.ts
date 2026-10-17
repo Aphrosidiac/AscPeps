@@ -42,7 +42,7 @@ export function announcedOnCreation(paymentMethod: string): boolean {
   return paymentMethod === 'WHATSAPP';
 }
 
-const GATEWAY_NAMES: Record<string, string> = { toyyibpay: 'ToyyibPay', billplz: 'Billplz', btcpay: 'BTCPay' };
+const GATEWAY_NAMES: Record<string, string> = { toyyibpay: 'ToyyibPay', billplz: 'Billplz', btcpay: 'BTCPay', chip: 'CHIP' };
 
 function paymentLabel(o: { paymentMethod: string; paymentGateway: string | null }): string {
   if (o.paymentMethod === 'WHATSAPP') return o.paymentGateway ? 'Bank transfer (proof uploaded online)' : 'Bank transfer via WhatsApp';

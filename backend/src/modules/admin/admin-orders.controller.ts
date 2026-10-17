@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { refundBill } from '../../utils/billplz.js';
+import { cancelPurchase, refundPurchase } from '../../utils/chip.js';
 import { restoreOrderInventory } from '../../utils/order-inventory.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { capturePurchase } from '../../utils/posthog.js';
@@ -571,6 +572,20 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     }
   }
 
+  // An unpaid CHIP order cancelled or failed by hand: close its purchase too.
+  // It stays payable until its `due` otherwise, and money paid into an order
+  // that is no longer UNPAID is never reconciled — the sweep doesn't look.
+  if (
+    order.paymentGateway === 'chip' &&
+    order.paymentRef &&
+    order.paymentStatus === 'UNPAID' &&
+    (data.status === 'CANCELLED' || data.paymentStatus === 'FAILED')
+  ) {
+    await cancelPurchase(order.paymentRef).catch((err) =>
+      fastify.log.warn({ err, orderId: order.id }, 'chip: could not cancel purchase')
+    );
+  }
+
   if (data.paymentStatus) {
     if (data.paymentStatus === 'FAILED') {
       await restoreOrderInventory(fastify, order.id);
@@ -583,6 +598,29 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
         } catch (err) {
           fastify.log.error({ err, orderId: order.id }, 'Billplz refund failed');
           throw { statusCode: 400, message: 'Refund API call failed — check logs for details' };
+        }
+      } else if (order.paymentRef && order.paymentGateway === 'chip' && order.paymentStatus === 'PAID') {
+        // CHIP refunds through the API — this moves real money back to the
+        // customer, so it happens before anything here changes, and a refusal
+        // stops the whole update. Only from PAID: re-saving an order that is
+        // already Refunded (e.g. correcting the amount) must not send a second
+        // refund — that correction belongs in the CHIP portal.
+        const amount = data.refundedAmount ?? order.total;
+        if (amount <= 0 || amount > order.total) {
+          throw {
+            statusCode: 400,
+            message: `A refund must be between RM0.01 and the order total (RM${(order.total / 100).toFixed(2)}).`,
+          };
+        }
+        try {
+          // Omitted amount = CHIP's full refund, which also covers the rare
+          // case where CHIP's refundable amount differs by a rounding sen.
+          await refundPurchase(order.paymentRef, amount === order.total ? undefined : amount);
+          fastify.log.info(`CHIP refund of ${amount} sen initiated for order ${order.orderNumber}`);
+        } catch (err) {
+          fastify.log.error({ err, orderId: order.id }, 'CHIP refund failed');
+          const detail = err instanceof Error ? err.message.replace(/^CHIP refund purchase failed: /, '') : '';
+          throw { statusCode: 400, message: `CHIP refused the refund${detail ? ` — ${detail}` : ''}. Nothing was changed.` };
         }
       } else if (order.paymentGateway === 'toyyibpay') {
         // ToyyibPay has no refund API — the money must be returned manually via

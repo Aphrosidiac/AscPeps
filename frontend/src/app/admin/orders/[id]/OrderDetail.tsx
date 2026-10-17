@@ -924,6 +924,15 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
       return;
     }
 
+    // Unlike every other gateway here, a CHIP refund is real money leaving
+    // the account the moment this saves. Say so, with the figure, once more.
+    if (order.paymentGateway === 'chip' && order.paymentStatus === 'PAID') {
+      const ok = window.confirm(
+        `This sends RM${(cents / 100).toFixed(2)} back to the customer through CHIP now${cents < order.total ? ' (partial refund)' : ''}. It cannot be undone from here. Continue?`
+      );
+      if (!ok) return;
+    }
+
     patch({ paymentStatus, refundedAmount: cents });
   };
 
@@ -1880,7 +1889,9 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             </span>
           </label>
           <p className="text-xs text-text-muted flex-1 min-w-[16rem] pb-2">
-            {order.paymentGateway
+            {order.paymentGateway === 'chip'
+              ? 'Set automatically from the fee CHIP reported on this payment. Correct it here if the settlement differed.'
+              : order.paymentGateway
               ? `Set automatically from the ${order.paymentGateway} rate when this order was confirmed paid. Correct it here if the settlement differed.`
               : 'No gateway on this order — a manual transfer costs nothing to collect. Leave it at zero unless something was actually deducted.'}
           </p>

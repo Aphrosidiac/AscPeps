@@ -127,7 +127,7 @@ async function fuzzyOrderMatches(prisma: any, raw: string) {
 // and invites exactly the "why does it say Billplz, we use ToyyibPay" question.
 // Renaming the enum would touch orders, payments and the webhooks, so the fix
 // lives at the presentation edge instead.
-const GATEWAY_NAMES: Record<string, string> = { toyyibpay: 'ToyyibPay', billplz: 'Billplz' };
+const GATEWAY_NAMES: Record<string, string> = { toyyibpay: 'ToyyibPay', billplz: 'Billplz', chip: 'CHIP' };
 
 function gatewayLabel(name?: string | null): string {
   if (!name) return 'online payment';

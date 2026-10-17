@@ -117,7 +117,7 @@ orders(id, "orderNumber", "customerName", phone, email, address, city, state,
   - "paymentMethod": WHATSAPP|BILLPLZ|CRYPTO. BILLPLZ is a legacy enum name
     meaning "paid online through the fiat gateway" — it does NOT mean the
     Billplz gateway. The gateway actually used is the "paymentGateway" column
-    (e.g. 'toyyibpay'). When reporting, label it "online payment", never
+    (e.g. 'toyyibpay', 'chip'). When reporting, label it "online payment", never
     "Billplz". CRYPTO means Bitcoin settled via BTCPay ("paymentGateway" =
     'btcpay'); label it "Bitcoin" or "crypto". BILLPLZ and CRYPTO are both
     gateway-settled, so "online orders" as a category means BOTH — filter

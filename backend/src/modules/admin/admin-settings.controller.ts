@@ -5,6 +5,10 @@ import { notifyRevalidate } from '../../utils/revalidate.js';
 import { checkoutConfigSchema } from 'manualpaygate/core';
 import { MANUALPAY_CONFIG_KEY, MANUALPAY_ENABLED_KEY, loadManualPayConfig } from '../../plugins/manualpay.js';
 
+async function currentSetting(fastify: FastifyInstance, key: string): Promise<string | undefined> {
+  return (await fastify.prisma.setting.findUnique({ where: { key } }))?.value;
+}
+
 // zod's "methods.0.qrImageUrl — Too small" means nothing to the person who
 // just pressed "+ DuitNow QR". Name the method and the field they left empty.
 const MANUALPAY_FIELD_LABELS: Record<string, string> = {
@@ -112,6 +116,23 @@ export async function updateSettings(fastify: FastifyInstance, body: unknown) {
       if (!methods.some((m) => m.enabled)) {
         throw { statusCode: 400, message: 'Enable at least one manual payment method (DuitNow QR, bank transfer or a payment link) before switching manual payment on.' };
       }
+    }
+    // Same guard for the fiat gateway: picking one this server has no
+    // credentials for would turn every online checkout into "temporarily
+    // unavailable" the moment it's saved. Only on a change: the settings form
+    // re-sends every key, and an unrelated save must not be blocked.
+    if (key === 'payment_gateway' && !getActiveGateway(value) && value !== (await currentSetting(fastify, key))) {
+      const needs: Record<string, string> = {
+        chip: 'CHIP_SECRET_KEY and CHIP_BRAND_ID',
+        toyyibpay: 'TOYYIBPAY_SECRET_KEY and TOYYIBPAY_CATEGORY_CODE (with TOYYIBPAY_SANDBOX off in production)',
+        billplz: 'BILLPLZ_API_KEY and BILLPLZ_COLLECTION_ID (with BILLPLZ_SANDBOX off in production)',
+      };
+      throw {
+        statusCode: 400,
+        message: needs[value]
+          ? `That payment gateway is not configured on this server. Set ${needs[value]} first.`
+          : 'Unknown payment gateway.',
+      };
     }
     if (key === 'crypto_payment_enabled' && value === 'true' && !getActiveGateway('btcpay')) {
       throw {

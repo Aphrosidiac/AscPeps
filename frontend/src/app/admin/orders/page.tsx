@@ -175,6 +175,14 @@ function AdminOrdersContent() {
       );
       if (!ok) return;
     }
+    // From the list a refund is always the full total (partial refunds are on
+    // the order page), and on CHIP it moves the money immediately.
+    if (paymentStatus === 'REFUNDED' && paymentGateway === 'chip') {
+      const ok = window.confirm(
+        'This refunds the FULL order total to the customer through CHIP now. It cannot be undone from here. For a partial refund, open the order instead. Continue?'
+      );
+      if (!ok) return;
+    }
     setUpdating(orderId);
     try {
       await adminUpdateOrder(token, orderId, { paymentStatus });

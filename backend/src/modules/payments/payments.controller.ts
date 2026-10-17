@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { env } from '../../config/env.js';
 import { getGatewayByBillId } from '../../utils/payment-gateway.js';
 import { applyPaid, applyFailed } from '../../utils/payment-reconcile.js';
+import { verifyCallbackSignature as verifyChipSignature } from '../../utils/chip.js';
 
 export async function handlePaymentCallback(fastify: FastifyInstance, body: Record<string, string>) {
   const isBillplz = !!body.x_signature;
@@ -72,20 +73,24 @@ export async function handlePaymentRedirect(
   query: Record<string, string>
 ): Promise<string> {
   const isBillplz = !!query['billplz[id]'];
-  const isBtcpay = !isBillplz && query.gateway === 'btcpay';
-  const gatewayName = isBillplz ? 'billplz' : isBtcpay ? 'btcpay' : 'toyyibpay';
+  // BTCPay and CHIP both mint their payment id only when the create call
+  // returns, so their redirect URLs can't carry it the way billplz/toyyibpay's
+  // signed redirects do — they carry orderNumber instead, and it is resolved
+  // back to the payment id via the order row. Pinned to the named gateway so
+  // a hand-edited ?gateway= can't make one gateway verify another's order.
+  const byOrderNumber = !isBillplz && (query.gateway === 'btcpay' || query.gateway === 'chip');
+  const gatewayName = isBillplz ? 'billplz' : byOrderNumber ? query.gateway : 'toyyibpay';
 
-  let billId = isBillplz ? query['billplz[id]'] : isBtcpay ? '' : query.billcode || '';
-  if (isBtcpay && query.orderNumber) {
-    // BTCPay's redirect URL is built before the invoice exists, so it can't
-    // carry the invoice id the way billplz/toyyibpay's signed redirects do —
-    // it carries orderNumber instead. Resolve it back to the invoice id via
-    // the order row, and pass it through so buildRedirectUrl can still build
-    // a "resume this payment" link on failure.
-    const order = await fastify.prisma.order.findFirst({ where: { orderNumber: query.orderNumber } });
+  let billId = isBillplz ? query['billplz[id]'] : byOrderNumber ? '' : query.billcode || '';
+  if (byOrderNumber && query.orderNumber) {
+    const order = await fastify.prisma.order.findFirst({
+      where: { orderNumber: query.orderNumber, paymentGateway: gatewayName },
+    });
     if (order?.paymentRef) {
       billId = order.paymentRef;
-      query.invoiceId = billId;
+      // So buildRedirectUrl can still offer a "resume this payment" link.
+      if (gatewayName === 'btcpay') query.invoiceId = billId;
+      else query.purchaseId = billId;
     }
   }
 
@@ -99,11 +104,11 @@ export async function handlePaymentRedirect(
   let verifiedPaid = false;
   if (billId) {
     try {
-      const { paid } = await gateway.verifyPaid(billId);
+      const { paid, fee } = await gateway.verifyPaid(billId);
       verifiedPaid = paid;
       if (paid) {
         const order = await fastify.prisma.order.findFirst({ where: { paymentRef: billId } });
-        if (order) await applyPaid(fastify, order);
+        if (order) await applyPaid(fastify, order, { fee });
       }
     } catch (err) {
       fastify.log.warn({ err, billId }, 'redirect: gateway verify failed');
@@ -113,4 +118,75 @@ export async function handlePaymentRedirect(
   // Pass the verified state through so the page the customer sees can never
   // contradict the order state we just committed.
   return gateway.buildRedirectUrl(query, verifiedPaid);
+}
+
+/**
+ * CHIP's success callback: POSTed when a purchase is paid, a JSON-encoded
+ * Purchase signed (X-Signature) over the raw body. CHIP retries any non-2xx up
+ * to 8 times over 36 hours, and may deliver the same callback twice, so every
+ * outcome after the signature check is a 200 and applyPaid's guarded
+ * transition makes repeats no-ops.
+ *
+ * The payload only identifies the purchase. Whether it is paid is asked of
+ * CHIP itself through verifyPaid — the same question the redirect and the
+ * sweep ask — so the live-deployment test-key guard and the real fee figure
+ * apply here exactly as they do there.
+ */
+export async function handleChipCallback(
+  fastify: FastifyInstance,
+  rawBody: Buffer,
+  signature: string | undefined
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  let valid = false;
+  try {
+    valid = await verifyChipSignature(rawBody, signature);
+  } catch (err) {
+    // Couldn't fetch the public key. A 5xx makes CHIP retry later, which is
+    // what we want — the payment is real, we just can't check it right now.
+    fastify.log.error({ err }, 'CHIP callback: could not load the public key');
+    return { statusCode: 503, body: { error: 'Signature key unavailable' } };
+  }
+  if (!valid) {
+    fastify.log.warn('CHIP callback: invalid signature');
+    return { statusCode: 400, body: { error: 'Invalid signature' } };
+  }
+
+  let purchaseId: string | undefined;
+  try {
+    const payload = JSON.parse(rawBody.toString('utf8'));
+    purchaseId = typeof payload?.id === 'string' ? payload.id : undefined;
+  } catch {
+    // Signed but unparseable: nothing a retry would fix.
+  }
+  if (!purchaseId) return { statusCode: 200, body: { received: true } };
+
+  const order = await fastify.prisma.order.findFirst({
+    where: { paymentRef: purchaseId, paymentGateway: 'chip' },
+  });
+  if (!order) {
+    fastify.log.warn(`CHIP callback: no order for purchase ${purchaseId}`);
+    return { statusCode: 200, body: { received: true } };
+  }
+  if (order.paymentStatus !== 'UNPAID') return { statusCode: 200, body: { received: true } };
+
+  const gateway = getGatewayByBillId(purchaseId, 'chip')!;
+  try {
+    const result = await gateway.verifyPaid(purchaseId);
+    if (result.paid) {
+      if (result.amount != null && result.amount !== order.total) {
+        fastify.log.warn(
+          { orderNumber: order.orderNumber, expected: order.total, received: result.amount },
+          'Payment amount mismatch'
+        );
+      }
+      if (await applyPaid(fastify, order, { fee: result.fee })) {
+        fastify.log.info(`Order ${order.orderNumber} paid via chip (purchase ${purchaseId})`);
+      }
+    }
+  } catch (err) {
+    // CHIP is up enough to call us but not to answer: let it retry.
+    fastify.log.warn({ err, purchaseId }, 'CHIP callback: verify failed');
+    return { statusCode: 503, body: { error: 'Verify failed' } };
+  }
+  return { statusCode: 200, body: { received: true } };
 }

@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import * as billplz from './billplz.js';
 import * as toyyibpay from './toyyibpay.js';
 import * as btcpay from './btcpay.js';
+import * as chip from './chip.js';
 
 export type { PaymentFailureReason, BillTransactionStatus } from './toyyibpay.js';
 import type { BillTransactionStatus } from './toyyibpay.js';
@@ -67,6 +68,16 @@ function getBackendUrl(): string {
 
 function getFrontendUrl(): string {
   return env.FRONTEND_URL;
+}
+
+/**
+ * A real deployment, as opposed to local dev. NODE_ENV is deliberately not the
+ * signal: it is unset on the live PM2 process, so a NODE_ENV check would
+ * silently never fire. Reuse getBackendUrl's convention instead: a
+ * non-localhost FRONTEND_URL means this is a real deployment.
+ */
+function isLiveDeployment(): boolean {
+  return !env.FRONTEND_URL.startsWith('http://localhost');
 }
 
 /**
@@ -257,6 +268,86 @@ const btcpayGateway: PaymentGateway = {
   },
 };
 
+// How long a CHIP purchase stays payable. Matches the reconcile sweep's
+// RELEASE_AFTER_MS: past this the order's stock goes back on sale, so the
+// purchase must stop taking money at the same moment. due_strict makes CHIP
+// itself enforce it (status `expired`), and applyFailed's cancel call is the
+// second lock on the same door.
+const CHIP_PAYABLE_FOR_S = 2 * 60 * 60;
+
+const chipGateway: PaymentGateway = {
+  name: 'chip',
+  async createBill(params) {
+    const backendUrl = getBackendUrl();
+    // Like BTCPay, the purchase id doesn't exist until CHIP answers, so the
+    // return URLs carry the order number and handlePaymentRedirect resolves it
+    // back to the purchase. CHIP doesn't sign its redirects anyway — the
+    // server-side re-query there is the only thing that confirms anything.
+    const returnUrl = `${backendUrl}/api/v1/payments/redirect?gateway=chip&orderNumber=${encodeURIComponent(params.orderNumber)}`;
+    // CHIP rejects a success_callback with an explicit port (even :443), and
+    // can't reach localhost anyway. Locally the redirect and the sweep confirm.
+    const callbackUrl = `${backendUrl}/api/v1/payments/chip/callback`;
+    const callbackUsable = new URL(callbackUrl).port === '' && callbackUrl.startsWith('https://');
+
+    const purchase = await chip.createPurchase({
+      email: params.email!,
+      phone: params.phone,
+      fullName: params.name,
+      amount: params.amount,
+      productName: params.description,
+      reference: params.orderNumber,
+      due: Math.floor(Date.now() / 1000) + CHIP_PAYABLE_FOR_S,
+      successRedirect: returnUrl,
+      failureRedirect: returnUrl,
+      // "Return to seller" on CHIP's page. It doesn't cancel the purchase, so
+      // it lands on the same verify-and-route path, which offers the open
+      // purchase back as a retry link.
+      cancelRedirect: returnUrl,
+      successCallback: callbackUsable ? callbackUrl : undefined,
+    });
+
+    // A test key on the live site takes test cards and reports them `paid`.
+    // Refuse before the customer is ever sent to it.
+    if (purchase.is_test && isLiveDeployment()) {
+      await chip.cancelPurchase(purchase.id).catch(() => {});
+      throw new Error('CHIP returned a TEST purchase on a live deployment — CHIP_SECRET_KEY is a test key');
+    }
+    if (!purchase.checkout_url) {
+      throw new Error(`CHIP purchase ${purchase.id} has no checkout_url (status ${purchase.status})`);
+    }
+    return { billId: purchase.id, paymentUrl: purchase.checkout_url, gateway: 'chip' };
+  },
+  // CHIP's success callback is JSON signed over the raw bytes, so it has its
+  // own route (POST /api/v1/payments/chip/callback) instead of the generic
+  // form-encoded /callback. Unreachable stubs, as for BTCPay.
+  verifyCallback() {
+    return false;
+  },
+  parseCallback() {
+    return { billId: '', status: 'pending' };
+  },
+  buildRedirectUrl(query, verifiedPaid) {
+    const frontendUrl = getFrontendUrl();
+    return verifiedPaid
+      ? `${frontendUrl}/checkout/success`
+      : failedUrl(frontendUrl, query.purchaseId && this.billUrl(query.purchaseId));
+  },
+  async verifyPaid(billId) {
+    const purchase = await chip.getPurchase(billId);
+    return chip.classifyPurchase(purchase, { acceptTest: !isLiveDeployment() });
+  },
+  async deactivateBill(billId) {
+    const purchase = await chip.cancelPurchase(billId);
+    return purchase.status === 'cancelled';
+  },
+  billUrl(billId) {
+    // CHIP's hosted checkout lives at gate.chip-in.asia/p/<purchase id>/ —
+    // the same URL createBill got back as checkout_url, rebuilt from the id
+    // because the URL itself isn't stored on the order.
+    return `${new URL(env.CHIP_API_URL).origin}/p/${billId}/`;
+  },
+};
+
 export function getActiveGateway(gatewayName?: string): PaymentGateway | null {
   const name = gatewayName || 'billplz';
   // A gateway left in sandbox mode takes no real money while cheerfully
@@ -265,18 +356,18 @@ export function getActiveGateway(gatewayName?: string): PaymentGateway | null {
   // gateway whose *_SANDBOX flag was never turned off would silently start
   // shipping orders against fake payments. Refusing here surfaces as "online
   // payment unavailable", which is loud and safe.
-  //
-  // NODE_ENV is deliberately not the signal here: it is unset on the live PM2
-  // process, so a NODE_ENV check would silently never fire — exactly the class
-  // of bug this guard exists to prevent. Reuse getBackendUrl's convention
-  // instead: a non-localhost FRONTEND_URL means this is a real deployment.
-  const isProd = !env.FRONTEND_URL.startsWith('http://localhost');
+  const isProd = isLiveDeployment();
 
   if (name === 'billplz' && env.BILLPLZ_API_KEY && env.BILLPLZ_COLLECTION_ID) {
     return isProd && env.BILLPLZ_SANDBOX ? null : billplzGateway;
   }
   if (name === 'toyyibpay' && env.TOYYIBPAY_SECRET_KEY && env.TOYYIBPAY_CATEGORY_CODE) {
     return isProd && env.TOYYIBPAY_SANDBOX ? null : toyyibpayGateway;
+  }
+  // CHIP has no sandbox flag to check here — test vs live is the key itself,
+  // and the guard runs per purchase in chipGateway (createBill + verifyPaid).
+  if (name === 'chip' && env.CHIP_SECRET_KEY && env.CHIP_BRAND_ID) {
+    return chipGateway;
   }
   if (name === 'btcpay' && env.BTCPAY_URL && env.BTCPAY_API_KEY && env.BTCPAY_STORE_ID) {
     return btcpayGateway;
@@ -310,6 +401,7 @@ export function getGatewayByBillId(billId: string, gatewayName?: string): Paymen
   if (gatewayName === 'toyyibpay') return toyyibpayGateway;
   if (gatewayName === 'billplz') return billplzGateway;
   if (gatewayName === 'btcpay') return btcpayGateway;
+  if (gatewayName === 'chip') return chipGateway;
   if (billId && billId.length < 20) return toyyibpayGateway;
   return billplzGateway;
 }

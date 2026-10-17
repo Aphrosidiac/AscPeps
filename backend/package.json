@@ -28,7 +28,9 @@
     "test:agent:timezone": "tsx scripts/test-agent-timezone.ts",
     "test:agent:wire": "tsx scripts/test-agent-wire.ts",
     "audit:agent:grounding": "tsx scripts/audit-agent-grounding.ts",
-    "test:payment-failure": "tsx scripts/test-payment-failure.ts"
+    "test:payment-failure": "tsx scripts/test-payment-failure.ts",
+    "test:chip": "tsx scripts/test-chip.ts",
+    "chip:mock": "tsx scripts/chip-mock.ts"
   },
   "keywords": [],
   "author": "",

@@ -57,6 +57,20 @@ const envSchema = z.object({
   // FPX-only without a code change if the account ever loses approval —
   // createBill rejects enableDuitNowQR on a non-approved account.
   TOYYIBPAY_DUITNOW_QR: envBool(true),
+  // CHIP Collect (chip-in.asia) — FPX, DuitNow QR, e-wallets and cards on one
+  // hosted page. Portal → Developers → API keys / Brands. There is no sandbox
+  // host: the secret key itself is either a test key or a live one, and every
+  // purchase reports which (`is_test`). getActiveGateway can't see that up
+  // front, so the live-deployment guard is applied per purchase instead — a
+  // test purchase is refused at creation and never counts as paid in prod.
+  CHIP_SECRET_KEY: z.string().optional(),
+  CHIP_BRAND_ID: z.string().optional(),
+  // Optional. The key that signs success callbacks (GET /public_key/). Unset,
+  // it is fetched from CHIP on the first callback and kept in memory; set it
+  // to pin it. A PEM with literal "\n"s is accepted.
+  CHIP_PUBLIC_KEY: z.string().optional(),
+  // Only ever changed to point the integration test at a local mock.
+  CHIP_API_URL: z.string().default('https://gate.chip-in.asia/api/v1'),
   // Self-hosted BTCPay Server instance (Bitcoin / Lightning). No sandbox flag
   // like the fiat gateways above — there's no third party approving a
   // merchant account here, so getActiveGateway only needs to check that all

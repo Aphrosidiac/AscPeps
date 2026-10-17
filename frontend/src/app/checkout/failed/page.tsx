@@ -20,6 +20,8 @@ const GATEWAY_HOSTS = new Set([
   'dev.toyyibpay.com',
   'www.billplz.com',
   'www.billplz-sandbox.com',
+  // CHIP has one host for test and live; its checkout is /p/<purchase id>/.
+  'gate.chip-in.asia',
 ]);
 
 function safeRetryUrl(raw: string | null): string | null {

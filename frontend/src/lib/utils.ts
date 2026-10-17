@@ -104,5 +104,8 @@ export function normalizePhone(raw: string): string {
 export function paymentMethodLabel(order: { paymentMethod: string; paymentGateway?: string | null }): string {
   if (order.paymentMethod === 'WHATSAPP') return order.paymentGateway === 'manualpaygate' ? 'Bank Transfer / DuitNow (hosted page)' : 'WhatsApp (Manual Transfer)';
   if (order.paymentMethod === 'CRYPTO') return 'Bitcoin (BTCPay)';
-  return `Online (${order.paymentGateway || 'Billplz'})`;
+  const gateway = order.paymentGateway || 'billplz';
+  return `Online (${GATEWAY_LABELS[gateway] ?? gateway})`;
 }
+
+const GATEWAY_LABELS: Record<string, string> = { billplz: 'Billplz', toyyibpay: 'ToyyibPay', chip: 'CHIP' };

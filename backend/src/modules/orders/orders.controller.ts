@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
-import { getActiveGateway, isOnlineMethod, gatewayNameForMethod } from '../../utils/payment-gateway.js';
+import { getActiveGateway, getGatewayByBillId, isOnlineMethod, gatewayNameForMethod } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
@@ -132,6 +132,9 @@ function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRe
   // freshly quoted BTC rate instead of the one they were shown.
   if (order.paymentGateway === 'btcpay' && order.paymentRef && env.BTCPAY_URL) {
     return `${env.BTCPAY_URL}/i/${order.paymentRef}`;
+  }
+  if (order.paymentGateway === 'chip' && order.paymentRef) {
+    return getGatewayByBillId(order.paymentRef, 'chip')?.billUrl(order.paymentRef);
   }
   // The hosted manual checkout is ours, so the page is always re-openable.
   if (order.paymentGateway === MANUALPAY_GATEWAY && order.paymentRef) {

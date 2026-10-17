@@ -131,6 +131,18 @@ export interface BillTransactionStatus {
   failureReason?: PaymentFailureReason;
   /** The channel the customer actually tried, e.g. "FPX B2C" / "DuitNow QR". */
   channel?: string;
+  /**
+   * Not paid YET: the gateway says a payment is with the acquirer and has no
+   * answer. The sweep must not release stock under it — CHIP's
+   * `pending_execute` is the case. Gateways that can't tell leave it unset.
+   */
+  pending?: boolean;
+  /**
+   * What the processor actually kept, in sen, when the gateway reports it on
+   * the payment itself (CHIP's `payment.fee_amount`). Recorded in preference to
+   * the configured rate, which is only an estimate of the same number.
+   */
+  fee?: number;
 }
 
 /**
