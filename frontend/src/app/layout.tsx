@@ -21,7 +21,8 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   metadataBase: new URL('https://ascendpeptides.my'),
   title: {
-    default: 'Ascend MY — #1 Premium Peptides Malaysia | Retatrutide, GHK-Cu, BPC-157',
+    // Under 60 characters so Google shows it whole instead of cutting it.
+    default: 'Ascend MY — #1 Premium Peptides Malaysia | Retatrutide',
     template: '%s | Ascend Peptides Malaysia',
   },
   description: 'Malaysia\'s trusted source for premium research peptides. Buy Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and more. Lab-grade quality, fast shipping across Peninsular Malaysia. Number 1 peptides provider in Malaysia.',

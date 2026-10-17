@@ -1,4 +1,4 @@
-import { absoluteImageUrl, isSaleActive, getEffectivePrice } from '@/lib/utils';
+import { absoluteImageUrl, isSaleActive, getEffectivePrice, getVariantDisplayName } from '@/lib/utils';
 import { eastFeeDiffers } from '@/lib/shipping-region';
 
 // Shared single escaping point for every JSON-LD emission on the site.
@@ -213,7 +213,7 @@ export function ProductGroupJsonLd({
       '@type': 'Product',
       sku: v.code,
       mpn: v.code,
-      name: v.size ? `${name} ${v.size}` : name,
+      name: getVariantDisplayName({ name }, { size: v.size ?? null }),
       // Relative uploaded-image paths must be absolute here — JSON-LD has no
       // base-URL resolution the way <img>/<Image> tags do. Falls back to the
       // brand icon until every SKU has real photography (tracked separately).

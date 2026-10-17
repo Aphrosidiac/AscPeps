@@ -4,7 +4,7 @@ import { InsightCard } from '@/components/insights/InsightCard';
 import { getInsightsServer } from '@/lib/server-api';
 
 export const metadata: Metadata = {
-  title: 'Insights — Peptide Research & Product Updates | Ascend MY',
+  title: { absolute: 'Insights — Peptide Research & Product Updates | Ascend MY' },
   description:
     "Peptide research, dosing science and product updates from Asywa, Founder & CEO of Ascend MY, drawing on the peer-reviewed literature cited on every product page.",
   alternates: { canonical: 'https://ascendpeptides.my/insights' },

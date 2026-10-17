@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     images: [{ url: `${BASE_URL}/images/hero-vials.webp`, alt: 'Ascend MY peptide vials' }],
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'Buy Research Peptides Online in Malaysia | Ascend MY',
     description: 'Browse premium research peptides. Retatrutide, GHK-Cu, BPC-157 and more. Best prices in Malaysia.',
     images: [`${BASE_URL}/images/hero-vials.webp`],

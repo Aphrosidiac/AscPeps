@@ -4,7 +4,7 @@ import { FlaskConical, Shield, Truck, Clock, CheckCircle, Award, ArrowRight } fr
 import { Animate, Stagger } from '@/components/ui/Animate';
 
 export const metadata: Metadata = {
-  title: 'About Ascend MY — Malaysia\'s Trusted Peptides Provider',
+  title: { absolute: 'About Ascend MY — Malaysia\'s Trusted Peptides Provider' },
   description: 'Ascend MY is Malaysia\'s trusted source for premium lab-grade research peptides. Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia, and responsive WhatsApp support.',
   keywords: ['about Ascend MY', 'peptides provider malaysia', 'trusted peptides malaysia', 'lab grade peptides'],
   alternates: { canonical: 'https://ascendpeptides.my/about' },
@@ -12,6 +12,18 @@ export const metadata: Metadata = {
     title: 'About Ascend MY — Malaysia\'s Trusted Peptides Provider',
     description: 'Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia. Malaysia\'s trusted peptides source.',
     url: 'https://ascendpeptides.my/about',
+    type: 'website',
+    siteName: 'Ascend MY',
+    locale: 'en_MY',
+    // A page-level openGraph replaces the root one rather than merging, so the
+    // shared image has to be restated or /about previews with no picture.
+    images: [{ url: '/images/og-image.png', width: 1200, height: 630, alt: 'Ascend MY — Premium Research Peptides in Malaysia' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'About Ascend MY — Malaysia\'s Trusted Peptides Provider',
+    description: 'Quality assurance, discreet packaging, fast delivery across Peninsular Malaysia. Malaysia\'s trusted peptides source.',
+    images: ['/images/og-image.png'],
   },
 };
 

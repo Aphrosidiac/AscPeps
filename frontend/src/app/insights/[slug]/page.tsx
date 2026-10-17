@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: InsightPageProps): Promise<Me
   const image = absoluteImageUrl(insight.coverImageUrl);
 
   return {
-    title: `${insight.title} | Ascend MY Insights`,
+    title: { absolute: `${insight.title} | Ascend MY Insights` },
     description: insight.excerpt,
     alternates: { canonical: url },
     openGraph: {

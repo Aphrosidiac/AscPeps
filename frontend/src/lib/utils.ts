@@ -13,7 +13,12 @@ export function formatPrice(priceInSen: number): string {
 // label (e.g. "Retatrutide" + "30mg" -> "Retatrutide 30mg"). Unlike the old
 // flat model, `name` never bakes in size here, so no dedup check is needed.
 export function getVariantDisplayName(product: { name: string }, variant: { size: string | null }): string {
-  return variant.size ? `${product.name} ${variant.size}` : product.name;
+  if (!variant.size) return product.name;
+  // Some products carry the size in their own name ("GHK-Cu 50mg"); appending
+  // it again produced "GHK-Cu 50mg 50mg" in titles and labels.
+  const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  if (squash(product.name).endsWith(squash(variant.size))) return product.name;
+  return `${product.name} ${variant.size}`;
 }
 
 // The variant shown by default on a product card / on first paint of the
