@@ -51,12 +51,12 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
       ) : (
         <>
           <div className="pb-8 mb-8 border-b border-border">
-            <InsightCard insight={latest} featured />
+            <InsightCard insight={latest} featured headingLevel={2} />
           </div>
           {rest.length > 0 && (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-10">
               {rest.map((insight) => (
-                <InsightCard key={insight.id} insight={insight} />
+                <InsightCard key={insight.id} insight={insight} headingLevel={2} />
               ))}
             </div>
           )}

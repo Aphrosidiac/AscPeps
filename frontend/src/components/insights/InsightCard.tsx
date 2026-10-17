@@ -6,10 +6,14 @@ import { formatShortDate } from '@/lib/utils';
 
 interface InsightCardProps {
   insight: Insight;
+  // h2 where the cards sit directly under the page's h1 (/insights); h3 under
+  // a section heading (the "More from" rail on an article).
+  headingLevel?: 2 | 3;
   featured?: boolean;
 }
 
-export function InsightCard({ insight, featured = false }: InsightCardProps) {
+export function InsightCard({ insight, featured = false, headingLevel = 3 }: InsightCardProps) {
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
   const date = insight.publishedAt ?? insight.createdAt;
 
   return (
@@ -34,13 +38,13 @@ export function InsightCard({ insight, featured = false }: InsightCardProps) {
         </div>
         <div>
           <p className="text-xs text-text-muted font-medium uppercase tracking-wider mb-2">{insight.category}</p>
-          <h3
+          <Heading
             className={`font-display font-semibold group-hover:text-primary-light transition-colors text-balance ${
               featured ? 'text-xl mb-2' : 'text-base mb-1.5 line-clamp-2'
             }`}
           >
             {insight.title}
-          </h3>
+          </Heading>
           <p className={`text-text-secondary ${featured ? 'text-sm mb-3' : 'text-sm mb-2 line-clamp-2'}`}>{insight.excerpt}</p>
           <p className="text-xs text-text-muted">
             {insight.authorName} &middot; {formatShortDate(date)} &middot; {insight.readTimeMinutes} min read
