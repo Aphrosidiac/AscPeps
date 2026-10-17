@@ -96,34 +96,30 @@ export function HomeClient({
                 </div>
               </Animate>
             </div>
-            <Animate variant="fadeUp" delay={0.3} duration={0.8} className="md:hidden flex flex-col items-center gap-6">
-              <Image
-                src="/images/hero-vials.webp"
-                alt="Ascend MY peptide vials"
-                width={300}
-                height={300}
-                className="w-[220px] h-auto drop-shadow-2xl hero-vials"
-                priority
-                onMouseEnter={triggerJiggle}
-                onTouchStart={triggerJiggle}
-              />
-              <Link href="/products">
-                <Button variant="secondary" size="lg">
-                  Browse Products <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </Animate>
-            <Animate variant="fadeRight" delay={0.3} duration={0.8} className="hidden md:block flex-shrink-0">
+            {/* One hero image for every width. There used to be a mobile and a
+                desktop copy, both with `priority`, so every visit preloaded two
+                files and neither was marked high priority. This one is the LCP
+                element: eager, fetchPriority high, sized per breakpoint. */}
+            <Animate variant="fadeRight" delay={0.3} duration={0.8} className="flex-shrink-0 flex justify-center md:block">
               <Image
                 src="/images/hero-vials.webp"
                 alt="Ascend MY peptide vials"
                 width={480}
                 height={480}
-                className="w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
-                priority
+                sizes="(min-width: 1024px) 440px, (min-width: 768px) 340px, 220px"
+                className="w-[220px] md:w-[340px] lg:w-[440px] h-auto drop-shadow-2xl hero-vials"
+                loading="eager"
+                fetchPriority="high"
                 onMouseEnter={triggerJiggle}
                 onTouchStart={triggerJiggle}
               />
+            </Animate>
+            <Animate variant="fadeUp" delay={0.45} duration={0.7} className="md:hidden flex justify-center">
+              <Link href="/products">
+                <Button variant="secondary" size="lg">
+                  Browse Products <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
             </Animate>
           </div>
         </div>

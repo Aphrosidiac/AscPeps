@@ -21,3 +21,7 @@ uploads/
 /Peptides Business Plan with Asyraf.txt
 /Pricing (*).jpeg
 /ASCEND BLACKPILL LOGO*.png
+
+# Site media the pages reference must ship with every checkout: deploy-frontend.sh
+# rsyncs public/ with --delete, so an ignored video vanished from production.
+!frontend/public/videos/*.mp4
