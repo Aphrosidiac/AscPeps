@@ -30,8 +30,8 @@ export function OrganizationJsonLd({ priceRange }: OrganizationJsonLdProps = {})
     name: 'Ascend MY',
     alternateName: 'Ascend Peptides Malaysia',
     url: 'https://ascendpeptides.my',
-    logo: 'https://ascendpeptides.my/icon-512.png',
-    image: 'https://ascendpeptides.my/icon-512.png',
+    logo: 'https://ascendpeptides.my/images/pill-icon-512.png',
+    image: 'https://ascendpeptides.my/images/pill-icon-512.png',
     description: 'Malaysia\'s #1 premium research peptides provider. Lab-grade Retatrutide, GHK-Cu, BPC-157, Tesamorelin and more with fast, free shipping across Peninsular Malaysia.',
     sameAs: [
       'https://www.tiktok.com/@ascendpeptidesmy',
@@ -222,7 +222,7 @@ export function ProductGroupJsonLd({
       // Relative uploaded-image paths must be absolute here — JSON-LD has no
       // base-URL resolution the way <img>/<Image> tags do. Falls back to the
       // brand icon until every SKU has real photography (tracked separately).
-      image: absoluteImageUrl(v.imageUrl) || 'https://ascendpeptides.my/icon-512.png',
+      image: absoluteImageUrl(v.imageUrl) || 'https://ascendpeptides.my/images/pill-icon-512.png',
       additionalProperty: v.size ? [{ '@type': 'PropertyValue', name: 'Size', value: v.size }] : [],
       offers: {
         '@type': 'Offer',
@@ -255,7 +255,7 @@ export function ProductGroupJsonLd({
     name,
     description,
     // Same fallback chain as the nested variants: real photo, else brand icon.
-    image: image || 'https://ascendpeptides.my/icon-512.png',
+    image: image || 'https://ascendpeptides.my/images/pill-icon-512.png',
     url,
     productGroupID: slug,
     variesBy: ['https://schema.org/size'],
