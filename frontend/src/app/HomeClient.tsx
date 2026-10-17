@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ProductCard } from '@/components/products/ProductCard';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
-import { VideoStrip } from '@/components/ui/VideoStrip';
+import { BannerStrip } from '@/components/ui/BannerStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import type { HardsellAccent } from '@/components/home/HardsellSlide';
 import { getCategoryIcon } from '@/lib/category-icons';
@@ -211,8 +211,8 @@ export function HomeClient({
         </section>
       )}
 
-      {/* Video Divider */}
-      <VideoStrip src="/videos/lab-glassware.mp4" height="120px" overlay={0.35} />
+      {/* Divider */}
+      <BannerStrip src="/images/banners/lab-glass-strip-120.webp" height="120px" />
 
       {/* Featured Products */}
       {products.length > 0 && (
@@ -233,8 +233,8 @@ export function HomeClient({
         </section>
       )}
 
-      {/* Video Divider */}
-      <VideoStrip src="/videos/lab-glassware.mp4" height="100px" overlay={0.45} />
+      {/* Divider */}
+      <BannerStrip src="/images/banners/lab-glass-strip-100.webp" height="100px" />
 
       {/* SEO content */}
       <section className="border-t border-border bg-surface/40">
