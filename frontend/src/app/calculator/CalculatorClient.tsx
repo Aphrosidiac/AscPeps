@@ -78,6 +78,7 @@ function PillGroup({
         })}
       </div>
       <Input
+        aria-label={`Custom ${label.toLowerCase()} (${unit})`}
         placeholder={`Custom ${label.toLowerCase()} (${unit})`}
         type="number"
         min="0"

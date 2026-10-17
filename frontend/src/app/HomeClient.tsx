@@ -134,7 +134,7 @@ export function HomeClient({
                 <FlaskConical className="w-6 h-6 text-text-primary" />
               </div>
               <div>
-                <h3 className="font-display font-semibold mb-1">Lab-Grade Quality</h3>
+                <h2 className="font-display font-semibold mb-1">Lab-Grade Quality</h2>
                 <p className="text-sm text-text-secondary">Rigorously tested peptides with verified purity and potency.</p>
               </div>
             </div>
@@ -143,7 +143,7 @@ export function HomeClient({
                 <Truck className="w-6 h-6 text-text-primary" />
               </div>
               <div>
-                <h3 className="font-display font-semibold mb-1">Fast Shipping</h3>
+                <h2 className="font-display font-semibold mb-1">Fast Shipping</h2>
                 <p className="text-sm text-text-secondary">Delivery across Peninsular Malaysia with tracking.</p>
               </div>
             </div>
@@ -152,7 +152,7 @@ export function HomeClient({
                 <Shield className="w-6 h-6 text-text-primary" />
               </div>
               <div>
-                <h3 className="font-display font-semibold mb-1">Secure &amp; Discreet</h3>
+                <h2 className="font-display font-semibold mb-1">Secure &amp; Discreet</h2>
                 <p className="text-sm text-text-secondary">All orders are discreetly packaged for your privacy.</p>
               </div>
             </div>
@@ -245,7 +245,7 @@ export function HomeClient({
               <p>
                 Ascend MY is Malaysia&apos;s trusted source for premium research peptides. We supply lab-grade
                 compounds including{' '}
-                <Link href="/products" className="text-primary-light hover:underline">Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and AOD9604</Link>,
+                <Link href="/products" className="text-primary-light underline underline-offset-2">Retatrutide, GHK-Cu, BPC-157, Tesamorelin, MOTS-c and AOD9604</Link>,
                 all manufactured to 99%+ purity with third-party Certificates of Analysis available on request.
               </p>
               <p>
@@ -258,12 +258,12 @@ export function HomeClient({
                 )}{' '}
                 Prices are listed in Malaysian Ringgit (MYR) with no hidden fees,
                 and you can pay by bank transfer, FPX or card. No account is needed: simply order and{' '}
-                <Link href="/track" className="text-primary-light hover:underline">track your delivery</Link> using your phone number.
+                <Link href="/track" className="text-primary-light underline underline-offset-2">track your delivery</Link> using your phone number.
               </p>
               <p>
                 New to peptides? Read our{' '}
-                <Link href="/guide" className="text-primary-light hover:underline">peptide reconstitution and storage guide</Link>, or browse the{' '}
-                <Link href="/faq" className="text-primary-light hover:underline">frequently asked questions</Link>{' '}
+                <Link href="/guide" className="text-primary-light underline underline-offset-2">peptide reconstitution and storage guide</Link>, or browse the{' '}
+                <Link href="/faq" className="text-primary-light underline underline-offset-2">frequently asked questions</Link>{' '}
                 covering purity, shipping and how to order research peptides in Malaysia.
               </p>
               <p className="text-xs text-text-muted pt-2">

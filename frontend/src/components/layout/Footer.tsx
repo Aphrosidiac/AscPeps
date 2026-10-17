@@ -7,7 +7,7 @@ export function Footer() {
       {/* Research Disclaimer Banner */}
       <div className="bg-neutral-900 border-t border-neutral-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <p className="text-xs text-neutral-500 text-center leading-relaxed">
+          <p className="text-xs text-neutral-400 text-center leading-relaxed">
             All products sold by Ascend MY are intended strictly for <strong className="text-neutral-400">laboratory and research purposes only</strong>. By purchasing from Ascend MY, you agree to our{' '}
             <Link href="/terms" className="underline hover:text-neutral-300">Terms</Link>,{' '}
             <Link href="/disclaimer" className="underline hover:text-neutral-300">Disclaimer</Link>, and{' '}
@@ -77,7 +77,7 @@ export function Footer() {
             <NewsletterForm source="FOOTER" ctaLabel="Subscribe" tone="dark" />
           </div>
 
-          <div className="border-t border-neutral-800 mt-8 pt-8 text-center text-sm text-neutral-500">
+          <div className="border-t border-neutral-800 mt-8 pt-8 text-center text-sm text-neutral-400">
             &copy; {new Date().getFullYear()} Ascend MY. All rights reserved.
             <span className="mx-2" aria-hidden="true">&middot;</span>
             Site by{' '}

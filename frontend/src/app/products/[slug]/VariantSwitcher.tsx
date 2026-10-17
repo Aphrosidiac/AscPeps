@@ -344,7 +344,7 @@ export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
 
             {variant.stock === 0 && <p className="text-danger text-sm font-medium">Out of stock</p>}
             {variant.stock > 0 && variant.stock <= 5 && (
-              <p className="text-warning text-sm">Only {variant.stock} left in stock</p>
+              <p className="text-amber-700 text-sm">Only {variant.stock} left in stock</p>
             )}
 
             <AddToCartPanel

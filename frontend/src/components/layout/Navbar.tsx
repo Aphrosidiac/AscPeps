@@ -87,8 +87,8 @@ export function Navbar() {
     <nav className="sticky top-0 z-50 bg-surface/95 backdrop-blur border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <Image src="/images/pill-icon.png" alt="Ascend MY" width={32} height={32} />
+          <Link href="/" aria-label="Ascend MY home" className="flex items-center gap-2 shrink-0">
+            <Image src="/images/pill-icon.png" alt="" width={32} height={32} />
             <span className={`font-display font-bold text-xl tracking-tight ${searchOpen ? 'hidden sm:block' : ''}`}>Ascend MY</span>
           </Link>
 
@@ -153,7 +153,11 @@ export function Navbar() {
               <User className="w-5 h-5" />
             </Link>
 
-            <Link href="/cart" className="relative p-3 hover:bg-surface-elevated rounded-lg transition-colors">
+            <Link
+              href="/cart"
+              aria-label={itemCount > 0 ? `Cart, ${itemCount} item${itemCount === 1 ? '' : 's'}` : 'Cart'}
+              className="relative p-3 hover:bg-surface-elevated rounded-lg transition-colors"
+            >
               <ShoppingCart className="w-5 h-5" />
               {itemCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-primary text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-medium">
@@ -197,7 +201,7 @@ export function Navbar() {
           >
             <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8 shrink-0">
               <Link href="/" className="flex items-center gap-2" onClick={() => setMenuOpen(false)}>
-                <Image src="/images/pill-icon.png" alt="Ascend MY" width={32} height={32} className="invert" />
+                <Image src="/images/pill-icon.png" alt="" width={32} height={32} className="invert" />
                 <span className="font-display font-bold text-xl tracking-tight text-white">Ascend MY</span>
               </Link>
               <button

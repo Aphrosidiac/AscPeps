@@ -49,9 +49,14 @@ export function ProductCard({ product }: ProductCardProps) {
               className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
-            <div className="text-4xl font-display font-bold text-text-muted/30 select-none">
-              {variant?.code ?? product.name.slice(0, 2).toUpperCase()}
-            </div>
+            // Watermark for products without a photo. Drawn as CSS content, not
+            // text: it is deliberately faint, and as real text it failed every
+            // contrast check while adding a stray SKU code to the page's words.
+            <div
+              aria-hidden="true"
+              data-initial={variant?.code ?? product.name.slice(0, 2).toUpperCase()}
+              className="text-4xl font-display font-bold text-text-muted/30 select-none before:content-[attr(data-initial)]"
+            />
           )}
         </div>
 
