@@ -227,13 +227,15 @@ function SizeSelector({
               <span className="block text-[17px] font-semibold leading-snug pr-5">
                 {v.size ?? v.code}
               </span>
+              {/* Price stays on sold-out sizes too: shoppers still want to know
+                  it, and the product's structured data lists every size with
+                  its price (OutOfStock), which must match what the page shows. */}
               <span className="block text-sm mt-1.5 leading-tight">
-                {soldOut ? (
-                  <span className="text-text-muted">Sold out</span>
-                ) : (
-                  formatPrice(getEffectivePrice(v))
-                )}
+                {formatPrice(getEffectivePrice(v))}
               </span>
+              {soldOut && (
+                <span className="block text-xs mt-0.5 leading-tight text-text-muted">Sold out</span>
+              )}
               {!soldOut && perUnit != null && (
                 <span className="block text-xs mt-0.5 leading-tight text-text-muted">
                   {formatPrice(Math.round(perUnit))}/{pricing!.unit}

@@ -64,14 +64,12 @@ function ArticleJsonLd({
     mainEntityOfPage: { '@type': 'WebPage', '@id': `${BASE_URL}/insights/${insight.slug}` },
     datePublished: insight.publishedAt ?? insight.createdAt,
     dateModified: insight.updatedAt,
-    // There is no per-author page yet, so the byline resolves to the About page
-    // and to the store itself; worksFor/publisher point at the one Organization
-    // node the layout emits on every page.
+    // worksFor/publisher point at the one Organization node the layout emits
+    // on every page. No author url: there is no page about the author to link.
     author: {
       '@type': 'Person',
       name: insight.authorName,
       jobTitle: insight.authorRole,
-      url: `${BASE_URL}/about`,
       worksFor: { '@id': `${BASE_URL}/#organization` },
     },
     publisher: { '@id': `${BASE_URL}/#organization` },

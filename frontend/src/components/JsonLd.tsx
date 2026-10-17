@@ -214,6 +214,11 @@ export function ProductGroupJsonLd({
       sku: v.code,
       mpn: v.code,
       name: getVariantDisplayName({ name }, { size: v.size ?? null }),
+      // The group declares variesBy schema.org/size, so Google requires each
+      // variant to state its size as the `size` property itself — the
+      // additionalProperty below doesn't count. Without it every product was
+      // invalid for Merchant listings ("Missing field size").
+      ...(v.size ? { size: v.size } : {}),
       // Relative uploaded-image paths must be absolute here — JSON-LD has no
       // base-URL resolution the way <img>/<Image> tags do. Falls back to the
       // brand icon until every SKU has real photography (tracked separately).
