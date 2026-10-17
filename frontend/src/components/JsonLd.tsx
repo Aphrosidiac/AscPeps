@@ -219,6 +219,9 @@ export function ProductGroupJsonLd({
       // additionalProperty below doesn't count. Without it every product was
       // invalid for Merchant listings ("Missing field size").
       ...(v.size ? { size: v.size } : {}),
+      // Merchant listings read each variant on its own; without this every
+      // size carried a "missing description" note. Same visible product copy.
+      description,
       // Relative uploaded-image paths must be absolute here — JSON-LD has no
       // base-URL resolution the way <img>/<Image> tags do. Falls back to the
       // brand icon until every SKU has real photography (tracked separately).
