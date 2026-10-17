@@ -95,7 +95,12 @@ export default async function ProductLayout({ params, children }: Props) {
             image={absoluteImageUrl(variant.imageUrl)}
             shippingFee={settings.shipping_fee || ''}
             eastShippingFee={settings.east_malaysia_shipping_fee || ''}
-            variants={product.variants.filter((v) => v.active).map((v) => ({
+            // Only variants whose price the page actually prints: the size
+            // picker shows "Sold out" instead of a price for stock-0 sizes, so
+            // listing their price here would be markup with no visible
+            // counterpart. The default variant's price is always printed in
+            // the main price block, sold out or not.
+            variants={product.variants.filter((v) => v.active && (v.stock > 0 || v.id === variant.id)).map((v) => ({
               code: v.code,
               size: v.size,
               price: v.price,

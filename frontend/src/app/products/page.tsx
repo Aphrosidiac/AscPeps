@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { ProductsGrid } from './ProductsGrid';
 import { ProductsFilters } from './ProductsFilters';
 import { getCategoriesServer, getProductsServer } from '@/lib/server-api';
-import { JsonLd } from '@/components/JsonLd';
+import { JsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -57,6 +57,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {catalog && <CollectionJsonLd products={catalog.data} />}
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', url: BASE_URL },
+          { name: 'Products', url: `${BASE_URL}/products` },
+        ]}
+      />
       <h1 className="font-display text-3xl font-bold mb-3">Buy Research Peptides in Malaysia</h1>
       <p className="text-text-secondary mb-8 max-w-2xl leading-relaxed">
         Browse Ascend MY&apos;s full range of premium research peptides — including Retatrutide, GHK-Cu,
@@ -66,9 +72,18 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
       <ProductsFilters categories={categories} selectedCategory={category ?? null} search={search ?? ''} />
 
-      <Suspense key={`${category ?? ''}:${search ?? ''}`} fallback={<GridSkeleton />}>
-        <ProductsGrid category={category} search={search} />
-      </Suspense>
+      {/* The unfiltered catalog renders in the document itself. Inside a
+          Suspense boundary it streamed into a <div hidden> after a skeleton,
+          so any reader that skips hidden nodes or doesn't run JS (several AI
+          fetchers) saw an empty grid on the page that lists every product.
+          Filter and search changes still stream behind the skeleton. */}
+      {isUnfiltered ? (
+        <ProductsGrid />
+      ) : (
+        <Suspense key={`${category ?? ''}:${search ?? ''}`} fallback={<GridSkeleton />}>
+          <ProductsGrid category={category} search={search} />
+        </Suspense>
+      )}
     </div>
   );
 }

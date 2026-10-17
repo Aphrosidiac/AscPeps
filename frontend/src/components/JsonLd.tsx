@@ -65,6 +65,7 @@ export function WebSiteJsonLd() {
     '@type': 'WebSite',
     '@id': 'https://ascendpeptides.my/#website',
     name: 'Ascend Peptides Malaysia',
+    alternateName: 'Ascend MY',
     url: 'https://ascendpeptides.my',
     inLanguage: 'en-MY',
     publisher: { '@id': 'https://ascendpeptides.my/#organization' },

@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { BreadcrumbJsonLd } from '@/components/JsonLd';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -22,16 +21,9 @@ export const metadata: Metadata = {
   },
 };
 
+// No BreadcrumbList here: a layout crumb also renders under /products/[slug],
+// which already emits its own three-level trail, so every product page carried
+// two competing BreadcrumbLists. The catalog's crumb lives in page.tsx.
 export default function ProductsLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <BreadcrumbJsonLd
-        items={[
-          { name: 'Home', url: BASE_URL },
-          { name: 'Products', url: `${BASE_URL}/products` },
-        ]}
-      />
-      {children}
-    </>
-  );
+  return children;
 }

@@ -61,10 +61,20 @@ function ArticleJsonLd({
     headline: insight.title,
     description: insight.excerpt,
     url: `${BASE_URL}/insights/${insight.slug}`,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${BASE_URL}/insights/${insight.slug}` },
     datePublished: insight.publishedAt ?? insight.createdAt,
     dateModified: insight.updatedAt,
-    author: { '@type': 'Person', name: insight.authorName, jobTitle: insight.authorRole },
-    publisher: { '@type': 'Organization', name: 'Ascend MY' },
+    // There is no per-author page yet, so the byline resolves to the About page
+    // and to the store itself; worksFor/publisher point at the one Organization
+    // node the layout emits on every page.
+    author: {
+      '@type': 'Person',
+      name: insight.authorName,
+      jobTitle: insight.authorRole,
+      url: `${BASE_URL}/about`,
+      worksFor: { '@id': `${BASE_URL}/#organization` },
+    },
+    publisher: { '@id': `${BASE_URL}/#organization` },
     ...(images.length > 0 && { image: images }),
     // Omitted rather than emitted as 0 — declaring "this article has no
     // discussion" is a weaker signal than saying nothing about it.
