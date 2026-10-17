@@ -40,20 +40,23 @@ function PillGroup({
 }) {
   const filled = value !== null || customValue !== '';
 
+  // Every column is the same shape: an even three-across grid of presets,
+  // all one width, then the custom field. The "defaulting to" note lives
+  // under all three columns rather than lengthening one of them.
   return (
     <div>
       <div className="flex items-center gap-2.5 mb-3">
         <div
           className={cn(
-            'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors',
-            filled ? 'bg-primary text-white' : 'bg-surface-elevated text-text-muted border border-border'
+            'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors',
+            filled ? 'bg-primary text-white' : 'bg-surface-elevated text-text-muted'
           )}
         >
           {step}
         </div>
         <h2 className="font-display font-semibold text-lg">{label}</h2>
       </div>
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="grid grid-cols-3 gap-2 mb-3">
         {options.map((opt) => {
           const isSelected = value === opt && customValue === '';
           const isImplied = !filled && impliedValue === opt;
@@ -61,14 +64,15 @@ function PillGroup({
             <button
               key={opt}
               type="button"
+              aria-pressed={isSelected}
               onClick={() => onSelect(opt)}
               className={cn(
-                'px-4 py-2 rounded-full border text-sm font-medium transition-colors',
+                'h-9 w-full px-1 rounded-full border text-sm font-medium tabular-nums whitespace-nowrap transition-colors cursor-pointer',
                 isSelected
                   ? 'bg-primary text-white border-primary'
                   : isImplied
-                  ? 'bg-surface border-2 border-dashed border-primary/50 text-text-secondary'
-                  : 'bg-surface border-border hover:border-border-hover text-text-primary'
+                  ? 'bg-surface border-dashed border-text-muted text-text-secondary'
+                  : 'bg-surface border-border hover:border-text-muted text-text-primary'
               )}
             >
               {opt}
@@ -77,21 +81,32 @@ function PillGroup({
           );
         })}
       </div>
-      <Input
-        aria-label={`Custom ${label.toLowerCase()} (${unit})`}
-        placeholder={`Custom ${label.toLowerCase()} (${unit})`}
-        type="number"
-        min="0"
-        step="any"
-        value={customValue}
-        onChange={(e) => onCustomChange(e.target.value)}
-      />
-      {!filled && impliedValue !== undefined && (
-        <p className="text-xs text-text-muted italic mt-2">
-          Defaulting to {impliedValue}
-          {unit} — click above to set your own.
-        </p>
-      )}
+      <div className="relative">
+        <Input
+          aria-label={`Custom ${label.toLowerCase()} (${unit})`}
+          placeholder="Custom amount"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="any"
+          value={customValue}
+          onChange={(e) => onCustomChange(e.target.value)}
+          className="pr-12 tabular-nums"
+        />
+        <span aria-hidden className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted pointer-events-none">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, unit, primary }: { label: string; value: string; unit: string; primary?: boolean }) {
+  return (
+    <div className={cn('rounded-lg p-3', primary ? 'bg-primary text-white' : 'border border-border')}>
+      <p className={cn('text-xs mb-1 truncate', primary ? 'text-neutral-400' : 'text-text-secondary')}>{label}</p>
+      <p className="tabular-nums whitespace-nowrap">
+        <span className="font-display font-bold text-lg">{value}</span>{' '}
+        <span className={cn('text-xs', primary ? 'text-neutral-300' : 'text-text-secondary')}>{unit}</span>
+      </p>
     </div>
   );
 }
@@ -150,6 +165,15 @@ export function CalculatorClient() {
     }
   }, [effective, filledCount]);
 
+  const impliedNote =
+    filledCount !== 2
+      ? null
+      : !validStrength
+      ? `Vial strength defaulting to ${DEFAULT_VALUE}mg`
+      : !validWater
+      ? `Water defaulting to ${DEFAULT_VALUE}mL`
+      : `Dose defaulting to ${DEFAULT_VALUE}mg`;
+
   const selectStrength = (v: number) => {
     setStrength(v);
     setStrengthCustom('');
@@ -199,45 +223,38 @@ export function CalculatorClient() {
           onCustomChange={setDoseCustom}
           impliedValue={!validDose && filledCount >= 2 ? DEFAULT_VALUE : undefined}
         />
+        {impliedNote && (
+          <p className="sm:col-span-3 -mt-2 text-xs text-text-muted">
+            {impliedNote} — click above to set your own.
+          </p>
+        )}
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-5 sm:p-8">
-        <h2 className="font-display font-semibold text-xl mb-6 text-center">Results</h2>
+        <h2 className="font-display font-semibold text-xl mb-6">Results</h2>
 
         {!effective ? (
-          <p className="text-text-secondary text-center py-8">
+          <p className="text-text-secondary text-center max-w-md mx-auto py-8">
             Pick any two of <strong className="text-text-primary">vial strength</strong>, <strong className="text-text-primary">water added</strong>, and <strong className="text-text-primary">dose</strong> above to see your results — we&apos;ll assume 1 for whichever one you leave out.
           </p>
         ) : (
           <div className="flex flex-col lg:flex-row gap-6 items-start">
             <div className="flex-1 w-full">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 text-center">
-                <div>
-                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Concentration</p>
-                  <p className="font-display font-bold text-lg">{effective.concentration.toFixed(2)} mg/mL</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Vial Yields</p>
-                  <p className="font-display font-bold text-lg">{effective.vialDoses.toFixed(1)} doses</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Dose</p>
-                  <p className="font-display font-bold text-lg">{effective.dose} mg</p>
-                </div>
-                <div className="bg-surface-elevated rounded-lg -mx-2 -mt-2 -mb-2 px-2 pt-2 pb-2">
-                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Draw To</p>
-                  <p className="font-display font-bold text-lg">{effective.units.toFixed(2)} units</p>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+                <Stat label="Concentration" value={effective.concentration.toFixed(2)} unit="mg/mL" />
+                <Stat label="Vial yields" value={effective.vialDoses.toFixed(1)} unit="doses" />
+                <Stat label="Dose" value={String(effective.dose)} unit="mg" />
+                <Stat label="Draw to" value={effective.units.toFixed(2)} unit="units" primary />
               </div>
               <SyringeGauge units={effective.units} />
-              <p className="text-xs text-text-muted text-center mt-4">
+              <p className="text-xs text-text-muted mt-3">
                 Assumes a standard U-100 insulin syringe (100 units = 1mL).
               </p>
             </div>
 
-            <div className="w-full lg:w-64 shrink-0 bg-surface-elevated border border-border rounded-xl p-4">
+            <div className="w-full lg:w-64 shrink-0 bg-surface-elevated rounded-xl p-4">
               <div className="flex items-start gap-2.5">
-                <Lightbulb className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
+                <Lightbulb className="w-4 h-4 text-text-secondary mt-0.5 shrink-0" />
                 <div className="text-sm text-text-secondary">
                   <p className="font-semibold text-text-primary mb-1">Quick reference</p>
                   <p className="mb-2">

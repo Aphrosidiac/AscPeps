@@ -57,10 +57,10 @@ export default async function CalculatorPage() {
         </Animate>
 
         <Animate variant="fadeUp" delay={0.05}>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-8">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
-              <p className="text-sm text-yellow-800">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-8">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <p className="text-sm text-amber-900">
                 <strong>Research Use Only.</strong>
               </p>
             </div>
