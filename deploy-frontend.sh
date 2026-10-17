@@ -62,6 +62,13 @@ rsync -az .next/BUILD_ID "$REMOTE:$REMOTE_DIR/.next/BUILD_ID"
 ssh "$REMOTE" 'PORT=3000 pm2 restart ascend-web --update-env >/dev/null 2>&1'
 sleep 8
 
+echo "→ refreshing the data cache"
+# This laptop build has no API to call, so statically prerendered pages (the
+# home page above all) ship with their empty fallbacks: no featured products,
+# no categories. They would only refill when the 1-hour revalidate window
+# lapsed. Expire every content tag now so the next request renders real data.
+ssh "$REMOTE" "S=\$(grep -E '^REVALIDATE_SECRET=' $REMOTE_DIR/.next/standalone/.env | cut -d= -f2- | tr -d '\"'); curl -sS -o /dev/null -w '  revalidate %{http_code}\n' -X POST http://127.0.0.1:3000/api/revalidate -H \"x-revalidate-secret: \$S\" -H 'Content-Type: application/json' -d '{\"tags\":[\"products\",\"categories\",\"settings\",\"insights\"]}'"
+
 echo "→ verifying the LIVE page, not just the HTTP status"
 # A server-rendered page returns 200 even when every client-side call is broken,
 # which is exactly how the outage was missed. Check the shipped JS instead.
