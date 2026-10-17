@@ -202,9 +202,9 @@ function SizeSelector({
               // pixel on each selection.
               className={`relative rounded-xl border-2 px-3.5 py-3 text-left cursor-pointer transition-[border-color,background-color,box-shadow] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
                 selected
-                  ? 'border-primary bg-surface shadow-sm'
-                  : 'border-border bg-surface hover:border-border-hover'
-              } ${soldOut ? 'opacity-60' : ''}`}
+                  ? `border-primary shadow-sm ${soldOut ? 'bg-surface-elevated' : 'bg-surface'}`
+                  : `border-border hover:border-border-hover ${soldOut ? 'bg-surface-elevated' : 'bg-surface'}`
+              }`}
             >
               {isBest && (
                 // Top-left, not centred: centred it runs into the check circle
@@ -230,11 +230,14 @@ function SizeSelector({
               {/* Price stays on sold-out sizes too: shoppers still want to know
                   it, and the product's structured data lists every size with
                   its price (OutOfStock), which must match what the page shows. */}
-              <span className="block text-sm mt-1.5 leading-tight">
+              {/* Sold-out sizes read as unavailable through a grey card and
+                  secondary text, not a 60% fade: faded, the price and label
+                  dropped to ~2.4:1 contrast. */}
+              <span className={`block text-sm mt-1.5 leading-tight ${soldOut ? 'text-text-secondary' : ''}`}>
                 {formatPrice(getEffectivePrice(v))}
               </span>
               {soldOut && (
-                <span className="block text-xs mt-0.5 leading-tight text-text-muted">Sold out</span>
+                <span className="block text-xs mt-0.5 leading-tight font-medium text-text-secondary">Sold out</span>
               )}
               {!soldOut && perUnit != null && (
                 <span className="block text-xs mt-0.5 leading-tight text-text-muted">
