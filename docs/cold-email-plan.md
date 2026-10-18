@@ -47,6 +47,8 @@ Registrar with auto-renew on.
   against the US$7 a month each inbox costs.
 - **Names:** brandable Ascend variants. No `peptide`, `pharma`, `health`,
   `mail` or `outreach`, no digits, at most one hyphen.
+- **Decided 18 Oct 2026:** live = 2 `.my` + 1–2 `.com`; reserve = 5–10 `.my`
+  bought at RM1 as spares, inboxes only when one joins the rotation.
 - **Live + reserve, not "lots":** 3 live domains (6 inboxes) plus 2 reserve
   domains (4 inboxes) warming continuously, about 10 inboxes in all. A burned
   live domain is swapped for a warm reserve the same day, and a new reserve
