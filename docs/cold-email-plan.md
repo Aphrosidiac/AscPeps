@@ -101,6 +101,73 @@ Unauthenticated mail to Gmail can be rejected with `5.7.26`.
 - Free extras: DMARC Management (point `rua=` at it for readable reports) and
   DNSSEC.
 
+### Build sheet: cold Google Workspace (decided 19 Oct 2026)
+
+One Google Workspace **separate from ascendmy.com's**, holding all three cold
+domains. Its primary domain is `ascendhq.my`; `getascendpeps.my` and
+`ascendpeps.my` are secondary domains. Being on one provider means one
+suspension reaches all six inboxes; the main company mail is safe either way.
+A Microsoft 365 reserve can come later.
+
+| Domain | Role | Inboxes |
+|---|---|---|
+| `ascendhq.my` | live, primary | 2 |
+| `getascendpeps.my` | live | 2 |
+| `ascendpeps.my` | reserve, warm-up only | 2 |
+
+Each inbox is a real first name (e.g. `aiman@`, `sarah@`) with a photo and a
+plain signature: name, Ascend MY, the redirect site. No `info@`, `sales@` or
+`marketing@`.
+
+**Order:**
+
+1. New Cloudflare account (not Rikaidrawings@…, which holds ascendmy.com).
+   Add the three zones; at the `.my` registrar, replace the nameservers with
+   the two Cloudflare gives.
+2. Workspace sign-up with `ascendhq.my`, Business Starter. Verify with the
+   TXT record Google gives. Admin console → Account → Domains → Manage
+   domains → add the other two as **secondary domains** (not aliases), each
+   with its own verification TXT.
+3. Create the six users, add photos and signatures.
+4. Per domain, add the records below.
+5. DKIM: Admin console → Apps → Google Workspace → Gmail → Authenticate
+   email → pick the domain → Generate new record (2048-bit, selector
+   `google`) → paste into Cloudflare → back in Google, **Start
+   authentication**.
+6. Admin console → Security → Access and data control → API controls →
+   App access control: mark **Instantly** as Trusted, so its Google sign-in
+   isn't blocked.
+7. Connect the six inboxes to Instantly with Google sign-in; turn warm-up
+   on for all six. No campaign before week 4.
+8. Add every domain to Google Postmaster Tools.
+
+**Records, per domain** (`@` = the domain itself; all DNS only except the
+redirect):
+
+| Type | Name | Content | Notes |
+|---|---|---|---|
+| TXT | `@` | `google-site-verification=…` | From Workspace, once per domain |
+| MX | `@` | `smtp.google.com` | Priority 1. Google's current single MX |
+| TXT | `@` | `v=spf1 include:_spf.google.com ~all` | The only SPF record |
+| TXT | `google._domainkey` | `v=DKIM1; k=rsa; p=…` | Generated in step 5 |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:…` | `rua` from Cloudflare DMARC Management; `p=quarantine` after ~4 clean weeks |
+| A | `@` | `192.0.2.1` | **Proxied**. Placeholder so the redirect rule can run |
+| A | `www` | `192.0.2.1` | **Proxied** |
+
+Redirect: Rules → Redirect Rules → all incoming requests → static
+`https://ascendpeptides.my`, 301. Not ascendmy.com.
+
+No tracking CNAME: the plan sends without open or link tracking. If tracking
+is ever turned on, add CNAME `inst` → `prox.itrackly.com`, DNS only.
+
+Turn on DNSSEC per zone. Leave Email Routing off.
+
+Check each domain before warm-up starts:
+
+```bash
+d=ascendhq.my; for r in MX TXT; do dig +short $r $d; done; dig +short TXT google._domainkey.$d; dig +short TXT _dmarc.$d
+```
+
 ### 4. Warm-up
 
 Warm-up mail never goes to leads. Instantly's warm-up network is a pool of
