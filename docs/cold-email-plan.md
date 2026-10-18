@@ -76,6 +76,23 @@ or shared IPs.
 
 Unauthenticated mail to Gmail can be rejected with `5.7.26`.
 
+**Cloudflare (all cold domains' DNS):** free, with these rules.
+
+- **Own Cloudflare account**, not the one holding ascendpeptides.my. Abuse
+  reports about the cold domains land on that account, and zones in one
+  account share a nameserver pair that ties them to the store.
+- **Grey cloud (DNS only)** on mail records and on Instantly's tracking CNAME
+  (`inst` → `prox.itrackly.com`), or tracking SSL won't verify. Only the web
+  redirect record is proxied.
+- **Email Routing stays off.** It adds its own MX and SPF, which fight Google's
+  and Microsoft's.
+- **One SPF record per domain.** Cloudflare accepts a second one, and two
+  make SPF fail.
+- `.com` bought on Cloudflare Registrar stays on Cloudflare DNS and is locked
+  for 60 days; burned ones are simply left to expire.
+- Free extras: DMARC Management (point `rua=` at it for readable reports) and
+  DNSSEC.
+
 ### 4. Warm-up
 
 Warm-up mail never goes to leads. Instantly's warm-up network is a pool of
@@ -221,6 +238,7 @@ comes first for the likely targets.
 - [Instantly terms](https://instantly.ai/terms)
 - [Spam domains by TLD, Mar–May 2026 (CybercrimeInfoCenter)](https://www.cybercrimeinfocenter.org/spam-activity-in-tlds-march-may-2026)
 - [Exabytes .my domains](https://www.exabytes.my/domains/mydomain)
+- [Instantly tracking domain on Cloudflare](https://help.instantly.ai/en/articles/7889099-how-to-add-custom-tracking-domain-cloudflare)
 - [Instantly 2026 deliverability guide](https://instantly.ai/blog/how-to-achieve-90-cold-email-deliverability-in-2025/)
 - [Google & Microsoft sender guidelines 2026](https://leadhaste.com/blog/google-microsoft-sender-guidelines)
 - [Microsoft cold email policy 2026](https://litemail.ai/blog/microsoft-cold-email-policy-2026)
