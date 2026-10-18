@@ -31,7 +31,16 @@ Lookalike `.com` domains (e.g. `ascendmy.com`, `getascendmy.com`,
 `ascend-my.com`), each 301-redirecting to ascendpeptides.my, on Cloudflare
 Registrar with auto-renew on.
 
-- **`.com` only** (`.net` / `.co` at a pinch). No cheap TLDs: `.xyz`, `.top`,
+- **`.my` is fine too**, and reads local to Malaysian recipients: a
+  country TLD with registrant checks and low abuse. Exabytes runs RM1
+  first-year promos (new registrations only, Malaysian citizens or
+  SSM-registered businesses); renewal is the normal price, RM89 a year on
+  18 Oct 2026, so let unused or burned ones lapse. Cloudflare Registrar
+  doesn't sell `.my`: register at Exabytes, point the nameservers to
+  Cloudflare for DNS. Every `.my` is registered to a real IC or SSM number
+  and sits under MYNIC, which can suspend a `.my` on a Malaysian authority's
+  request; a `.com` doesn't carry that exposure.
+- **Otherwise `.com`** (`.net` / `.co` at a pinch). No cheap TLDs: `.xyz`, `.top`,
   `.click`, `.icu`, `.cfd`, `.sbs`, `.bond`, `.online`, `.site`, `.shop`. They
   have the worst abuse ratios, filters score the TLD, and some company mail
   systems block them outright. The saving is about US$5 a domain a year,
@@ -209,6 +218,7 @@ comes first for the likely targets.
 - [Instantly SuperSearch](https://help.instantly.ai/articles/11364248-supersearch)
 - [Instantly terms](https://instantly.ai/terms)
 - [Spam domains by TLD, Mar–May 2026 (CybercrimeInfoCenter)](https://www.cybercrimeinfocenter.org/spam-activity-in-tlds-march-may-2026)
+- [Exabytes .my domains](https://www.exabytes.my/domains/mydomain)
 - [Instantly 2026 deliverability guide](https://instantly.ai/blog/how-to-achieve-90-cold-email-deliverability-in-2025/)
 - [Google & Microsoft sender guidelines 2026](https://leadhaste.com/blog/google-microsoft-sender-guidelines)
 - [Microsoft cold email policy 2026](https://litemail.ai/blog/microsoft-cold-email-policy-2026)
