@@ -27,8 +27,13 @@ link, or one link on the cold domain.
 
 ### 1. Domains
 
-Lookalike `.com` domains (e.g. `ascendmy.com`, `getascendmy.com`,
-`ascend-my.com`), each 301-redirecting to ascendpeptides.my, on Cloudflare
+**Main brand domain (never sends cold):** `ascendmy.com`, the brand name
+exact, with `ascendmy.my` as its defensive twin. Both were unregistered on
+18 Oct 2026.
+
+Cold lookalikes (e.g. `getascendmy.com`, `ascend-my.com`, `getascend.my`,
+`teamascend.my`, `goascend.my`, all unregistered on 18 Oct 2026; `ascendhq.my`
+is taken), each 301-redirecting to ascendpeptides.my, on Cloudflare
 Registrar with auto-renew on.
 
 - **`.my` is fine too**, and reads local to Malaysian recipients: a
