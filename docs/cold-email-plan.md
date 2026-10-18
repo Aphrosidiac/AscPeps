@@ -57,9 +57,9 @@ Warm-up messages carry a tag that a filter in each inbox uses to hide them.
 
 | Weeks | Warm-up / inbox / day | Real lead emails / inbox / day |
 |---|---|---|
-| 1–3 | ramps 5 → about 20 | **0** |
-| 4 | about 20 | 5–10 |
-| 5–6 | about 20 | +5 a week |
+| 1–3 | +1 a day up to the daily limit (Instantly suggests 10 for new inboxes, later about 20) | **0** |
+| 4 | 10–20 | 5–10 |
+| 5–6 | 10–20 | +5 a week |
 | 7+ | stays on, permanently | ceiling **25–30** |
 
 Warm-up cannot rescue a bad list: real replies and low complaints are what
@@ -77,7 +77,10 @@ Unibox replies, and email verification on credits (about 0.25 credit per
 address).
 
 - **Plan:** Outreach Growth, $47/mo ($37.60/mo yearly): 5,000 emails and
-  1,000 uploaded contacts a month. Enough for the pilot only. Move to
+  1,000 uploaded contacts a month. Warm-up is listed as unlimited, separate
+  from the 5,000 (confirm with Instantly chat before paying). The 5,000 counts
+  every campaign email, follow-ups included; the 1,000 contacts is the real
+  cap (1,000 leads × 3 steps ≈ 3,000 emails). Enough for the pilot only. Move to
   Hypergrowth ($97/mo, 25,000 contacts) once replies prove out.
 - **No Credits or bundle plan at first.** Leads come from Apify; verification
   from Apify's add-on or a small credit top-up.
