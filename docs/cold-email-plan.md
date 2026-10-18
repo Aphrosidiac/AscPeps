@@ -49,16 +49,52 @@ Unauthenticated mail to Gmail can be rejected with `5.7.26`.
 
 ### 4. Warm-up
 
-2–3 weeks before the first real send, on the sending tool's warm-up network.
-Start at 5–10 a day per inbox and ramp to a ceiling of about **25–30 per inbox
-per day**. Warm-up stays on permanently.
+Warm-up mail never goes to leads. Instantly's warm-up network is a pool of
+other users' real inboxes: ours trade automated emails with them, and the
+receiving side opens them, replies, marks them important and pulls them out
+of spam. Gmail and Microsoft see a new inbox with a normal, engaged history.
+Warm-up messages carry a tag that a filter in each inbox uses to hide them.
 
-3 domains × 2 inboxes × 25 = about 150 sends a day, follow-ups included.
+| Weeks | Warm-up / inbox / day | Real lead emails / inbox / day |
+|---|---|---|
+| 1–3 | ramps 5 → about 20 | **0** |
+| 4 | about 20 | 5–10 |
+| 5–6 | about 20 | +5 a week |
+| 7+ | stays on, permanently | ceiling **25–30** |
 
-### 5. Sending tool
+Warm-up cannot rescue a bad list: real replies and low complaints are what
+keep the reputation. If bounces or complaints rise, cut real sends and let
+warm-up carry the inbox.
 
-Instantly or Smartlead: inbox rotation, throttling, stop on reply or bounce,
-suppression list.
+At the ceiling, 3 domains × 2 inboxes × 25 = about 150 lead sends a day,
+follow-ups included.
+
+### 5. Sending tool: Instantly
+
+Chosen 18 Oct 2026. Covers sending, inbox rotation, throttling, stop on reply
+or bounce, unlimited inboxes and warm-up, the blocklist (suppression list),
+Unibox replies, and email verification on credits (about 0.25 credit per
+address).
+
+- **Plan:** Outreach Growth, $47/mo ($37.60/mo yearly): 5,000 emails and
+  1,000 uploaded contacts a month. Enough for the pilot only. Move to
+  Hypergrowth ($97/mo, 25,000 contacts) once replies prove out.
+- **No Credits or bundle plan at first.** Leads come from Apify; verification
+  from Apify's add-on or a small credit top-up.
+- **Own the inboxes; skip Instantly's pre-warmed ones.** Those ($10/inbox/mo,
+  $15/domain/yr, batches of 5) send from day one, but Instantly keeps the
+  domains and admin access and can't transfer them. Its terms allow
+  suspension at its sole discretion, and peptides are a category platforms get
+  nervous about. Domains on Cloudflare and Workspace inboxes we own, connected
+  to Instantly, can move to Smartlead in an afternoon.
+- **Not in Instantly:**
+  - Malaysian gym and clinic leads: SuperSearch is Apollo-style (450M
+    contacts, Malaysia coverage unstated). Apify Google Maps → CSV → Instantly.
+  - AscPeps customers and unsubscribers: export and upload to Instantly's
+    blocklist before the first send (manual until automated).
+  - Postmaster Tools and blocklist checks stay outside.
+- **Pilot cost:** about US$47 Instantly + about US$42 for 6 Workspace inboxes
+  + domains + a few dollars of Apify ≈ **US$95/mo**.
 
 ### 6. List hygiene
 
@@ -147,6 +183,10 @@ comes first for the likely targets.
 - [Leads Finder, code_crafter (Apify)](https://apify.com/code_crafter/leads-finder)
 - [Leads Finder, atomus (Apify)](https://apify.com/atomus/leads-finder)
 - [Best Apify actors for lead generation](https://use-apify.com/docs/best-apify-actors/best-lead-generation-actors)
+- [Instantly pricing](https://instantly.ai/pricing)
+- [Instantly pre-warmed accounts](https://help.instantly.ai/en/articles/9969215)
+- [Instantly SuperSearch](https://help.instantly.ai/articles/11364248-supersearch)
+- [Instantly terms](https://instantly.ai/terms)
 - [Instantly 2026 deliverability guide](https://instantly.ai/blog/how-to-achieve-90-cold-email-deliverability-in-2025/)
 - [Google & Microsoft sender guidelines 2026](https://leadhaste.com/blog/google-microsoft-sender-guidelines)
 - [Microsoft cold email policy 2026](https://litemail.ai/blog/microsoft-cold-email-policy-2026)
