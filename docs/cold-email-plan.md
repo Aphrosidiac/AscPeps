@@ -27,13 +27,16 @@ link, or one link on the cold domain.
 
 ### 1. Domains
 
-**Main brand domain (never sends cold):** `ascendmy.com`, the brand name
-exact, with `ascendmy.my` as its defensive twin. Both were unregistered on
-18 Oct 2026.
+**Main domain (never sends cold):** `ascendmy.com`, registered 18 Oct 2026.
+It holds Ascend's main tools and websites. `ascendmy.my` is its unregistered
+defensive twin.
 
-Cold lookalikes (e.g. `getascendmy.com`, `ascend-my.com`, `getascend.my`,
-`teamascend.my`, `goascend.my`, all unregistered on 18 Oct 2026; `ascendhq.my`
-is taken), each 301-redirecting to ascendpeptides.my, on Cloudflare
+**Cold domains, registered 18 Oct 2026 (renew 18 Oct 2027):** `ascendhq.my`,
+`ascendpeps.my`, `getascendpeps.my`. Pilot: two live, one warming as reserve.
+No `.com` cold domain for now; add one (e.g. `getascendmy.com`) as the next
+reserve, so not every cold domain sits under MYNIC.
+
+Further lookalikes, each 301-redirecting to ascendpeptides.my, on Cloudflare
 Registrar with auto-renew on.
 
 - **`.my` is fine too**, and reads local to Malaysian recipients: a
