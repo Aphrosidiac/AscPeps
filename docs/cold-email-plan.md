@@ -27,8 +27,26 @@ link, or one link on the cold domain.
 
 ### 1. Domains
 
-2–3 lookalike `.com` domains (e.g. `ascend-my.com`, `getascendmy.com`), each
-301-redirecting to ascendpeptides.my.
+Lookalike `.com` domains (e.g. `ascendmy.com`, `getascendmy.com`,
+`ascend-my.com`), each 301-redirecting to ascendpeptides.my, on Cloudflare
+Registrar with auto-renew on.
+
+- **`.com` only** (`.net` / `.co` at a pinch). No cheap TLDs: `.xyz`, `.top`,
+  `.click`, `.icu`, `.cfd`, `.sbs`, `.bond`, `.online`, `.site`, `.shop`. They
+  have the worst abuse ratios, filters score the TLD, and some company mail
+  systems block them outright. The saving is about US$5 a domain a year,
+  against the US$7 a month each inbox costs.
+- **Names:** brandable Ascend variants. No `peptide`, `pharma`, `health`,
+  `mail` or `outreach`, no digits, at most one hyphen.
+- **Live + reserve, not "lots":** 3 live domains (6 inboxes) plus 2 reserve
+  domains (4 inboxes) warming continuously, about 10 inboxes in all. A burned
+  live domain is swapped for a warm reserve the same day, and a new reserve
+  starts warming. Spare domains can be bought early (age helps, US$10 each)
+  but get inboxes only when they join the rotation.
+- **Two providers:** live and reserve split across Google Workspace and
+  Microsoft 365, so one suspended account doesn't take every inbox with it.
+- More domains don't fix a first batch that fails on a bad list or bad copy:
+  new domains burn the same way. The first batch starts slow on purpose.
 
 ### 2. Mailboxes
 
@@ -190,6 +208,7 @@ comes first for the likely targets.
 - [Instantly pre-warmed accounts](https://help.instantly.ai/en/articles/9969215)
 - [Instantly SuperSearch](https://help.instantly.ai/articles/11364248-supersearch)
 - [Instantly terms](https://instantly.ai/terms)
+- [Spam domains by TLD, Mar–May 2026 (CybercrimeInfoCenter)](https://www.cybercrimeinfocenter.org/spam-activity-in-tlds-march-may-2026)
 - [Instantly 2026 deliverability guide](https://instantly.ai/blog/how-to-achieve-90-cold-email-deliverability-in-2025/)
 - [Google & Microsoft sender guidelines 2026](https://leadhaste.com/blog/google-microsoft-sender-guidelines)
 - [Microsoft cold email policy 2026](https://litemail.ai/blog/microsoft-cold-email-policy-2026)
