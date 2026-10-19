@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
-import { getActiveGateway, isOnlineMethod, gatewayNameForMethod } from '../../utils/payment-gateway.js';
+import { getActiveGateway, isOnlineMethod, gatewayNameForMethod, type PaymentGateway } from '../../utils/payment-gateway.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
@@ -122,6 +122,9 @@ async function ensureManualPaySession(
 }
 
 function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
+  if (order.paymentGateway === 'billplz' && order.paymentRef) {
+    return getActiveGateway('billplz')?.billUrl(order.paymentRef);
+  }
   if (order.paymentGateway === 'toyyibpay' && order.paymentRef) {
     const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
     return `${host}/${order.paymentRef}`;
@@ -177,6 +180,16 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
   }
   const isManualPay = data.paymentMethod === 'MANUAL';
 
+  // The online gateway is resolved BEFORE anything is written, for the same
+  // reason: a missing or refused gateway used to be discovered only after the
+  // order had committed, leaving an UNPAID order with no bill, stock held and
+  // a confirmation email sent — and a retry then showed "Order Received" for
+  // it (ASC2610/0037, 2026-10-19).
+  let onlineGateway: PaymentGateway | null = null;
+  if (isOnlineMethod(data.paymentMethod)) {
+    onlineGateway = await resolveOnlineGateway(fastify, data.paymentMethod);
+  }
+
   // Idempotency: a network retry of a request the server already committed must
   // NOT create a second order (double stock decrement + double bill = double
   // charge). Return the original order instead.
@@ -187,6 +200,11 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     if (existing) {
       if (existing.paymentGateway === MANUALPAY_GATEWAY) {
         return { order: existing, paymentUrl: await ensureManualPaySession(fastify, existing, data.discountCode?.toUpperCase()) };
+      }
+      // The first attempt committed the order but never got a bill (the gateway
+      // call failed). Open it now rather than handing back no way to pay.
+      if (onlineGateway && !existing.paymentRef && existing.paymentStatus === 'UNPAID') {
+        return { order: existing, paymentUrl: await openBill(fastify, existing, onlineGateway) };
       }
       return { order: existing, paymentUrl: reconstructPaymentUrl(existing) };
     }
@@ -233,7 +251,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
 
     const variants = await tx.productVariant.findMany({
       where: { id: { in: items.map((i) => i.variantId) }, active: true, product: { active: true } },
-      include: { product: { select: { name: true } } },
+      include: { product: { select: { name: true, noShipping: true } } },
     });
 
     if (variants.length !== items.length) {
@@ -287,7 +305,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     }
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
-    const shippingFee = resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
+    // No shipping only when every line is a noShipping product (schema.prisma).
+    const shippingFee = variants.every((v) => v.product.noShipping)
+      ? 0
+      : resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
 
     let discountAmount = 0;
     let discountCodeId: string | undefined;
@@ -458,47 +479,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     if (order.total < 100) {
       throw { statusCode: 400, message: 'Order total is too low for online payment. Please use WhatsApp checkout.' };
     }
-    const settings = await fastify.prisma.setting.findMany({
-      where: { key: { in: ['payment_gateway'] } },
-    });
-    const fiatGateway = settings.find(s => s.key === 'payment_gateway')?.value || 'billplz';
-
-    // CRYPTO always resolves to btcpay; the `payment_gateway` setting only
-    // chooses between the fiat gateways.
-    const gatewayName = gatewayNameForMethod(data.paymentMethod, fiatGateway);
-    const gateway = getActiveGateway(gatewayName);
-
-    // No configured gateway used to fall through silently: the order was
-    // created, stock was reserved, and the customer landed on a confirmation
-    // screen for an order they were never given any way to pay for. Fail loud
-    // instead — the order rolls forward as UNPAID and the reconcile sweep
-    // releases its stock, same as any other abandoned attempt.
-    if (!gateway) {
-      fastify.log.error({ gatewayName, orderNumber: order.orderNumber }, 'No active payment gateway');
-      throw {
-        statusCode: 503,
-        message: 'Online payment is temporarily unavailable. Please use WhatsApp checkout.',
-      };
-    }
-
-    {
-      const bill = await gateway.createBill({
-        name: order.customerName,
-        email: order.email || undefined,
-        phone: order.phone,
-        amount: order.total,
-        description: `Ascend MY Order ${order.orderNumber}`,
-        orderNumber: order.orderNumber,
-        orderId: order.id,
-      });
-
-      await fastify.prisma.order.update({
-        where: { id: order.id },
-        data: { paymentRef: bill.billId, paymentGateway: bill.gateway },
-      });
-
-      paymentUrl = bill.paymentUrl;
-    }
+    paymentUrl = await openBill(fastify, order, onlineGateway!);
   }
 
   // The operators' "new order, awaiting payment" notice (Routines → Order
@@ -509,6 +490,64 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
   void notifyOrder(fastify, order.id, 'created');
 
   return { order, whatsappUrl, paymentUrl };
+}
+
+/**
+ * The gateway that will take this order's online payment, or a 503 when there
+ * is none (not configured, or a sandbox gateway on a real domain). Called
+ * before the order is written.
+ */
+async function resolveOnlineGateway(fastify: FastifyInstance, method: string): Promise<PaymentGateway> {
+  const setting = await fastify.prisma.setting.findUnique({ where: { key: 'payment_gateway' } });
+  // CRYPTO always resolves to btcpay; the `payment_gateway` setting only
+  // chooses between the fiat gateways.
+  const gatewayName = gatewayNameForMethod(method, setting?.value || 'billplz');
+  const gateway = getActiveGateway(gatewayName);
+  if (!gateway) {
+    fastify.log.error({ gatewayName }, 'No active payment gateway');
+    throw {
+      statusCode: 503,
+      message: 'Online payment is temporarily unavailable. Please use WhatsApp checkout.',
+    };
+  }
+  return gateway;
+}
+
+/**
+ * Create the gateway bill for an order and record it. A gateway error leaves
+ * the order UNPAID with no bill; the checkout keeps its idempotency key, so
+ * the customer's retry comes back through createOrder and lands here again.
+ */
+async function openBill(
+  fastify: FastifyInstance,
+  order: { id: string; orderNumber: string; customerName: string; email: string | null; phone: string; total: number },
+  gateway: PaymentGateway
+): Promise<string> {
+  let bill;
+  try {
+    bill = await gateway.createBill({
+      name: order.customerName,
+      email: order.email || undefined,
+      phone: order.phone,
+      amount: order.total,
+      description: `Ascend MY Order ${order.orderNumber}`,
+      orderNumber: order.orderNumber,
+      orderId: order.id,
+    });
+  } catch (err) {
+    const response = (err as { response?: { status?: number; data?: unknown } }).response;
+    fastify.log.error(
+      { gateway: gateway.name, orderNumber: order.orderNumber, status: response?.status, data: response?.data, err: response ? undefined : err },
+      'Could not create payment bill'
+    );
+    throw { statusCode: 502, message: 'We could not open the payment page. Please try again in a moment.' };
+  }
+
+  await fastify.prisma.order.update({
+    where: { id: order.id },
+    data: { paymentRef: bill.billId, paymentGateway: bill.gateway },
+  });
+  return bill.paymentUrl;
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {

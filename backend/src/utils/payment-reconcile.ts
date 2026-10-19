@@ -194,6 +194,13 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
     const gateway = getGatewayByBillId(order.paymentRef, order.paymentGateway ?? undefined);
     if (!gateway) continue;
 
+    // Billplz delivers its signed callback reliably (retried up to 5 times over
+    // 24 h) and rate-limits status reads to 100 — or 10 — per 5 minutes per
+    // account, shared with the redirect's own check. Re-querying every unpaid
+    // bill every 2 minutes would eat that budget, so a Billplz bill is only
+    // re-read once, just before the order would be released.
+    if (gateway.name === 'billplz' && order.createdAt.getTime() >= now - releaseAfterMs) continue;
+
     try {
       const { paid, failureReason, channel } = await gateway.verifyPaid(order.paymentRef);
       if (paid) {

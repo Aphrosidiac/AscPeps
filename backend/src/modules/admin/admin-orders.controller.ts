@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
-import { refundBill } from '../../utils/billplz.js';
 import { restoreOrderInventory } from '../../utils/order-inventory.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { capturePurchase } from '../../utils/posthog.js';
@@ -576,19 +575,14 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
       await restoreOrderInventory(fastify, order.id);
     }
     if (data.paymentStatus === 'REFUNDED') {
-      if (order.paymentRef && order.paymentGateway === 'billplz') {
-        try {
-          await refundBill(order.paymentRef, `Refund for order ${order.orderNumber}`);
-          fastify.log.info(`Billplz refund initiated for order ${order.orderNumber}`);
-        } catch (err) {
-          fastify.log.error({ err, orderId: order.id }, 'Billplz refund failed');
-          throw { statusCode: 400, message: 'Refund API call failed — check logs for details' };
-        }
-      } else if (order.paymentGateway === 'toyyibpay') {
-        // ToyyibPay has no refund API — the money must be returned manually via
-        // the ToyyibPay dashboard / bank. We only restore stock + discount here.
+      if (order.paymentGateway === 'billplz' || order.paymentGateway === 'toyyibpay') {
+        // Neither gateway has a refund API (the Billplz call this used to make,
+        // POST /v4/bills/:id/refund, is not in Billplz's API and failed, which
+        // blocked marking the order refunded at all). The money goes back by
+        // hand from the gateway dashboard or by bank transfer; here we only
+        // record it and restore stock + discount.
         fastify.log.warn(
-          `Order ${order.orderNumber} marked REFUNDED for ToyyibPay — process the actual refund MANUALLY in the ToyyibPay dashboard`
+          `Order ${order.orderNumber} marked REFUNDED for ${order.paymentGateway} — return the money MANUALLY (gateway dashboard or bank transfer)`
         );
       }
       await restoreOrderInventory(fastify, order.id);

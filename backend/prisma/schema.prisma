@@ -50,6 +50,10 @@ model Product {
   // peptide needs Bacteriostatic Water to reconstitute") — informational
   // only, distinct from the required/forced ProductAddOn mechanism below.
   addOnReminder String?
+  // True when this product never costs shipping (e.g. a test item for checking
+  // the payment gateway). An order is charged no shipping only when EVERY line
+  // in it is a noShipping product — one ordinary item brings the fee back.
+  noShipping    Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

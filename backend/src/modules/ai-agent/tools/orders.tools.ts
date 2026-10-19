@@ -261,7 +261,13 @@ async function priceOrderPreview(prisma: any, input: any) {
   const shippingSetting = await prisma.setting.findUnique({ where: { key: 'shipping_fee' } });
   // Stored in RINGGIT in settings (e.g. "10.0"), unlike every other money value
   // in this system, which is cents. Converted the same way createOrder does.
-  const shippingFee = Math.round(parseFloat(shippingSetting?.value ?? '0') * 100) || 0;
+  // Same noShipping rule as createOrder: free only when every line is exempt.
+  const exempt = await prisma.productVariant.count({
+    where: { id: { in: lines.map((l) => l.variantId) }, product: { noShipping: true } },
+  });
+  const shippingFee = exempt === lines.length
+    ? 0
+    : Math.round(parseFloat(shippingSetting?.value ?? '0') * 100) || 0;
 
   return { lines, autoAdded, subtotal, shippingFee };
 }

@@ -8,7 +8,7 @@ import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
-import type { AddOnVariant } from '@/types';
+import type { AddOnVariant, CartItem } from '@/types';
 
 interface Props {
   variantId: string;
@@ -20,9 +20,10 @@ interface Props {
   stock: number;
   addOns?: AddOnVariant[];
   addOnReminder?: string | null;
+  noShipping?: boolean;
 }
 
-export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, stock, addOns, addOnReminder }: Props) {
+export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, stock, addOns, addOnReminder, noShipping }: Props) {
   const [quantity, setQuantity] = useState(1);
   // Cleared whenever the selection changes: at that point the sticky bar is
   // about a different purchase and must go back to offering Add to Cart.
@@ -58,7 +59,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
   }, [variantId, quantity, selectedAddOnIds]);
 
   const handleAddToCart = () => {
-    const lines = [{
+    const lines: CartItem[] = [{
       variantId,
       code,
       name,
@@ -67,6 +68,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       quantity,
       stock,
       imageUrl,
+      noShipping,
     }];
     for (const addOn of addOns ?? []) {
       if (!selectedAddOnIds.includes(addOn.id) || addOn.stock === 0) continue;

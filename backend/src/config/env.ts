@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// .env is the source of truth and must win over the process environment. pm2
+// snapshots env at first start and re-applies it on every restart, and plain
+// dotenv never overrides a variable that is already set — so an edited .env
+// was silently ignored. On 2026-10-19 that kept live on stale sandbox Billplz
+// keys after the live ones were written to .env.
+dotenv.config({ override: true });
 
 // z.coerce.boolean() is WRONG for string env vars: Boolean("false") === true,
 // so any non-empty value (incl. "false") becomes true. Parse the string instead.

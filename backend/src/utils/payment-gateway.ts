@@ -88,7 +88,7 @@ const billplzGateway: PaymentGateway = {
       collectionId: env.BILLPLZ_COLLECTION_ID!,
       name: params.name,
       email: params.email,
-      mobile: params.phone.startsWith('60') ? params.phone : `60${params.phone.replace(/^0/, '')}`,
+      mobile: billplzMobile(params.phone),
       amount: params.amount,
       description: params.description,
       callbackUrl: `${backendUrl}/api/v1/payments/callback`,
@@ -127,11 +127,26 @@ const billplzGateway: PaymentGateway = {
     // could distinguish a decline from an abandon. Left undefined on purpose.
     return { paid: bill.paid, amount: bill.paid_amount };
   },
+  async deactivateBill(billId) {
+    return billplz.deleteBill(billId);
+  },
   billUrl(billId) {
     const host = env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com' : 'https://www.billplz.com';
     return `${host}/bills/${billId}`;
   },
 };
+
+/**
+ * Billplz wants the mobile with its country code and nothing else
+ * (60123456789), and rejects the whole bill (422) over one it can't use. The
+ * stored phone is normalised to 0XXXXXXXXX, so only a Malaysian mobile (01x)
+ * is sent; anything else is left off and the bill goes by email alone.
+ */
+function billplzMobile(phone: string): string | undefined {
+  const digits = phone.replace(/\D/g, '');
+  const local = digits.startsWith('60') ? digits.slice(2) : digits.replace(/^0/, '');
+  return /^1\d{8,9}$/.test(local) ? `60${local}` : undefined;
+}
 
 const toyyibpayGateway: PaymentGateway = {
   name: 'toyyibpay',

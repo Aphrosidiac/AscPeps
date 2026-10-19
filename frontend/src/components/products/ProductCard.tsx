@@ -33,6 +33,7 @@ export function ProductCard({ product }: ProductCardProps) {
       quantity: 1,
       stock: variant.stock,
       imageUrl: variant.imageUrl,
+      noShipping: product.noShipping,
     });
   };
 

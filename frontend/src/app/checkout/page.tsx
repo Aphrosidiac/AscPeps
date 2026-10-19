@@ -255,7 +255,10 @@ export default function CheckoutPage() {
   // region is resolved first. Both the fee and the minimum change the moment
   // the customer picks an East Malaysian state.
   const isEastState = isEastMalaysia(form.state);
-  const shippingInSen = resolveShippingFeeSen(shippingFee, eastShippingFee, isEastState);
+  // Mirrors createOrder: no shipping only when every line is a noShipping product.
+  const shippingInSen = items.length > 0 && items.every((i) => i.noShipping)
+    ? 0
+    : resolveShippingFeeSen(shippingFee, eastShippingFee, isEastState);
   const orderTotal = Math.max(0, total + shippingInSen - discountAmount);
 
   // East Malaysia minimum. Measured against `total` — the cart subtotal, before
@@ -298,6 +301,16 @@ export default function CheckoutPage() {
         idempotencyKey: idempotencyKeyRef.current,
         ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
+
+      // An online order must come back with somewhere to pay. Without one,
+      // never show "Order Received": keep the idempotency key so Place Order
+      // again reopens this same order and asks the server for its bill.
+      if (isRedirectPayment && !result.paymentUrl) {
+        setError('We could not open the payment page. Please press Place Order again, or use WhatsApp checkout.');
+        setLoading(false);
+        submitting.current = false;
+        return;
+      }
 
       idempotencyKeyRef.current = null; // success — next order gets a fresh key
 

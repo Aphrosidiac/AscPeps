@@ -41,6 +41,8 @@ export interface Product {
   // add-on (unlike `active`, which gates both). For supply items meant only
   // to be bundled, never browsed/purchased on their own.
   addOnOnly: boolean;
+  // Never charged shipping when it is the only kind of thing in the cart.
+  noShipping?: boolean;
   updatedAt: string;
   category: {
     name: string;
@@ -103,6 +105,9 @@ export interface CartItem {
   // won't have it (the backend re-validates stock at order creation anyway).
   stock?: number;
   imageUrl: string | null;
+  // The product's noShipping flag. Missing on carts saved before it existed,
+  // which correctly means "charge shipping".
+  noShipping?: boolean;
 }
 
 export interface OrderItem {
