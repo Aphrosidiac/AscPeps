@@ -121,9 +121,12 @@ plain signature: name, Ascend MY, the redirect site. No `info@`, `sales@` or
 
 **Order:**
 
-1. New Cloudflare account (not Rikaidrawings@…, which holds ascendmy.com).
-   Add the three zones; at the `.my` registrar, replace the nameservers with
-   the two Cloudflare gives.
+1. **Done 19 Oct 2026.** Cloudflare account `admin@ascendmy.com` (not
+   Rikaidrawings@…, which holds the ascendmy.com zone). All three zones on
+   Free, nameservers `oaklyn.ns.cloudflare.com` / `patrick.ns.cloudflare.com`,
+   set at Shinjiru (registrar, rikaidrawings@gmail.com login). MX, SPF,
+   DMARC (`p=none`, no `rua` yet), both A records and the 301 redirect rule
+   are in on all three. DNSSEC not enabled (needs a DS record at Shinjiru).
 2. Workspace sign-up with `ascendhq.my`, Business Starter. Verify with the
    TXT record Google gives. Admin console → Account → Domains → Manage
    domains → add the other two as **secondary domains** (not aliases), each
