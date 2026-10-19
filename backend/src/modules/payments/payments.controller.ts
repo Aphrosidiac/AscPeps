@@ -39,6 +39,16 @@ export async function handlePaymentCallback(fastify: FastifyInstance, body: Reco
     return { status: 'ok' };
   }
 
+  if (order.paymentStatus === 'FAILED' && result.status === 'paid') {
+    // Paid after we gave up and released the stock: a customer who was already
+    // on the bank page when the bill was closed. The money has arrived, so this
+    // needs a person — reinstate the order or refund it.
+    fastify.log.error(
+      { orderNumber: order.orderNumber, gateway: gateway.name, billId: result.billId, amount: result.amount },
+      'LATE PAYMENT: money received for an order already released as FAILED — reinstate or refund by hand'
+    );
+    return { status: 'ok' };
+  }
   if (order.paymentStatus === 'PAID' || order.paymentStatus === 'FAILED') {
     return { status: 'ok' };
   }
@@ -103,7 +113,14 @@ export async function handlePaymentRedirect(
       verifiedPaid = paid;
       if (paid) {
         const order = await fastify.prisma.order.findFirst({ where: { paymentRef: billId } });
-        if (order) await applyPaid(fastify, order);
+        if (order?.paymentStatus === 'FAILED') {
+          fastify.log.error(
+            { orderNumber: order.orderNumber, gateway: gatewayName, billId },
+            'LATE PAYMENT: money received for an order already released as FAILED — reinstate or refund by hand'
+          );
+        } else if (order) {
+          await applyPaid(fastify, order);
+        }
       }
     } catch (err) {
       fastify.log.warn({ err, billId }, 'redirect: gateway verify failed');

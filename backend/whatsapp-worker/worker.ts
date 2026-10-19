@@ -31,7 +31,8 @@ import fs from 'fs'
 import { config as loadEnv } from 'dotenv'
 import { contentOf, mentionsBot, stripSelfMentions, unwrapMessage, type QuotedContent } from './mention.js'
 
-loadEnv()
+// .env wins over pm2's saved environment, same as the API (config/env.ts).
+loadEnv({ override: true })
 // Same pin as the API (server.ts): log lines and alert timestamps in Malaysian time whatever the host's zone.
 process.env.TZ ||= 'Asia/Kuala_Lumpur'
 

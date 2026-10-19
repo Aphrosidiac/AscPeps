@@ -302,6 +302,16 @@ export default function CheckoutPage() {
         ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
 
+      // An online order must come back with somewhere to pay. Without one,
+      // never show "Order Received": keep the idempotency key so Place Order
+      // again reopens this same order and asks the server for its bill.
+      if (isRedirectPayment && !result.paymentUrl) {
+        setError('We could not open the payment page. Please press Place Order again, or use WhatsApp checkout.');
+        setLoading(false);
+        submitting.current = false;
+        return;
+      }
+
       idempotencyKeyRef.current = null; // success — next order gets a fresh key
 
       // So "Track Order" — here, on the success page, or days later — opens

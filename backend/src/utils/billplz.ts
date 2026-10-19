@@ -14,7 +14,7 @@ interface CreateBillParams {
   collectionId: string;
   name: string;
   email?: string;
-  mobile: string;
+  mobile?: string;
   amount: number;
   description: string;
   callbackUrl: string;
@@ -41,7 +41,7 @@ export async function createBill(params: CreateBillParams): Promise<BillResponse
       collection_id: params.collectionId,
       name: params.name,
       email: params.email || null,
-      mobile: params.mobile,
+      mobile: params.mobile || null,
       amount: params.amount,
       description: params.description,
       callback_url: params.callbackUrl,
@@ -62,16 +62,25 @@ export async function getBill(billId: string): Promise<BillResponse> {
   return data;
 }
 
-export async function refundBill(billId: string, reason: string): Promise<{ id: string; status: string }> {
-  const bill = await getBill(billId);
-  if (!bill.paid) throw new Error('Cannot refund an unpaid bill');
-  const { data } = await axios.post(
-    `${getBaseUrl()}/v4/bills/${billId}/refund`,
-    { reason },
-    { auth: getAuth(), timeout: 30000 }
-  );
-  return data;
+/**
+ * Delete a still-due bill so it can no longer be paid (Billplz: only "due"
+ * bills can be deleted; a paid one answers 422). Returns false when Billplz
+ * refused because the bill is already paid. Note Billplz's own caveat: a
+ * customer already on the bank page can still complete payment, and the bill
+ * then comes back as paid.
+ */
+export async function deleteBill(billId: string): Promise<boolean> {
+  try {
+    await axios.delete(`${getBaseUrl()}/v3/bills/${billId}`, { auth: getAuth(), timeout: 30000 });
+    return true;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 422) return false;
+    throw err;
+  }
 }
+
+// Billplz has no refund API: money goes back by hand, from the Billplz
+// dashboard or a bank transfer. See admin-orders.controller.ts.
 
 export function verifyCallbackSignature(body: Record<string, string>): boolean {
   const signatureKey = env.BILLPLZ_SIGNATURE_KEY;
