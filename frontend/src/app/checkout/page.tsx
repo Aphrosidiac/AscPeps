@@ -255,7 +255,10 @@ export default function CheckoutPage() {
   // region is resolved first. Both the fee and the minimum change the moment
   // the customer picks an East Malaysian state.
   const isEastState = isEastMalaysia(form.state);
-  const shippingInSen = resolveShippingFeeSen(shippingFee, eastShippingFee, isEastState);
+  // Mirrors createOrder: no shipping only when every line is a noShipping product.
+  const shippingInSen = items.length > 0 && items.every((i) => i.noShipping)
+    ? 0
+    : resolveShippingFeeSen(shippingFee, eastShippingFee, isEastState);
   const orderTotal = Math.max(0, total + shippingInSen - discountAmount);
 
   // East Malaysia minimum. Measured against `total` — the cart subtotal, before

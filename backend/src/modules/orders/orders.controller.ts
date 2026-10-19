@@ -233,7 +233,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
 
     const variants = await tx.productVariant.findMany({
       where: { id: { in: items.map((i) => i.variantId) }, active: true, product: { active: true } },
-      include: { product: { select: { name: true } } },
+      include: { product: { select: { name: true, noShipping: true } } },
     });
 
     if (variants.length !== items.length) {
@@ -287,7 +287,10 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     }
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
-    const shippingFee = resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
+    // No shipping only when every line is a noShipping product (schema.prisma).
+    const shippingFee = variants.every((v) => v.product.noShipping)
+      ? 0
+      : resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
 
     let discountAmount = 0;
     let discountCodeId: string | undefined;

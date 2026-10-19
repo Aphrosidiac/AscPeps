@@ -54,6 +54,7 @@ const productObjectSchema = z.object({
   // never browsed/purchased on their own (see schema.prisma for why this
   // can't just reuse `active`).
   addOnOnly: z.boolean().optional(),
+  noShipping: z.boolean().optional(),
   // Same `.optional()`-not-`.default()` rule as the variant schema above —
   // written/read by the Featured Order panel's frequent, narrow updates
   // (just `{ sortOrder }`), so it's exactly the field most exposed to the

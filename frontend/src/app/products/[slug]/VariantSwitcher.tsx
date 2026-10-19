@@ -363,6 +363,7 @@ export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
               stock={variant.stock}
               addOns={product.addOns}
               addOnReminder={product.addOnReminder}
+              noShipping={product.noShipping}
             />
 
             {/* This badge deliberately does NOT link to product.coaUrl, even

@@ -49,6 +49,7 @@ interface ProductFormData {
   featured: boolean;
   active: boolean;
   addOnOnly: boolean;
+  noShipping: boolean;
   addOnIds: string[];
   // Per-selected-add-on config, keyed by addOnId (a variant id) — required/quantity
   // only meaningful for ids also present in addOnIds.
@@ -176,7 +177,7 @@ function GalleryEditor({
 const emptyForm: ProductFormData = {
   name: '', slug: '', categoryId: '',
   description: '', benefits: '', dosageInfo: '', coaUrl: DEFAULT_COA,
-  featured: false, active: true, addOnOnly: false,
+  featured: false, active: true, addOnOnly: false, noShipping: false,
   addOnIds: [], addOnConfig: {}, addOnReminder: '',
   variants: [newVariant()], images: [],
 };
@@ -392,6 +393,7 @@ export function ProductForm({ productId }: { productId?: string }) {
           featured: found.featured,
           active: found.active,
           addOnOnly: found.addOnOnly,
+          noShipping: found.noShipping ?? false,
           addOnIds: found.addOns?.map((a) => a.id) || [],
           addOnConfig: Object.fromEntries(
             (found.addOns || []).map((a) => [a.id, { required: a.addOnRequired, quantity: String(a.addOnQuantity) }])
@@ -558,6 +560,7 @@ export function ProductForm({ productId }: { productId?: string }) {
       featured: form.featured,
       active: form.active,
       addOnOnly: form.addOnOnly,
+      noShipping: form.noShipping,
       addOns: form.addOnIds.map((addOnId) => {
         const config = form.addOnConfig[addOnId];
         const quantity = parseInt(config?.quantity ?? '1');
@@ -636,7 +639,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 required
               />
-              <div className="grid sm:grid-cols-3 gap-4 pt-1">
+              <div className="grid sm:grid-cols-2 gap-4 pt-1">
                 <Checkbox checked={form.featured} onChange={(v) => updateField('featured', v)} label="Featured" description="Shown in the homepage carousel." />
                 <Checkbox checked={form.active} onChange={(v) => updateField('active', v)} label="Active" description="Visible on the store." />
                 <Checkbox
@@ -644,6 +647,12 @@ export function ProductForm({ productId }: { productId?: string }) {
                   onChange={(v) => updateField('addOnOnly', v)}
                   label="Add-on only"
                   description="Hidden from the catalog and its own page, but usable as another product’s add-on."
+                />
+                <Checkbox
+                  checked={form.noShipping}
+                  onChange={(v) => updateField('noShipping', v)}
+                  label="No shipping charge"
+                  description="An order made up only of products like this pays no shipping."
                 />
               </div>
             </div>
