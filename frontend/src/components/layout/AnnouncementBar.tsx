@@ -83,7 +83,9 @@ export function AnnouncementBar({ enabled, text }: AnnouncementBarProps) {
         </span>
 
         {overflowing ? (
-          <p className="font-medium flex">{marquee}</p>
+          // A <div>, not a <p>: the marquee track is a <div>, which a <p> may
+          // not contain (React flagged it as a hydration error).
+          <div className="font-medium flex">{marquee}</div>
         ) : (
           <p className="font-medium text-center">{text}</p>
         )}
