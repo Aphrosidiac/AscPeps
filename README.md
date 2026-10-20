@@ -18,17 +18,17 @@
 
 ---
 
-Ascend MY sells laboratory research peptides to Malaysian buyers: 47 products
-in 63 sizes across 10 categories, sold strictly for research use, with copy
-that cites the actual PubMed studies and says so when the evidence is thin.
-Customers pay by FPX or card through ToyyibPay, by bank transfer over
-WhatsApp, or in Bitcoin; the shop confirms, restocks, emails and books each
-order without anyone touching a spreadsheet.
+Ascend MY sells laboratory research peptides to Malaysian buyers: about 45
+products in 63 sizes across 10 categories, sold strictly for research use, with
+copy that cites the actual PubMed studies and says so when the evidence is thin.
+Customers pay online through Billplz (FPX), by bank transfer over WhatsApp, or
+in Bitcoin; the shop confirms, restocks, emails and books each order without
+anyone touching a spreadsheet.
 
 Behind the storefront is a back office that does the accounting properly —
 gateway fees, refunds that reverse rather than delete, stock charged once —
 and a filing cabinet for the paperwork. And behind *that* is **Abby**: an
-operator assistant with 74 tools over everything the dashboard can do,
+operator assistant with 87 tools over everything the dashboard can do,
 reachable from an Assistant page or by messaging the shop's own WhatsApp
 number. Ask it what came in this week, tell it to put the 10 mg on sale
 until Sunday, and it does — with every change recorded and most of them one
@@ -44,12 +44,12 @@ git clone https://github.com/Aphrosidiac/AscPeps && cd AscPeps   # then see "Run
 
 | | |
 |---|---|
-| **Storefront** | Server-rendered catalogue, cart, dual checkout, order tracking, a reconstitution calculator, Certificates of Analysis, research articles with comments, optional email-verified customer accounts |
-| **Payments** | ToyyibPay (FPX + cards) live, Billplz as a drop-in adapter, BTCPay for Bitcoin, WhatsApp bank transfer, and a hosted proof-of-transfer checkout (ManualPayGate) behind a flag |
+| **Storefront** | Server-rendered catalogue, a cart where the supplies a peptide needs ride under it, checkout, order tracking, a reconstitution calculator, Certificates of Analysis, research articles with comments, optional email-verified customer accounts |
+| **Payments** | Billplz live (FPX), ToyyibPay as the alternative adapter, BTCPay for Bitcoin, WhatsApp bank transfer, and a hosted proof-of-transfer checkout (ManualPayGate) behind a flag |
 | **Back office** | Orders with per-line costing and profit split, products and sale windows, discounts, delivery slots, subscribers and campaigns, an email outbox with a template preview, comment moderation, the WhatsApp allowlist |
 | **The books** | Revenue, COGS, gateway fees, operating vs inventory spend, partner balances, and a document store that is private by construction |
 | **Email** | Six transactional templates that survive Gmail's stylesheet stripping and Outlook's dark mode |
-| **The assistant** | One agent loop behind two doors — a streamed Assistant page and WhatsApp — with tiers, approvals, undo, a readable memory directory and three switchable routines |
+| **The assistant** | One agent loop behind two doors — a streamed Assistant page and WhatsApp — with tiers, approvals, undo, a readable memory directory and four switchable routines |
 | **SEO / GEO** | Every route server-rendered, Schema.org on everything, a live `llms.txt`, IndexNow pings on every catalogue change |
 
 ---
@@ -57,17 +57,17 @@ git clone https://github.com/Aphrosidiac/AscPeps && cd AscPeps   # then see "Run
 ## How it is built
 
 ```
-                    ascendpeptides.my  (nginx · TLS · Brotli · CSP)
+             ascendpeptides.my  (Cloudflare proxy → nginx · TLS · Brotli · CSP)
                             │
              ┌──────────────┴──────────────┐
              ▼                             ▼
       ascend-web :3000               ascend-api :3105
       Next.js 16, App Router         Fastify 5 · Zod · Prisma 7
-      standalone output              157 routes, 47 migrations
+      standalone output              56 migrations
       server-rendered catalogue      the agent loop lives HERE
              │                             │
              │   /api/* and /uploads/*     ├── PostgreSQL
-             └────────── proxied ─────────►├── ToyyibPay · Billplz · BTCPay
+             └────────── proxied ─────────►├── Billplz · ToyyibPay · BTCPay
                                            ├── Resend (email outbox)
                                            ├── OpenRouter (the assistant's model)
                                            └── PostHog (purchase events)
@@ -88,13 +88,13 @@ AscPeps/
 │   └── src/app/               products, checkout, track, calculator, coa, insights, account, admin/…
 ├── backend/                  Fastify — the API, the books, the agent
 │   ├── src/modules/           products, orders, payments, members, insights, whatsapp, ai-agent, admin/…
-│   ├── src/utils/             payment-gateway, payment-reconcile, profit, finance, order-notify, indexnow…
+│   ├── src/utils/             payment-gateway, payment-reconcile, order-lines, profit, finance, order-notify, indexnow…
 │   ├── src/emails/            the six templates and their shared layout
 │   ├── whatsapp-worker/       the socket process
 │   ├── scripts/               test suites, backfills, previews
 │   ├── documents/             uploaded receipts and invoices — private, never served statically
 │   └── prisma/                schema + migrations
-├── docs/                     assistant, whatsapp-agent, bookkeeping, documents, posthog
+├── docs/                     payments, add-ons, assistant, whatsapp-agent, bookkeeping, documents, … (see The docs)
 ├── deploy.sh                 pull, migrate, build on the box, restart
 └── deploy-frontend.sh        build locally, ship the output (see Deployment)
 ```
@@ -107,13 +107,20 @@ AscPeps/
 
 Every page is real HTML before any JavaScript runs — the catalogue never
 bails out to a client fetch, so a crawler with no JS engine and a phone on a
-bad connection see the same thing. Products carry sizes with a per-mg price,
-cross-links between dosages of the same compound, a category-aware
-"frequently paired with" rail, and the reconstitution guide merged in where
-it applies (not on ready-to-use liquids). The supplies a peptide needs — BAC
-water, syringes, swabs — ride along as required add-ons, so adding a product
-is **one action with one confirmation** that names the product and counts
-the extras.
+bad connection see the same thing. Products carry sizes with a per-mg price
+(opening on the cheapest size that is in stock), cross-links between dosages
+of the same compound, a category-aware "frequently paired with" rail, and the
+reconstitution guide merged in where it applies (not on ready-to-use liquids).
+
+The supplies a peptide needs — BAC water, syringes, swabs — are **included**
+add-ons: they sit under the product in the cart and on every receipt, scale
+with its quantity, leave with it, and are never counted as items. Other
+products offered alongside (MOTS-C on Retatrutide) are **suggested** add-ons
+and become lines of their own. The server, not the cart, decides what an
+order includes; a free supply that runs out ships what is left rather than
+blocking the sale. Detail in [docs/add-ons.md](docs/add-ons.md). A product can
+also be flagged **No shipping charge** — an order made only of such products
+pays no shipping (the RM1 payment-test product uses it).
 
 Ordering needs no account. The cart lives in `localStorage`; tracking takes
 the order number *and* the phone, and returns no PII, so it cannot be used
@@ -140,8 +147,8 @@ end to end.
 
 | Method | Confirmed by | Stock held for |
 |---|---|---|
-| ToyyibPay (FPX, cards) | return-URL verify, or the reconcile sweep | 2 h |
-| Billplz | same adapter interface, HMAC-SHA256 signature | 2 h |
+| Billplz (FPX) — live since 2026-10-19 | signed callback, signed return re-verified server-side, or one sweep read before release | 2 h |
+| ToyyibPay — the alternative, chosen in Settings | return-URL verify, or the reconcile sweep | 2 h |
 | Bitcoin (BTCPay) | webhook | 24 h — a low-fee broadcast can sit unconfirmed for hours and still be valid |
 | WhatsApp bank transfer | a person, in `/admin/orders` | 48 h |
 | Hosted proof upload (flag) | a person reviewing the screenshot | 48 h |
@@ -161,16 +168,25 @@ a sweep landing together cannot double anything. Order creation is
 idempotent too: a retried checkout finds its order and its bill rather than
 making a second one.
 
+The full flow, the Billplz setup and a troubleshooting table are in
+[docs/payments.md](docs/payments.md).
+
 Things learned the expensive way, now in the code:
 
+- **No usable gateway means no order.** The gateway is resolved before
+  anything is written; a misconfigured or sandbox gateway on the live domain
+  is a clear 503, never an "Order Received" for an order nobody can pay.
 - **ToyyibPay's server-to-server callback has never reached this origin.** A
   customer who pays and closes the tab is confirmed by the reconcile sweep
   (every 2 minutes, re-querying the gateway for any order older than 3), or
   not at all. The sweep is not a backstop; it is the path.
-- **An abandoned online order is released, cancelled, and its bill killed.**
-  The bill would otherwise stay payable for a day while the stock behind it
-  went back on sale — a customer could pay into an order that no longer
-  existed, and nothing would reconcile it.
+- **An abandoned online order is released, cancelled, and its bill killed**
+  (Billplz bills deleted, ToyyibPay bills deactivated). The bill would
+  otherwise stay payable while the stock behind it went back on sale. Money
+  that still arrives for a released order is logged as `LATE PAYMENT` for a
+  person to handle.
+- **Neither gateway has a refund API.** Marking an order refunded records it;
+  the money goes back by hand.
 - **A refused payment is a lost sale someone should chase.** The reason and
   channel are recorded on the order rather than logged and forgotten.
 - **Restores are idempotent and floored.** Two paths flipping the same order
@@ -186,8 +202,8 @@ every route behind a 24-hour JWT with the algorithm pinned.
 | | |
 |---|---|
 | **Dashboard · Analytics** | Revenue and profit by period. Profit is computed only over orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all revenue would understate margin silently |
-| **Orders** | A stepper per order: info, lines, profit split, complete. Per-line costs, the gateway fee (stamped automatically, editable — a published rate is a schedule, not a promise), refunds by exact amount, a manual "profit shared" tick because money leaving the account is an event the system cannot observe, and the paperwork filed against the order from the order |
-| **Products** | Parents and size variants: images, pricing, sale windows, stock, featured, COA link, research content, required add-ons |
+| **Orders** | A stepper per order: info, lines, profit split, complete. Lines can be changed after the order is placed (included supplies follow their product). Per-line costs (free included lines may stay uncosted), the gateway fee (stamped automatically, editable — a published rate is a schedule, not a promise), refunds by exact amount, a manual "profit shared" tick because money leaving the account is an event the system cannot observe, and the paperwork filed against the order from the order |
+| **Products** | Parents and size variants: images, pricing, sale windows, stock, featured, COA link, research content, add-ons tagged Included or Suggested, "Add-on only" and "No shipping charge" switches |
 | **Finance · Documents** | [The books](#the-books), below |
 | **Delivery** | Recurring weekly windows, derived slots, a booking calendar pinning one slot to one order |
 | **Emails** | Outbox, editable copy, and a template preview rendered against a real order with a light/dark toggle |
@@ -284,7 +300,7 @@ Renders every template against real orders, reports size against Gmail's
 
 <img src="docs/screens/assistant.png" alt="The Assistant page: a streamed transcript, each tool call a card with its result, a WRITE card for the sale it set" width="100%">
 
-Abby can do anything the dashboard can — 74 tools across catalogue, orders,
+Abby (AB to the team) can do anything the dashboard can — 87 tools across catalogue, orders,
 finance, promos, content, delivery, documents, reports, reminders and its own
 memory — through two doors onto one loop
 ([`backend/src/modules/ai-agent/core/`](backend/src/modules/ai-agent/core),
@@ -303,7 +319,7 @@ The model is the cheap part. The harness owns reliability:
 
 | | |
 |---|---|
-| **Tiers** | 34 read tools run freely; 24 writes run and are recorded with before/after; 16 destructive ones park as an approval — on the page as a card, on WhatsApp as a question that expires in five minutes |
+| **Tiers** | Read tools run freely; writes run and are recorded with before/after; 19 destructive ones park as an approval — on the page as a card, on WhatsApp as a question that expires in five minutes |
 | **Transcript** | Append-only and provider-neutral, tool results stored in full, compacted by size into a summary row the model reads as data. A conversation from three days ago is still there, cost included |
 | **Validation** | Every tool call is checked against its schema before it runs; two schema-invalid steps in a row hand the turn to the escalation model |
 | **Budgets** | Sixteen steps and 30k output tokens per turn; one run per thread; a Stop button that stops |
@@ -341,11 +357,16 @@ Switched on from the page, off by default:
   is still on the gateway. Written by code, not the model — instant,
   identical, never wrong about the number.
 - **Nightly reflection** — the memory tidy-up above.
+- **Month-end wrap** — one message on the 1st for the month just ended:
+  revenue, profit, what each partner earned, orders still hanging, stock.
+  Written by code from the same `costOrder` the Finance page uses, because it
+  is the number partners settle up on.
 
 ### Model
 
-Chosen from the page, one setting for both doors: DeepSeek V4 Flash by
-default, with an optional escalation model and a reasoning-effort dial.
+Chosen from the page, one setting for both doors (`OPENROUTER_MODEL`,
+DeepSeek V4 Flash, is only the fallback for a fresh database — live runs
+GLM 5.3 Flash), with an optional escalation model and a reasoning-effort dial.
 Every thread shows what it actually cost, from the provider's own
 accounting.
 
@@ -372,7 +393,7 @@ engines:
 
 ## Running it locally
 
-Node 20+ and PostgreSQL. The migration history is real (47 of them) — never
+Node 20+ and PostgreSQL. The migration history is real (56 of them) — never
 `prisma db push` against a tracked database.
 
 ```bash
@@ -425,58 +446,75 @@ an unknown sender is dropped before the agent runs, and the suite reports
 
 ## Deployment
 
-One VPS (`ubuntu`), three PM2 processes, nginx in front. Host in the
-password manager, not here.
+One VPS (`ubuntu`), three PM2 processes, nginx in front, Cloudflare in front
+of nginx. Host in the password manager, not here.
 
 | Process | Port | |
 |---|---|---|
-| `ascend-api` | 3105 | Fastify, `tsup` build, `node dist/server.js`. The agent runs in here |
+| `ascend-api` | 3105 | Fastify, run from source with `tsx src/server.ts`. The agent runs in here |
 | `ascend-web` | 3000 | Next.js standalone output |
-| `ascend-wa` | 3107 | The WhatsApp socket. Restart with a plain `pm2 restart` — never `--update-env` from a shell that sourced the backend `.env` |
+| `ascend-wa` | 3107 | The WhatsApp socket (localhost only; `/send` and `/send-file` behind `WORKER_HTTP_TOKEN`). Restart by hand with a plain `pm2 restart` — never `--update-env` from a shell that sourced the backend `.env` |
+
+The normal deploy is one command on the box:
 
 ```bash
-ssh ubuntu@<host> && cd /home/ubuntu/ascend && git pull origin main
-cd backend && npm install
-set -a && source .env && set +a
-npx prisma migrate deploy && npx prisma generate && npm run build
-PORT=3105 pm2 restart ascend-api
+ssh ubuntu@<host> && cd /home/ubuntu/ascend && ./deploy.sh
 ```
 
-Then the frontend — **from your machine**, not the box:
+It pulls, installs, migrates **first** (and aborts before anything is rebuilt
+if the migration fails, so the old code keeps running against the old
+schema), regenerates Prisma, builds both apps, copies `public/`, `.next/static`
+and `.env` into the standalone output, and restarts all three processes with
+the right `PORT`s. Take a `pg_dump` before any deploy that carries a
+migration. A backend-only change can skip the frontend: `git pull` then
+`PORT=3105 pm2 restart ascend-api --update-env`.
 
-```bash
-./deploy-frontend.sh
-```
+`./deploy-frontend.sh` builds the frontend **on your machine** and rsyncs the
+output — the box has ~2 GB of RAM shared with a dozen apps, and `next build`
+cleans `.next` *before* it can run out of memory, leaving `ascend-web` serving
+a half-deleted directory. Check `free -m` before a box build.
 
-`deploy.sh` does all of this on the server in one go, and migrates safely
-(it aborts before anything is rebuilt if the migration fails, so the old
-code keeps running against the old schema). But it builds the frontend **on
-the box**, and the box has ~2 GB of RAM shared with a dozen apps. `next build`
-cleans `.next` *before* it can OOM, leaving `ascend-web` serving a
-half-deleted directory. Check `free -m` first; when it is tight, use
-`deploy-frontend.sh`, which builds locally and rsyncs the output.
+Both scripts keep the **previous builds' JavaScript and CSS** for 14 days in
+`frontend/.static-archive/` and merge them back under the new build before
+the restart (the Next server only serves static files that exist when it
+starts). A visitor whose page was loaded before a deploy can still fetch its
+chunks instead of hitting a 404 mid-click.
 
-Three traps, each of which has taken the site down once:
+Traps, each of which has taken the site down or hidden a change once:
 
 - **`PORT=3000` on the frontend restart is not decoration.** `--update-env`
-  re-reads the calling shell, and the backend `.env` you just sourced exports
-  `PORT=3105`. Verify with `ss -lntp | grep -E ":(3000|3105)"` — `pm2 list`
-  shows "online" while a process crash-loops.
+  re-reads the calling shell, and a shell that sourced the backend `.env`
+  exports `PORT=3105`. Verify with `ss -lntp | grep -E ":(3000|3105|3107)"` —
+  `pm2 list` shows "online" while a process crash-loops.
+- **pm2 replays the environment it was first started with.** The API and the
+  worker load `backend/.env` with dotenv's `override`, so an edited `.env`
+  wins; prove a config change on the *running* process, not with a fresh
+  script (see [docs/payments.md](docs/payments.md)).
 - **`NEXT_PUBLIC_*` is inlined at build time.** A laptop build with
   `.env.local` in place bakes `localhost:3105` into every client bundle and
-  the server's `.env` cannot override it; every visitor's browser then calls
-  the API on its own machine. `curl` still returns 200 — **a 200 is not
-  proof.** `deploy-frontend.sh` moves `.env.local` aside, refuses to ship a
-  bundle containing it, and re-checks the deployed files.
-- **A migration that fails after a restart** leaves new code on an old
-  schema. `deploy.sh` runs under `set -euo pipefail` and migrates first.
+  the server's `.env` cannot override it. `curl` still returns 200 — **a 200
+  is not proof.** `deploy-frontend.sh` moves `.env.local` aside, refuses to
+  ship a bundle containing it, and re-checks the deployed files.
 
-Also: writing to the database directly bypasses the revalidate ping, so the
-storefront serves stale copy for up to an hour (`POST /api/revalidate` with
-the secret afterwards); `next/image` resolves `/uploads/*` by fetching from
-the Next server itself, so `next.config.ts` proxies that path to the API and
-removing the rewrite silently breaks every product photo; the database is
-`pg_dump`ed nightly at 3 am with 14-day retention to `/home/ubuntu/backups/ascend/`.
+Also:
+
+- **Cloudflare** proxies the domain. Pages are not cached at the edge
+  (`cf-cache-status: DYNAMIC`); hashed `/_next/static` files are. nginx
+  restores the visitor's real IP from Cloudflare's ranges (refreshed weekly by
+  `ops/cloudflare-ips-refresh.sh`) and drops requests that bypass Cloudflare.
+  SSL is Full (strict), so an expired origin certificate takes the site down.
+- **The Content-Security-Policy lives in nginx**
+  (`/etc/nginx/sites-enabled/ascendpeptides.my`), not in this repo. Adding a
+  third-party script or endpoint means editing it there, then `nginx -t` and
+  a reload.
+- Writing to the database directly bypasses the revalidate ping, so the
+  storefront serves stale copy for up to an hour — `POST /api/revalidate`
+  with the secret afterwards (`deploy-frontend.sh` does this).
+- `next/image` resolves `/uploads/*` by fetching from the Next server itself,
+  so `next.config.ts` proxies that path to the API; removing the rewrite
+  silently breaks every product photo.
+- The database is `pg_dump`ed nightly at 3 am with 14-day retention to
+  `/home/ubuntu/backups/ascend/`.
 
 ---
 
@@ -499,10 +537,12 @@ removing the rewrite silently breaks every product photo; the database is
 
 ## What it will not do
 
-- **Confirm a ToyyibPay payment in real time.** The gateway's callback does
-  not arrive here; confirmation comes from the return URL or the sweep, so a
-  customer who closes the tab waits up to a couple of minutes. The paid-order
-  notice inherits that lag.
+- **Confirm a ToyyibPay payment in real time**, when ToyyibPay is the chosen
+  gateway. Its callback does not arrive here; confirmation comes from the
+  return URL or the sweep, so a customer who closes the tab waits up to a
+  couple of minutes. Billplz's signed callback does arrive.
+- **Refund through a gateway.** Neither has a refund API; the money goes back
+  by hand and the order records it.
 - **Take crypto or hosted proof uploads by default.** Both are behind
   settings and off until switched on with real details entered.
 - **Let the assistant near a customer.** It is operator-facing only. It reads
@@ -544,15 +584,16 @@ removing the rewrite silently breaks every product photo; the database is
 
 ## API
 
-157 routes under `/api/v1`. The public surface is small on purpose:
+Everything is under `/api/v1`. The public surface is small on purpose:
 
 ```
 GET  /categories                      GET  /products?category=&search=&featured=&limit=
 GET  /products/:slug                  GET  /settings
-POST /orders                          → { order, whatsappUrl | paymentUrl }; accepts idempotencyKey
+POST /orders                          → { order, whatsappUrl | paymentUrl }; accepts idempotencyKey;
+                                        items[] = { variantId, quantity, addOnIds? } — included supplies are added by the server
 GET  /orders/lookup?phone=&orderNumber=      both required, no PII returned
 POST /orders/validate-discount        GET  /health
-POST /payments/callback               ToyyibPay + Billplz, signature verified
+POST /payments/callback               Billplz + ToyyibPay, signature verified
 GET  /payments/redirect               re-verifies server-side
 POST /webhooks/btcpay                 HMAC verified
 POST /members/register · login · verify · resend-verification · GET /members/me
@@ -571,11 +612,17 @@ approve / decline / undo, memory, routines, model settings — are listed in
 
 | | |
 |---|---|
+| [payments.md](docs/payments.md) | the methods, Billplz keys and limits, an online order end to end, unpaid orders, refunds, live testing, what to check when payment breaks |
+| [add-ons.md](docs/add-ons.md) | included vs suggested add-ons, who decides what an order includes, how orders show and change, money and reports |
 | [assistant.md](docs/assistant.md) | the harness: data model, a turn step by step, tiers and undo, memory and the trust rule, routines, the model menu, tests |
 | [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
 | [bookkeeping.md](docs/bookkeeping.md) | every figure the Finance page shows and how it is derived |
 | [documents.md](docs/documents.md) | the document store and why it is not under `/uploads` |
+| [email-campaigns.md](docs/email-campaigns.md) | campaign template, product cards, audiences and exclusions, switches, sending quota |
+| [shadow-skus.md](docs/shadow-skus.md) | the generalised names products carry on internal paperwork, and how they are resolved |
 | [posthog.md](docs/posthog.md) | what is captured, and the region trap that drops every event silently |
+| [finance-section-plan.md](docs/finance-section-plan.md) · [insights-figures-plan.md](docs/insights-figures-plan.md) | design plans, with a status note on what was built |
+| [cold-email-plan.md](docs/cold-email-plan.md) | the cold-outreach plan (separate domains, warm-up, lead sources) |
 
 ---
 

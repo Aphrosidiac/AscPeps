@@ -49,15 +49,22 @@ on `ProductVariant`.
 
 Rules live in `backend/src/utils/gateway-fee.ts` as `flat + bps`, so both shapes
 are expressible. Defaults: ToyyibPay and Billplz RM1.00 flat, BTCPay zero (self-
-hosted, no processor). Orders with no gateway — WhatsApp, manual transfer — never
-reach the table and stay at zero, which is a real figure, not "unknown".
+hosted, no processor). Billplz is the live gateway (it is what checkout uses when
+the `payment_gateway` setting names none), so its rule is the one that stamps
+today's orders. Orders with no gateway — WhatsApp, manual transfer — never reach
+the table and stay at zero, which is a real figure, not "unknown".
 
-Override per gateway in **Settings**, as `gateway_fee_<gateway>_flat` (cents) and
-`gateway_fee_<gateway>_bps`. A blank or malformed value falls back to the default
-rather than to zero: silently charging nothing because someone typed "RM1" into a
-cents field is exactly the quiet wrong number this exists to remove.
+Override per gateway with the settings keys `gateway_fee_<gateway>_flat` (cents)
+and `gateway_fee_<gateway>_bps`. The Settings page has no field for them; they
+are plain rows in the settings table, written through the settings API. A blank
+or malformed value falls back to the default rather than to zero: silently
+charging nothing because someone typed "RM1" into a cents field is exactly the
+quiet wrong number this exists to remove.
 
-The figure is editable per order on the *Profit Sharing* tab.
+The stamp is made on the gateway path (`applyPaid`) and also when an admin marks
+an order Paid by hand. The figure is then editable per order — the **Gateway Fee**
+card on the order's *Profit Sharing* tab ("correct it here if the settlement
+differed"), saved with the costs.
 
 **Historical orders carry zero.** The stamp only happens at a PAID transition, so
 every order confirmed before this shipped has no fee recorded and its profit still
@@ -88,6 +95,15 @@ nothing. It is all-or-nothing because `restoreOrderInventory` is all-or-nothing.
 A fully refunded order is therefore a real loss of exactly the courier and the
 fee — which is the truth, and used to be reported as nothing at all.
 
+**Refunds are recorded here, never sent.** Neither Billplz nor ToyyibPay has a
+refund API (the Billplz call the system once made does not exist and failed,
+which blocked marking an order refunded at all). Moving an order to REFUNDED
+restores its stock and discount usage and records `refundedAmount`; the money
+itself goes back by hand, from the gateway dashboard or a bank transfer. The
+amount is asked for on the order page (prefilled with the full total, less for a
+partial refund) and cannot exceed the total; a REFUNDED move with no amount
+means the whole total. Moving the order off REFUNDED clears `refundedAmount`.
+
 The payment lock was narrowed to permit **PAID → REFUNDED and nothing else**.
 Blocking every transition left online orders — nearly all of them — with no way to
 record a refund, so reporting had nothing to reverse and kept counting the sale.
@@ -104,6 +120,12 @@ Now revenue is counted whenever the money arrived; only profit waits for costing
 - `revenue` — every order the money arrived on, net of refunds
 - `costedRevenue` — the part whose costs are known
 - `uncostedRevenue` — the rest. Real money in, profit unknowable until priced
+
+An order counts as costed when every line has a `unitCost` **or is free**
+(`unitPrice` 0). A free line — the syringe or swab that came included with a
+vial — costs nothing to the customer and does not hold the order's profit
+hostage; one the customer paid for still needs its cost. (`costOrder` in
+`backend/src/utils/profit.ts`, mirrored by `profitSummary` on the order page.)
 
 ---
 
@@ -156,8 +178,19 @@ cost yet, the discount follows its own rule (`carryDiscount` in
 and `subtotal`/`total` are recomputed. Refused where a discount is refused, plus
 on a cancelled order whose stock has already gone back.
 
+The edit acts on the products on the order. What came included with a product
+(`OrderItem.parentItemId` — a syringe, swab or vial size under the line it was
+configured on) follows it: scaled to the new quantity, gone when the product
+goes, and a product added here brings its required included items. Orders placed
+before bundles existed (2026-10-20) carry those supplies as loose RM0 lines;
+they are left as they are.
+
 Analytics reads the same order set through the same `costOrder`, so the two pages
-cannot disagree about what a month took.
+cannot disagree about what a month took. Its top-products list counts the
+products customers chose, not what came included with them (`isIncludedItem` in
+`utils/order-lines.ts`: a child line, or a free line of an add-on-only product),
+and the month-end WhatsApp wrap (`utils/month-end.ts`) uses the same per-line
+test to count supplies apart from units sold, on the same `costOrder`/`allocate`.
 
 ### A unit cost comes off the supplier price list
 

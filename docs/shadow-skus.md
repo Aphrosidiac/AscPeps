@@ -76,6 +76,11 @@ not to carry it, and would do so silently — the sheet would look complete. Thi
 is why coverage is the headline on the admin page rather than a statistic buried
 in it.
 
+Every line of the order is resolved, supplies included. What came included with a
+product (a syringe, swab or Bac Water under its line, `OrderItem.parentItemId`)
+is an order line like any other here: it is its own line on the sheet, and its
+SKU needs a shadow code or the order is blocked.
+
 ## API
 
 All routes are under `/api/v1/admin/shadow-skus` and every one of them, the PDF
@@ -154,11 +159,15 @@ states are Prisma filters, not a post-fetch pass over the page, so the counts
 describe the whole collection rather than the fifty rows that happened to arrive.
 
 The whole row opens `InternalSheetDialog`, which is the answer to "let me look at
-this one": the mapping on the left (real product → printed line, with unmapped
-items flagged) and the rendered PDF on the right, in an iframe fed by a blob —
-the token is in localStorage, so a plain `src` would arrive unauthenticated.
-Downloading is a button inside that dialog rather than a step you must take to
-see anything.
+this one": the mapping on the left (real product → printed line) and the
+rendered PDF on the right, in an iframe fed by a blob — the token is in
+localStorage, so a plain `src` would arrive unauthenticated. Downloading is a
+button inside that dialog rather than a step you must take to see anything.
+
+An unmapped line is not just flagged: it carries a dropdown of the active shadow
+codes in the slot where its printed name would go, so the gap is closed in the
+dialog where it was found instead of by hunting the same SKU down in the mapping
+table. Once every line resolves, the PDF renders.
 
 Each order also carries an **Internal summary** panel on its Info tab, directly
 under the real item table. It is a panel and not a fifth tab because the order's

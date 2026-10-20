@@ -46,8 +46,16 @@ PDF, JPEG, PNG, WebP, AVIF, HEIC. Nothing else. That is not a hedge about effort
 it is what lets the read route serve a document inline without worrying that its
 bytes are secretly HTML or SVG that would execute against the admin's own
 session. A plain-text format like CSV cannot be sniffed at all, so allowing one
-would mean allowing arbitrary text and giving up that guarantee; if bank-statement
-CSVs are wanted later they should be attachment-only and never served inline.
+would mean allowing arbitrary text and giving up that guarantee.
+
+That list is for the upload form. A file filed **from a chat** (the assistant's
+`save_attachment_as_document` / `record_expense`) may also be Word, Excel/ODS,
+PowerPoint, CSV/TSV or plain text — bank statements arrive as Excel or CSV — still
+identified from the bytes (CSV and text, which have no magic number, are checked
+to be text and then go by name; HTML is not on the list). The guarantee is kept
+the other way round: only PDF, JPEG, PNG and WebP are ever served inline
+(`isInlineViewable`); everything else, AVIF and HEIC included, is always sent as
+an attachment.
 
 ### 3. Links are many-to-many, and optional
 
@@ -75,7 +83,7 @@ from the UI) or at both (counted twice in both places).
 
 ```
 Document        title, description, kind, occurredAt, amount?,
-                filename, originalName, mimeType, sizeBytes
+                filename, originalName, mimeType, sizeBytes, sha256?
 DocumentLink    documentId + exactly one of (orderId | expenseId)
 ```
 
@@ -90,6 +98,14 @@ DocumentLink    documentId + exactly one of (orderId | expenseId)
   against it is a question worth being able to ask.
 - **`filename`** is `<uuid>.<ext>`, always generated. `originalName` is what the
   user called it, used for display and downloads and **never** to build a path.
+- **`sha256`** is the SHA-256 of the stored bytes, recorded on every upload and
+  every chat filing. It is what lets the same receipt forwarded to the assistant
+  a week later be recognised: filing from a chat refuses a file whose bytes are
+  already in the store (HTTP 409, naming the existing document), because a
+  second copy of a receipt is how an expense gets booked twice. The upload form
+  records the hash but does not refuse. It is nullable: documents filed before
+  the column existed stay null until `backend/scripts/backfill-document-hashes.ts`
+  has run.
 
 This replaced `CompanyExpense.receiptUrl`, which allowed exactly one file per
 expense, was wired to no UI (nothing ever wrote it), and pointed into the
@@ -109,7 +125,7 @@ All routes require the admin JWT, **including the file stream**.
 | `PATCH /api/v1/admin/documents/:id` | edit title/description/kind/date/amount |
 | `PUT /api/v1/admin/documents/:id/links` | **replace** the whole link set |
 | `DELETE /api/v1/admin/documents/:id` | removes the row and the bytes |
-| `GET /api/v1/admin/documents/:id/file` | the bytes; `?download=1` forces a save |
+| `GET /api/v1/admin/documents/:id/file` | the bytes; `?download=1` forces a save, and a type that is not safe inline is always sent as a download |
 
 `search` matches title, description, uploaded filename **and order number**, so
 pasting `ASC2608/0022` finds the paperwork filed against it.
@@ -128,7 +144,9 @@ worth being able to persist.
   `client_max_body_size` on ascendpeptides.my. A larger figure in the app would be
   a lie, because nginx rejects the request with its own 413 before Fastify sees
   it and the friendly error never fires. **Raising it means raising nginx in the
-  same change — both numbers, or neither.**
+  same change — both numbers, or neither.** (Filing from a chat does not pass
+  through nginx's upload path and has its own cap, `AGENT_MAX_FILE_MB`, default
+  20.)
 - A failed upload never leaves bytes behind; the temp file is removed on every
   rejection path, including a database failure after the file has landed.
 
@@ -149,14 +167,22 @@ Also sent: `X-Content-Type-Options: nosniff`, a locked-down CSP, and
 ## The agent
 
 Five tools in their own routed domain (`documents`): `list_documents`,
-`get_document`, `update_document`, `file_document`, `delete_document`.
+`get_document`, `update_document`, `file_document`, `delete_document`. The same
+domain carries the file tools from `files.tools.ts` — `read_attachment`,
+`list_attachments`, `send_file`, `forward_file` and `save_attachment_as_document`
+— because filing an attachment is a document-store job.
 
-**The agent never hands out a file.** It can say a document exists, what it is,
+**The agent never hands out a link.** It can say a document exists, what it is,
 when it is dated, what it is worth and what it is filed against — everything
 needed to answer "do we have the receipt for that order?" — and cannot emit the
 stored filename, a path, or a URL, because none of them enter its context. The
-`shape()` function in `documents.tools.ts` is that boundary. Opening the file is
-a thing a human does in the admin.
+`shape()` function in `documents.tools.ts` is that boundary. Since October 2026 it
+can send the *file* itself: `send_file` puts a filed document (or an order
+receipt, a product photo, an attachment, a spreadsheet exported from a read-only
+query) into the conversation the request came from, and `forward_file` reaches
+another allowlisted operator or group after an explicit yes. Never a customer,
+never a typed-in number, never a link. Opening a file by URL stays a thing a
+human does in the admin.
 
 That is a negative, and a negative stops holding the moment someone adds a field
 to `shape()`. So it is asserted:
