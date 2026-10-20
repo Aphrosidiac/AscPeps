@@ -1,12 +1,16 @@
 import PDFDocument from 'pdfkit';
+import { groupOrderItems, includesText } from './order-lines.js';
 import path from 'path';
 import { getVariantDisplayName } from './product-addons.js';
 import { parseTracking } from './courier.js';
 
 interface ReceiptItem {
+  id?: string;
+  // Set on an item that came included with another line; see order-lines.ts.
+  parentItemId?: string | null;
   quantity: number;
   unitPrice: number;
-  variant: { code: string; size: string | null; product: { name: string } };
+  variant: { code: string; size: string | null; product: { name: string; addOnOnly?: boolean } };
 }
 
 interface ReceiptOrder {
@@ -186,12 +190,21 @@ export async function generateReceiptPdf(
 
     // Table rows
     doc.font('Helvetica').fontSize(9).fillColor('#000000');
-    for (const item of order.items) {
+    // One row per product chosen. A priced include gets its own indented row
+    // (it is money on the receipt); free ones are named in a grey line under
+    // their product. Pre-bundle orders' RM0 supplies go in one line at the end.
+    const { lines, looseIncludes } = groupOrderItems(order.items);
+    const rows: Array<{ item: ReceiptItem; indent: boolean; freeIncludes: ReceiptItem[] }> = [];
+    for (const line of lines) {
+      rows.push({ item: line.item, indent: false, freeIncludes: line.includes.filter((i) => i.unitPrice === 0) });
+      for (const inc of line.includes) if (inc.unitPrice > 0) rows.push({ item: inc, indent: true, freeIncludes: [] });
+    }
+    for (const { item, indent, freeIncludes } of rows) {
       if (y > 700) {
         doc.addPage();
         y = 50;
       }
-      const itemName = getVariantDisplayName(item.variant.product, item.variant);
+      const itemName = (indent ? '+ ' : '') + getVariantDisplayName(item.variant.product, item.variant);
       doc.font('Helvetica').fontSize(9).fillColor('#000000');
       doc.text(itemName, colItem, y, { width: 260 });
       const nameHeight = doc.heightOfString(itemName, { width: 260 });
@@ -208,6 +221,18 @@ export async function generateReceiptPdf(
       });
 
       y += Math.max(nameHeight + 14, 22);
+      if (freeIncludes.length) {
+        const text = `Includes ${includesText(freeIncludes)}`;
+        doc.font('Helvetica').fontSize(7.5).fillColor('#666666');
+        doc.text(text, colItem, y - 6, { width: 260 });
+        y += doc.heightOfString(text, { width: 260 }) + 4;
+      }
+    }
+    if (looseIncludes.length) {
+      const text = `Included: ${includesText(looseIncludes)}`;
+      doc.font('Helvetica').fontSize(7.5).fillColor('#666666');
+      doc.text(text, colItem, y, { width: 400 });
+      y += doc.heightOfString(text, { width: 400 }) + 6;
     }
 
     // Table bottom line

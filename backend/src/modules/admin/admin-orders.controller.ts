@@ -159,7 +159,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     fastify.prisma.order.findMany({
       where,
       include: {
-        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true } } } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        items: { include: { variant: { select: { code: true, size: true, product: { select: { name: true, addOnOnly: true } } } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
         discountCode: { select: { code: true, discountType: true, discountValue: true } },
         emails: EMAIL_STATUS_SELECT,
         // Only the bps, not the whole row: the list needs to know whether a
@@ -356,7 +356,7 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
     const order = await tx.order.findUnique({
       where: { id },
       include: {
-        items: { include: { variant: { include: { product: { select: { name: true } } } } } },
+        items: { include: { variant: { include: { product: { select: { name: true, addOnOnly: true } } } } } },
         discountCode: { select: { discountType: true, discountValue: true } },
       },
     });
@@ -386,65 +386,109 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
     }
 
     const now = new Date();
-    const existingByVariant = new Map(order.items.map((i) => [i.variantId, i]));
-    const addedIds = [...wanted.keys()].filter((v) => !existingByVariant.has(v) && wanted.get(v)! > 0);
+    // The edit is about the products on the order. What came included with a
+    // product (parentItemId) follows it: same per-unit ratio, scaled to the new
+    // quantity, gone when it goes. Pre-bundle orders' loose RM0 supply lines
+    // are left exactly as they are. A listed variant that only exists on this
+    // order as an include is ignored — it is not a line of its own.
+    const isLoose = (i: (typeof order.items)[number]) => !i.parentItemId && i.unitPrice === 0 && !!i.variant.product.addOnOnly;
+    const topLevel = order.items.filter((i) => !i.parentItemId && !isLoose(i));
+    const childrenOf = (parentId: string) => order.items.filter((i) => i.parentItemId === parentId);
+    const includeOnly = new Set(order.items.filter((i) => i.parentItemId || isLoose(i)).map((i) => i.variantId));
+    const topIds = new Set(topLevel.map((i) => i.variantId));
+    for (const v of [...wanted.keys()]) if (includeOnly.has(v) && !topIds.has(v)) wanted.delete(v);
+    if (![...wanted.values()].some((q) => q > 0)) {
+      throw { statusCode: 400, message: 'An order needs at least one item.' };
+    }
+
+    const addedIds = [...wanted.keys()].filter((v) => !topIds.has(v) && wanted.get(v)! > 0);
     const added = addedIds.length
       ? await tx.productVariant.findMany({
           where: { id: { in: addedIds }, active: true, product: { active: true } },
-          include: { product: { select: { name: true } } },
+          include: { product: { select: { id: true, name: true } } },
         })
       : [];
     if (added.length !== addedIds.length) {
       throw { statusCode: 400, message: 'One or more products to add were not found or are no longer sold.' };
     }
+    // A product added here brings its required included items, like checkout.
+    const addedRels = added.length
+      ? await tx.productAddOn.findMany({
+          where: { productId: { in: added.map((v) => v.product.id) }, required: true, addOn: { active: true, product: { active: true, addOnOnly: true } } },
+          include: { addOn: { include: { product: { select: { name: true } } } } },
+        })
+      : [];
+
+    // Every row's next quantity, then the stock it moves.
+    type Plan = { row?: (typeof order.items)[number]; variantId: string; next: number; name: string };
+    const plan: Plan[] = [];
+    const seen = new Set<string>();
+    for (const item of topLevel) {
+      // A duplicate line for the same variant (a few old orders) folds into the first.
+      const next = wanted.has(item.variantId) && !seen.has(item.variantId) ? wanted.get(item.variantId)! : 0;
+      seen.add(item.variantId);
+      plan.push({ row: item, variantId: item.variantId, next, name: getVariantDisplayName(item.variant.product, item.variant) });
+      for (const child of childrenOf(item.id)) {
+        const perUnit = item.quantity > 0 ? child.quantity / item.quantity : 0;
+        plan.push({ row: child, variantId: child.variantId, next: Math.round(perUnit * next), name: getVariantDisplayName(child.variant.product, child.variant) });
+      }
+    }
+    for (const item of order.items.filter(isLoose)) {
+      plan.push({ row: item, variantId: item.variantId, next: item.quantity, name: getVariantDisplayName(item.variant.product, item.variant) });
+    }
+    const newParents = added.map((v) => ({
+      v,
+      qty: wanted.get(v.id)!,
+      includes: addedRels.filter((r) => r.productId === v.product.id).map((r) => ({ addOn: r.addOn, qty: r.quantity * wanted.get(v.id)! })),
+    }));
+    for (const p of newParents) {
+      plan.push({ variantId: p.v.id, next: p.qty, name: getVariantDisplayName(p.v.product, p.v) });
+      for (const inc of p.includes) plan.push({ variantId: inc.addOn.id, next: inc.qty, name: getVariantDisplayName(inc.addOn.product, inc.addOn) });
+    }
 
     // Stock first, so an oversell rolls the whole edit back before any line
     // has moved. Decrements are conditional (the WHERE only matches while
     // enough remains); increments never fail.
-    const moves: { variantId: string; delta: number; name: string }[] = [];
-    for (const item of order.items) {
-      const next = wanted.has(item.variantId) ? wanted.get(item.variantId)! : 0;
-      const delta = next - item.quantity;
-      if (delta !== 0) moves.push({ variantId: item.variantId, delta, name: getVariantDisplayName(item.variant.product, item.variant) });
+    const delta = new Map<string, { d: number; name: string }>();
+    for (const step of plan) {
+      const d = step.next - (step.row?.quantity ?? 0);
+      const cur = delta.get(step.variantId);
+      delta.set(step.variantId, { d: (cur?.d ?? 0) + d, name: cur?.name ?? step.name });
     }
-    for (const v of added) {
-      moves.push({ variantId: v.id, delta: wanted.get(v.id)!, name: getVariantDisplayName(v.product, v) });
-    }
-    for (const move of moves) {
-      if (move.delta > 0) {
+    for (const [variantId, { d, name }] of delta) {
+      if (d > 0) {
         const dec = await tx.productVariant.updateMany({
-          where: { id: move.variantId, stock: { gte: move.delta } },
-          data: { stock: { decrement: move.delta } },
+          where: { id: variantId, stock: { gte: d } },
+          data: { stock: { decrement: d } },
         });
         if (dec.count === 0) {
-          const v = await tx.productVariant.findUnique({ where: { id: move.variantId }, select: { stock: true } });
-          throw { statusCode: 400, message: `Only ${v?.stock ?? 0} more of ${move.name} in stock — ${move.delta} more needed.` };
+          const v = await tx.productVariant.findUnique({ where: { id: variantId }, select: { stock: true } });
+          throw { statusCode: 400, message: `Only ${v?.stock ?? 0} more of ${name} in stock — ${d} more needed.` };
         }
-      } else {
-        await tx.productVariant.update({
-          where: { id: move.variantId },
-          data: { stock: { increment: -move.delta } },
-        });
+      } else if (d < 0) {
+        await tx.productVariant.update({ where: { id: variantId }, data: { stock: { increment: -d } } });
       }
     }
 
     // Lines. Existing ones are updated in place so their id — and the cost
-    // keyed against it — survives; a duplicate line for the same variant
-    // (possible on a few old orders) is folded into the first.
-    const seen = new Set<string>();
-    for (const item of order.items) {
-      const next = wanted.has(item.variantId) && !seen.has(item.variantId) ? wanted.get(item.variantId)! : 0;
-      seen.add(item.variantId);
-      if (next === 0) {
-        await tx.orderItem.delete({ where: { id: item.id } });
-      } else if (next !== item.quantity) {
-        await tx.orderItem.update({ where: { id: item.id }, data: { quantity: next } });
-      }
+    // keyed against it — survives. Children first on delete (cascade would
+    // take them anyway; being explicit keeps the order of writes obvious).
+    for (const step of [...plan].reverse()) {
+      if (!step.row) continue;
+      if (step.next === 0) await tx.orderItem.delete({ where: { id: step.row.id } }).catch(() => undefined);
+      else if (step.next !== step.row.quantity) await tx.orderItem.update({ where: { id: step.row.id }, data: { quantity: step.next } });
     }
-    if (added.length) {
-      await tx.orderItem.createMany({
-        data: added.map((v) => ({ orderId: id, variantId: v.id, quantity: wanted.get(v.id)!, unitPrice: getEffectivePrice(v, now) })),
+    for (const p of newParents) {
+      const parent = await tx.orderItem.create({
+        data: { orderId: id, variantId: p.v.id, quantity: p.qty, unitPrice: getEffectivePrice(p.v, now) },
       });
+      if (p.includes.length) {
+        await tx.orderItem.createMany({
+          data: p.includes.map((inc) => ({
+            orderId: id, variantId: inc.addOn.id, quantity: inc.qty, unitPrice: getEffectivePrice(inc.addOn, now), parentItemId: parent.id,
+          })),
+        });
+      }
     }
 
     const lines = await tx.orderItem.findMany({ where: { orderId: id }, select: { quantity: true, unitPrice: true } });

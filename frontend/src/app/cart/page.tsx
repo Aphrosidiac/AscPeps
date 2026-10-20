@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
 import { Trash2, ShoppingCart } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
@@ -33,7 +34,7 @@ export default function CartPage() {
       <div className="grid lg:grid-cols-3 gap-8">
         <Stagger className="lg:col-span-2 space-y-4" stagger={0.08}>
           {items.map((item) => (
-            <div key={item.variantId} className="bg-surface rounded-xl border border-border p-4">
+            <div key={lineIdOf(item)} className="bg-surface rounded-xl border border-border p-4">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                   {item.imageUrl ? (
@@ -46,10 +47,10 @@ export default function CartPage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="font-display font-bold text-sm sm:text-base truncate">{item.code}</h3>
                   <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
-                  <p className="text-sm text-text-secondary">{formatPrice(item.price)}</p>
+                  <p className="text-sm text-text-secondary">{formatPrice(lineUnitPrice(item))}</p>
                 </div>
 
-                <button onClick={() => { removeItem(item.variantId); posthog.capture('remove_from_cart', { variant_id: item.variantId, product_code: item.code, quantity: item.quantity }); }} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
+                <button aria-label={`Remove ${item.code}`} onClick={() => { removeItem(lineIdOf(item)); posthog.capture('remove_from_cart', { variant_id: item.variantId, product_code: item.code, quantity: item.quantity }); }} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -57,21 +58,40 @@ export default function CartPage() {
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
                 <div className="flex items-center border border-border rounded-lg">
                   <button
-                    onClick={() => updateQuantity(item.variantId, Math.max(1, item.quantity - 1))}
+                    onClick={() => updateQuantity(lineIdOf(item), Math.max(1, item.quantity - 1))}
                     className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
                   >
                     -
                   </button>
                   <span className="px-4 py-1.5 text-sm font-medium">{item.quantity}</span>
                   <button
-                    onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                    onClick={() => updateQuantity(lineIdOf(item), item.quantity + 1)}
                     className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
                   >
                     +
                   </button>
                 </div>
-                <p className="font-display font-bold text-lg">{formatPrice(item.price * item.quantity)}</p>
+                <p className="font-display font-bold text-lg">{formatPrice(lineUnitPrice(item) * item.quantity)}</p>
               </div>
+
+              {/* What comes with it — part of this line, not lines of their own:
+                  no quantity or delete, scales with the quantity above, goes
+                  when the product goes. */}
+              {(item.includes ?? []).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-xs font-medium text-text-muted mb-1.5">Included</p>
+                  <ul className="space-y-1">
+                    {item.includes!.map((inc) => (
+                      <li key={inc.variantId} className="flex items-center justify-between gap-3 text-xs sm:text-sm text-text-secondary">
+                        <span className="min-w-0 truncate">{inc.perUnit * item.quantity}× {inc.name}</span>
+                        <span className={`shrink-0 ${inc.price === 0 ? 'text-success' : ''}`}>
+                          {inc.price === 0 ? 'Free' : formatPrice(inc.price * inc.perUnit * item.quantity)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ))}
         </Stagger>

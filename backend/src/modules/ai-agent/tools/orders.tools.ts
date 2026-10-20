@@ -1,4 +1,5 @@
 import type { AgentTool } from '../tool-kit.js';
+import { resolveOrderLines, linesSubtotal, OrderLineError, groupOrderItems, isIncludedItem } from '../../../utils/order-lines.js';
 import { audited, clampLimit, listResult, money, parseDate, rm, summaryOnly, toCents } from '../tool-kit.js';
 import {
   adminDeleteOrder,
@@ -214,62 +215,25 @@ async function priceOrderPreview(prisma: any, input: any) {
     });
   }
 
-  // Required add-ons are added by createOrder itself — bacteriostatic water,
-  // syringes, swabs. Surfaced here so the operator sees them in the
-  // confirmation rather than being surprised by extra lines afterwards.
-  const parentIds = [
-    ...new Set(
-      (
-        await prisma.productVariant.findMany({
-          where: { id: { in: resolved.map((r) => r.variantId) } },
-          select: { productId: true },
-        })
-      ).map((v: any) => v.productId)
-    ),
-  ];
-  const requiredRelations = await prisma.productAddOn.findMany({
-    where: { productId: { in: parentIds }, required: true, addOn: { active: true, product: { active: true } } },
-    include: { addOn: { include: { product: true } } },
-  });
-
-  // Mirrors createOrder exactly: the larger requirement wins, quantities do not
-  // sum, and they do not scale with how many units of the parent were ordered.
-  const requiredMin = new Map<string, { quantity: number; name: string; code: string; unitPrice: number }>();
-  for (const rel of requiredRelations) {
-    const prev = requiredMin.get(rel.addOnId);
-    // Same rule as createOrder: a free supply that has run low ships what is left.
-    const wanted = Math.max(prev?.quantity ?? 0, rel.quantity);
-    const isFree = getEffectivePrice(rel.addOn) === 0;
-    requiredMin.set(rel.addOnId, {
-      quantity: isFree ? Math.min(wanted, Math.max(rel.addOn.stock, 0)) : wanted,
-      name: `${rel.addOn.product.name}${rel.addOn.size ? ` ${rel.addOn.size}` : ''}`,
-      code: rel.addOn.code,
-      unitPrice: getEffectivePrice(rel.addOn),
-    });
+  // What each product brings included (Bac Water, syringes, swabs — scaled by
+  // its quantity) comes from the same resolver createOrder uses, so the
+  // confirmation shows exactly what the order will hold.
+  let bundled;
+  try {
+    bundled = await resolveOrderLines(prisma, resolved.map((r) => ({ variantId: r.variantId, quantity: r.quantity })));
+  } catch (err) {
+    if (err instanceof OrderLineError) throw new Error(err.message);
+    throw err;
   }
-
-  const autoAdded: typeof resolved = [];
-  for (const [addOnId, req] of requiredMin) {
-    if (req.quantity === 0) continue;
-    const existing = resolved.find((r) => r.variantId === addOnId);
-    if (existing) {
-      existing.quantity = Math.max(existing.quantity, req.quantity);
-    } else {
-      autoAdded.push({ variantId: addOnId, quantity: req.quantity, name: req.name, code: req.code, unitPrice: req.unitPrice });
-    }
-  }
-
-  const lines = [...resolved, ...autoAdded];
-  const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
+  const lines = bundled.map((l) => ({ variantId: l.variantId, quantity: l.quantity, name: l.name, code: l.code, unitPrice: l.unitPrice }));
+  const autoAdded = bundled.flatMap((l) => l.includes.map((i) => ({ variantId: i.variantId, quantity: i.quantity, name: i.name, code: i.code, unitPrice: i.unitPrice })));
+  const subtotal = linesSubtotal(bundled);
 
   const shippingSetting = await prisma.setting.findUnique({ where: { key: 'shipping_fee' } });
   // Stored in RINGGIT in settings (e.g. "10.0"), unlike every other money value
   // in this system, which is cents. Converted the same way createOrder does.
-  // Same noShipping rule as createOrder: free only when every line is exempt.
-  const exempt = await prisma.productVariant.count({
-    where: { id: { in: lines.map((l) => l.variantId) }, product: { noShipping: true } },
-  });
-  const shippingFee = exempt === lines.length
+  // Same noShipping rule as createOrder: free only when every chosen product is.
+  const shippingFee = bundled.every((l) => l.noShipping)
     ? 0
     : Math.round(parseFloat(shippingSetting?.value ?? '0') * 100) || 0;
 
@@ -299,10 +263,13 @@ async function planOrderItems(fastify: any, prisma: any, input: any) {
   const order: any = await adminGetOrder(fastify, found.id);
   if (!Array.isArray(input.items) || !input.items.length) throw new Error('Pass at least one line to change.');
 
-  const lines: { variantId: string; quantity: number; unitPrice: number; name: string }[] = order.items.map((i: any) => ({
+  // The products on the order. What came included with each (syringes, swabs,
+  // a priced vial) follows its product's quantity in adminSetOrderItems, so it
+  // is folded into the product's per-unit price here rather than listed.
+  const lines: { variantId: string; quantity: number; unitPrice: number; name: string }[] = groupOrderItems<any>(order.items).lines.map(({ item: i, includes }) => ({
     variantId: i.variantId,
     quantity: i.quantity,
-    unitPrice: i.unitPrice,
+    unitPrice: i.unitPrice + (i.quantity ? includes.reduce((s: number, c: any) => s + c.unitPrice * c.quantity, 0) / i.quantity : 0),
     name: `${i.variant.product.name}${i.variant.size ? ` ${i.variant.size}` : ''} (${i.variant.code})`,
   }));
   const changes: string[] = [];
@@ -419,7 +386,7 @@ export const orderTools: AgentTool[] = [
 
       return [
         `create an order for ${input.customerName} (${input.phone}) — ${itemText}`,
-        autoAdded.length ? `including required add-ons added automatically: ${autoAdded.map((a) => `${a.quantity}x ${a.name}`).join(', ')}` : '',
+        autoAdded.length ? `with what comes included: ${autoAdded.map((a) => `${a.quantity}x ${a.name}`).join(', ')}` : '',
         `subtotal ${rm(subtotal)} + shipping ${rm(shippingFee)}${discountAmount && !manual ? ` − discount ${rm(discountAmount)}` : ''}${manualText} = *${rm(total)}*${discountNote}`,
         `paid by ${method}`,
         `This takes the stock immediately${input.email ? ` and emails an order confirmation to ${input.email}` : ' (no email given, so no confirmation will be sent)'}`,
@@ -448,11 +415,9 @@ export const orderTools: AgentTool[] = [
         paymentMethod: input.paymentMethod === 'ONLINE' || input.paymentMethod === 'BILLPLZ' ? 'BILLPLZ' : 'WHATSAPP',
         discountCode: input.discountCode || undefined,
         notes: input.notes || undefined,
-        // Required add-ons are deliberately NOT passed — createOrder adds them
-        // itself, and passing them too would be a second source of truth.
-        items: lines
-          .filter((l) => !autoAdded.some((a) => a.variantId === l.variantId))
-          .map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+        // Included add-ons are deliberately NOT passed — createOrder builds
+        // them itself, and passing them too would be a second source of truth.
+        items: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
       }, { manualDiscount: manualDiscountOf(input) });
 
       const order = result.order;
@@ -577,7 +542,8 @@ export const orderTools: AgentTool[] = [
     run: async ({ fastify, prisma }, input) => {
       const found = await resolveOrder(prisma, input.orderRef);
       const o: any = await adminGetOrder(fastify, found.id);
-      const itemsCosted = o.items.every((i: any) => i.unitCost != null);
+      const itemsCosted = o.items.every((i: any) => i.unitCost != null || i.unitPrice === 0);
+      const codeById = new Map(o.items.map((i: any) => [i.id, i.variant.code]));
       return {
         ...orderSummary(o, await activeGatewayName(prisma)),
         address: `${o.address}, ${o.postcode} ${o.city}, ${o.state}`,
@@ -598,6 +564,11 @@ export const orderTools: AgentTool[] = [
           unitCost: i.unitCost == null ? null : money(i.unitCost),
           // Whose price list the cost came from; null = keyed in by hand.
           supplier: i.supplier?.name ?? null,
+          // Set when this line came INCLUDED with another product (a syringe,
+          // swab, vial) rather than being bought on its own: the code of the
+          // product it belongs to. It follows that product's quantity — change
+          // the product with set_order_items, never this line.
+          includedWith: i.parentItemId ? codeById.get(i.parentItemId) ?? 'a product' : isIncludedItem(i) ? 'the order' : null,
         })),
         extraCosts: o.extraCosts.map((c: any) => ({ id: c.id, label: c.label, amount: money(c.amount) })),
         profitShares: o.profitShares.map((s: any) => ({
@@ -614,7 +585,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'update_order',
     description:
-      'Change an order\'s status, payment status, tracking number or notes. To mark an order paid, use mark_order_paid instead. Side effects are handled automatically: cancelling or failing an order restores its stock, marking it REFUNDED also triggers the Billplz refund where applicable, and marking it PAID queues the receipt email and records the revenue. Notes are ADDED under the existing note (which is often the customer\'s own delivery instruction), never written over it, unless replaceNotes is true.',
+      'Change an order\'s status, payment status, tracking number or notes. To mark an order paid, use mark_order_paid instead. Side effects are handled automatically: cancelling or failing an order restores its stock, marking it REFUNDED records the refund (no gateway has a refund API — the money goes back by hand), and marking it PAID queues the receipt email and records the revenue. Notes are ADDED under the existing note (which is often the customer\'s own delivery instruction), never written over it, unless replaceNotes is true.',
     write: true,
     input_schema: {
       type: 'object',
@@ -793,7 +764,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'set_order_items',
     description:
-      'Change WHAT an existing order is for: correct a quantity, remove a line, add a product. Use this when the customer changed their mind or the order was keyed in wrong — never "fix" a wrong quantity through set_order_costs. Stock moves by the difference, existing lines keep the price they were sold at, a new line is priced at today\'s price, and the total is recomputed (a percentage discount follows the new goods total; a fixed one stays). Lines you do not mention are left alone; quantity 0 removes a line. Refused on an order paid online, refunded, cancelled, or with a payment page open.',
+      'Change WHAT an existing order is for: correct a quantity, remove a line, add a product. Use this when the customer changed their mind or the order was keyed in wrong — never "fix" a wrong quantity through set_order_costs. Stock moves by the difference, existing lines keep the price they were sold at, a new line is priced at today\'s price, and the total is recomputed (a percentage discount follows the new goods total; a fixed one stays). Lines you do not mention are left alone; quantity 0 removes a line. List PRODUCTS only: what comes included with a product (lines get_order marks includedWith — syringes, swabs, vials) follows its quantity automatically and is ignored if listed. Refused on an order paid online, refunded, cancelled, or with a payment page open.',
     write: true,
     // Moves stock and changes what the customer owes.
     destructive: true,
@@ -1049,11 +1020,11 @@ export const orderTools: AgentTool[] = [
       if (shared) {
         const detail = await prisma.order.findMany({
           where: { id: { in: changed.map((o) => o.id) } },
-          select: { orderNumber: true, status: true, paymentStatus: true, items: { select: { unitCost: true } }, profitShares: { select: { id: true } } },
+          select: { orderNumber: true, status: true, paymentStatus: true, items: { select: { unitCost: true, unitPrice: true } }, profitShares: { select: { id: true } } },
         });
         for (const d of detail) {
           if (d.paymentStatus !== 'PAID' || d.status === 'CANCELLED') warnings.push(`${d.orderNumber} is ${d.status === 'CANCELLED' ? 'cancelled' : d.paymentStatus.toLowerCase()} — there is no profit on it to share.`);
-          else if (d.items.some((i) => i.unitCost == null)) warnings.push(`${d.orderNumber} still has lines with no cost entered, so its profit is not known yet.`);
+          else if (d.items.some((i) => i.unitCost == null && i.unitPrice > 0)) warnings.push(`${d.orderNumber} still has lines with no cost entered, so its profit is not known yet.`);
           else if (!d.profitShares.length) warnings.push(`${d.orderNumber} has no profit split recorded (set_order_profit_shares).`);
         }
       }

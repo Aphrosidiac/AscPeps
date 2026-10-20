@@ -428,6 +428,10 @@ export function ProductForm({ productId }: { productId?: string }) {
       .flatMap((p) => p.variants.filter((v) => v.active).map((v) => ({
         id: v.id,
         label: `${p.name}${v.size ? ` — ${v.size}` : ''}`,
+        // An "Add-on only" product (syringe, swab, vial) is INCLUDED under this
+        // product in the cart and order; anything else is SUGGESTED and added
+        // as its own line.
+        included: p.addOnOnly,
       })));
   }, [allProducts, productId]);
 
@@ -702,7 +706,7 @@ export function ProductForm({ productId }: { productId?: string }) {
 
           <FormSection
             title="Add-Ons"
-            description="Offered on this product's page — force-select a required one to lock it in the cart"
+            description="Offered on this product's page. Add-on-only items (syringes, swabs, vials) come included under the product, per unit; other products are suggested as their own line"
             icon={PackagePlus}
             delay={0.1}
           >
@@ -732,6 +736,9 @@ export function ProductForm({ productId }: { productId?: string }) {
                     return (
                       <div key={id} className="flex items-center gap-3 text-sm">
                         <span className="flex-1 truncate">{option?.label ?? id}</span>
+                        <span className={`shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded ${option?.included ? 'bg-primary/10 text-primary' : 'bg-surface-elevated text-text-muted'}`}>
+                          {option?.included ? 'Included' : 'Suggested'}
+                        </span>
                         <label className="flex items-center gap-1.5 shrink-0 cursor-pointer">
                           <input
                             type="checkbox"
@@ -757,8 +764,10 @@ export function ProductForm({ productId }: { productId?: string }) {
                             }))
                           }
                           className="w-16 shrink-0 text-center py-1 border border-border rounded text-sm bg-surface"
-                          title="Quantity added when this add-on is included"
+                          aria-label={option?.included ? 'Quantity per unit' : 'Quantity'}
+                          title={option?.included ? 'How many come with EACH unit of this product' : 'How many are added when the customer ticks it'}
                         />
+                        <span className="w-9 shrink-0 text-xs text-text-muted">{option?.included ? 'each' : ''}</span>
                       </div>
                     );
                   })}

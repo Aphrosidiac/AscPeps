@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { includesSummary, lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
@@ -297,7 +298,13 @@ export default function CheckoutPage() {
         // nowhere to land.
         subscribe: subscribe && !!form.email.trim(),
         paymentMethod,
-        items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+        // What a line includes is the server's to build from the product's
+        // settings; the cart only says which OPTIONAL included add-ons were ticked.
+        items: items.map((i) => ({
+          variantId: i.variantId,
+          quantity: i.quantity,
+          addOnIds: (i.includes ?? []).filter((inc) => !inc.required).map((inc) => inc.variantId),
+        })),
         idempotencyKey: idempotencyKeyRef.current,
         ...(appliedDiscount ? { discountCode: appliedDiscount.code } : {}),
       });
@@ -668,7 +675,7 @@ export default function CheckoutPage() {
             <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
             <div className="space-y-3 mb-4">
               {items.map((item) => (
-                <div key={item.variantId} className="flex items-center gap-3">
+                <div key={lineIdOf(item)} className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -679,8 +686,11 @@ export default function CheckoutPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-display font-bold truncate">{item.code}</p>
                     <p className="text-xs text-text-muted truncate">{item.name} &middot; Qty: {item.quantity}</p>
+                    {(item.includes ?? []).length > 0 && (
+                      <p className="text-xs text-text-muted line-clamp-2">Includes {includesSummary(item)}</p>
+                    )}
                   </div>
-                  <p className="text-sm font-semibold shrink-0">{formatPrice(item.price * item.quantity)}</p>
+                  <p className="text-sm font-semibold shrink-0">{formatPrice(lineUnitPrice(item) * item.quantity)}</p>
                 </div>
               ))}
             </div>

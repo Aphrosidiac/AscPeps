@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import type { CartItem } from '@/types';
+import { lineIdOf, lineKey, lineMaxQuantity, lineUnitPrice } from '@/lib/cart-lines';
 import { CartToast } from '@/components/ui/CartToast';
 
 interface CartState {
@@ -15,42 +16,45 @@ interface CartState {
 type CartAction =
   | { type: 'ADD_ITEM'; payload: CartItem }
   | { type: 'REMOVE_ITEM'; payload: string }
-  | { type: 'UPDATE_QUANTITY'; payload: { variantId: string; quantity: number } }
+  | { type: 'UPDATE_QUANTITY'; payload: { lineId: string; quantity: number } }
   | { type: 'CLEAR' }
   | { type: 'LOAD'; payload: CartItem[] };
 
-function clampToStock(quantity: number, stock: number | undefined): number {
-  return stock != null ? Math.min(quantity, stock) : quantity;
+function clampToStock(quantity: number, max: number | undefined): number {
+  return max != null ? Math.min(quantity, max) : quantity;
 }
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD_ITEM': {
-      const existing = state.items.find((i) => i.variantId === action.payload.variantId);
+      // Lines are keyed by the product size AND what it includes, so the same
+      // vial with and without an optional extra are two lines. What a line
+      // includes is per unit and follows its quantity — never a line of its own.
+      const payload = { ...action.payload, lineId: action.payload.lineId ?? lineKey(action.payload.variantId, action.payload.includes) };
+      const existing = state.items.find((i) => lineIdOf(i) === payload.lineId);
       if (existing) {
         return {
           ...state,
           items: state.items.map((i) =>
-            i.variantId === action.payload.variantId
-              // Clamp the merged quantity to the variant's stock so repeated
-              // adds can't push the line past what's actually available.
-              // (stock is missing on carts saved before it was tracked —
-              // no clamp then; the backend re-validates at order time.)
-              ? { ...i, quantity: clampToStock(i.quantity + action.payload.quantity, action.payload.stock ?? i.stock) }
+            lineIdOf(i) === payload.lineId
+              // Clamp to stock so repeated adds can't push the line past what
+              // is actually available (missing on carts saved before stock was
+              // tracked — no clamp then; the backend re-validates anyway).
+              ? { ...i, includes: payload.includes ?? i.includes, quantity: clampToStock(i.quantity + payload.quantity, lineMaxQuantity({ ...i, stock: payload.stock ?? i.stock, includes: payload.includes ?? i.includes })) }
               : i
           ),
         };
       }
-      return { ...state, items: [...state.items, { ...action.payload, quantity: clampToStock(action.payload.quantity, action.payload.stock) }] };
+      return { ...state, items: [...state.items, { ...payload, quantity: clampToStock(payload.quantity, lineMaxQuantity(payload)) }] };
     }
     case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter((i) => i.variantId !== action.payload) };
+      return { ...state, items: state.items.filter((i) => lineIdOf(i) !== action.payload) };
     case 'UPDATE_QUANTITY':
       return {
         ...state,
         items: state.items.map((i) =>
-          i.variantId === action.payload.variantId
-            ? { ...i, quantity: clampToStock(action.payload.quantity, i.stock) }
+          lineIdOf(i) === action.payload.lineId
+            ? { ...i, quantity: clampToStock(action.payload.quantity, lineMaxQuantity(i)) }
             : i
         ),
       };
@@ -70,8 +74,9 @@ interface CartContextType {
    *  with it. Fires a single confirmation naming the product, not the last
    *  add-on. See the comment on the implementation. */
   addItems: (items: CartItem[]) => void;
-  removeItem: (variantId: string) => void;
-  updateQuantity: (variantId: string, quantity: number) => void;
+  /** By line id (lib/cart-lines lineIdOf) — removes what the line includes with it. */
+  removeItem: (lineId: string) => void;
+  updateQuantity: (lineId: string, quantity: number) => void;
   clearCart: () => void;
   total: number;
   itemCount: number;
@@ -106,10 +111,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // as-is when it became a ProductVariant, so an old saved id is still
         // a perfectly valid variantId. Silently upgrade the shape on load
         // rather than requiring a version bump or discarding the cart.
-        items = parsed.map((item: CartItem & { productId?: string }) => ({
-          ...item,
-          variantId: item.variantId ?? item.productId,
-        }));
+        items = parsed
+          .map((item: CartItem & { productId?: string }) => ({
+            ...item,
+            variantId: item.variantId ?? item.productId,
+          }))
+          // Carts saved before bundles (no lineId) carried each free syringe,
+          // swab and vial as a line of its own. Those are dropped: the server
+          // adds what a product includes, and the cart now shows it under the
+          // product. RM0 lines are only ever those supplies.
+          .filter((item: CartItem) => item.lineId !== undefined || item.price > 0);
       } catch {}
     }
     dispatch({ type: 'LOAD', payload: items });
@@ -119,7 +130,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ascend-cart', JSON.stringify(state.items));
   }, [state.items]);
 
-  const total = state.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const total = state.items.reduce((sum, i) => sum + lineUnitPrice(i) * i.quantity, 0);
+  // Products, not syringes: what a line includes is not counted as items.
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
 
   const addItem = useCallback((item: CartItem) => {
@@ -138,7 +150,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
    * saw a thing they never chose and no sign of the thing they did.
    *
    * The first item is the one the customer actually asked for; anything after
-   * it is counted, not named.
+   * it (a SUGGESTED product ticked on its page) is counted, not named. What the
+   * first item includes rides inside it and is not counted.
    */
   const addItems = useCallback((items: CartItem[]) => {
     if (items.length === 0) return;
@@ -157,7 +170,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       addItem,
       addItems,
       removeItem: (id) => dispatch({ type: 'REMOVE_ITEM', payload: id }),
-      updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { variantId: id, quantity: qty } }),
+      updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { lineId: id, quantity: qty } }),
       clearCart: () => dispatch({ type: 'CLEAR' }),
       total,
       itemCount,

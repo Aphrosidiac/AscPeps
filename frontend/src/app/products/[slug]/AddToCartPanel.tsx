@@ -8,7 +8,7 @@ import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
-import type { AddOnVariant, CartItem } from '@/types';
+import type { AddOnVariant, CartInclude, CartItem } from '@/types';
 
 interface Props {
   variantId: string;
@@ -59,6 +59,19 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
   }, [variantId, quantity, selectedAddOnIds]);
 
   const handleAddToCart = () => {
+    // INCLUDED add-ons (syringes, swabs, vials) ride inside the product's line,
+    // per unit; a sold-out free one is left off (the server ships what is left).
+    // SUGGESTED ones (another product) become lines of their own.
+    const chosen = (addOns ?? []).filter((a) => selectedAddOnIds.includes(a.id) && a.stock > 0);
+    const includes: CartInclude[] = chosen.filter((a) => a.addOnIncluded).map((a) => ({
+      variantId: a.id,
+      code: a.code,
+      name: getVariantDisplayName(a, a),
+      perUnit: a.addOnQuantity,
+      price: getEffectivePrice(a),
+      required: a.addOnRequired,
+      stock: a.stock,
+    }));
     const lines: CartItem[] = [{
       variantId,
       code,
@@ -69,9 +82,10 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       stock,
       imageUrl,
       noShipping,
+      includes,
     }];
-    for (const addOn of addOns ?? []) {
-      if (!selectedAddOnIds.includes(addOn.id) || addOn.stock === 0) continue;
+    for (const addOn of chosen) {
+      if (addOn.addOnIncluded) continue;
       lines.push({
         variantId: addOn.id,
         code: addOn.code,
@@ -108,13 +122,20 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         <p className="pt-4 text-sm text-text-secondary italic">{addOnReminder}</p>
       )}
 
-      {addOns && addOns.length > 0 && (
-        <div className={`${addOnReminder ? 'pt-3' : 'pt-4'} space-y-2`}>
-          <p className="text-sm font-medium text-text-secondary">Add-ons</p>
+      {[
+        { title: quantity > 1 ? `Included with your ${quantity} units` : 'Included', list: (addOns ?? []).filter((a) => a.addOnIncluded) },
+        { title: 'Add to your order', list: (addOns ?? []).filter((a) => !a.addOnIncluded) },
+      ].filter((g) => g.list.length > 0).map((group, gi) => (
+        <div key={group.title} className={`${gi === 0 && !addOnReminder ? 'pt-4' : 'pt-3'} space-y-2`}>
+          <p className="text-sm font-medium text-text-secondary">{group.title}</p>
           <div className="space-y-1.5">
-            {addOns.map((addOn) => {
+            {group.list.map((addOn) => {
               const outOfStock = addOn.stock === 0;
               const locked = addOn.addOnRequired;
+              // An included add-on comes per unit of the product, so its count
+              // follows the quantity picked below.
+              const count = addOn.addOnIncluded ? addOn.addOnQuantity * quantity : addOn.addOnQuantity;
+              const unitPrice = getEffectivePrice(addOn);
               return (
                 <label
                   key={addOn.id}
@@ -133,7 +154,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                       className="rounded accent-primary"
                     />
                     <span className="font-display font-semibold text-text-primary">{addOn.code}</span> {getVariantDisplayName(addOn, addOn)}
-                    {addOn.addOnQuantity > 1 && <span className="text-text-muted">× {addOn.addOnQuantity}</span>}
+                    {count > 1 && <span className="text-text-muted">× {count}</span>}
                     {locked && (
                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">Required</span>
                     )}
@@ -141,11 +162,13 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                   <span className="flex items-center gap-1.5 shrink-0">
                     {outOfStock ? (
                       <span className="text-xs text-text-muted">Out of stock</span>
+                    ) : unitPrice === 0 && addOn.addOnIncluded ? (
+                      <span className="text-sm font-medium text-success">Free</span>
                     ) : (
                       <>
-                        <span className="text-sm font-medium">{formatPrice(getEffectivePrice(addOn))}</span>
+                        <span className="text-sm font-medium">{formatPrice(addOn.addOnIncluded ? unitPrice * count : unitPrice)}</span>
                         {isSaleActive(addOn) && (
-                          <span className="text-xs text-text-muted line-through">{formatPrice(addOn.price)}</span>
+                          <span className="text-xs text-text-muted line-through">{formatPrice(addOn.addOnIncluded ? addOn.price * count : addOn.price)}</span>
                         )}
                       </>
                     )}
@@ -155,7 +178,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
             })}
           </div>
         </div>
-      )}
+      ))}
 
       <div ref={inlineButtonRef} className="flex items-center gap-4 pt-4">
         <div className="flex items-center border border-border rounded-lg">

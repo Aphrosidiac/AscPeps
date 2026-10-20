@@ -32,6 +32,12 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
       include: {
         category: { select: { name: true, slug: true } },
         variants: { where: { active: true }, orderBy: { price: 'asc' } },
+        // Only what a quick add-to-cart from a card must carry: the REQUIRED
+        // included supplies, so the cart can show them under the product.
+        addOns: {
+          where: { required: true, addOn: { active: true, product: { active: true, addOnOnly: true } } },
+          include: ADDON_INCLUDE,
+        },
       },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
       skip,
@@ -40,7 +46,7 @@ export async function listProducts(fastify: FastifyInstance, query: Record<strin
     fastify.prisma.product.count({ where }),
   ]);
 
-  return paginatedResponse(products, total, page, limit);
+  return paginatedResponse(products.map((p) => ({ ...p, addOns: p.addOns.map(flattenAddOn) })), total, page, limit);
 }
 
 export async function getProduct(fastify: FastifyInstance, slug: string) {

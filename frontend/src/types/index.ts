@@ -89,11 +89,31 @@ export interface AddOnVariant {
   // Force-selected and locked on the storefront — the customer cannot
   // uncheck it (enforced again server-side at order creation).
   addOnRequired: boolean;
-  // Fixed quantity added — does not scale with the purchased variant's quantity.
+  // Per unit of the product it comes with (INCLUDED add-ons scale with that
+  // product's quantity); for a SUGGESTED add-on, how many are added.
   addOnQuantity: number;
+  // True when the add-on's product is addOnOnly — a syringe, swab or vial that
+  // is INCLUDED under the product in the cart and order rather than being a
+  // line of its own. False for a SUGGESTED product (MOTS-C on Retatrutide).
+  addOnIncluded: boolean;
+}
+
+// Something that comes INCLUDED with a cart line (a syringe, swab, vial) — no
+// quantity of its own: `perUnit` × the line's quantity.
+export interface CartInclude {
+  variantId: string;
+  code: string;
+  name: string;
+  perUnit: number;
+  price: number;
+  required: boolean;
+  stock?: number;
 }
 
 export interface CartItem {
+  // Identity of the line: the product size plus what it includes. Missing on
+  // carts saved before bundles (then the variantId stands in).
+  lineId?: string;
   variantId: string;
   code: string;
   name: string;
@@ -108,11 +128,16 @@ export interface CartItem {
   // The product's noShipping flag. Missing on carts saved before it existed,
   // which correctly means "charge shipping".
   noShipping?: boolean;
+  // What comes included with each unit of this line.
+  includes?: CartInclude[];
 }
 
 export interface OrderItem {
   id: string;
   variantId: string;
+  // Set when this item came included with another line (a syringe, swab or
+  // vial bundled under a product). See lib/order-lines.ts.
+  parentItemId?: string | null;
   quantity: number;
   unitPrice: number;
   // Cents, per unit. null means this line hasn't been priced yet — which the
@@ -127,7 +152,7 @@ export interface OrderItem {
     code: string;
     size: string | null;
     imageUrl?: string | null;
-    product: { name: string };
+    product: { name: string; addOnOnly?: boolean };
   };
 }
 

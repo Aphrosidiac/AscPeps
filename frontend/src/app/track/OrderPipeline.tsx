@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
 import Link from 'next/link';
 import {
   Check, X, Receipt, CreditCard, Package, Truck, Home,
@@ -261,7 +262,9 @@ function ParcelCard({ tracking, showLink }: { tracking: NonNullable<TrackedOrder
 // --------------------------------------------------------------- details
 
 function Details({ order, phone }: { order: TrackedOrder; phone: string }) {
-  const count = order.items.reduce((n, i) => n + i.quantity, 0);
+  // Products bought — what came included with them is listed under each.
+  const { lines, looseIncludes } = groupOrderItems(order.items);
+  const count = lines.reduce((n, l) => n + l.item.quantity, 0);
   return (
     <details className="group border-t border-border">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 sm:px-7 py-4 text-sm font-medium hover:bg-surface-elevated/60 transition-colors [&::-webkit-details-marker]:hidden">
@@ -273,7 +276,7 @@ function Details({ order, phone }: { order: TrackedOrder; phone: string }) {
 
       <div className="px-5 sm:px-7 pb-5">
         <ul className="divide-y divide-border">
-          {order.items.map((item) => (
+          {lines.map(({ item, includes }) => (
             <li key={item.id} className="flex items-center gap-3 py-3">
               <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-surface-elevated">
                 {item.variant.imageUrl ? (
@@ -287,10 +290,16 @@ function Details({ order, phone }: { order: TrackedOrder; phone: string }) {
                   {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
                 </span>
                 <span className="block text-xs text-text-muted">Qty {item.quantity} · {formatPrice(item.unitPrice)} each</span>
+                {includes.length > 0 && (
+                  <span className="block text-xs text-text-muted">Includes {includesText(includes)}</span>
+                )}
               </span>
-              <span className="text-sm tabular-nums">{formatPrice(item.unitPrice * item.quantity)}</span>
+              <span className="text-sm tabular-nums">{formatPrice(groupedLineTotal({ item, includes }))}</span>
             </li>
           ))}
+          {looseIncludes.length > 0 && (
+            <li className="py-3 text-xs text-text-muted">Included: {includesText(looseIncludes)}</li>
+          )}
         </ul>
 
         <dl className="mt-2 space-y-1.5 border-t border-border pt-3 text-sm">

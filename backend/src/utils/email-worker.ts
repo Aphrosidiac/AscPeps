@@ -43,7 +43,7 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
   const order = await fastify.prisma.order.findUnique({
     where: { id: row.orderId },
     include: {
-      items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
+      items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true, addOnOnly: true } } } } }, orderBy: { createdAt: 'asc' } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
     },
   });

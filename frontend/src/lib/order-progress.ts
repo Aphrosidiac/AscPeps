@@ -22,7 +22,7 @@ export interface ProgressableOrder {
   status: Order['status'];
   paymentStatus: Order['paymentStatus'];
   deletedAt: string | null;
-  items: { unitCost?: number | null }[];
+  items: { unitCost?: number | null; unitPrice?: number }[];
   profitShares?: { shareBps: number }[];
 }
 
@@ -93,7 +93,9 @@ const STYLES: Record<OrderProgressState, { label: string; className: string; hin
  */
 export function orderProgress(order: ProgressableOrder): OrderProgress {
   const items = order.items ?? [];
-  const unpricedCount = items.filter((i) => i.unitCost === null || i.unitCost === undefined).length;
+  // A free line (an included syringe or swab) does not need a cost — same rule as
+  // the backend's costOrder.
+  const unpricedCount = items.filter((i) => (i.unitCost === null || i.unitCost === undefined) && i.unitPrice !== 0).length;
   const costed = items.length > 0 && unpricedCount === 0;
 
   const shares = order.profitShares;

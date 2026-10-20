@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -156,18 +157,22 @@ export default function ReceiptPage() {
               <span className="text-right w-12">Qty</span>
               <span className="text-right w-20">Amount</span>
             </div>
-            {order.items.map((item) => (
+            {groupOrderItems(order.items).lines.map(({ item, includes }) => (
               <div key={item.id} className="grid grid-cols-[1fr_auto_auto] gap-x-4 py-3 border-b border-border/50 text-sm">
                 <div>
                   <p className="font-display font-bold">{item.variant.code}</p>
                   <p className="text-xs text-text-muted">
                     {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''} &middot; {formatPrice(item.unitPrice)} each
                   </p>
+                  {includes.length > 0 && <p className="text-xs text-text-muted">Includes {includesText(includes)}</p>}
                 </div>
                 <span className="text-right text-text-secondary w-12">{item.quantity}</span>
-                <span className="text-right font-medium w-20">{formatPrice(item.unitPrice * item.quantity)}</span>
+                <span className="text-right font-medium w-20">{formatPrice(groupedLineTotal({ item, includes }))}</span>
               </div>
             ))}
+            {groupOrderItems(order.items).looseIncludes.length > 0 && (
+              <p className="py-3 border-b border-border/50 text-xs text-text-muted">Included: {includesText(groupOrderItems(order.items).looseIncludes)}</p>
+            )}
           </div>
 
           {/* Totals */}

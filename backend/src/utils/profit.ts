@@ -12,7 +12,7 @@
 
 export interface CostableOrder {
   total: number;
-  items: { quantity: number; unitCost: number | null }[];
+  items: { quantity: number; unitCost: number | null; unitPrice?: number }[];
   extraCosts: { amount: number }[];
   /**
    * The processor's cut, already withheld from `total`. Optional only so older
@@ -44,7 +44,10 @@ export interface OrderCosting {
 }
 
 export function costOrder(order: CostableOrder): OrderCosting {
-  const costed = order.items.length > 0 && order.items.every((i) => i.unitCost !== null);
+  // A free line (an included syringe or swab, RM0) does not hold the order's
+  // profit hostage: left uncosted it counts as costing nothing. Everything the
+  // customer paid for still needs its cost before profit is known.
+  const costed = order.items.length > 0 && order.items.every((i) => i.unitCost !== null || i.unitPrice === 0);
 
   const refunded = order.refundedAmount ?? 0;
   const revenue = order.total - refunded;

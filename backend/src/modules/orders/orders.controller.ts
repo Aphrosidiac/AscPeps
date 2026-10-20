@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
 import { getActiveGateway, isOnlineMethod, gatewayNameForMethod, type PaymentGateway } from '../../utils/payment-gateway.js';
+import { resolveOrderLines, linesSubtotal, stockDemand, OrderLineError, groupOrderItems, groupedLineTotal, includesText, itemName, type ResolvedLine } from '../../utils/order-lines.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
-import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
 import { notifyOrder } from '../../utils/order-notify.js';
@@ -42,6 +42,8 @@ const createOrderSchema = z.object({
     z.object({
       variantId: z.string(),
       quantity: z.number().int().min(1).max(100),
+      // Optional INCLUDED add-ons ticked for this line (see utils/order-lines.ts).
+      addOnIds: z.array(z.string()).max(20).optional(),
     })
   ).min(1).max(50),
 }).superRefine((data, ctx) => {
@@ -102,11 +104,17 @@ async function ensureManualPaySession(
     amount: full.total,
     currency: 'MYR',
     idempotent: true,
-    lineItems: full.items.map((item) => ({
-      name: getVariantDisplayName(item.variant.product, item.variant),
-      quantity: item.quantity,
-      unitAmount: item.unitPrice,
-    })),
+    // One line per product the customer chose. What came included is named
+    // under it, and a priced include is added to its line's amount, so the
+    // page's lines still add up to the subtotal.
+    lineItems: groupOrderItems(full.items).lines.map((line) => {
+      const total = groupedLineTotal(line);
+      return {
+        name: line.includes.length ? `${itemName(line.item)} (incl. ${includesText(line.includes)})` : itemName(line.item),
+        quantity: line.item.quantity,
+        unitAmount: Math.round(total / line.item.quantity),
+      };
+    }),
     amounts: {
       subtotal: full.subtotal,
       shipping: full.shippingFee,
@@ -212,91 +220,22 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
 
   const runCreateTransaction = () =>
     fastify.prisma.$transaction(async (tx) => {
-    // Server-side enforcement of "required" add-ons (e.g. Bac Water + syringes
-    // for a reconstitution-needing peptide): the storefront pre-checks and
-    // locks these, but a bypassed/buggy client must still not be able to ship
-    // a peptide without its required supplies. Required add-ons are
-    // configured on the parent Product (apply regardless of which of its own
-    // variants is purchased), so first resolve which parents were bought.
-    const purchasedVariants = await tx.productVariant.findMany({
-      where: { id: { in: data.items.map((i) => i.variantId) } },
-      select: { id: true, productId: true },
-    });
-    const parentIds = [...new Set(purchasedVariants.map((v) => v.productId))];
-    // Only add-ons that are themselves still purchasable (variant active AND
-    // its own parent active) get force-injected — otherwise a supply that
-    // gets discontinued/deactivated would permanently block checkout of
-    // every product that requires it, instead of just dropping out quietly.
-    const requiredRelations = await tx.productAddOn.findMany({
-      where: { productId: { in: parentIds }, required: true, addOn: { active: true, product: { active: true } } },
-    });
-    // For each required add-on, make sure the order includes at least the
-    // configured fixed quantity — this does NOT scale with how many units of
-    // the parent product were ordered, and if two purchased products both
-    // require the same add-on at different quantities, the larger of the
-    // two wins rather than summing.
-    const requiredMinByAddOnId = new Map<string, number>();
-    for (const rel of requiredRelations) {
-      requiredMinByAddOnId.set(rel.addOnId, Math.max(requiredMinByAddOnId.get(rel.addOnId) ?? 0, rel.quantity));
-    }
-    let items = data.items.map((i) => ({ ...i }));
-    for (const [addOnId, minQuantity] of requiredMinByAddOnId) {
-      const existing = items.find((i) => i.variantId === addOnId);
-      if (existing) {
-        existing.quantity = Math.max(existing.quantity, minQuantity);
-      } else {
-        items.push({ variantId: addOnId, quantity: minQuantity });
-      }
-    }
-
-    // A FREE required supply that has run low ships what is left, or nothing,
-    // instead of failing the stock check below and with it every order for the
-    // product it comes with (Retatrutide's Bac Water was down to 3). A priced
-    // add-on is left alone: that is something the customer chose to pay for.
-    if (requiredMinByAddOnId.size > 0) {
-      const supplies = await tx.productVariant.findMany({
-        where: { id: { in: [...requiredMinByAddOnId.keys()] } },
-      });
-      const now = new Date();
-      for (const supply of supplies) {
-        if (getEffectivePrice(supply, now) !== 0) continue;
-        const line = items.find((i) => i.variantId === supply.id);
-        if (!line || line.quantity <= supply.stock) continue;
-        fastify.log.warn(
-          { code: supply.code, wanted: line.quantity, inStock: supply.stock },
-          'Required free supply short — order ships without the missing units'
-        );
-        line.quantity = Math.max(supply.stock, 0);
-      }
-      items = items.filter((i) => i.quantity > 0);
-    }
-
-    const variants = await tx.productVariant.findMany({
-      where: { id: { in: items.map((i) => i.variantId) }, active: true, product: { active: true } },
-      include: { product: { select: { name: true, noShipping: true } } },
-    });
-
-    if (variants.length !== items.length) {
-      throw { statusCode: 400, message: 'One or more products not found or inactive' };
-    }
-
-    const variantMap = new Map(variants.map((v) => [v.id, v]));
-    // Captured once so subtotal and each stored unitPrice agree on whether a
-    // sale is active, even in the unlikely event a sale boundary is crossed
-    // mid-transaction.
+    // The order's real lines: each chosen product with the add-ons it includes
+    // (required ones always, optional ones when ticked), built from the
+    // product's settings rather than trusted from the client. Stock is checked
+    // per variant across all of them; see utils/order-lines.ts.
     const now = new Date();
-
-    for (const item of items) {
-      const variant = variantMap.get(item.variantId)!;
-      if (variant.stock < item.quantity) {
-        throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)}` };
-      }
+    let lines: ResolvedLine[];
+    try {
+      lines = await resolveOrderLines(tx, data.items, {
+        now,
+        warn: (msg, detail) => fastify.log.warn(detail, msg),
+      });
+    } catch (err) {
+      if (err instanceof OrderLineError) throw { statusCode: 400, message: err.message };
+      throw err;
     }
-
-    const subtotal = items.reduce((sum, item) => {
-      const variant = variantMap.get(item.variantId)!;
-      return sum + getEffectivePrice(variant, now) * item.quantity;
-    }, 0);
+    const subtotal = linesSubtotal(lines);
 
     // East Malaysia minimum. Checked here — after required add-ons have been
     // injected and the real subtotal is known, but before the discount code
@@ -327,8 +266,9 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     }
 
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
-    // No shipping only when every line is a noShipping product (schema.prisma).
-    const shippingFee = variants.every((v) => v.product.noShipping)
+    // No shipping only when every chosen product is noShipping (schema.prisma);
+    // what comes included with a line rides along with it.
+    const shippingFee = lines.every((l) => l.noShipping)
       ? 0
       : resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
 
@@ -369,7 +309,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     const total = Math.max(subtotal + shippingFee - discountAmount, 0);
     const orderNumber = await generateOrderNumber(tx);
 
-    const created = await tx.order.create({
+    const order = await tx.order.create({
       data: {
         orderNumber,
         customerName: data.customerName,
@@ -389,15 +329,24 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
         discountCodeId,
         notes: data.notes,
         idempotencyKey: data.idempotencyKey,
-        items: {
-          create: items.map((item) => ({
-            variantId: item.variantId,
-            quantity: item.quantity,
-            unitPrice: getEffectivePrice(variantMap.get(item.variantId)!, now),
-          })),
-        },
       },
-      include: { items: { include: { variant: { include: { product: true } } } } },
+    });
+    // Parent lines first, so their includes can point at them.
+    for (const line of lines) {
+      const parent = await tx.orderItem.create({
+        data: { orderId: order.id, variantId: line.variantId, quantity: line.quantity, unitPrice: line.unitPrice },
+      });
+      if (line.includes.length > 0) {
+        await tx.orderItem.createMany({
+          data: line.includes.map((inc) => ({
+            orderId: order.id, variantId: inc.variantId, quantity: inc.quantity, unitPrice: inc.unitPrice, parentItemId: parent.id,
+          })),
+        });
+      }
+    }
+    const created = await tx.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: { items: { orderBy: { createdAt: 'asc' }, include: { variant: { include: { product: true } } } } },
     });
 
     // Same-transaction outbox insert — the confirmation email exists iff the
@@ -407,14 +356,15 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     // Conditional decrement guards against oversell under concurrency: the
     // WHERE clause only matches if enough stock remains, so two simultaneous
     // orders for the last unit can't both succeed. A miss rolls back the tx.
-    for (const item of items) {
+    for (const [variantId, quantity] of stockDemand(lines)) {
       const dec = await tx.productVariant.updateMany({
-        where: { id: item.variantId, stock: { gte: item.quantity } },
-        data: { stock: { decrement: item.quantity } },
+        where: { id: variantId, stock: { gte: quantity } },
+        data: { stock: { decrement: quantity } },
       });
       if (dec.count === 0) {
-        const variant = variantMap.get(item.variantId)!;
-        throw { statusCode: 400, message: `Insufficient stock for ${getVariantDisplayName(variant.product, variant)}` };
+        const line = lines.find((l) => l.variantId === variantId);
+        const inc = lines.flatMap((l) => l.includes).find((i) => i.variantId === variantId);
+        throw { statusCode: 400, message: `Insufficient stock for ${line?.name ?? inc?.name ?? 'an item'}` };
       }
     }
 
@@ -477,10 +427,11 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
   if (data.paymentMethod === 'WHATSAPP') {
     whatsappUrl = buildWhatsAppUrl({
       orderNumber: order.orderNumber,
-      items: order.items.map((item) => ({
-        name: getVariantDisplayName(item.variant.product, item.variant),
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
+      items: groupOrderItems(order.items).lines.map((line) => ({
+        name: itemName(line.item),
+        quantity: line.item.quantity,
+        unitPrice: line.item.unitPrice,
+        includes: line.includes.length ? includesText(line.includes, 'x') : undefined,
       })),
       subtotal: order.subtotal,
       shippingFee: order.shippingFee,
@@ -626,10 +577,12 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
           id: true,
           quantity: true,
           unitPrice: true,
+          parentItemId: true,
           variant: {
-            select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } },
+            select: { code: true, size: true, imageUrl: true, product: { select: { name: true, addOnOnly: true } } },
           },
         },
+        orderBy: { createdAt: 'asc' },
       },
     },
     orderBy: { createdAt: 'desc' },
