@@ -1070,7 +1070,7 @@ async function executeTool(fastify: FastifyInstance, run: Run, ctx: ToolContext,
   if (tier === 'destructive' || why) {
     let summary: string;
     try {
-      summary = tool.summarize ? await tool.summarize(ctx, input) : `run ${call.name} with ${JSON.stringify(input)}`;
+      summary = tool.summarize ? await tool.summarize(ctx, input) : await plainSummary(ctx, call.name, input);
       if (why) summary = `${summary} (asked because ${why})`;
     } catch (err: any) {
       // The summary failed because the target could not be resolved — that is
@@ -1130,6 +1130,52 @@ function runWithTimeout(tool: AgentTool, ctx: ToolContext, input: unknown): Prom
     tool.run(ctx, input),
     new Promise((_, reject) => setTimeout(() => reject(new Error(`${tool.name} took longer than ${ms / 1000}s`)), ms).unref?.()),
   ]);
+}
+
+// What an approval card says for a tool with no summarize of its own. Until
+// the browser, only destructive tools parked, and they all have one; now any
+// write can park (the web taint), and 26 of 29 write tools had none — the card
+// read 'run update_variant with {"variantId":"cmq6…","priceRm":160}'. Ids are
+// named, ringgit is ringgit, and anything opaque is left out.
+const OPAQUE_ID = /^c[a-z0-9]{20,}$/;
+async function nameFor(ctx: ToolContext, key: string, id: string): Promise<string | null> {
+  const p = ctx.prisma;
+  try {
+    if (key === 'variantId' || key === 'addOnVariantId') {
+      const v = await p.productVariant.findUnique({ where: { id }, include: { product: true } });
+      return v ? `${v.product.name}${v.size ? ` ${v.size}` : ''} (${v.code})` : null;
+    }
+    if (key === 'productId') return (await p.product.findUnique({ where: { id }, select: { name: true } }))?.name ?? null;
+    if (key === 'orderId') return (await p.order.findUnique({ where: { id }, select: { orderNumber: true } }))?.orderNumber ?? null;
+    if (key === 'supplierId') return (await p.supplier.findUnique({ where: { id }, select: { name: true } }))?.name ?? null;
+    if (key === 'documentId') return (await p.document.findUnique({ where: { id }, select: { title: true } }))?.title ?? null;
+    if (key === 'discountId') return (await p.discountCode.findUnique({ where: { id }, select: { code: true } }))?.code ?? null;
+  } catch {}
+  return null;
+}
+
+export async function plainSummary(ctx: ToolContext, toolName: string, input: unknown): Promise<string> {
+  const words = (k: string) => k.replace(/(Rm|Id)$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  const short = (v: unknown) => {
+    const s = typeof v === 'string' ? v : JSON.stringify(v);
+    return s.length > 60 ? `${s.slice(0, 57)}…` : s;
+  };
+  const named: string[] = [];
+  const rest: string[] = [];
+  for (const [k, v] of Object.entries((input ?? {}) as Record<string, unknown>)) {
+    if (v === null || v === undefined || v === '') continue;
+    if (typeof v === 'string' && /Id$/.test(k)) {
+      const name = await nameFor(ctx, k, v);
+      if (name) named.push(name);
+      else if (!OPAQUE_ID.test(v)) rest.push(`${words(k)} ${short(v)}`);
+      continue;
+    }
+    if (/Rm$/.test(k) && typeof v === 'number') rest.push(`${words(k) || 'amount'} → RM ${v.toFixed(2)}`);
+    else if (typeof v === 'boolean') rest.push(`${words(k)}: ${v ? 'yes' : 'no'}`);
+    else rest.push(`${words(k)}: ${short(v)}`);
+  }
+  const what = toolName.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  return [`${what}${named.length ? ` — ${named.join(', ')}` : ''}`, ...rest].join(' · ');
 }
 
 async function safeSummary(tool: AgentTool, ctx: ToolContext, input: unknown): Promise<string | null> {

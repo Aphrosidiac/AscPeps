@@ -214,7 +214,7 @@ export function Transcript({
 
                   {pending && action && (
                     <div className="msg-in border-t border-danger/20 bg-red-50/40 px-3 py-3">
-                      <p className="text-[14px] font-medium leading-5 text-text-primary">{action.summary}</p>
+                      <p className="text-[14px] font-medium leading-5 text-text-primary [overflow-wrap:anywhere]">{action.summary}</p>
                       <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface px-3 py-2 text-[12px] leading-4 text-text-primary">
                         {pretty(call.input)}
                       </pre>
