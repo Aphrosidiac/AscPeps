@@ -103,7 +103,7 @@ AscPeps/
 
 ## The storefront
 
-<img src="docs/screens/product.png" alt="A product page: sizes with per-mg price, required reconstitution supplies as add-ons" width="100%">
+<img src="docs/screens/product.png" alt="A product page: sizes with per-mg price, opening on the cheapest size in stock, with the reconstitution supplies included under it" width="100%">
 
 Every page is real HTML before any JavaScript runs — the catalogue never
 bails out to a client fetch, so a crawler with no JS engine and a phone on a
