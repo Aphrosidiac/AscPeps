@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { isIncludedItem } from '../../utils/order-lines.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { costOrder, allocate } from '../../utils/profit.js';
 import { RESTOCK_BELOW } from '../../utils/restock.js';
@@ -136,8 +137,8 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       createdAt: true,
       items: {
         select: {
-          variantId: true, quantity: true, unitPrice: true, unitCost: true,
-          variant: { select: { code: true, size: true, product: { select: { name: true, categoryId: true } } } },
+          variantId: true, quantity: true, unitPrice: true, unitCost: true, parentItemId: true,
+          variant: { select: { code: true, size: true, product: { select: { name: true, categoryId: true, addOnOnly: true } } } },
         },
       },
       extraCosts: { select: { amount: true } },
@@ -234,6 +235,8 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
 
     if (order.paymentStatus === 'PAID') {
       for (const item of order.items) {
+        // What came included with a product is not a sale of its own.
+        if (isIncludedItem(item)) continue;
         const key = item.variantId;
         if (!productSales[key]) {
           const name = getVariantDisplayName(item.variant.product, item.variant);

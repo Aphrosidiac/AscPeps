@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { groupOrderItems, groupedLineTotal, includesText } from './order-lines.js';
 import { env } from '../config/env.js';
 import { sendWhatsAppMessage } from './whatsapp-send.js';
 import { getVariantDisplayName } from './product-addons.js';
@@ -59,14 +60,23 @@ function paymentLabel(o: { paymentMethod: string; paymentGateway: string | null 
 export async function orderNoticeText(fastify: FastifyInstance, orderId: string, moment: OrderMoment): Promise<string | null> {
   const o = await fastify.prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: { orderBy: { createdAt: 'asc' }, include: { variant: { include: { product: { select: { name: true } } } } } } },
+    include: { items: { orderBy: { createdAt: 'asc' }, include: { variant: { include: { product: { select: { name: true, addOnOnly: true } } } } } } },
   });
   if (!o) return null;
 
   const paid = moment === 'paid';
   const head = paid ? '✅ *ORDER PAID*' : '🕓 *NEW ORDER · AWAITING PAYMENT*';
   const where = [o.city, o.state].filter(Boolean).join(', ');
-  const items = o.items.map((i) => `• ${i.quantity}× ${getVariantDisplayName(i.variant.product, i.variant)} — ${rm(i.unitPrice * i.quantity)}`);
+  // One bullet per product chosen, with what it includes under it — the
+  // packer needs both, but a syringe is not a line of the order.
+  const grouped = groupOrderItems(o.items);
+  const items = [
+    ...grouped.lines.flatMap((line) => [
+      `• ${line.item.quantity}× ${getVariantDisplayName(line.item.variant.product, line.item.variant)} — ${rm(groupedLineTotal(line))}`,
+      ...(line.includes.length ? [`   _incl. ${includesText(line.includes)}_`] : []),
+    ]),
+    ...(grouped.looseIncludes.length ? [`   _incl. ${includesText(grouped.looseIncludes)}_`] : []),
+  ];
   const money = [`Subtotal ${rm(o.subtotal)}`, `Shipping ${o.shippingFee ? rm(o.shippingFee) : 'free'}`];
   if (o.discountAmount > 0) money.push(`Discount −${rm(o.discountAmount)}`);
 

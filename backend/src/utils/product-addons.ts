@@ -8,7 +8,7 @@ export function flattenAddOn(row: {
   addOn: {
     id: string; code: string; size: string | null; price: number; salePrice: number | null;
     saleStartsAt: Date | null; saleEndsAt: Date | null; stock: number; imageUrl: string | null; active: boolean;
-    product: { name: string; slug: string; category: { name: string; slug: string } };
+    product: { name: string; slug: string; addOnOnly: boolean; category: { name: string; slug: string } };
   };
 }) {
   const { product: addOnProduct, ...variant } = row.addOn;
@@ -19,6 +19,10 @@ export function flattenAddOn(row: {
     category: addOnProduct.category,
     addOnRequired: row.required,
     addOnQuantity: row.quantity,
+    // INCLUDED (its product is addOnOnly: a syringe, swab, vial) — travels
+    // under the product it came with, quantity × that product's quantity.
+    // Otherwise a SUGGESTED product the cart adds as its own line.
+    addOnIncluded: addOnProduct.addOnOnly,
   };
 }
 
@@ -27,7 +31,7 @@ export function flattenAddOn(row: {
 export const ADDON_INCLUDE = {
   addOn: {
     include: {
-      product: { select: { name: true, slug: true, category: { select: { name: true, slug: true } } } },
+      product: { select: { name: true, slug: true, addOnOnly: true, category: { select: { name: true, slug: true } } } },
     },
   },
 } as const;

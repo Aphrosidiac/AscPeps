@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { isIncludedItem } from './order-lines.js';
 import { sendWhatsAppMessage } from './whatsapp-send.js';
 import { costOrder, allocate } from './profit.js';
 import { computeFinance } from './finance.js';
@@ -119,8 +120,12 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
           select: {
             quantity: true,
             unitCost: true,
-            // Offered as an add-on to something = a supply (swabs, syringes, bac water).
-            variant: { select: { size: true, product: { select: { name: true } }, _count: { select: { offeredAsAddOnFor: true } } } },
+            unitPrice: true,
+            parentItemId: true,
+            // Supplies = what came included with a product (swabs, syringes, bac
+            // water). Judged per line, not by "is offered as an add-on", which
+            // counted a MOTS-C bought on Retatrutide's page as a supply.
+            variant: { select: { size: true, product: { select: { name: true, addOnOnly: true } } } },
           },
         },
         extraCosts: { select: { amount: true } },
@@ -181,7 +186,7 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
 
     if (o.paymentStatus === 'PAID') {
       for (const i of o.items) {
-        if (i.variant._count.offeredAsAddOnFor > 0) {
+        if (isIncludedItem(i)) {
           suppliesSold += i.quantity;
           continue;
         }

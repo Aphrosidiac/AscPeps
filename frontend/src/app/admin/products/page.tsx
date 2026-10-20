@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Plus, Pencil, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetProducts, adminUpdateProduct, adminDeleteProduct, getCategories } from '@/lib/api';
-import { formatPrice, getDefaultVariant } from '@/lib/utils';
+import { formatPrice, getLowestPriceVariant } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { FeaturedOrderModal } from './FeaturedOrderModal';
@@ -144,7 +144,7 @@ export default function AdminProductsPage() {
       switch (sortKey) {
         case 'name': cmp = a.name.localeCompare(b.name); break;
         case 'category': cmp = a.category.name.localeCompare(b.category.name); break;
-        case 'price': cmp = (getDefaultVariant(a)?.price ?? 0) - (getDefaultVariant(b)?.price ?? 0); break;
+        case 'price': cmp = (getLowestPriceVariant(a)?.price ?? 0) - (getLowestPriceVariant(b)?.price ?? 0); break;
         case 'stock': cmp = totalStock(a) - totalStock(b); break;
         case 'status': cmp = Number(a.active) - Number(b.active); break;
       }
@@ -243,7 +243,7 @@ export default function AdminProductsPage() {
               controls back within reach. */}
           <div className="divide-y divide-border lg:hidden">
             {displayedProducts.map((product, rowIndex) => {
-              const defaultVariant = getDefaultVariant(product);
+              const defaultVariant = getLowestPriceVariant(product);
               const activeVariants = product.variants.filter((v) => v.active);
               const distinctPrices = new Set(activeVariants.map((v) => v.price)).size;
               return (
@@ -312,7 +312,7 @@ export default function AdminProductsPage() {
             </thead>
             <tbody>
               {displayedProducts.map((product, rowIndex) => {
-                const defaultVariant = getDefaultVariant(product);
+                const defaultVariant = getLowestPriceVariant(product);
                 const activeVariants = product.variants.filter((v) => v.active);
                 const distinctPrices = new Set(activeVariants.map((v) => v.price)).size;
                 return (

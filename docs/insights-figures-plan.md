@@ -4,7 +4,26 @@ Goal: let an Insight carry labelled figures with captions, the way a PubMed
 article does — a numbered figure set the prose can refer to ("see Figure 1"),
 each with its own caption and credit.
 
-Nothing here is built yet. This is the proposal.
+> **STATUS: BUILT (Option A, steps 1–6). Read the rest as the proposal it was.**
+> The `InsightFigure` model shipped as written (migration
+> `20260730000000_add_insight_figures`); the public and admin insight endpoints
+> return `figures`, and `PATCH /admin/insights/:id` replaces them as a whole. The
+> admin **Figures** section is in `InsightForm`, the reader grid is
+> `components/insights/InsightFigures.tsx`, the figure images are in
+> `ArticleJsonLd`'s `image` array after the cover, and uploads are now capped at
+> 1600px wide (`MAX_IMAGE_WIDTH` in `admin-upload.routes.ts`), so the "does not
+> resize" caveat in section 4 no longer applies. Differences from the plan:
+>
+> - **Reordering is ↑/↓ buttons only**, no drag handle.
+> - **Only caption and alt text are required.** Credit and credit link are
+>   optional, with a copyright note under the section instead of enforcement.
+> - **There is no `licence` field** (section 7, point 2 was not built); the licence
+>   goes in the free-text `credit`.
+> - The figure panel is `bg-white` with `object-contain`, not `bg-surface-elevated`,
+>   and the grid is two-up from the `sm` breakpoint. The lightbox closes on
+>   click or Esc and also pages through the set with the arrow keys.
+> - **Not built:** Option B, the `[figure:N]` inline placeholders (step 7).
+>   `Insight.content` is still plain text in a single `<p>`.
 
 ---
 

@@ -6,7 +6,7 @@ half (pairing, the allowlist, LIDs, groups, the guards' history) and stays
 true.
 
 Built 2026-09-18 by porting the Tapis assistant's architecture onto Ascend
-MY's existing tools (74 today), and keeping what Ascend's WhatsApp-only agent
+MY's existing tools (87 today), and keeping what Ascend's WhatsApp-only agent
 already did better: the grounding guard, the write-honesty guard, domain
 routing with `load_context`, read-only operators, and group and LID gating.
 Memory became a file directory the same day — see below.
@@ -41,6 +41,9 @@ src/modules/ai-agent/
   core/provider.ts     the one place the assistant talks to a model
   core/prompt.ts       who Abby is; the per-turn business rules; the live brief
   core/models.ts       the model catalogue and the model/escalation/effort settings
+  core/vision.ts       reads a picture into text (AGENT_VISION_MODEL)
+  core/media.ts        stores, identifies and delivers files, both ways
+  core/extract.ts      reads a document into text (PDF, Word, sheets, slides)
   core/run.ts          the loop — read this file first
   registry.ts          the tools, domain buckets, compiled input validators
   tool-kit.ts          AgentTool, tiers, audited(), money/date helpers
@@ -72,7 +75,7 @@ is JSON:
 | role | content |
 |---|---|
 | `user` | `{ text, sender? }` — sender is the operator's name in a group thread |
-| `assistant` | `{ text?, reasoning?, toolCalls?: [{ id, name, input, raw }], guard?, retracted? }` |
+| `assistant` | `{ text?, reasoning?, toolCalls?: [{ id, name, input, raw }], guard?, retracted?, provider? }` — `provider` is the OpenRouter host that served the step |
 | `tool` | `{ toolResults: [{ id, name, output, isError, ms }] }` — results in full |
 | `system` | `{ text, transient? }` — an approval, a decline, an undo, a one-turn note |
 | `system` | `{ summary, replaces: [seq, seq] }` — a compaction row |
@@ -121,6 +124,12 @@ WhatsApp confirmations.
      refused on the way in as well.
    - Two consecutive steps of schema-invalid calls, or a provider error,
      hand the turn to `OPENROUTER_ESCALATION_MODEL` when one is set.
+   - A write already made this turn with the very same arguments is refused,
+     not run again, and the refusal tells the model to change its arguments or
+     stop. After two such refusals the model gets no more tools and is told to
+     say exactly what changed and what did not (GLM 5.3 Flash, 10-11 Oct 2026:
+     forty identical notes-only `update_order` calls while it believed it was
+     marking an order paid).
    - Past 30k output tokens the model is told to wrap up; on the last step it
      gets no tools.
 5. **Guard the answer.** When a step returns text and no calls:
@@ -187,8 +196,9 @@ A write tool that returns `audited(result, before, after)` and defines
 appends a system row. Undoable today: `update_product`, `update_variant`,
 `adjust_stock` (reverses the delta that actually landed, so a sale in between
 survives), `set_sale`, `update_setting`, `update_discount_code`,
-`update_insight`, and every `memory` command. Anything
-that goes through an admin controller with side effects (order status, emails,
+`update_insight`, `set_profit_shared`, `save_attachment_as_document` (removes
+the filed document, not the file in the chat), and every `memory` command.
+Anything that goes through an admin controller with side effects (order status, emails,
 payouts) is deliberately not undoable from a button.
 
 ---
@@ -262,7 +272,8 @@ operator gave. The image bytes themselves are not kept. A picture that could
 not be read (too big, download failed, vision model down) is stored as
 `unreadable` with the reason and rendered as "a picture is attached that you
 cannot see — …", and the prompt tells the model to ask rather than guess.
-Video, audio and files are still only named as attached.
+Video and audio are still only named as attached; documents are read (see
+*Files*).
 
 GLM 5.3 Flash was chosen from a side-by-side on an order-chat screenshot
 against Qwen3.7 Flash, Qwen3-VL 8B/30B and Gemini 2.5 Flash Lite: the only
@@ -333,8 +344,8 @@ Four routines, switched on from the Assistant page (**Routines**), stored in
 | key | what |
 |---|---|
 | `agent_morning_brief` / `agent_morning_brief_hour` | once a day, after the hour (default 8; a missing or blank hour row means the default — `readHour` in `schedule.ts`, because `Number(null)` is 0 and the brief once ran at midnight on production for that reason): the assistant reads orders, stock, the outbox and reminders and writes one plain-text message, which the harness sends to every active operator's DM and every allowlisted group with `morningBrief` on — chosen per row on the Routines panel (operators default on, groups off); recipients can only ever be on the WhatsApp allowlist |
-| `agent_order_notify` | not scheduled — fires at the moment the order needs a person (`utils/order-notify.ts`): a manual-payment order (`WHATSAPP`, incl. the hosted proof-upload flow) on creation, from the end of `createOrder` — someone has to confirm the transfer; an online-gateway or crypto order on its `UNPAID → PAID` transition, from `applyPaid` — the customer settles on the gateway minutes after checkout and may not settle at all, and the guarded transition makes it once per order. One WhatsApp line (🛒 *New order* / ✅ *Order paid*) with number, customer, items, total, payment and the admin link, to every active operator and allowlisted group with `orderNotify` on. Written by code, not the model: immediate, identical, never wrong about the number. Preview and a test send on the panel; the test is the notice that order's method produces |
-| `agent_month_end` / `agent_month_end_hour` | on the 1st after the hour (default 9; the 2nd and 3rd are a catch-up window, never later): the month just ended, written by code in `utils/month-end.ts` — revenue vs the month before, placed/paid/unpaid/failed, costs and profit over costed orders (uncosted ones named), each partner's earnings that month from the same `costOrder`/`allocate` as Analytics and their owed-to-date from `computeFinance`, orders still unpaid or paid-not-shipped, units sold (add-on supplies counted apart) and every variant under the restock line. Sent to operators/groups with `monthEnd` on; `agent_month_end_last` holds the month (YYYY-MM) last sent. The panel previews or sends any of the last six months; the assistant reads the same text through `month_end_report`. Stock comes before any section naming an order, because the grounding guard ties a product name to the nearest order number above it |
+| `agent_order_notify` | not scheduled — fires at the moment an order needs a person (`utils/order-notify.ts`), two notices of one shape. **Placed**: a manual-payment order (`WHATSAPP`, incl. the hosted proof-upload flow) on creation, from the end of `createOrder`, headed *NEW ORDER · AWAITING PAYMENT* — it is not a sale yet, someone has to confirm the transfer. **Paid**: any order, whatever the method, on its `UNPAID → PAID` transition, headed *ORDER PAID* — `applyPaid` for an online-gateway or crypto order (the customer settles on the gateway minutes after checkout, and may not settle at all, so those get no notice at creation), or someone marking a manual order paid (the order page, or `mark_order_paid`); both transitions are guarded, so an order is announced paid once. The line carries number, customer, items (an included supply shown under its product), total, payment and the admin link, to every active operator and allowlisted group with `orderNotify` on. Written by code, not the model: immediate, identical, never wrong about the number. An operator replying "Paid" to a notice is the confirmation — the assistant calls `mark_order_paid` with the order from the quoted notice. The panel previews both notices (the latest manual order as placed, the latest paid order as paid) and can test-send the latest order's notice as it stands, ignoring the master switch |
+| `agent_month_end` / `agent_month_end_hour` | on the 1st after the hour (default 9; the 2nd and 3rd are a catch-up window, never later): the month just ended, written by code in `utils/month-end.ts` — revenue vs the month before, placed/paid/unpaid/failed, costs and profit over costed orders (uncosted ones named), each partner's earnings that month from the same `costOrder`/`allocate` as Analytics and their owed-to-date from `computeFinance`, orders still unpaid or paid-not-shipped, units sold (included supplies counted apart) and every variant under the restock line. Sent to operators/groups with `monthEnd` on; `agent_month_end_last` holds the month (YYYY-MM) last sent. The panel previews or sends any of the last six months; the assistant reads the same text through `month_end_report`. Stock comes before any section naming an order, because the grounding guard ties a product name to the nearest order number above it |
 | `agent_nightly_reflection` / `agent_nightly_reflection_hour` | once a day after the hour (3am by default): reads what operators said (`list_operator_messages`) and what it did, then consolidates the memory directory — merges, expires, moves detail out of core/, appends to log.md |
 
 The brief and the reflection each run in a thread of its own kind, visible on
@@ -407,13 +418,15 @@ thread (a reply re-sends it) reuses the first reading. Bytes are purged after
 `AGENT_MEDIA_RETENTION_DAYS`; the row and text stay.
 
 **Out.** `send_file` sends into the chat the request came from: a filed
-document, an order receipt (generated), a catalogue photo (converted to JPEG —
-WhatsApp shows WebP as a sticker), an earlier file, or a spreadsheet built from
-a read-only SQL query (`runReadOnlyQuery`, up to 10,000 rows — the database
+document, an order receipt (generated), a catalogue photo (converted to JPEG
+unless it already is JPEG or PNG — WhatsApp shows WebP as a sticker), an
+earlier file, or a spreadsheet built from a read-only SQL query (`runReadOnlyQuery`, up to 10,000 rows — the database
 fills the file, the model never transcribes rows). `forward_file` reaches
 another allowlisted operator or group only, and parks for a yes. Files never
-go to customers, and nothing produces a link. The worker's `/send-file` does
-the upload. A reply claiming a send with nothing sent is replaced
+go to customers, and nothing produces a link. The worker's loopback `/send-file`
+(bearer token, like `/send`, which carries the text of reminders, notices and
+routines) does the upload; both answer 409 while the agent is switched off or
+WhatsApp is not connected. A reply claiming a send with nothing sent is replaced
 (`CLAIMS_FILE_SENT`); a sent file counts as done for the write guard.
 
 **Bookkeeping.** `record_expense` takes `receiptMediaId`: the receipt is
@@ -473,13 +486,13 @@ The `openai` package is gone; the provider is a streamed `fetch`.
 Unchanged commands, ported to the new tables:
 
 ```bash
-npm run test:agent:tools       # 34 read tools against the dev db
+npm run test:agent:tools       # 36 read tools against the dev db (the file tools are left to test:agent:files)
 npm run test:agent:writes      # 38 write scenarios, rolled back (incl. set_order_discount, set_order_items, the supplier price list)
 npm run test:agent:memory      # 42 — the directory, the caps, the trust rule, undo
 npm run test:agent:grounding   # 31 unit (one pre-existing failure: get_document has no precondition)
 npm run test:agent:context     # compaction is size-based now; the fixture pads replies past 100k chars
 npm run test:agent:security    # 10 — includes a planted "remember this" that must never reach memory
-npm run test:agent:e2e         # 23 scenarios, real model; two are known to flake on model variance
+npm run test:agent:e2e         # 26 scenarios, real model; two are known to flake on model variance
 E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name contains the string
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
 npm run test:agent:wire        # 29, no model or db — call/result pairing, the compaction cut, summary placement, restart repair

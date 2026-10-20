@@ -14,8 +14,8 @@ genuinely becomes PAID:
 
 | Path | Where | Covers |
 |---|---|---|
-| Gateway | `applyPaid()` in `backend/src/utils/payment-reconcile.ts` | ToyyibPay/Billplz callback, redirect verify, reconcile sweep |
-| Manual | `adminUpdateOrder()` in `backend/src/modules/admin/admin-orders.controller.ts` | WhatsApp + manual transfer, marked Paid by an admin |
+| Gateway | `applyPaid()` in `backend/src/utils/payment-reconcile.ts` | Billplz/ToyyibPay callback, redirect verify, BTCPay webhook, reconcile sweep, and a hosted bank-transfer payment approved in ManualPay |
+| Manual | `adminUpdateOrder()` in `backend/src/modules/admin/admin-orders.controller.ts` | WhatsApp + manual transfer, marked Paid by an admin — from the order page or by the assistant's `mark_order_paid`, which goes through the same function |
 
 Both sit behind guarded `UNPAID -> PAID` transitions, so duplicate callbacks
 and repeated sweeps cannot double-count revenue.
@@ -28,6 +28,13 @@ the person who actually browsed. Full funnel, no PII, no new DB column.
 This is why `person_profiles` is `"always"` in `instrumentation-client.ts`.
 Switching it to `"identified_only"` disables the person processing `alias`
 depends on and silently breaks every funnel at the purchase step.
+
+**Pageviews are captured by hand.** `capture_pageview` is pinned to `false` and
+`<PostHogPageView>` (mounted in `layout.tsx`) fires `$pageview` on first mount and
+on every pathname change: with this project's remote config loaded, PostHog's
+automatic `$pageview` never fired, while a manual capture is always accepted.
+Keep the pin, or every pageview would be counted twice if the automatic one ever
+comes back. `capture_pageleave` is on and `capture_exceptions` is on.
 
 **Privacy.** Session replay is disabled in code, not left to the project's UI
 toggle — that toggle applies to the already-deployed script, so without the
@@ -115,13 +122,17 @@ GoAccess dashboard would count every event as a pageview.
 | `add_to_cart` | product page | includes add-on count |
 | `remove_from_cart` | cart | |
 | `checkout_started` | cart | "Proceed to Checkout" |
-| `payment_method_selected` | checkout | WhatsApp vs online |
+| `payment_method_selected` | checkout | `method` is `WHATSAPP`, `BILLPLZ` (online; `gateway` names the live one), `MANUAL` (hosted bank-transfer / DuitNow page) or `CRYPTO` (Bitcoin) |
 | `discount_applied` | checkout | |
 | `checkout_submitted` | checkout | order created — **not** paid, no revenue |
 | `purchase` | **backend** | payment confirmed; carries `revenue` (MYR) |
-| `checkout_payment_failed` | checkout/failed | |
+| `checkout_payment_failed` | checkout/failed | `resumable` says whether a retry link exists |
+| `manual_payment_proof_submitted` | /pay/[id] | payment screenshot uploaded on the hosted bank-transfer page (`retry` after a rejection) |
 | `order_tracked` | /track | |
 | `calculator_used` | /calculator | once per visit, when a result first shows |
+| `newsletter_subscribed` | newsletter form | `source` is `FOOTER` or `CHECKOUT` |
+| `newsletter_popup_shown` / `newsletter_popup_dismissed` | newsletter popup | `path` |
+| `$pageview` | every route | by `<PostHogPageView>`, not PostHog's automatic capture |
 
 Suggested funnel: `add_to_cart` → `checkout_started` → `checkout_submitted` →
 `purchase`. The gap between the last two is abandoned payment.

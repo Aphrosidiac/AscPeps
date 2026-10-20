@@ -4,6 +4,8 @@ interface WhatsAppOrderItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  /** What came included with this line, already worded ("1x Bac Water 3mL, 6x Alcohol Swab"). */
+  includes?: string;
 }
 
 interface WhatsAppOrderData {
@@ -23,7 +25,7 @@ interface WhatsAppOrderData {
 
 export function buildWhatsAppUrl(data: WhatsAppOrderData): string {
   const itemLines = data.items
-    .map((item) => `${item.quantity}x ${item.name} - RM${(item.unitPrice / 100).toFixed(2)}`)
+    .map((item) => `${item.quantity}x ${item.name} - RM${(item.unitPrice / 100).toFixed(2)}${item.includes ? `\n   _incl. ${item.includes}_` : ''}`)
     .join('\n');
 
   let breakdown = `*Subtotal: RM${(data.subtotal / 100).toFixed(2)}*`;

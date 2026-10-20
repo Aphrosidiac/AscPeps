@@ -1,28 +1,52 @@
 # Finance section — plan
 
-> **STATUS: SHIPPED. This document is the design discussion that preceded it, kept
-> for the reasoning behind the decisions — not a description of what exists.**
+> **STATUS: BUILT, with one core decision changed. This document is the design
+> discussion that preceded it, kept for the reasoning behind the decisions — not a
+> description of what exists.**
 >
 > For what the code actually does today, read [bookkeeping.md](./bookkeeping.md).
 >
-> Three things below are now out of date:
+> Built: `Partner`, `CompanyExpense`, `PartnerFunding`, `PartnerRepayment` and
+> `ProfitPayout` (migration `20260731000000_add_finance_section`), the
+> `OrderProfitShare.partnerId` backfill, balances recomputed on read, and the
+> screens `/admin/finance`, `/admin/finance/expenses` and
+> `/admin/finance/partners/[id]`. Not built, or built differently:
 >
-> 1. **"Nothing here is built"** — all of it is, and has been since
->    `20260731000000_add_finance_section`.
-> 2. **Section 2's per-expense allocation** (`OWNERSHIP` / `SINGLE_PARTNER` /
+> 1. **Section 2's per-expense allocation** (`OWNERSHIP` / `SINGLE_PARTNER` /
 >    `UNALLOCATED`, `Partner.ownershipBps`, `chargedToPartnerId`) was **not**
->    built. Company spending never lands on a person as a charge. The only way an
+>    built, so decision 1 in section 7 (Option A) is not what the code does, and
+>    neither is section 6's `ownershipBps` seed or the "Expense share" column.
+>    Company spending never lands on a person as a charge. The only way an
 >    expense touches someone is `paidByPartnerId` — money the company may owe
 >    them back. That is a simpler rule than any of the three options debated here,
->    and it is the one in the code.
+>    and it is the one in the code. The balance is
+>    `owed = earned + capitalFronted + advancesOutstanding − paidOut`, not the
+>    formula in section 5.
+> 2. **`OrderProfitShare.capitalAmount`** is not in the plan: the money a person
+>    put up for an order's costs, owed straight back to them, so it adds to what
+>    they take home. (The migration first created it as a charge, `expenseAmount`;
+>    `20260801000000_profit_share_expense_to_capital` renamed it and flipped its
+>    direction.)
 > 3. **`CompanyExpense.receiptUrl`** in section 3 shipped but was never wired to
 >    any UI, and has since been dropped in favour of the
 >    [document store](./documents.md), which allows many files per expense and
 >    does not serve them from the public `/uploads` mount.
->
-> Since written, spending also gained a `kind` (`OPERATING` / `INVENTORY`) —
-> section 2's cost model assumed all spending is consumed on purchase, which
-> double-counted stock. See [bookkeeping.md](./bookkeeping.md).
+> 4. Spending also gained a `kind` (`OPERATING` / `INVENTORY`) — section 2's cost
+>    model assumed all spending is consumed on purchase, which double-counted
+>    stock. Net profit is gross order profit less `OPERATING` spend only. See
+>    [bookkeeping.md](./bookkeeping.md).
+> 5. **Screens** differ from section 5. The overview cards are Revenue, Gross
+>    profit, Operating spend, Net profit, Capital in and Advances outstanding;
+>    the partner columns are Earned, Capital fronted, Contributed, Advances o/s,
+>    Paid out and Owed. "Record money" offers Contribution, Advance and Profit
+>    payout (not reinvestment / withdrawal / retained profit); repaying an advance
+>    is done on the partner's ledger. The links in step 7 of section 8 (Analytics
+>    Profit Share card and an order's Profit Sharing tab into Finance) were not
+>    built.
+> 6. **Section 1 is a snapshot.** `costOrder()` no longer stops at
+>    `total − item costs − extra costs`: it also subtracts the gateway fee,
+>    reverses refunds, and does not need a cost on a free line. The "production
+>    right now" figures are long out of date.
 
 Goal: one place that answers, for the life of the business rather than one
 order — what has each person earned, what have they put back in, what has the

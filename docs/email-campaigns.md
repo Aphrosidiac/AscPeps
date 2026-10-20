@@ -39,8 +39,10 @@ that backlog first. Subscribers with source `ORDER` never get a welcome.
 
 Product cards store **ids only**. Name, photo, price and stock are read at
 send time (`loadCampaignProducts`), so a draft never quotes a stale price. The
-price is the cheapest size that is **in stock** (sale applied), and the photo
-is that size's photo. Inactive products are skipped.
+price is the cheapest size that is **in stock** (sale applied; if no size is,
+the cheapest of all), and the photo is that size's photo, falling back to the
+product's first image. Inactive products, and products with no active size, are
+skipped.
 
 The composer shows the guidance this campaign was planned around: subjects of
 30 characters or fewer, bodies of 100 words or fewer. These come from a study
@@ -99,9 +101,15 @@ it. The number on screen is the number that goes out.
 
 | Value | Who |
 |---|---|
-| `CUSTOMERS` | Every subscriber, plus every paid customer with no subscriber row. |
-| `ALL` | Every subscriber. |
-| `BUYERS` / `NON_BUYERS` | Subscribers with / without a paid order. |
+| `CUSTOMERS` | Every subscribed row (signups, plus order customers a past campaign already reached who have not opted out), plus every paid customer with no subscriber row. |
+| `ALL` | Every subscriber who **signed up**. |
+| `BUYERS` / `NON_BUYERS` | Signed-up subscribers with / without a paid order. |
+
+Only `CUSTOMERS` reaches order customers. The subscriber rows a `CUSTOMERS` send
+creates (source `ORDER`, below) are contacts, not subscriptions: `ALL`, `BUYERS`
+and `NON_BUYERS` skip them, so a customer campaign going out never makes
+"Everyone" bigger. Signing up through a form, or being added by hand, turns the
+row into a real subscriber.
 
 Paid customers are matched by order email (lowercased), because most orders
 are placed without an account. An address that ever unsubscribed has a row,
@@ -118,7 +126,12 @@ removes them:
 4. `excludeBoughtProductIds`: ever bought any of these products.
 
 **At send:** customers without a row get a subscriber row with source `ORDER`,
-so they carry an unsubscribe token and an opt-out sticks. The audience is
+so they carry an unsubscribe token and an opt-out sticks. Those rows are kept
+(deleting one would orphan the unsubscribe link already in the customer's inbox
+and the campaign's delivery record), but they are hidden from the Subscribers
+list, its numbers and its CSV export; they have their own **Customers emailed**
+tab there (reachable vs opted out, the campaigns that reached each, an opt-out
+action, no delete). The audience is
 snapshotted into `campaign_recipients` once, so people who join mid-send are
 not mailed. The (campaign, subscriber) unique key makes a double-submit
 harmless.
@@ -144,6 +157,8 @@ from the Resend webhook unsubscribe the address.
 - **Audience step** (`AudiencePanel.tsx`): base options with live sizes, group
   rules with "−N" counts, exclude-by-address, and the searchable recipient
   list (`GET /admin/campaigns/:id/audience`) with per-person Exclude/Include.
+- **Subscribers → Customers emailed:** the contacts above, apart from the real
+  list. Export CSV follows the active tab.
 - **Send:** needs SEND typed into a confirmation that states the final count,
   the order customers added, and the number excluded.
 

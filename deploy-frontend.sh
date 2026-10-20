@@ -54,8 +54,13 @@ echo "→ shipping"
 # --exclude .env: the standalone server reads .next/standalone/.env, which is
 # maintained on the server. Overwriting it from a laptop has already broken
 # REVALIDATE_SECRET once (see deploy.sh).
+# Archive what is live before replacing it, then put older files back without
+# overwriting the new build's — so a page loaded before this deploy can still
+# fetch its chunks. Same 14-day archive as deploy.sh (see the note there).
+ssh "$REMOTE" "cd $REMOTE_DIR && mkdir -p .static-archive && cp -R .next/standalone/.next/static/. .static-archive/ 2>/dev/null; find .static-archive -type f -mtime +14 -delete"
 rsync -az --delete --exclude '.env' --exclude '.next/cache' .next/standalone/ "$REMOTE:$REMOTE_DIR/.next/standalone/"
 rsync -az --delete .next/static/ "$REMOTE:$REMOTE_DIR/.next/standalone/.next/static/"
+ssh "$REMOTE" "cd $REMOTE_DIR && rsync -a --ignore-existing .static-archive/ .next/standalone/.next/static/"
 rsync -az --delete public/ "$REMOTE:$REMOTE_DIR/.next/standalone/public/"
 rsync -az .next/BUILD_ID "$REMOTE:$REMOTE_DIR/.next/BUILD_ID"
 

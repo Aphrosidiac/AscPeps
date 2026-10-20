@@ -24,10 +24,25 @@ export function getVariantDisplayName(product: { name: string }, variant: { size
 // The variant shown by default on a product card / on first paint of the
 // product page — the lowest-priced active variant. Used identically in both
 // places so they never disagree about which size is "the" default.
-export function getDefaultVariant(product: Product): ProductVariant | null {
+/** The cheapest active size, in stock or not. Admin lists sort and price by it. */
+export function getLowestPriceVariant(product: Product): ProductVariant | null {
   const active = product.variants.filter((v) => v.active);
   if (active.length === 0) return null;
   return active.reduce((min, v) => (v.price < min.price ? v : min));
+}
+
+/**
+ * The size a shopper sees first: the cheapest one that is in stock, falling
+ * back to the cheapest overall only when every size is sold out. Picking the
+ * cheapest regardless of stock showed Retatrutide as "Out of stock" on its card
+ * and opened its page on a sold-out 10mg while 20mg and 30mg were available.
+ */
+export function getDefaultVariant(product: Product): ProductVariant | null {
+  const active = product.variants.filter((v) => v.active);
+  const inStock = active.filter((v) => v.stock > 0);
+  const pool = inStock.length > 0 ? inStock : active;
+  if (pool.length === 0) return null;
+  return pool.reduce((min, v) => (v.price < min.price ? v : min));
 }
 
 const SITE_URL = 'https://ascendpeptides.my';

@@ -22,7 +22,7 @@ its result.
 
 ```
 WhatsApp ──► ascend-wa (worker, PM2)            ascend-api (PM2)
-             • holds the baileys socket          • the assistant: core/run.ts + 75 tools
+             • holds the baileys socket          • the assistant: core/run.ts + 87 tools
              • QR / reconnect / dedup            • all admin business logic
              • NO business logic                 • Prisma, PostHog, email outbox
                     │                                     ▲
@@ -40,11 +40,12 @@ the paired-session distinction, the Redis dedup and the downtime alerting are
 all preserved deliberately, comments included. The agent itself is entirely new.
 
 **Why the agent lives in the API and not the worker.** Ascend MY's admin logic is
-Fastify- and Prisma-coupled: cancelling an order restores stock, refunding calls
-the Billplz API, marking paid queues the receipt email *inside the same
-transaction* and records revenue to PostHog. The agent's order and finance tools
-call those existing controllers rather than re-implementing them, so the agent
-and the dashboard can never drift apart. Doing that from a second process would
+Fastify- and Prisma-coupled: cancelling an order restores stock, marking one
+refunded restores it too and records the refund (no gateway has a refund API —
+the money goes back by hand), marking paid queues the receipt email *inside the
+same transaction* and records revenue to PostHog. The agent's order and
+finance tools call those existing controllers rather than re-implementing
+them, so the agent and the dashboard can never drift apart. Doing that from a second process would
 have meant a second copy of all of it.
 
 ---
@@ -189,10 +190,11 @@ by renaming themselves. It is shown as a hint when binding and nothing more.
 Two related places the LID form matters:
 
 - **Group mentions.** A mention in a LID-addressed group carries the bot's own
-  LID (`sock.user.lid`), not its phone JID. Both are matched, plus a text
-  trigger (`@ascend …`, `bot …`, or `Abby`/`ab` — the last two anywhere in the
-  message, not just as the first word, since "hey Abby, ..." is how it's
-  actually said) that needs no identifier at all.
+  LID (`sock.user.lid`), not its phone JID. Both are matched, as is a reply to
+  one of the bot's own messages, plus a text trigger (`@ascend …`, `bot …`, or
+  `Abby`/`ab` — the last two anywhere in the message, not just as the first
+  word, since "hey Abby, ..." is how it's actually said) that needs no
+  identifier at all.
   Detection is a separate concern from what the model actually reads, though:
   WhatsApp embeds a mention as the raw JID digits sitting inline in the message
   text — "@Lewix Bot" on screen is literally "@80943691858039" in the payload.
@@ -218,9 +220,10 @@ against the live deployment:
 | Unknown sender, group allowlisted | ignored |
 | Bound operator, allowlisted group, no mention | ignored |
 | Bound operator, allowlisted group, mentioned | acts |
-| Anyone, a picture (image, or a document whose mime is `image/*`) | gated exactly like text; for an allowed sender the worker downloads it (10 MB cap, checked before the fetch) and the API has `AGENT_VISION_MODEL` transcribe it for the model — see *Replies and pictures* in `assistant.md`. In a group that requires a mention, a picture nobody addressed to the bot is not downloaded at all |
+| Anyone, a picture (image, or a document whose mime is `image/*`) | gated exactly like text; the worker downloads it (10 MB cap, checked before the fetch — the allowlist is the API's, so a stranger's DM picture is fetched and then dropped there) and, for an allowed sender, the API has `AGENT_VISION_MODEL` transcribe it for the model — see *Replies and pictures* in `assistant.md`. In a group that requires a mention, a picture nobody addressed to the bot is not downloaded at all |
+| Anyone, a document of any other type (PDF, Word, Excel/CSV, PowerPoint, text) | gated exactly like text; the worker downloads it (`AGENT_MAX_FILE_MB`, 20 by default, checked before the fetch), the API stores and reads it, and the model gets its text with a `mediaId` — see *Files* in `assistant.md`. A file nobody addressed to the bot in a mention-only group is not downloaded; one the API cannot read is named as attached with the reason |
 | Anyone, a reply to an earlier message | the quoted message travels with it and the model sees it first, named by author |
-| Anyone, other media with no caption (video, voice note, audio, file, contact, location, poll) | gated exactly like text; an allowed sender gets a one-line "I can't read that" notice, everyone else silence. Under a caption the model is told what was attached. Stickers, reactions and deletes get silence from everyone. Text inside disappearing / view-once / captioned-document envelopes is unwrapped and handled as text |
+| Anyone, other media with no caption (video, voice note, audio, contact, location, poll), or a picture or file with no caption that could not be downloaded (or was over the size cap) | gated exactly like text; an allowed sender gets a one-line "I can't read that" notice, everyone else silence. Under a caption the model is told what was attached. Stickers, reactions and deletes get silence from everyone. Text inside disappearing / view-once / captioned-document envelopes is unwrapped and handled as text |
 
 Unresolvable senders are recorded only *after* the group gate passes. Recording
 first meant every participant of every supplier and customer group the number
@@ -256,8 +259,16 @@ memory file. See [assistant.md](assistant.md#memory).
 
 ## Model
 
-OpenRouter (OpenAI-compatible), `deepseek/deepseek-v4-flash` by default, set via
-`OPENROUTER_MODEL`.
+OpenRouter (OpenAI-compatible), `deepseek/deepseek-v4-flash` by default. The
+Assistant page's **Model** menu is what governs it, for the dashboard and
+WhatsApp alike; `OPENROUTER_MODEL` is only the fallback for a database where
+nothing has been chosen.
+
+OpenRouter is told never to route to inference-net (`AGENT_PROVIDER_IGNORE`):
+on 14 Oct 2026 its GLM 5.3 Flash host never emitted an optional enum argument,
+so `update_order` arrived without its `status` or `paymentStatus` on every
+call. Each stored assistant step records which host served it; see
+[assistant.md](assistant.md) for the whole story.
 
 **`AGENT_REASONING_EFFORT` defaults to `none` and should stay there on
 DeepSeek.** DeepSeek V4 is reasoning-capable and, left at its default, can
@@ -303,10 +314,12 @@ WHATSAPP_AGENT_ENABLED=false
 ALERT_DOWN_AFTER_MINUTES=10
 ALERT_TELEGRAM_BOT_TOKEN=
 ALERT_TELEGRAM_CHAT_ID=
+ALERT_WEBHOOK_URL=
 ```
 
-Both processes read `.env` independently, and both hard-throw in production if
-`WORKER_HTTP_TOKEN` is left at its default.
+Both processes read `.env` independently — and it wins over pm2's saved
+environment in both, so an edit plus a restart is enough — and both hard-throw
+in production if `WORKER_HTTP_TOKEN` is left at its default.
 
 ### 3. Migration
 
@@ -364,11 +377,21 @@ when the socket underneath it dies — that exact silence hid a 9.5-hour outage 
 HarvestGrow. Check the Agent page, or:
 
 ```bash
-curl -s -H "Authorization: Bearer $WORKER_HTTP_TOKEN" http://127.0.0.1:3106/status
+curl -s -H "Authorization: Bearer $WORKER_HTTP_TOKEN" http://127.0.0.1:3107/status
 ```
 
-Configure `ALERT_TELEGRAM_*` so a drop pages you rather than waiting to be
-noticed.
+A drop that lasts `ALERT_DOWN_AFTER_MINUTES` raises an alert (and another when
+it recovers): a console line, the Telegram and webhook sinks if configured, and
+always the API, which emails every admin user plus `ALERT_EMAIL_TO` through
+Resend. Configure `ALERT_TELEGRAM_*` or `ALERT_WEBHOOK_URL` as well so a drop
+pages you rather than waiting to be noticed.
+
+The worker's control plane (loopback only, bearer token) is `/status`, `/qr`,
+`/groups`, `/connect`, `/stop` and `/disconnect` for the Agent page, plus
+`/send` (text, to a `phone` or a group `jid`) and `/send-file` (a picture or a
+document, base64). The reminder sweep, the order notices, the routines and
+`send_file`/`forward_file` all go out through those two, which answer 409 while
+`WHATSAPP_AGENT_ENABLED` is off or WhatsApp is not connected.
 
 **Stop vs Log out.** *Stop* closes the socket and keeps the saved session —
 Start resumes with no re-scan. *Log out* unlinks the device and always needs a
@@ -418,21 +441,36 @@ Things worth knowing:
   code and a quantity, never a price. A price the model suggested is no more
   trustworthy than one posted by a browser, and the checkout has never trusted
   those either.
-- **Required add-ons are added by the controller**, not by the tool — bac water,
-  syringes, swabs. The confirmation summary lists them so they are not a
-  surprise on the finished order. The larger requirement wins and quantities do
-  not scale with how many units of the parent were bought.
+- **What comes included is added by checkout, not by the tool.** Bac water,
+  syringes, swabs and the like are *included* add-ons: they belong to the
+  product they come with, and their quantity is the per-unit setting times how
+  many of the product were bought (2 of a product that includes 1 Bac Water
+  each bring 2).
+  The tool never lists them; the preview runs the same resolver as the real
+  order (`resolveOrderLines`), so the confirmation summary shows exactly what
+  will be on it ("with what comes included: …") and the figures agree. Required
+  ones always come; an optional one (a priced vial size) is only there when
+  ticked, which the tool has no way to do. A *suggested* add-on (MOTS-C offered
+  on Retatrutide) is an ordinary product and an ordinary line the operator
+  names. A free included supply that has run out does not block the order — it
+  ships with what is left — but the product and any priced include are held to
+  their stock. (A required *suggested* add-on keeps the older rule: it is added
+  as a line of its own, and the larger of the two quantities wins.)
 - It is **destructive**: it takes stock immediately, and with an email address
   and store emails on it sends a real customer a real confirmation. The summary
   states both before you agree.
 - Stock is re-checked at execution, not just at confirmation — the two can be
   minutes apart.
+- Shipping is the store's flat fee, waived only when every product on the order
+  has its "No shipping charge" switch on — the rule checkout applies, and the
+  preview shows the same figure.
 - `WHATSAPP` (default) means manual transfer, order stays UNPAID until someone
-  confirms the money. `BILLPLZ` creates a **real bill at the gateway** and
-  returns a payment link; it needs an email address. `BILLPLZ` is a **legacy
-  enum name** — it means "paid online", and the live gateway is ToyyibPay. The
-  agent is told never to label anything "Billplz" to an operator, and the admin
-  UI renders the gateway's real name.
+  confirms the money. `ONLINE` creates a **real bill at the store's configured
+  gateway** and returns a payment link; it needs an email address. (The tool
+  still accepts `BILLPLZ` as an alias.) `BILLPLZ` is a **legacy enum name** in
+  the database — it means "paid online", and the live gateway is ToyyibPay.
+  The agent is told never to label anything "Billplz" to an operator, and the
+  admin UI renders the gateway's real name.
 - **A discount given by hand rides along**: `discountRm` or `discountPercent`
   (of the goods subtotal, before shipping), with a `discountNote` for the books.
   The confirmation summary shows it as its own line before the total. It stacks
@@ -471,6 +509,15 @@ left alone. The tool merges that onto the order's current lines and calls the
 same controller the admin page's "Edit items" button uses
 (`PUT /admin/orders/:id/items`), so the two paths cannot disagree.
 
+The operator lists PRODUCTS only. What came included with a product (the
+lines `get_order` marks `includedWith` — syringes, swabs, a vial) follows its
+product's quantity at the same per-unit ratio and goes when the product goes;
+if one is listed anyway it is ignored. Orders from before bundles carried their
+RM 0 supplies as loose lines, and those are left exactly as they are. When a
+new product is added, its required included supplies come with it, as at
+checkout, and the preview counts the price of a priced include inside its
+product's line.
+
 What happens on save: stock moves by the difference (a conditional decrement,
 the same one checkout uses, so two edits cannot oversell the last unit);
 existing lines keep the price they were sold at and any cost already entered;
@@ -491,6 +538,51 @@ The playbook names the trap this replaces: before it existed, a wrong quantity
 was "fixed" by typing a unit cost that made the line total come out right. The
 profit looked correct; the order, the receipt and the stock were all wrong.
 `set_order_costs` now says in its own description that it is for costs only.
+
+## Marking orders paid
+
+`mark_order_paid` is its own tool because it is the commonest write in the
+group — an operator replying "Paid" (or "dah bayar") to an order notice, with
+the order taken from the quoted notice. It takes one order or several in ONE
+call (`orderRefs`, up to 50), and an optional `note` added under the order's
+notes. It does what the dashboard does: the payment-receipt email is queued,
+revenue is recorded, and the "Order paid" notice goes to every operator and
+group that has order notices switched on. Every reference is resolved and checked before anything changes, so one typo cannot
+leave half a batch paid; an order already paid is reported, not touched; a
+deleted, cancelled or refunded order is refused with the reason. It is a write
+but not a destructive one, so it runs without a yes.
+
+It exists because `update_order` carries `paymentStatus` as an optional enum,
+and GLM 5.3 Flash hosted on inference-net never sent it: on 10-11 Oct 2026 the
+model re-sent the same notes-only `update_order` call about forty times
+believing it was marking an order paid, each "changed: notes" success telling
+it the call had worked. Three things changed. The tool *is* the change, so
+nothing can be left out. `update_order` now refuses a call that changes nothing
+and names the status and payment status the order already has, and says a note
+never changes either. And the loop refuses a write repeated with the very same
+arguments, ending the turn after two refusals (see
+[assistant.md](assistant.md#the-turn-corerunts)).
+
+`update_order` notes are append-only: the operator's line goes under the
+existing note (often the customer's own delivery instruction), and only
+`replaceNotes: true` — for an operator who asked to change or clear the note —
+writes over it. Marking an order REFUNDED restores its stock and records the
+refund, but no gateway has a refund API, so the money goes back by hand; on a
+ToyyibPay order the agent says so.
+
+## Profit Shared
+
+`set_profit_shared` ticks (or unticks, `shared: false`) the dashboard's "Profit
+Shared" box on one or more orders: the record that an order's profit has
+actually been paid out to the people in its split. The system cannot see money
+leave the account, so it is a manual assertion and the agent only ticks what an
+operator says was paid out. `list_orders` takes `profitShared` (false = paid,
+live orders whose profit has not been shared yet) and every order summary
+carries `profitShared`, so "which orders are left to share?" is one call. The
+write is the dashboard checkbox's own, nothing else moves, and it is undoable
+from the transcript card. Ticking an order that is unpaid or cancelled, still
+has lines with no cost, or has no profit split is not refused — the dashboard
+does not refuse either — but the result carries a warning saying so.
 
 ## The supplier price list
 
@@ -568,8 +660,8 @@ due while WhatsApp was disconnected is still PENDING when the worker returns
 and goes out late, which is what someone who asked to be reminded wants.
 
 Lifecycle: `PENDING` → `SENT`, or `CANCELLED` if called off, or `FAILED` after
-six failed sends (1/2/4/8/16/30-minute backoff) or if it goes more than 24h
-past due. A FAILED reminder is kept, never deleted — one that never reached
+six failed sends (2/4/8/16/30-minute backoff between tries) or if it goes more
+than 24h past due. A FAILED reminder is kept, never deleted — one that never reached
 anyone should be visible rather than silently gone.
 
 **Where it goes** is the part worth understanding:
@@ -612,6 +704,9 @@ as "6:26 PM".
 4. Take money in **ringgit** (`amountRm`), never cents. `toCents()` converts.
    A model that has to remember to multiply by 100 will eventually forget, and a
    100x error on a payout is not recoverable.
-5. Export it from `registry.ts`. Duplicate names throw at boot.
+5. Put it in a domain bucket in `registry.ts` (a new tool file is imported there
+   and added to a bucket); a tool lives in exactly one, and duplicate names
+   throw at boot. It is advertised only when a turn routes to its domain
+   (`domains.ts`) or it is one of `CORE_TOOL_NAMES`.
 6. Delegate to an existing admin controller if one exists — that is where the
    side effects live.

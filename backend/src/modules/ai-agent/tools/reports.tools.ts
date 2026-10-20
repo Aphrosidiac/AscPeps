@@ -196,7 +196,7 @@ export const reportTools: AgentTool[] = [
 
   {
     name: 'top_products',
-    description: 'Best sellers over a period, by units sold and by revenue. Counts paid, non-deleted orders only.',
+    description: 'Best sellers over a period, by units sold and by revenue. Counts paid, non-deleted orders only, and products bought — not the supplies that come included with them.',
     input_schema: {
       type: 'object',
       properties: {
@@ -222,6 +222,11 @@ export const reportTools: AgentTool[] = [
             AND o."paymentStatus" = 'PAID'
             AND o."createdAt" >= $1
             AND ($2::timestamp IS NULL OR o."createdAt" <= $2)
+            -- What came included with a product is not a sale of its own
+            -- (order-lines.ts isIncludedItem): bundled children, and the RM0
+            -- supply lines of orders from before bundles.
+            AND oi."parentItemId" IS NULL
+            AND NOT (oi."unitPrice" = 0 AND p."addOnOnly")
           GROUP BY p.name, v.code, v.size
           ORDER BY ${input.by === 'units' ? 'units' : 'revenue'} DESC
           LIMIT ${clampLimit(input.limit, 15)}`,

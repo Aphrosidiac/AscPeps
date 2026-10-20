@@ -83,7 +83,7 @@ export async function loadFinanceInput(fastify: FastifyInstance) {
         gatewayFee: true,
         refundedAmount: true,
         stockRestored: true,
-        items: { select: { quantity: true, unitCost: true } },
+        items: { select: { quantity: true, unitCost: true, unitPrice: true } },
         extraCosts: { select: { amount: true } },
         profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true } },
       },
@@ -252,7 +252,7 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
           select: {
             id: true, orderNumber: true, createdAt: true, total: true, deletedAt: true, paymentStatus: true,
             gatewayFee: true, refundedAmount: true, stockRestored: true,
-            items: { select: { quantity: true, unitCost: true } },
+            items: { select: { quantity: true, unitCost: true, unitPrice: true } },
             extraCosts: { select: { amount: true } },
             profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true } },
           },

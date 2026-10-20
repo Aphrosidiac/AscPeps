@@ -200,7 +200,7 @@ const PLAYBOOKS: Record<string, Playbook> = {
 
   products: {
     title: 'How the catalogue is shaped',
-    body: `A product is a compound with one page; the sellable sizes are its variants, and price and stock live on the variant. Add-ons are other variants offered alongside a product (bacteriostatic water, syringes, swabs); a required add-on is forced into the basket and cannot be unticked.
+    body: `A product is a compound with one page; the sellable sizes are its variants, and price and stock live on the variant. Add-ons come in two kinds (since 20 Oct 2026). INCLUDED add-ons are supplies whose own product is "add-on only" — bacteriostatic water, syringes, alcohol swabs, empty vials. They belong to the product they come with: shown under it in the cart, order notice, receipt and get_order (includedWith), quantity = the per-unit setting × how many of the product were bought (2× RT20 = 2 Bac Water, 12 swabs), and they go when the product goes. A required one cannot be unticked; an optional one (a priced 5mL vial) is ticked by the customer and adds its price. SUGGESTED add-ons are real products offered on another product's page (MOTS-C, AOD9604 on Retatrutide) and become their own order line. A free supply that runs out does not block the order — it ships with what is left. Never change an included line on its own; change the product's quantity (set_order_items) and its supplies follow.
 - The supplier price list (list_suppliers) is what each supplier charges the business per unit of each SKU. It is not stock and not purchasing. To cost an order line from it, use set_order_costs with the supplier's name on that line — the price is copied onto the order and the supplier recorded — rather than reading the price and typing it in.`,
   },
 };

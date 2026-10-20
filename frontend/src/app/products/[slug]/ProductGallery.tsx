@@ -64,7 +64,12 @@ export function ProductGallery({ slides, selectedVariantId, productName, altFor,
   // `previous` is carried alongside `current` because the outgoing image has to
   // stay on screen, fully opaque, underneath the incoming one for the whole
   // transition. See the layer comment in the render for why.
-  const [pos, setPos] = useState({ current: 0, previous: 0 });
+  // Opens on the selected size's photo — which is not always the first slide:
+  // the page opens on the cheapest size IN STOCK (getDefaultVariant).
+  const [pos, setPos] = useState(() => {
+    const start = Math.max(0, slides.findIndex((s) => s.variantIds.includes(selectedVariantId)));
+    return { current: start, previous: start };
+  });
   // Tracks which variant the index was last synced to, so "the variant
   // changed" can be told apart from "the customer is browsing". Without that
   // distinction, following the variant would fight the customer and every

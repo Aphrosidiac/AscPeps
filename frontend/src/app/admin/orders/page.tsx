@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
+import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search, ChevronDown, ChevronUp, ExternalLink, Truck, FileText, Trash2, RotateCcw, Mail, AlertTriangle, EyeOff, BadgeCheck, Receipt } from 'lucide-react';
@@ -504,18 +505,30 @@ function AdminOrdersContent() {
 
                     {/* Items */}
                     <div>
-                      <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Items ({order.items.length})</p>
-                      <div className="bg-surface-elevated rounded-lg divide-y divide-border">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between px-4 py-3">
-                            <div>
-                              <p className="text-sm font-medium">{item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}</p>
-                              <p className="text-xs text-text-muted">{item.variant.code} &times; {item.quantity}</p>
+                      {(() => {
+                        // Products bought; what came included is named under each.
+                        const { lines, looseIncludes } = groupOrderItems(order.items);
+                        return (
+                          <>
+                            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Items ({lines.length})</p>
+                            <div className="bg-surface-elevated rounded-lg divide-y divide-border">
+                              {lines.map(({ item, includes }) => (
+                                <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium">{item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}</p>
+                                    <p className="text-xs text-text-muted">{item.variant.code} &times; {item.quantity}</p>
+                                    {includes.length > 0 && <p className="text-xs text-text-muted">Includes {includesText(includes)}</p>}
+                                  </div>
+                                  <p className="text-sm font-semibold shrink-0">{formatPrice(groupedLineTotal({ item, includes }))}</p>
+                                </div>
+                              ))}
+                              {looseIncludes.length > 0 && (
+                                <p className="px-4 py-3 text-xs text-text-muted">Included: {includesText(looseIncludes)}</p>
+                              )}
                             </div>
-                            <p className="text-sm font-semibold">{formatPrice(item.unitPrice * item.quantity)}</p>
-                          </div>
-                        ))}
-                      </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Price Breakdown */}

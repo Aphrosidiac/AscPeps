@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { groupOrderItems, isIncludedItem } from '@/lib/order-lines';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -113,7 +114,8 @@ function profitSummary(
   // cost" — matching backend/src/utils/profit.ts, which would otherwise exclude
   // it from analytics while this page happily showed it a profit.
   const noItems = order.items.length === 0;
-  const unpricedCount = noItems ? 1 : order.items.filter((i) => unitCostFor(i.id) === null).length;
+  // A free line (an included syringe or swab) does not need a cost — same rule as costOrder.
+  const unpricedCount = noItems ? 1 : order.items.filter((i) => unitCostFor(i.id) === null && i.unitPrice !== 0).length;
 
   // Goods that came back are not a cost. Gated on a refund having happened, not
   // on stockRestored alone — that flag is also set when a still-paid order is
@@ -511,13 +513,25 @@ function OrderItemsCard({ order, onChange }: { order: Order; onChange: () => voi
   const [error, setError] = useState<string | null>(null);
 
   const lockReason = itemsLockReason(order);
+  // Each product followed by what came included with it (indented, "incl.").
+  const grouped = groupOrderItems(order.items);
+  const displayItems = [
+    ...grouped.lines.flatMap(({ item, includes }) => [
+      { item, included: false },
+      ...includes.map((inc) => ({ item: inc, included: true })),
+    ]),
+    ...grouped.looseIncludes.map((item) => ({ item, included: true })),
+  ];
 
   const startEditing = () => {
-    setLines(order.items.map((i) => ({
+    // The products on the order. What came included with each follows its
+    // quantity on the server, so a priced include is folded into the product's
+    // per-unit price here and included lines are not editable rows.
+    setLines(groupOrderItems(order.items).lines.map(({ item: i, includes }) => ({
       variantId: i.variantId,
       name: `${i.variant.product.name}${i.variant.size ? ` ${i.variant.size}` : ''}`,
       code: i.variant.code,
-      unitPrice: i.unitPrice,
+      unitPrice: i.unitPrice + (i.quantity ? includes.reduce((s, c) => s + c.unitPrice * c.quantity, 0) / i.quantity : 0),
       original: i.quantity,
       qty: String(i.quantity),
       stock: null,
@@ -788,8 +802,8 @@ function OrderItemsCard({ order, onChange }: { order: Order; onChange: () => voi
               item name nothing on a phone, so the row scrolled sideways and the
               line total — the figure you scan for — went with it. */}
           <div className="divide-y divide-border sm:hidden">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
+            {displayItems.map(({ item, included }) => (
+              <div key={item.id} className={`flex items-start justify-between gap-3 px-4 ${included ? 'py-2 pl-8 text-text-secondary' : 'py-3'}`}>
                 <div className="min-w-0">
                   <p className="text-sm font-medium">
                     {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
@@ -816,10 +830,11 @@ function OrderItemsCard({ order, onChange }: { order: Order; onChange: () => voi
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {order.items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-5 py-4">
-                      <span className="font-medium">
+                {displayItems.map(({ item, included }) => (
+                  <tr key={item.id} className={included ? 'text-text-secondary' : undefined}>
+                    <td className={included ? 'px-5 py-2 pl-10' : 'px-5 py-4'}>
+                      {included && <span className="text-xs text-text-muted mr-1.5">incl.</span>}
+                      <span className={included ? '' : 'font-medium'}>
                         {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
                       </span>
                       <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
@@ -896,9 +911,11 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
       return;
     }
 
-    if (order.paymentGateway === 'toyyibpay') {
+    // Neither gateway has a refund API (docs/payments.md).
+    if (order.paymentGateway === 'toyyibpay' || order.paymentGateway === 'billplz') {
+      const name = order.paymentGateway === 'billplz' ? 'Billplz' : 'ToyyibPay';
       const ok = window.confirm(
-        'ToyyibPay has no automatic refund. This only restores stock and marks the order Refunded — you must process the actual refund manually in the ToyyibPay dashboard. Continue?'
+        `${name} has no automatic refund. This only restores stock and marks the order Refunded — you must return the money yourself (the ${name} dashboard or a bank transfer). Continue?`
       );
       if (!ok) return;
     }
@@ -1740,6 +1757,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                       <span className="block pt-2 font-medium">
                         {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
                         <span className="ml-2 font-mono text-[12px] font-normal text-text-secondary">{item.variant.code}</span>
+                        {/* Free included lines may stay uncosted (counted as RM0). */}
+                        {isIncludedItem(item) && <span className="ml-2 text-[11px] font-normal text-text-muted">included{item.unitPrice === 0 ? ' · cost optional' : ''}</span>}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right"><span className="block pt-2 tabular-nums">{item.quantity}</span></td>

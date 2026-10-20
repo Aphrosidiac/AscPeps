@@ -23,6 +23,7 @@
 //      broken-image icon. See scripts/generate-email-thumbs.mjs.
 
 import { env } from '../config/env.js';
+import { groupOrderItems, groupedLineTotal, includesText } from '../utils/order-lines.js';
 
 export const SITE_URL = 'https://ascendpeptides.my';
 
@@ -122,9 +123,12 @@ export function emailCardUrl(imageUrl?: string | null): string | null {
 // caller's Prisma include selects it yet, and because 12 of 69 variants have no
 // image at all — both cases fall through to the placeholder tile.
 export interface EmailOrderItem {
+  id?: string;
+  // Set on an item that came included with another line; see order-lines.ts.
+  parentItemId?: string | null;
   quantity: number;
   unitPrice: number;
-  variant: { size: string | null; imageUrl?: string | null; product: { name: string } };
+  variant: { size: string | null; imageUrl?: string | null; product: { name: string; addOnOnly?: boolean } };
 }
 
 export interface EmailOrder {
@@ -286,19 +290,32 @@ function renderThumb(item: EmailOrderItem): string {
 }
 
 export function renderOrderSummary(order: EmailOrder): string {
-  const itemRows = order.items
-    .map((item) => {
+  // One row per product the customer chose; what came included with it (a
+  // syringe, a swab, a vial) is named under it, and a priced include is added
+  // to its row's amount. Orders from before bundles list their RM0 supplies
+  // as their own lines — those are shown as one "Included" row instead.
+  const { lines, looseIncludes } = groupOrderItems(order.items);
+  const itemRows = lines
+    .map(({ item, includes }) => {
       const size = item.variant.size ? `${escapeHtml(item.variant.size)} &middot; ` : '';
+      const included = includes.length
+        ? `<br><span class="muted" style="font-size:12px;color:${MUTED};">Includes ${escapeHtml(includesText(includes))}</span>`
+        : '';
       return `
             <tr>
               <td width="68" valign="top" class="border-b" style="width:68px;padding:14px 12px 14px 0;border-bottom:1px solid ${BORDER};">${renderThumb(item)}</td>
               <td valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;color:${INK};">
-                <span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span><br><span class="muted" style="font-size:12px;color:${MUTED};">${size}Qty ${item.quantity}</span>
+                <span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span><br><span class="muted" style="font-size:12px;color:${MUTED};">${size}Qty ${item.quantity}</span>${included}
               </td>
-              <td align="right" valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;font-weight:600;color:${INK};white-space:nowrap;">${formatRM(item.unitPrice * item.quantity)}</td>
+              <td align="right" valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;font-weight:600;color:${INK};white-space:nowrap;">${formatRM(groupedLineTotal({ item, includes }))}</td>
             </tr>`;
     })
-    .join('');
+    .join('') + (looseIncludes.length
+      ? `
+            <tr>
+              <td colspan="3" class="border-b muted" style="padding:12px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:12px;color:${MUTED};">Included: ${escapeHtml(includesText(looseIncludes))}</td>
+            </tr>`
+      : '');
 
   const discountLabel = order.discountCode
     ? `Discount (${escapeHtml(order.discountCode.code)})`

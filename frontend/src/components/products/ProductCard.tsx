@@ -34,6 +34,19 @@ export function ProductCard({ product }: ProductCardProps) {
       stock: variant.stock,
       imageUrl: variant.imageUrl,
       noShipping: product.noShipping,
+      // The list API sends only the REQUIRED included supplies — the same ones
+      // the server would add — so the cart can show them under the product.
+      includes: (product.addOns ?? [])
+        .filter((a) => a.addOnIncluded && a.addOnRequired && a.stock > 0)
+        .map((a) => ({
+          variantId: a.id,
+          code: a.code,
+          name: getVariantDisplayName(a, a),
+          perUnit: a.addOnQuantity,
+          price: getEffectivePrice(a),
+          required: true,
+          stock: a.stock,
+        })),
     });
   };
 

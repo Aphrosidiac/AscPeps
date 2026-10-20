@@ -1,3 +1,4 @@
+import { groupOrderItems } from '../utils/order-lines.js';
 import {
   renderLayout,
   renderOrderSummary,
@@ -136,7 +137,7 @@ export function renderOrderConfirmation(
     // repeating the subject in it — which this used to do — spends the only
     // extra line you get saying nothing. It carries the two things the subject
     // cannot: what it came to, and what happens next.
-    preheader: `${formatRM(order.total)} · ${order.items.length} item${order.items.length === 1 ? '' : 's'} · ${
+    preheader: `${formatRM(order.total)} · ${groupOrderItems(order.items).lines.length} item${groupOrderItems(order.items).lines.length === 1 ? '' : 's'} · ${
       order.paymentMethod === 'WHATSAPP'
         ? "we'll confirm the moment your transfer lands."
         : order.paymentStatus === 'PAID'
