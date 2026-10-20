@@ -25,9 +25,14 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
  * and keeps a long prompt on the same one for its cache — so one bad host
  * fails the same thread every time. See AGENT_PROVIDER_IGNORE.
  */
-export function providerRouting(): { provider: { ignore: string[] } } | Record<string, never> {
-  const ignore = env.AGENT_PROVIDER_IGNORE.split(',').map((s) => s.trim()).filter(Boolean);
-  return ignore.length ? { provider: { ignore } } : {};
+export function providerRouting(): { provider: { ignore?: string[]; order?: string[]; allow_fallbacks?: boolean } } | Record<string, never> {
+  const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
+  const ignore = list(env.AGENT_PROVIDER_IGNORE);
+  const order = list(env.AGENT_PROVIDER_ORDER);
+  if (!ignore.length && !order.length) return {};
+  // See AGENT_PROVIDER_ORDER: fast hosts first, the rest still there if
+  // they are all down — a slow answer beats none.
+  return { provider: { ...(ignore.length ? { ignore } : {}), ...(order.length ? { order, allow_fallbacks: true } : {}) } };
 }
 
 export interface WireMessage {

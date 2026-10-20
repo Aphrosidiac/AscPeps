@@ -119,6 +119,14 @@ const envSchema = z.object({
   // every time, while every other GLM endpoint set it (forced-provider test,
   // 14 Oct 2026). Set to an empty string to allow every provider.
   AGENT_PROVIDER_IGNORE: z.string().default('inference-net'),
+  // Upstream providers to try first, in order; anyone else only if all of
+  // these are down. Left to itself OpenRouter routes GLM 5.3 Flash to the
+  // cheapest host, and the cheapest was the slowest: OpenInference took
+  // 12–29 s per step against 2.5–4 s on Fireworks, Friendli and Together for
+  // the same ~20k-token browsing step (3 runs each, 20 Oct 2026) — a browsing
+  // turn spent 60 of its 66 seconds waiting on the model. ~3x the price per
+  // token, still a fraction of a cent a turn. Empty = cheapest first.
+  AGENT_PROVIDER_ORDER: z.string().default('fireworks,friendli,together'),
   // The model that reads pictures operators send over WhatsApp. The everyday
   // model (DeepSeek V4 Flash) is text-only on OpenRouter, so a picture is
   // transcribed here first and the transcript goes on the operator's message,

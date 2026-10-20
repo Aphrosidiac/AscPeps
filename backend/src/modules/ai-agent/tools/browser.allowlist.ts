@@ -7,6 +7,8 @@
 //   browser_drop              the same, by drag and drop
 //   browser_close / _resize   the live view owns the window
 //   browser_pdf_save          writes into the server's filesystem
+//   browser_console_messages  developer tools: nothing Abby browses for needs
+//   browser_network_requests  them, and they cost ~330 tokens of schema a turn
 //
 // browser_evaluate stays: it runs in the page, sandboxed by the browser, the
 // same as any script the page itself serves.
@@ -27,8 +29,6 @@ export const BROWSER_TOOL_NAMES = [
   'browser_tabs',
   'browser_handle_dialog',
   'browser_evaluate',
-  'browser_console_messages',
-  'browser_network_requests',
   'browser_mouse_click_xy',
   'browser_mouse_move_xy',
   'browser_mouse_wheel',

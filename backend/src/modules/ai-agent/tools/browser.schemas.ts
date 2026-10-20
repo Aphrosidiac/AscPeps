@@ -461,64 +461,6 @@ export const BROWSER_SCHEMAS: { name: string; description: string; input_schema:
     }
   },
   {
-    "name": "browser_console_messages",
-    "description": "Returns all console messages",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "level": {
-          "default": "info",
-          "description": "Level of the console messages to return. Each level includes the messages of more severe levels. Defaults to \"info\".",
-          "type": "string",
-          "enum": [
-            "error",
-            "warning",
-            "info",
-            "debug"
-          ]
-        },
-        "all": {
-          "description": "Return all console messages since the beginning of the session, not just since the last navigation. Defaults to false.",
-          "type": "boolean"
-        },
-        "filename": {
-          "description": "File name to save the console messages to. Relative file names are resolved against the workspace root. If not provided, messages are returned as text.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "level"
-      ],
-      "additionalProperties": false
-    }
-  },
-  {
-    "name": "browser_network_requests",
-    "description": "Returns a numbered list of network requests since loading the page. Use browser_network_request with the number to get full details.",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "static": {
-          "default": false,
-          "description": "Whether to include successful static resources like images, fonts, scripts, etc. Defaults to false.",
-          "type": "boolean"
-        },
-        "filter": {
-          "description": "Only return requests whose URL matches this regexp (e.g. \"/api/.*user\").",
-          "type": "string"
-        },
-        "filename": {
-          "description": "File name to save the network requests to. Relative file names are resolved against the workspace root. If not provided, requests are returned as text.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "static"
-      ],
-      "additionalProperties": false
-    }
-  },
-  {
     "name": "browser_mouse_click_xy",
     "description": "Click mouse button at a given position",
     "input_schema": {

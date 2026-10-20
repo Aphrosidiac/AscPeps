@@ -302,6 +302,11 @@ export function callBrowser(threadId: string, name: string, args: Record<string,
   return p;
 }
 
+/** A conversation's turn has ended: the browser is free for the next one. */
+export function releaseBrowser(threadId: string): void {
+  if (owner?.threadId === threadId) owner = null;
+}
+
 // ---------------------------------------------------------------- live view
 
 type Viewer = (e: ViewerEvent) => void;

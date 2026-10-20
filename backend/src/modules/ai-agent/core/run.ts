@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { env } from '../../../config/env.js';
 import { notifyRevalidate } from '../../../utils/revalidate.js';
 import { getTool, isWebTool, toolsFor, validateToolInput } from '../registry.js';
-import { browserEnabled } from './browser.js';
+import { browserEnabled, releaseBrowser } from './browser.js';
 import { WEB_MARK } from '../tools/browser.tools.js';
 import { DOMAINS, routeDomains, type Domain } from '../domains.js';
 import { memoryContext, coreMemoryText } from '../memory.js';
@@ -185,6 +185,9 @@ export const WHATSAPP_PENDING_TTL_MS = 5 * 60 * 1000;
 // contain the word "updated" as a field label. "All sorted!" / "All set!" are
 // sweet-persona openers the guard has to recognise same as a bare "Done." —
 // a warmer way of saying it is not a safer way of saying it.
+// The claims about a change in particular, without the bare "Done!" opener.
+export const CLAIMS_CHANGE =
+  /\b(has|have|had)\s+been\s+(deleted|removed|updated|changed|cancelled|canceled|restored|created|added|saved|paid|refunded|published)\b|\b(i(?:'ve| have)\s+(?:now\s+)?(?:deleted|removed|updated|changed|cancelled|canceled|restored|created|added|saved|published))\b/i;
 export const CLAIMS_COMPLETION =
   /\b(has|have|had)\s+been\s+(deleted|removed|updated|changed|cancelled|canceled|restored|created|added|saved|paid|refunded|published)\b|\b(i(?:'ve| have)\s+(?:now\s+)?(?:deleted|removed|updated|changed|cancelled|canceled|restored|created|added|saved|published))\b|^\s*(done|all done|all set|all sorted)[\s.,!—-]/i;
 
@@ -382,6 +385,10 @@ async function beginRun(fastify: FastifyInstance, threadId: string, opts: TurnOp
     })
     .finally(async () => {
       run.done = true;
+      // The browser is this conversation's only while it is working: a
+      // finished turn hands it on at once (20 Oct eval: a two-minute hold
+      // after each turn told five conversations in a row it was busy).
+      releaseBrowser(threadId);
       outcome.aborted = run.abort.signal.aborted;
       await fastify.prisma.agentThread.update({ where: { id: threadId }, data: { status: 'idle', turns: { increment: 1 } } }).catch(() => {});
       run.resolve(outcome);
@@ -522,6 +529,16 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   // there are often none.
   const latestUser = [...rows].reverse().find((r) => r.role === 'user');
   const latest = latestUser && 'text' in latestUser.content ? (latestUser.content as UserContent) : null;
+  // "Check the website for the price of X" means Ascend's own store in this
+  // shop's chats (6 of 8 "website" messages on prod), and the model read it as
+  // "search other websites" one run in three (20 Oct eval) — browsing
+  // competitors and never giving the shop's own price. Said per turn, only
+  // when the message names no outside site, marketplace or search.
+  const latestText = latest ? String(latest.text ?? '') : '';
+  const ownSiteNote =
+    webAllowed && /\b(website|web site|the site|our site|laman web|webpage)\b/i.test(latestText) && !routeDomains(latestText).includes('web') && !otherSite(latestText)
+      ? 'NOTE FOR THIS MESSAGE: the operator says "the website" without naming any other site. In this shop that means Ascend\'s OWN store and admin — answer from the shop tools (products, orders, settings). Do not browse other sites unless they ask for that.'
+      : '';
   if (latest && [...(latest.attachments ?? []), ...(latest.quoted?.attachments ?? [])].some((a) => a.mediaId)) {
     activeDomains.add('documents');
     activeDomains.add('finance');
@@ -555,6 +572,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     { role: 'system', content: staticSystemPrompt() },
     { role: 'system', content: await memoryContext(fastify.prisma) },
     { role: 'system', content: contextBlock(activeDomains, hiddenDomains) },
+    ...(ownSiteNote ? [{ role: 'system' as const, content: ownSiteNote }] : []),
     ...toWire(rows, { isGroup }),
     { role: 'system', content: liveBrief(actor, channel, store) },
   ];
@@ -616,6 +634,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   let nudged = false;
   let emptyRetried = false;
   const writesMade = new Set<string>();
+  let browsed = 0;
+  let browserCalls = 0;
+  let browserNudged = false;
   let repeatedWrites = 0;
   let stopRepeats = false;
 
@@ -692,7 +713,11 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       // A file sent this turn is a completed action too: "Done ✅ — it's in the
       // chat" after send_file is true, and replacing it read as a failure while
       // the file sat right there above the reply (first export run, Oct 2026).
-      if (!writesSucceeded.length && !filesSent.length && CLAIMS_COMPLETION.test(text)) {
+      // Browser work is real work too: "Done! Here's the screenshot" after a
+      // screenshot, in a turn that never touched a shop tool, is about the
+      // browsing — but "the price has been updated" is still caught.
+      const aboutBrowsing = browsed > 0 && writesMade.size === 0 && !CLAIMS_CHANGE.test(text);
+      if (!writesSucceeded.length && !filesSent.length && !aboutBrowsing && CLAIMS_COMPLETION.test(text)) {
         fastify.log.warn({ threadId: run.threadId, reply: text.slice(0, 200) }, 'agent claimed a completed action with no successful write tool — reply replaced');
         // "All set!" about something that is still waiting for a yes is the
         // same lie in a different tense; the replacement says what is true.
@@ -747,6 +772,15 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
         }
       }
 
+      // Something parked this turn and the reply never says so: the model
+      // carried on past the "tell the operator and stop" note (20 Oct eval,
+      // a parked search the reply did not mention). On WhatsApp the relay
+      // adds its own yes/no prompt; on the dashboard it is said here, in
+      // code, because the model cannot be relied on to.
+      const parked = outcome.pending.filter((p) => !text.includes(p.summary ?? '\u0000'));
+      if (channel === 'web' && parked.length && !/approv|waiting for your|needs your (yes|go-ahead|ok)|confirm/i.test(text)) {
+        text = `${text.trim()}\n\n⏳ Waiting for your approval: ${parked.map((p) => p.summary ?? p.tool).join('; ')}`;
+      }
       const stored = await append(fastify, run.threadId, 'assistant', { text, ...(result.reasoning ? { reasoning: result.reasoning } : {}), ...(guard ? { guard } : {}), ...(result.provider ? { provider: result.provider } : {}) });
       emit(run, { type: 'message', message: stored });
       outcome.text = text;
@@ -840,7 +874,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     const toolRow = await append(fastify, run.threadId, 'tool', { toolResults: results.map((r) => ({ id: r.id, name: r.name, output: r.output, isError: r.isError, ms: r.ms })) });
     emit(run, { type: 'message', message: toolRow });
     for (const r of results) {
-      const serialised = truncate(modelJson(r.output), resultChars(r.name));
+      const serialised = truncate(forModel(r.name, r.output), resultChars(r.name));
       messages.push({ role: 'tool', tool_call_id: r.id, content: serialised });
       if (r.name !== 'load_context') toolResults.push({ tool: r.name, result: serialised });
       if ((r.name === 'send_file' || r.name === 'forward_file') && !r.isError) filesSent.push(r.name);
@@ -853,7 +887,10 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       if (r.name === 'load_context' || r.name === 'memory' || getTool(r.name)?.trustedOutput) trustedSeen.push(serialised);
       else {
         untrustedSeen.push(serialised);
-        if (isWebTool(r.name)) webSeen = true;
+        if (isWebTool(r.name)) {
+          webSeen = true;
+          if (!r.isError) browsed++;
+        }
         else shopSeen.push(serialised);
       }
     }
@@ -861,6 +898,15 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     // The rules for newly loaded areas arrive as their own system message,
     // so they read as instruction rather than as data the model may weigh.
     if (contextResults.some((r) => r.loadedContext)) messages.push({ role: 'system', content: contextBlock(activeDomains, hiddenDomains) });
+
+    // The playbook asks for about six browser calls a task; past eight, the
+    // operator has been waiting long enough (20 Oct eval: twelve-step
+    // comparisons at 90 seconds). One nudge, not a wall.
+    browserCalls += results.filter((r) => isWebTool(r.name)).length;
+    if (browserCalls >= 8 && !browserNudged) {
+      browserNudged = true;
+      messages.push({ role: 'system', content: 'You have made eight browser calls this turn. Answer the operator now with what you have found — with the links — and say briefly what you did not get to. Do not browse further unless something essential is missing.' });
+    }
 
     if (repeatedWrites >= 2 && !stopRepeats) {
       stopRepeats = true;
@@ -901,7 +947,7 @@ function recentToolEvidence(rows: { seq: number; role: string; content: MessageC
     if (r.role !== 'tool' || !('toolResults' in r.content)) continue;
     for (const t of r.content.toolResults) {
       if (t.name === 'load_context' || !visible.has(t.id)) continue;
-      out.push({ tool: t.name, result: truncate(modelJson(t.output), 6000) });
+      out.push({ tool: t.name, result: truncate(forModel(t.name, t.output), resultChars(t.name)) });
     }
   }
   return out;
@@ -1000,6 +1046,12 @@ async function executeTool(fastify: FastifyInstance, run: Run, ctx: ToolContext,
   if (tool.web && (run.opts.channel !== 'web' || !browserEnabled())) {
     return finish({ error: 'The web browser is only available on the Assistant page of the dashboard.' }, true);
   }
+  // A browser step already waits for the operator: everything after it would
+  // be a way round the question (20 Oct eval: eleven more searches after the
+  // first one parked). Stop browsing and say what is waiting.
+  if (tool.web && outcome.pending.some((p) => getTool(p.tool)?.web)) {
+    return finish({ error: "A browser step is waiting for the operator's approval. Do not browse any further this turn: tell the operator what is waiting and why, and stop." }, true);
+  }
 
   // Destructive tools never run from here. The call is parked for the
   // operator; the model is told to say what it asked for and stop, and the
@@ -1073,9 +1125,10 @@ async function executeTool(fastify: FastifyInstance, run: Run, ctx: ToolContext,
 }
 
 function runWithTimeout(tool: AgentTool, ctx: ToolContext, input: unknown): Promise<unknown> {
+  const ms = tool.timeoutMs ?? TOOL_TIMEOUT_MS;
   return Promise.race([
     tool.run(ctx, input),
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`${tool.name} took longer than ${TOOL_TIMEOUT_MS / 1000}s`)), TOOL_TIMEOUT_MS).unref?.()),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${tool.name} took longer than ${ms / 1000}s`)), ms).unref?.()),
   ]);
 }
 
@@ -1269,11 +1322,25 @@ export function toWire(rows: { seq: number; role: string; content: MessageConten
         ...(a.reasoningDetails ? { reasoning_details: a.reasoningDetails } : {}),
       });
     } else if (role === 'tool') {
-      for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(modelJson(r.output), resultChars(r.name)) });
+      for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(forModel(r.name, r.output), resultChars(r.name)) });
     } else if (role === 'system') out.push({ role: 'system', content: (c as { text: string }).text });
   });
   collapseOldPages(out);
   return pairToolMessages(out);
+}
+
+// "their website", "website peptidehub", "competitor's site": someone else's.
+const NOT_A_NAME = new Set(['for', 'to', 'untuk', 'pasal', 'ni', 'tu', 'kita', 'info', 'and', 'then', 'please', 'pls', 'dan', 'kat', 'link', 'yang', 'and', 'is', 'page', 'admin', 'order', 'orders', 'price', 'harga', 'stock', 'stok', 'the', 'now', 'again', 'lagi', 'dah', 'ok']);
+export function otherSite(text: string): boolean {
+  if (/\b(their|other|another|competitor'?s?|pesaing|orang lain|seller lain|kedai lain)\s+(web\s?site|site|webpage|laman web)/i.test(text)) return true;
+  const next = text.match(/\b(?:website|web site|laman web)\s+([a-z][\w-]{2,})/i)?.[1]?.toLowerCase();
+  return !!next && !NOT_A_NAME.has(next) && !/^(ascend|kita|we|our|us)/.test(next);
+}
+
+/** A tool result as it is written into the model's context. */
+function forModel(name: string, output: unknown): string {
+  const tool = getTool(name);
+  return tool?.toModel ? tool.toModel(output) : modelJson(output);
 }
 
 /** Characters of a tool's result the model is shown. */

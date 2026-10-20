@@ -3,8 +3,8 @@
 # Google Chrome. Point the API at it with, in backend/.env:
 #
 #   AGENT_BROWSER=on
-#   BROWSER_START_CMD=sh scripts/browser-local.sh start
-#   BROWSER_STOP_CMD=sh scripts/browser-local.sh stop
+#   BROWSER_START_CMD="sh scripts/browser-local.sh start"
+#   BROWSER_STOP_CMD="sh scripts/browser-local.sh stop"
 #
 # No firewall here — on a laptop the browser can reach localhost like any
 # other program. The VPS unit is what keeps it off the store's internals.

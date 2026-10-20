@@ -138,6 +138,12 @@ export interface AgentTool {
   // How many characters of the result the model is shown. Default 6,000; a
   // web page needs more to be readable at all.
   resultChars?: number;
+  // How a result is written into the model's context, when JSON is the wrong
+  // shape for it (a web page is text). Default: modelJson.
+  toModel?: (output: any) => string;
+  // Longer than the default 45 s, for a tool that legitimately waits (the
+  // browser: waking it, then a slow page, can take most of a minute).
+  timeoutMs?: number;
   run: (ctx: ToolContext, input: any) => Promise<unknown>;
   // Reverses a completed call from its audit record. Only offered when `run`
   // returned `audited(...)` with a `before`; returns one line saying what was

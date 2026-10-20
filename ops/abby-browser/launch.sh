@@ -20,6 +20,12 @@ fi
 rm -rf "$HOME_DIR/profile"
 mkdir -p "$HOME_DIR/profile"
 
+# Memory: the cap is 600 MB. Site isolation gives every cross-site frame (each
+# ad, each embed) its own renderer, and a news page with a dozen of them broke
+# the cap on 20 Oct 2026 — the kernel killed the tab mid-read. One profile with
+# no sign-ins has no cross-site secrets for isolation to protect, so it is off,
+# renderers are limited to two, and each one's script heap to 256 MB.
+
 # Headless Chromium says "HeadlessChrome" in its user agent, which a good part
 # of the web answers with a block page. Present as the desktop Chrome it is.
 MAJOR="$("$CHROME" --version 2>/dev/null | grep -oE '[0-9]+\.' | head -1 | tr -d .)"
@@ -44,10 +50,12 @@ exec "$CHROME" \
   --no-default-browser-check \
   --disable-sync \
   --disable-dev-shm-usage \
-  --disable-features=Translate,OptimizationHints,MediaRouter,AutofillServerCommunication \
+  --disable-features=Translate,OptimizationHints,MediaRouter,AutofillServerCommunication,IsolateOrigins,site-per-process \
   --password-store=basic \
   --use-mock-keychain \
-  --renderer-process-limit=3 \
+  --renderer-process-limit=2 \
+  --disable-site-isolation-trials \
+  --js-flags=--max-old-space-size=256 \
   --disk-cache-size=33554432 \
   --media-cache-size=8388608 \
   --mute-audio \

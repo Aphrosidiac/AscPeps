@@ -7,8 +7,8 @@
 # then add to backend/.env and restart ascend-api:
 #
 #   AGENT_BROWSER=on
-#   BROWSER_START_CMD=sudo -n systemctl start abby-browser
-#   BROWSER_STOP_CMD=sudo -n systemctl stop abby-browser
+#   BROWSER_START_CMD="sudo -n systemctl start abby-browser"
+#   BROWSER_STOP_CMD="sudo -n systemctl stop abby-browser"
 #
 # and prove the fence with: sh ops/abby-browser/check.sh
 # Re-running is safe; it is also how Chromium is updated after an

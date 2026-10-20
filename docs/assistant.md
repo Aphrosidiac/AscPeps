@@ -477,7 +477,7 @@ conversation. Off unless `AGENT_BROWSER=on`; never offered over WhatsApp.
   Assistant page ── Browser panel ──SSE frames / POST input──▶ assistant.routes.ts /browser/*
                                                                          │
   core/run.ts ──▶ tools/browser.tools.ts ──▶ core/browser.ts ─────────────┘
-                  (21 Playwright MCP tools,    lifecycle, lock, idle, viewers
+                  (19 Playwright MCP tools,    lifecycle, lock, idle, viewers
                    guards, screenshots)              │ fork + IPC, only while awake
                                                      ▼
                                                core/browser-worker.ts
@@ -494,12 +494,43 @@ conversation. Off unless `AGENT_BROWSER=on`; never offered over WhatsApp.
   text-only model click the right thing. `tools/browser.allowlist.ts` is the
   list; left out are `browser_run_code_unsafe` (runs code in the API process),
   `browser_file_upload` / `browser_drop` (hand a page a file off the server),
-  `browser_pdf_save`, and close/resize (the live view owns the window). The
+  `browser_pdf_save`, close/resize (the live view owns the window), and the
+  console/network developer tools. The
   schemas are a checked-in snapshot (`tools/browser.schemas.ts`, regenerate
   with `npx tsx scripts/browser-tool-schemas.ts`) so nothing Playwright loads
   until someone browses. Actions return the page's address and title only;
   `browser_snapshot` reads the page (cut at 14,000 characters). Only http and
   https open — `file://` and `chrome://` would show the server.
+- **What the model reads.** Plain text, not JSON (`toModel`), with a one-line
+  untrusted marker. Snapshots are squeezed (`squeezePage`): empty containers
+  and `[cursor=pointer]` go, search-engine redirects are decoded back to the
+  real address (DuckDuckGo `uddg=`, Bing `u=a1…`, Google `/url?q=`; Google's
+  opaque `/goto` blobs become a one-line note), tracking parameters drop.
+  Measured on real pages from the VPS: Google results 25k → 14k characters,
+  DuckDuckGo 17k → 9k, a shop page 37k → 26k; every clickable ref kept.
+  Playwright's console report ("### Events") is stripped — noise, and it named
+  a file on the server.
+- **Searching.** The playbook sends Abby to DuckDuckGo's HTML results first
+  (light, real addresses), Google when the results themselves must show
+  prices, Bing if an engine shows a check page — always by opening the results
+  URL, never by typing into a search box — and asks for about six browser calls
+  a task, answers from the results page when it already shows what was asked.
+- **Walls, from this server's address** (measured 20 Oct 2026): Shopee
+  (traffic verification, or a bounce to a blank page / its home page), Lazada
+  (never finishes loading), Reddit (403). `blockedBy()` flags these and
+  Cloudflare / Google checks in the result itself ("BLOCKED: … do not retry");
+  a timeout says the same. Abby never attempts a CAPTCHA — she hands it to the
+  operator (Take control).
+- **Crashes.** A tab the kernel kills at the memory cap is closed through
+  MCP's own tab tool and replaced; a navigation that hit it is retried once on
+  the fresh tab. Chrome runs with site isolation off (one profile, no sign-ins
+  to protect), two renderers, a 256 MB script heap, and media refused at the
+  network: a news page with a dozen ad frames broke the 600 MB cap before.
+- **Routing.** Marketplace and research words (Shopee, Lazada, competitor,
+  news, studies, pubmed, poslaju…) and any web address in the message load the
+  browser; "website" does not — in this shop's chats it means Ascend's own
+  store (6 of 8 hits over the 538 real operator messages). 2 of 538 real
+  messages load it now, both genuine; anything else is one `load_context` away.
 - **Web pages are untrusted.** Every result is marked `UNTRUSTED WEB CONTENT`.
   Once any web page has been in a thread, **every write tool parks for
   approval** for the rest of that thread (run.ts, `webSeen`) — the approval
@@ -515,8 +546,13 @@ conversation. Off unless `AGENT_BROWSER=on`; never offered over WhatsApp.
   text-only.
 - **History.** Only the last two page results stay whole in the transcript;
   earlier ones fold to their address and title.
-- **One driver.** One conversation holds the browser at a time (two minutes
-  after its last call); one action at a time.
+- **One driver.** One conversation holds the browser while its turn runs
+  (released when the turn ends; a two-minute hold if a turn dies without
+  ending); one action at a time. Browser tools have a 60 s timeout — waking
+  the browser and a slow page can take most of a minute.
+- **Honesty guard.** "Done!" after a screenshot is about the browsing: a turn
+  that only browsed is not held to the write guard's opener check, but "the
+  price has been updated" is still caught (`CLAIMS_CHANGE`).
 - **Lifecycle.** Started on the first call (`BROWSER_START_CMD`), stopped after
   `BROWSER_IDLE_MINUTES` with no call and nobody watching (30 minutes while
   watched). A browser killed by its memory cap is started again on the next
@@ -577,7 +613,8 @@ E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name conta
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
 npm run test:agent:wire        # 29, no model or db — call/result pairing, the compaction cut, summary placement, restart repair
 npm run test:agent:files       # 56 — every format, storage, send/forward/file/record tools, 16 real-model turns incl. bookkeeping
-npm run test:agent:browser     # 32 — schema snapshot, URL and exfiltration guards, page folding; live: open, click by ref, live view, input, lock, restart
+npm run test:agent:browser     # 56 — schema snapshot, URL/exfiltration guards, walls, routing from real messages, link decoding, squeeze, page folding; live: open, click by ref, live view, input, lock hand-over, crash recovery, restart
+EVAL_TOKEN=<admin jwt> npx tsx scripts/eval-agent-browser.ts   # 12 real-model scenarios graded on tools, steps, time, cost, facts, sources and guards
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time
 ```

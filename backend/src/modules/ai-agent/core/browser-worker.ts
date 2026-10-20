@@ -51,6 +51,10 @@ await server.connect(serverSide);
 const client = new Client({ name: 'ascend-abby', version: '1.0.0' });
 await client.connect(clientSide);
 
+// Video and audio are the heaviest thing a page loads and nothing Abby reads
+// needs them; on a 600 MB budget they are refused at the network.
+await context.route('**/*', (route) => (route.request().resourceType() === 'media' ? route.abort() : route.fallback()));
+
 pw.on('disconnected', () => {
   send({ event: 'disconnected' });
   process.exit(0);
@@ -61,6 +65,7 @@ process.on('disconnect', () => process.exit(0));
 // ---------------------------------------------------------------- tabs
 
 let current: Page | null = null;
+let crashed = false;
 let watching = false;
 let cast: { page: Page; session: CDPSession } | null = null;
 let frameSize = { w: 1280, h: 800 };
@@ -86,6 +91,12 @@ function watchPage(p: Page) {
   watched.add(p);
   p.on('framenavigated', (f) => {
     if (f === p.mainFrame()) announce();
+  });
+  // A tab the kernel killed (the memory cap) stays "current" for Playwright
+  // MCP and fails every call after it. Close it, so the next navigate opens a
+  // fresh one instead of reporting "Target crashed" until the browser sleeps.
+  p.on('crash', () => {
+    crashed = true;
   });
   p.on('close', () => {
     if (current === p) follow(context.pages().at(-1) ?? null);
@@ -203,6 +214,16 @@ async function input(i: ViewerInput, url?: string): Promise<void> {
   announce();
 }
 
+// Through MCP's own tab tool, so its idea of the current tab moves with it —
+// closing the page underneath it is not enough.
+async function recoverFromCrash(): Promise<boolean> {
+  crashed = false;
+  await client.callTool({ name: 'browser_tabs', arguments: { action: 'close' } }).catch(() => {});
+  await client.callTool({ name: 'browser_tabs', arguments: { action: 'new' } }).catch(() => {});
+  follow(context.pages().at(-1) ?? null);
+  return true;
+}
+
 // ---------------------------------------------------------------- requests
 
 process.on('message', async (m: WorkerRequest) => {
@@ -210,8 +231,33 @@ process.on('message', async (m: WorkerRequest) => {
   try {
     switch (m.op) {
       case 'call': {
-        const res: any = await client.callTool({ name: m.name, arguments: m.args }, undefined, { timeout: CALL_TIMEOUT_MS });
-        const content = (res?.content ?? []) as McpContent[];
+        // A screenshot straight after navigating catches a page that has
+        // loaded but not painted (20 Oct eval: two blank Bing captures).
+        if (m.name === 'browser_take_screenshot' && current) await current.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {});
+        // A crash is often reported after the call that caused it has
+        // returned, so one still pending is dealt with before this call.
+        const recovered = crashed && (await recoverFromCrash());
+        const run = async () => {
+          const r: any = await client.callTool({ name: m.name, arguments: m.args }, undefined, { timeout: CALL_TIMEOUT_MS });
+          return { res: r, content: (r?.content ?? []) as McpContent[] };
+        };
+        let { res, content } = await run();
+        // A crash that lands mid-navigation is reported as a detached frame
+        // or a closed target, not as a crash.
+        const hitCrash = () => crashed || /Target crashed|Page crashed|frame was detached|Target (page, context or browser )?(has been )?closed/i.test(content.map((c) => c.text ?? '').join(''));
+        // Opening an address is safe to repeat: on a fresh tab, up to twice —
+        // a crash can be reported late, into the first retry.
+        const aborted = () => /net::ERR_ABORTED/.test(content.map((c) => c.text ?? '').join(''));
+        for (let i = 0; i < 2 && m.name === 'browser_navigate' && (hitCrash() || aborted()); i++) {
+          if (hitCrash()) await recoverFromCrash();
+          await new Promise((r) => setTimeout(r, 300));
+          if (crashed) await recoverFromCrash();
+          ({ res, content } = await run());
+        }
+        if (recovered || hitCrash()) {
+          if (hitCrash()) await recoverFromCrash();
+          content.push({ type: 'text', text: '\n### Note\nThe last page crashed its tab — too heavy for this browser. That tab is closed and a fresh one is open; if this result is not what you asked for, navigate again (a lighter page, or the same one once).' });
+        }
         syncCurrent(content);
         announce();
         return reply({ result: { content, isError: !!res?.isError } });
