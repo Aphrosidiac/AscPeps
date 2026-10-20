@@ -58,6 +58,15 @@ export const CORE_TOOL_NAMES = [
   'read_attachment',
   'list_attachments',
   'send_file',
+  // The money questions ("calc", "check again", "how much did we make", "is
+  // the split right") are answered from these, often as a follow-up with no
+  // keyword in it. Routing on Abby's own replies used to catch them by
+  // accident; routed on the operator's words alone, 20 of 27 misses on the
+  // group's last 30 days were these four (21 Oct 2026). ~470 tokens.
+  'run_report_query',
+  'describe_database',
+  'month_end_report',
+  'finance_overview',
 ];
 
 // Used when nothing matched. Orders and catalog are what operators ask about
@@ -112,7 +121,7 @@ const KEYWORDS: Record<Domain, string[]> = {
     'report', 'laporan', 'analytics', 'stats', 'statistic', 'revenue', 'sales',
     'jualan', 'total', 'jumlah', 'breakdown', 'top ', 'best', 'trend', 'month',
     'bulan', 'week', 'minggu', 'compare', 'query', 'sql', 'database', 'wrap',
-    'earning', 'earned',
+    'earning', 'earned', 'calc', 'kira', 'berapa', 'how much', 'profit share', 'split',
   ],
   delivery: [
     'delivery', 'penghantaran', 'hantar', 'deliver', 'courier', 'kurier',
@@ -295,6 +304,16 @@ export function playbooksFor(domains: Iterable<Domain>): string {
   });
 
   return `HOW THIS BUSINESS ACTUALLY WORKS\nRead this before suggesting a next step. Most mistakes here come from proposing something that is not how Ascend MY operates.\n\n${blocks.join('\n\n')}`;
+}
+
+/** The rules a mid-turn load_context adds: the new areas' playbooks that the
+ *  areas already loaded did not bring. Empty string if none. */
+export function newPlaybooks(added: Iterable<Domain>, loaded: Iterable<Domain>): string {
+  const have = new Set<string>();
+  for (const d of loaded) for (const p of DOMAIN_PLAYBOOKS[d] ?? []) have.add(p);
+  const fresh = new Set<string>();
+  for (const d of added) for (const p of DOMAIN_PLAYBOOKS[d] ?? []) if (!have.has(p)) fresh.add(p);
+  return [...fresh].map((key) => `### ${PLAYBOOKS[key].title}\n${PLAYBOOKS[key].body}`).join('\n\n');
 }
 
 /**

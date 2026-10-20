@@ -97,21 +97,34 @@ WhatsApp confirmations.
 
 ## The turn (core/run.ts)
 
-1. **Compact if needed.** Past 100k characters of model-visible transcript,
-   everything but the last 12 rows is summarised into a system row that
-   records which range it replaces. Rows are never deleted; the operator still
-   sees the whole conversation. The cut moves back until the kept tail does
-   not open on a tool result (`compactionEnd`), and the summary is rendered
-   where its range began, not at its own (newest) seq.
-2. **Route.** `routeDomains` over the last five text rows picks the areas
-   whose tools and business rules go in front of the model. `load_context`
-   widens it mid-turn; `CORE_TOOL_NAMES` are always there.
+1. **Compact.** After every turn, once the reply is out, a thread past 40k
+   characters of model-visible transcript is summarised into a system row
+   that records which range it replaces — so the operator never waits for
+   it. The kept tail is sized, not counted (`keepFor`: back from the newest
+   to ~16k characters, 6–12 rows), so a recap leaves room and is not redone
+   every turn. A thread past 100k at the start of a turn is recapped there
+   too (the backstop). Rows are never deleted; the operator still sees the
+   whole conversation. The cut moves back until the kept tail does not open
+   on a tool result (`compactionEnd`), and the summary is rendered where its
+   range began, not at its own (newest) seq. The recap leaves out what the
+   assistant said about its own abilities — those change with the software.
+2. **Route.** `routeDomains` over the operator's last three messages (not
+   Abby's replies — routing on her own words changed the tool list on 76% of
+   group turns) picks the areas whose tools and business rules the model
+   gets. `load_context` widens it mid-turn and returns the new areas' rules
+   with their tools; `CORE_TOOL_NAMES` are always there, including the money
+   reads (`run_report_query`, `describe_database`, `month_end_report`,
+   `finance_overview`) that "calc", "check again" and follow-ups need.
 3. **Build the prompt.** Static prompt · memory (core/ in full, the rest
-   listed) · context block · the transcript in wire form · live brief (who,
-   channel, time, store switches). Ordered for the provider's prefix cache:
-   the brief carries the time to the minute, so it goes last — ahead of the
-   transcript, every turn re-billed the whole conversation uncached. A
-   thread's `cacheReadTokens` is the part of `inputTokens` served from cache.
+   listed) · the transcript in wire form, with this turn's business rules
+   just before the operator's latest message · live brief (who, channel,
+   time, store switches). Ordered for the provider's prefix cache: the tool
+   list and everything up to the previous turn stay byte-identical while the
+   subject does, so they are served from cache. Rules ahead of the whole
+   transcript threw its cache away on every change of subject; after the
+   latest message they were followed less (the comparison eval dropped its
+   links). A thread's `cacheReadTokens` is the part of `inputTokens` served
+   from cache.
 4. **Step**, up to 16 times: stream a completion; persist the assistant row
    before doing anything it asked; validate every tool call against its
    schema (`z.fromJSONSchema` over the same JSON schema the model was shown;
@@ -137,6 +150,12 @@ WhatsApp confirmations.
      successful write this turn is replaced. Writes approved between the last
      operator message and now count — the resumed turn after an approval is
      allowed to say "done".
+   - **Memory guard.** A promise to remember (`CLAIMS_MEMORY`: "noted for
+     good", "I'll remember", "memorised", "from now on I'll…") with no memory
+     file changed this turn gets one repair — the draft is retracted and the
+     model is told to save it with the memory tool or drop the claim; if it
+     still has not, the reply says plainly it was not saved. Four such
+     promises on the group's history were never kept (21 Oct 2026).
    - **Grounding guard** (`AGENT_GROUNDING_MODE`, default `shadow`). The
      evidence is this turn's tool results plus the last three turns' results
      that are still in the model's view — the transcript now carries them and
@@ -611,15 +630,15 @@ Unchanged commands, ported to the new tables:
 npm run test:agent:tools       # 36 read tools against the dev db (the file tools are left to test:agent:files)
 npm run test:agent:writes      # 38 write scenarios, rolled back (incl. set_order_discount, set_order_items, the supplier price list)
 npm run test:agent:memory      # 42 — the directory, the caps, the trust rule, undo
-npm run test:agent:grounding   # 31 unit (one pre-existing failure: get_document has no precondition)
-npm run test:agent:context     # compaction is size-based now; the fixture pads replies past 100k chars
+npm run test:agent:grounding   # 32 unit
+npm run test:agent:context     # 30 — routing, money reads always on, load_context rules, memory-claim regex on real replies, sized recap tail, compaction past 100k; real model: load_context, "from now on" is saved, a memory rule does not veto an operator, an old "I can't browse" does not stick
 npm run test:agent:security    # 10 — includes a planted "remember this" that must never reach memory
 npm run test:agent:e2e         # 26 scenarios, real model; two are known to flake on model variance
 E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name contains the string
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
 npm run test:agent:wire        # 29, no model or db — call/result pairing, the compaction cut, summary placement, restart repair
 npm run test:agent:files       # 56 — every format, storage, send/forward/file/record tools, 16 real-model turns incl. bookkeeping
-npm run test:agent:browser     # 56 — schema snapshot, URL/exfiltration guards, walls, routing from real messages, link decoding, squeeze, page folding; live: open, click by ref, live view, input, lock hand-over, crash recovery, restart
+npm run test:agent:browser     # 68 — schema snapshot, URL/exfiltration guards, walls, routing from real messages, link decoding, squeeze, page folding; live: open, click by ref, live view, input, lock hand-over, crash recovery, restart
 EVAL_TOKEN=<admin jwt> npx tsx scripts/eval-agent-browser.ts   # 12 real-model scenarios graded on tools, steps, time, cost, facts, sources and guards
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time

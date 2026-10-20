@@ -328,6 +328,7 @@ Bac Water 3mL
     get_product: 'catalogue copy, not a customer record — no address, items or costing claims hang off it',
     get_insight: 'published article text; nothing in it is an order fact',
     get_settings: 'store configuration, already stated to the model from the live STORE STATE block',
+    get_document: "a filed document's own record (title, kind, date, amount, what it is filed against); order facts still need get_order",
   };
 
   const detailTools = ALL_TOOLS.filter((t) => !t.write && /^get_|_statement$|^order_/.test(t.name));

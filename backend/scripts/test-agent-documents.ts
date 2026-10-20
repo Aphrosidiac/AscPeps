@@ -69,7 +69,8 @@ ok(
 ok('no absolute URL', !/https?:\/\//.test(payload));
 ok('no url/href/path field', !/"(url|href|path|filename)"\s*:/.test(payload));
 ok('no /documents or /uploads path fragment', !/\/(documents|uploads)\//.test(payload));
-ok('the model is told it cannot share the file', payload.includes('only viewable in the admin'));
+// Files are sent as files since October 2026 (send_file), never as a link.
+ok('the model is told there is no link and to send the file with send_file', payload.includes('There is no link to give out') && payload.includes('send_file'));
 
 console.log('\n--- write gates ---');
 ok('file_document is a write tool', getTool('file_document')!.write === true);
