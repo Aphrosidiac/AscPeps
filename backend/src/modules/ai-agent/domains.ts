@@ -143,6 +143,7 @@ const KEYWORDS: Record<Domain, string[]> = {
     // store or admin ("check the website for info", "the system website") —
     // 6 of 8 hits over the 538 real operator messages on 20 Oct 2026.
     'browse', 'browser', 'internet', 'google', 'bing',
+    'take a screenshot', 'take screenshot', 'screenshot your', 'ambil screenshot',
     'search the web', 'search online', 'cari online', 'look online', 'tengok online',
     'shopee', 'lazada', 'tiktok shop', 'carousell', 'mudah.my', 'amazon', 'aliexpress', 'alibaba', 'iherb',
     'competitor', 'pesaing', 'other seller', 'seller lain', 'kedai lain', 'orang lain jual', 'market price', 'harga pasaran', 'harga luar',
@@ -176,7 +177,7 @@ interface Playbook {
 const PLAYBOOKS: Record<string, Playbook> = {
   browsing: {
     title: 'Using the web browser',
-    body: `You have a real web browser (the browser_* tools), for anything outside the shop. The operator can watch it live in the Browser panel and take control of it.
+    body: `You have a real web browser (the browser_* tools), for anything outside the shop — from every chat, WhatsApp included. On the dashboard the operator can watch it live in the Browser panel and take control of it; on WhatsApp every screenshot you take is sent into the chat. When the operator asks to browse something or for a screenshot, just do it: never say the browser is dashboard-only, asleep or only for certain tasks. "Screenshot your browser" with nothing given means what is open now — if that is a blank page, say nothing is open and ask what to open, or open what the conversation was about.
 - "The website" in an operator's message almost always means Ascend's OWN store or admin. Its orders, products, prices and settings come from your shop tools, never from browsing ascendpeptides.my.
 - Searching: open the results page directly rather than typing into a search box. Start with https://html.duckduckgo.com/html/?q=<words joined with +> — it is light and its results carry the real addresses, so you can cite them and open them without clicking. Use https://www.google.com/search?q=… when you need prices or details shown in the results themselves, or DuckDuckGo finds little; Google's result links are redirects, so click a result (by ref) to reach its page and its address. If a search engine shows a check page, use https://www.bing.com/search?q=… instead.
 - To open a result, browser_navigate to its address when you have it — cheaper and surer than clicking.
@@ -320,5 +321,5 @@ const DOMAIN_BLURB: Record<Domain, string> = {
   reminders: 'reminders for the operators',
   documents: 'the document store — receipts, invoices, bank slips, statements, and what they are filed against',
   shadow: 'shadow SKUs — the generalised names products are listed under on internal paperwork, and which SKUs still have none',
-  web: 'a real web browser — anything OUTSIDE the shop: other websites, search engines, competitor and marketplace prices, news, studies, courier and supplier sites; open, search, read, click, type, screenshot (dashboard only). NOT for Ascend\'s own store: "the website" / "the site" means the shop, and its prices, stock and orders come from the shop tools you already have',
+  web: 'a real web browser — anything OUTSIDE the shop: other websites, search engines, competitor and marketplace prices, news, studies, courier and supplier sites; open, search, read, click, type, screenshot (from any chat — on WhatsApp the screenshot is sent into the chat). NOT for Ascend\'s own store: "the website" / "the site" means the shop, and its prices, stock and orders come from the shop tools you already have',
 };

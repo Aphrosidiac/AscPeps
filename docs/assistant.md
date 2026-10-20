@@ -465,13 +465,19 @@ September order. `npm run test:agent:timezone` replays it.
 
 ## The browser (Oct 2026)
 
-Abby has a real web browser on the dashboard: open sites, search, read pages,
+Abby has a real web browser, from every chat: open sites, search, read pages,
 click, type, scroll, tabs, screenshots. The operator watches it live in the
 **Browser** panel of the Assistant page (it opens by itself the first time
 Abby browses in a turn) and can **Take control** — their own clicks, scrolling
 and typing go straight to the page. That is also how a site that needs a login
 gets one: the operator signs in there; a password never passes through the
-conversation. Off unless `AGENT_BROWSER=on`; never offered over WhatsApp.
+conversation. Off unless `AGENT_BROWSER=on`.
+
+Over WhatsApp (DMs and groups) there is no live view, so every screenshot she
+takes is sent into the chat it was asked from, with the page address as the
+caption, while the vision model reads it — no extra wait, and no send_file
+step for the model to forget. A blank tab is not sent. The same guards hold:
+once a page has been read, shop changes park for the usual WhatsApp yes/no.
 
 ```
   Assistant page ── Browser panel ──SSE frames / POST input──▶ assistant.routes.ts /browser/*
@@ -586,7 +592,7 @@ AGENT_VISION_MODEL=z-ai/glm-5.3-flash         # reads pictures sent over WhatsAp
 AGENT_GROUNDING_MODE=shadow                   # off | shadow | enforce
 AGENT_MAX_FILE_MB=20                          # largest document taken in (worker reads it too)
 AGENT_MEDIA_RETENTION_DAYS=90                 # how long chat files keep their bytes
-AGENT_BROWSER=off                             # on = Abby's web browser (dashboard only)
+AGENT_BROWSER=off                             # on = Abby's web browser (every chat)
 BROWSER_CDP_URL=http://127.0.0.1:9222
 BROWSER_START_CMD=                            # VPS: sudo -n systemctl start abby-browser · laptop: sh scripts/browser-local.sh start
 BROWSER_STOP_CMD=                             # VPS: sudo -n systemctl stop abby-browser  · laptop: sh scripts/browser-local.sh stop

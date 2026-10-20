@@ -2,6 +2,7 @@ import { env } from '../../../config/env.js';
 import { sha256, writeAgentMedia } from '../../../utils/agent-media-store.js';
 import { callBrowser, currentUrl, webUrl, type McpContent } from '../core/browser.js';
 import { readImage } from '../core/vision.js';
+import { sendWhatsAppFile, targetFromChatKey } from '../../../utils/whatsapp-send.js';
 import { isCopiedFromData } from '../memory.js';
 import type { AgentTool, ToolContext } from '../tool-kit.js';
 import { BROWSER_SCHEMAS } from './browser.schemas.js';
@@ -24,7 +25,8 @@ import { BROWSER_SCHEMAS } from './browser.schemas.js';
 //     model cannot see it.
 //
 // Browser tools are read tier: they change the web, not the shop, and need no
-// undo. They are offered on the dashboard only, where the live view is.
+// undo. They work from every chat: the dashboard shows the browser live, and
+// on WhatsApp each screenshot is sent into the chat it was asked from.
 
 /** How much of a page the model is handed in one result. */
 export const PAGE_CHARS = 14_000;
@@ -49,7 +51,7 @@ const WITH_PAGE = ' The result is the page as it is afterwards (address, title a
 const EXTRA: Record<string, string> = {
   browser_navigate: ' Only http and https addresses.',
   browser_take_screenshot:
-    ' You cannot see the image itself: the result carries a description of it. The picture is already shown to the operator on the dashboard, and kept as a file in this conversation (mediaId) — use send_file only to send it somewhere else. Call it with no target to capture what is on screen; pass a ref from a snapshot only to capture one element. One screenshot is enough unless the operator asks for more. Prefer browser_snapshot to find things to click.',
+    ' You cannot see the image itself: the result carries a description of it. The picture is already in front of the operator — shown on the dashboard, or sent into the WhatsApp chat — and kept as a file in this conversation (mediaId); do not send_file it again. Whenever the operator asks for a screenshot, take it — no reasons why not. Call it with no target to capture what is on screen; pass a ref from a snapshot only to capture one element. One screenshot is enough unless the operator asks for more. Prefer browser_snapshot to find things to click.',
   browser_snapshot: ' This is how you read a page and find the ref of an element to click or type into.',
 };
 
@@ -216,7 +218,7 @@ export function pageForModel(output: any): string {
   return [
     WEB_NOTE,
     output.blocked ? `BLOCKED: ${output.blocked}` : '',
-    ...shots.map((s: any) => `SCREENSHOT kept in this conversation as "${s.fileName}" (mediaId ${s.mediaId}), already shown to the operator.${s.seen ? ` What it shows:\n${s.seen}` : ` ${s.note ?? ''}`}`),
+    ...shots.map((s: any) => `SCREENSHOT kept in this conversation as "${s.fileName}" (mediaId ${s.mediaId}), ${s.sent ? `already sent into ${s.sent} — it is above your reply, so just say what it shows` : s.notSent ? `but NOT delivered to the chat (${s.notSent}) — say so` : 'already shown to the operator'}.${s.seen ? ` What it shows:\n${s.seen}` : ` ${s.note ?? ''}`}`),
     output.page ?? '',
   ]
     .filter(Boolean)
@@ -236,6 +238,12 @@ function describeCall(name: string, input: any): string {
   const what = name.replace(/^browser_/, '').replace(/_/g, ' ');
   const shown = sent.map((s) => (s.length > 160 ? `${s.slice(0, 157)}…` : s)).join(' · ');
   return shown ? `Browser: ${what} — ${shown}` : `Browser: ${what}`;
+}
+
+/** Whether a browser result carries a screenshot that reached a WhatsApp chat. */
+export function screenshotsSent(output: any): boolean {
+  const shots = output?.screenshot ? [output.screenshot].flat() : [];
+  return shots.some((s: any) => s?.sent);
 }
 
 async function keepScreenshot(ctx: ToolContext, image: McpContent, pageUrl: string) {
@@ -258,13 +266,31 @@ async function keepScreenshot(ctx: ToolContext, image: McpContent, pageUrl: stri
       source: 'browser:screenshot',
     },
   });
-  try {
-    const read = await readImage({ mimeType, base64: image.data ?? '' }, { prompt: SCREENSHOT_PROMPT });
-    await ctx.prisma.agentMedia.update({ where: { id: row.id }, data: { text: read.text, textMethod: 'vision', costUsd: read.costUsd } });
-    return { mediaId: row.id, fileName: row.fileName, seen: read.text };
-  } catch (err: any) {
-    return { mediaId: row.id, fileName: row.fileName, seen: null, note: `The picture was kept but could not be read: ${err?.message ?? err}` };
-  }
+  // On WhatsApp there is no live view: the picture goes into the chat it was
+  // asked from, while the vision model reads it, so it costs no extra wait.
+  const origin = ctx.origin;
+  // A blank tab is not worth a picture in the chat.
+  const blank = !pageUrl || pageUrl === 'about:blank';
+  const delivery =
+    origin && origin.kind !== 'web' && blank
+      ? Promise.resolve({ notSent: 'the browser has nothing open, so a blank picture was not sent' })
+      : origin && origin.kind !== 'web'
+      ? sendWhatsAppFile(targetFromChatKey(origin.chatKey), { kind: 'image', base64: image.data ?? '', mimeType, fileName: row.fileName, caption: pageUrl })
+          .then(() => ({ sent: origin.label }))
+          .catch(async (err: any) => {
+            await ctx.prisma.agentMedia.update({ where: { id: row.id }, data: { error: `not delivered: ${String(err?.message ?? err).slice(0, 300)}` } });
+            return { notSent: `WhatsApp did not take it: ${String(err?.message ?? err).slice(0, 200)}` };
+          })
+      : Promise.resolve({});
+  const reading = readImage({ mimeType, base64: image.data ?? '' }, { prompt: SCREENSHOT_PROMPT }).then(
+    async (read) => {
+      await ctx.prisma.agentMedia.update({ where: { id: row.id }, data: { text: read.text, textMethod: 'vision', costUsd: read.costUsd } });
+      return { seen: read.text as string | null };
+    },
+    (err: any) => ({ seen: null, note: `The picture was kept but could not be read: ${err?.message ?? err}` }),
+  );
+  const [sent, seen] = await Promise.all([delivery, reading]);
+  return { mediaId: row.id, fileName: row.fileName, ...seen, ...sent };
 }
 
 // Actions after which the model nearly always reads the page next: they give

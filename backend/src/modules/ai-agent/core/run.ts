@@ -3,7 +3,7 @@ import { env } from '../../../config/env.js';
 import { notifyRevalidate } from '../../../utils/revalidate.js';
 import { getTool, isWebTool, toolsFor, validateToolInput } from '../registry.js';
 import { browserEnabled, releaseBrowser } from './browser.js';
-import { WEB_MARK } from '../tools/browser.tools.js';
+import { WEB_MARK, screenshotsSent } from '../tools/browser.tools.js';
 import { DOMAINS, routeDomains, type Domain } from '../domains.js';
 import { memoryContext, coreMemoryText } from '../memory.js';
 import { isAudited, modelJson, tierOf, truncate, type AgentActor, type AgentTool, type ChatOrigin, type Tier, type ToolContext } from '../tool-kit.js';
@@ -519,8 +519,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     .map((r) => (r.content as { text: string }).text)
     .join('\n');
   const activeDomains = new Set<Domain>(routeDomains(recentText));
-  // The browser is for the dashboard, where it can be watched live.
-  const webAllowed = channel === 'web' && browserEnabled();
+  // The browser works from every chat. On the dashboard it can be watched
+  // live; on WhatsApp its screenshots are sent into the chat (browser.tools).
+  const webAllowed = browserEnabled();
   const hiddenDomains: Domain[] = webAllowed ? [] : ['web'];
   if (!webAllowed) activeDomains.delete('web');
   // A file in the latest message is, more often than not, bookkeeping: a bill
@@ -878,6 +879,8 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       messages.push({ role: 'tool', tool_call_id: r.id, content: serialised });
       if (r.name !== 'load_context') toolResults.push({ tool: r.name, result: serialised });
       if ((r.name === 'send_file' || r.name === 'forward_file') && !r.isError) filesSent.push(r.name);
+      // On WhatsApp a screenshot is sent into the chat by the tool itself.
+      if (isWebTool(r.name) && !r.isError && screenshotsSent(r.output)) filesSent.push(r.name);
       if (r.wrote) {
         writesSucceeded.push(r.name);
         outcome.writes.push(r.name);
@@ -1043,8 +1046,8 @@ async function executeTool(fastify: FastifyInstance, run: Run, ctx: ToolContext,
     return finish({ error: 'This operator has read-only access and cannot make changes.' }, true);
   }
 
-  if (tool.web && (run.opts.channel !== 'web' || !browserEnabled())) {
-    return finish({ error: 'The web browser is only available on the Assistant page of the dashboard.' }, true);
+  if (tool.web && !browserEnabled()) {
+    return finish({ error: 'The web browser is switched off on this server.' }, true);
   }
   // A browser step already waits for the operator: everything after it would
   // be a way round the question (20 Oct eval: eleven more searches after the

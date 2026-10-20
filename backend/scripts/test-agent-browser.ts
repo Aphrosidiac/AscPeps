@@ -16,10 +16,26 @@
 process.env.AGENT_BROWSER = 'on';
 process.env.BROWSER_START_CMD ||= 'sh scripts/browser-local.sh start';
 process.env.BROWSER_STOP_CMD ||= 'sh scripts/browser-local.sh stop';
+// A stand-in for the WhatsApp worker, to see what a screenshot taken from a
+// WhatsApp chat sends.
+const { createServer } = await import('node:http');
+const workerHits: { path: string; body: any }[] = [];
+const fakeWorker = createServer((req, res) => {
+  let raw = '';
+  req.on('data', (c) => (raw += c));
+  req.on('end', () => {
+    workerHits.push({ path: req.url ?? '', body: JSON.parse(raw || '{}') });
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"ok":true}');
+  });
+});
+await new Promise<void>((r) => fakeWorker.listen(0, '127.0.0.1', () => r()));
+// Set on the parsed env: backend/.env overrides process.env (dotenv override).
+const { env: parsedEnv } = await import('../src/config/env.js');
+(parsedEnv as any).WORKER_HTTP_PORT = (fakeWorker.address() as any).port;
 
 const { BROWSER_SCHEMAS } = await import('../src/modules/ai-agent/tools/browser.schemas.js');
 const { liveBrowserSchemas } = await import('./browser-tool-schemas.js');
-const { blockedBy, exfiltrationReason, outbound, pageForModel, realUrl, squeezePage, WEB_MARK } = await import('../src/modules/ai-agent/tools/browser.tools.js');
+const { blockedBy, exfiltrationReason, outbound, pageForModel, realUrl, screenshotsSent, squeezePage, WEB_MARK } = await import('../src/modules/ai-agent/tools/browser.tools.js');
 const { routeDomains } = await import('../src/modules/ai-agent/domains.js');
 const { collapseOldPages, otherSite } = await import('../src/modules/ai-agent/core/run.js');
 const browser = await import('../src/modules/ai-agent/core/browser.js');
@@ -94,6 +110,7 @@ console.log('— unit');
 
   // Routing, from the real operator messages on prod (538 on 20 Oct 2026).
   const web = (t: string) => routeDomains(t).includes('web' as any);
+  check('"take a screenshot of your browser" routes to the browser', web('Ab can you take a screenshot of your browser'));
   check('"check shopee harga bpc 157" → browser', web('check shopee harga bpc 157'));
   check('"go to peptidehub.my and list their prices" → browser', web('go to peptidehub.my and list their prices'));
   check('"Search on the internet or something" → browser', web('can you tell me the dosage for them ? Search on the internet or something'));
@@ -136,6 +153,19 @@ try {
   const shot = await browser.callBrowser(A, 'browser_take_screenshot', { type: 'png' });
   check('screenshot comes back as an image', shot.content.some((c) => c.type === 'image' && (c.data?.length ?? 0) > 1000));
 
+  // From a WhatsApp group: the picture goes into that chat, and the model is
+  // told it is there rather than "on the dashboard".
+  const media: any[] = [];
+  const fakePrisma = { agentMedia: { create: async ({ data }: any) => (media.push(data), { id: `m${media.length}`, ...data }), update: async () => ({}) } };
+  const groupCtx = { prisma: fakePrisma, threadId: A, origin: { kind: 'group', chatKey: 'group:120363000000000000@g.us', label: 'this group — Ops' }, turn: { untrusted: () => [], trusted: () => [], shop: () => [], webSeen: () => true } } as any;
+  const out: any = await getTool('browser_take_screenshot')!.run(groupCtx, { type: 'png' });
+  const hit = workerHits.find((h) => h.path === '/send-file');
+  check('from WhatsApp, the screenshot is sent into the chat it was asked from', hit?.body?.jid === '120363000000000000@g.us' && hit?.body?.kind === 'image' && (hit?.body?.base64?.length ?? 0) > 1000, JSON.stringify(workerHits.map((h) => ({ path: h.path, jid: h.body?.jid, kind: h.body?.kind }))));
+  check('and the model is told it is in the chat', screenshotsSent(out) && /already sent into this group/.test(pageForModel(out)), pageForModel(out).slice(0, 300));
+  workerHits.length = 0;
+  const webOut: any = await getTool('browser_take_screenshot')!.run({ ...groupCtx, origin: { kind: 'web', chatKey: `web:${A}`, label: 'the dashboard' } }, { type: 'png' });
+  check('from the dashboard, nothing goes to WhatsApp', !workerHits.length && !screenshotsSent(webOut));
+
   await new Promise((r) => setTimeout(r, 1500));
   check('the live view receives frames', frames.length > 0 && frames[0].width > 0, `${frames.length} frames`);
   const last = states.at(-1);
@@ -175,5 +205,6 @@ try {
   check('live run', false, err?.stack ?? String(err));
 }
 
+fakeWorker.close();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
