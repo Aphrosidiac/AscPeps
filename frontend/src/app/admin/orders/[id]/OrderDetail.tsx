@@ -911,9 +911,11 @@ function OrderDetailTab({ order, onChange }: { order: Order; onChange: () => voi
       return;
     }
 
-    if (order.paymentGateway === 'toyyibpay') {
+    // Neither gateway has a refund API (docs/payments.md).
+    if (order.paymentGateway === 'toyyibpay' || order.paymentGateway === 'billplz') {
+      const name = order.paymentGateway === 'billplz' ? 'Billplz' : 'ToyyibPay';
       const ok = window.confirm(
-        'ToyyibPay has no automatic refund. This only restores stock and marks the order Refunded — you must process the actual refund manually in the ToyyibPay dashboard. Continue?'
+        `${name} has no automatic refund. This only restores stock and marks the order Refunded — you must return the money yourself (the ${name} dashboard or a bank transfer). Continue?`
       );
       if (!ok) return;
     }
