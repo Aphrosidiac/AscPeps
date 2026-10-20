@@ -54,9 +54,19 @@ npm install --no-audit --no-fund
 # Removing the nested cache before the build is enough. It is pure cache — the
 # optimiser refills it on the first request for each image.
 rm -rf .next/standalone/.next/cache
+# Keep the JS/CSS the live site is serving right now. `next build` wipes it,
+# and a visitor whose page was loaded before this deploy then asks for chunk
+# files that no longer exist — ~170 such 404s in the 14 days to 2026-10-20,
+# each a broken click or a forced reload. Archived copies are put back below
+# (the new build's files win) and dropped once nothing has served them for 14
+# days. Plain cp, not cp -p: a file's mtime is the last deploy it was live in.
+mkdir -p .static-archive
+if [ -d .next/standalone/.next/static ]; then cp -R .next/standalone/.next/static/. .static-archive/; fi
+find .static-archive -type f -mtime +14 -delete
 npm run build
 cp -r public .next/standalone/public
 cp -r .next/static .next/standalone/.next/static
+rsync -a --ignore-existing .static-archive/ .next/standalone/.next/static/
 # ...and .env too. server.js does process.chdir(__dirname), so the running app
 # reads .next/standalone/.env — NOT frontend/.env. A hand-maintained copy here
 # silently drifted once already: it held only the NEXT_PUBLIC_POSTHOG_* vars, so

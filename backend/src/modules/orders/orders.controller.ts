@@ -239,7 +239,7 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     for (const rel of requiredRelations) {
       requiredMinByAddOnId.set(rel.addOnId, Math.max(requiredMinByAddOnId.get(rel.addOnId) ?? 0, rel.quantity));
     }
-    const items = data.items.map((i) => ({ ...i }));
+    let items = data.items.map((i) => ({ ...i }));
     for (const [addOnId, minQuantity] of requiredMinByAddOnId) {
       const existing = items.find((i) => i.variantId === addOnId);
       if (existing) {
@@ -247,6 +247,28 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
       } else {
         items.push({ variantId: addOnId, quantity: minQuantity });
       }
+    }
+
+    // A FREE required supply that has run low ships what is left, or nothing,
+    // instead of failing the stock check below and with it every order for the
+    // product it comes with (Retatrutide's Bac Water was down to 3). A priced
+    // add-on is left alone: that is something the customer chose to pay for.
+    if (requiredMinByAddOnId.size > 0) {
+      const supplies = await tx.productVariant.findMany({
+        where: { id: { in: [...requiredMinByAddOnId.keys()] } },
+      });
+      const now = new Date();
+      for (const supply of supplies) {
+        if (getEffectivePrice(supply, now) !== 0) continue;
+        const line = items.find((i) => i.variantId === supply.id);
+        if (!line || line.quantity <= supply.stock) continue;
+        fastify.log.warn(
+          { code: supply.code, wanted: line.quantity, inStock: supply.stock },
+          'Required free supply short — order ships without the missing units'
+        );
+        line.quantity = Math.max(supply.stock, 0);
+      }
+      items = items.filter((i) => i.quantity > 0);
     }
 
     const variants = await tx.productVariant.findMany({

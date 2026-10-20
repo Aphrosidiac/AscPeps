@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { X, ArrowUp, ArrowDown, ImageIcon } from 'lucide-react';
 import { adminUpdateProduct } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { getDefaultVariant } from '@/lib/utils';
+import { getLowestPriceVariant } from '@/lib/utils';
 import type { Product } from '@/types';
 
 interface Props {
@@ -65,7 +65,7 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
             <p className="text-text-muted text-sm text-center py-8">No featured products yet — mark a product as Featured to curate its position here.</p>
           ) : (
             order.map((p, i) => {
-              const variant = getDefaultVariant(p);
+              const variant = getLowestPriceVariant(p);
               return (
               <div key={p.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface">
                 <div className="w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">

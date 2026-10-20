@@ -237,8 +237,11 @@ async function priceOrderPreview(prisma: any, input: any) {
   const requiredMin = new Map<string, { quantity: number; name: string; code: string; unitPrice: number }>();
   for (const rel of requiredRelations) {
     const prev = requiredMin.get(rel.addOnId);
+    // Same rule as createOrder: a free supply that has run low ships what is left.
+    const wanted = Math.max(prev?.quantity ?? 0, rel.quantity);
+    const isFree = getEffectivePrice(rel.addOn) === 0;
     requiredMin.set(rel.addOnId, {
-      quantity: Math.max(prev?.quantity ?? 0, rel.quantity),
+      quantity: isFree ? Math.min(wanted, Math.max(rel.addOn.stock, 0)) : wanted,
       name: `${rel.addOn.product.name}${rel.addOn.size ? ` ${rel.addOn.size}` : ''}`,
       code: rel.addOn.code,
       unitPrice: getEffectivePrice(rel.addOn),
@@ -247,6 +250,7 @@ async function priceOrderPreview(prisma: any, input: any) {
 
   const autoAdded: typeof resolved = [];
   for (const [addOnId, req] of requiredMin) {
+    if (req.quantity === 0) continue;
     const existing = resolved.find((r) => r.variantId === addOnId);
     if (existing) {
       existing.quantity = Math.max(existing.quantity, req.quantity);
