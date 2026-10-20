@@ -463,6 +463,81 @@ September order. `npm run test:agent:timezone` replays it.
 
 ---
 
+## The browser (Oct 2026)
+
+Abby has a real web browser on the dashboard: open sites, search, read pages,
+click, type, scroll, tabs, screenshots. The operator watches it live in the
+**Browser** panel of the Assistant page (it opens by itself the first time
+Abby browses in a turn) and can **Take control** — their own clicks, scrolling
+and typing go straight to the page. That is also how a site that needs a login
+gets one: the operator signs in there; a password never passes through the
+conversation. Off unless `AGENT_BROWSER=on`; never offered over WhatsApp.
+
+```
+  Assistant page ── Browser panel ──SSE frames / POST input──▶ assistant.routes.ts /browser/*
+                                                                         │
+  core/run.ts ──▶ tools/browser.tools.ts ──▶ core/browser.ts ─────────────┘
+                  (21 Playwright MCP tools,    lifecycle, lock, idle, viewers
+                   guards, screenshots)              │ fork + IPC, only while awake
+                                                     ▼
+                                               core/browser-worker.ts
+                                               @playwright/mcp in-process + playwright-core
+                                               (screencast, operator input)
+                                                     │ CDP 127.0.0.1:9222
+                                                     ▼
+                                               headless Chromium
+                                               VPS: abby-browser.service (ops/abby-browser)
+```
+
+- **Tools.** `@playwright/mcp`'s own tools, run inside the worker over an
+  in-memory transport: accessibility snapshots with element refs are what let a
+  text-only model click the right thing. `tools/browser.allowlist.ts` is the
+  list; left out are `browser_run_code_unsafe` (runs code in the API process),
+  `browser_file_upload` / `browser_drop` (hand a page a file off the server),
+  `browser_pdf_save`, and close/resize (the live view owns the window). The
+  schemas are a checked-in snapshot (`tools/browser.schemas.ts`, regenerate
+  with `npx tsx scripts/browser-tool-schemas.ts`) so nothing Playwright loads
+  until someone browses. Actions return the page's address and title only;
+  `browser_snapshot` reads the page (cut at 14,000 characters). Only http and
+  https open — `file://` and `chrome://` would show the server.
+- **Web pages are untrusted.** Every result is marked `UNTRUSTED WEB CONTENT`.
+  Once any web page has been in a thread, **every write tool parks for
+  approval** for the rest of that thread (run.ts, `webSeen`) — the approval
+  card says why. A page is written by whoever wants it to be.
+- **Shop data does not leave without a yes.** A browser call that would send a
+  phone or account number, an email address, an order number, or a sentence
+  lifted from the shop's own tool results — and not typed by the operator —
+  parks for approval (`exfiltrationReason`). Text from one web page typed into
+  another is fine.
+- **Screenshots** are kept as a file in the thread (`agent_media`, source
+  `browser:screenshot`, shown on the tool card, sendable with `send_file`) and
+  read into text by `AGENT_VISION_MODEL`, because the everyday model is
+  text-only.
+- **History.** Only the last two page results stay whole in the transcript;
+  earlier ones fold to their address and title.
+- **One driver.** One conversation holds the browser at a time (two minutes
+  after its last call); one action at a time.
+- **Lifecycle.** Started on the first call (`BROWSER_START_CMD`), stopped after
+  `BROWSER_IDLE_MINUTES` with no call and nobody watching (30 minutes while
+  watched). A browser killed by its memory cap is started again on the next
+  call. At boot the API stops any browser the previous process left running
+  (`sleepOrphanedBrowser`). Each start is a clean profile: nothing survives a
+  sleep, sign-ins included.
+- **On the VPS** (`ops/abby-browser/`, `install.sh` then `check.sh`): its own
+  `abby-browser` user, Playwright's Chromium with its sandbox on (an AppArmor
+  profile allows the user namespaces Ubuntu 24.04 otherwise refuses),
+  `MemoryMax=600M`, `OOMScoreAdjust=900` so it dies before anything else,
+  `ProtectHome` (it cannot read the API's `.env`), and an iptables chain on its
+  uid that refuses localhost (Postgres, Redis, the API), the private and
+  link-local ranges (cloud metadata), and the box's own public address. The API
+  may only `systemctl start|stop abby-browser` as root (`sudoers`).
+- **Memory.** Playwright costs ~120 MB the moment it is imported and never
+  gives it back, so it is not in the API process: `core/browser-worker.ts`
+  (built to `dist/browser-worker.js`) is forked when the browser wakes and
+  exits when it sleeps. Asleep, the browser costs the box nothing.
+
+---
+
 ## Environment
 
 ```bash
@@ -475,6 +550,11 @@ AGENT_VISION_MODEL=z-ai/glm-5.3-flash         # reads pictures sent over WhatsAp
 AGENT_GROUNDING_MODE=shadow                   # off | shadow | enforce
 AGENT_MAX_FILE_MB=20                          # largest document taken in (worker reads it too)
 AGENT_MEDIA_RETENTION_DAYS=90                 # how long chat files keep their bytes
+AGENT_BROWSER=off                             # on = Abby's web browser (dashboard only)
+BROWSER_CDP_URL=http://127.0.0.1:9222
+BROWSER_START_CMD=                            # VPS: sudo -n systemctl start abby-browser · laptop: sh scripts/browser-local.sh start
+BROWSER_STOP_CMD=                             # VPS: sudo -n systemctl stop abby-browser  · laptop: sh scripts/browser-local.sh stop
+BROWSER_IDLE_MINUTES=5
 ```
 
 The `openai` package is gone; the provider is a streamed `fetch`.
@@ -497,6 +577,7 @@ E2E_ONLY=discount npm run test:agent:e2e   # just the scenarios whose name conta
 npm run test:agent:inbound     # replies + pictures: 8 rendering, 1 live vision read, 4 e2e turns
 npm run test:agent:wire        # 29, no model or db — call/result pairing, the compaction cut, summary placement, restart repair
 npm run test:agent:files       # 56 — every format, storage, send/forward/file/record tools, 16 real-model turns incl. bookkeeping
+npm run test:agent:browser     # 32 — schema snapshot, URL and exfiltration guards, page folding; live: open, click by ref, live view, input, lock, restart
 npm run test:agent:grounding:e2e
 npm run audit:agent:grounding  # replays the guard over stored turns; legacy turns match actions by time
 ```

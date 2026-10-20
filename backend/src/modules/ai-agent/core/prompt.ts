@@ -78,11 +78,11 @@ CARE
 // cannot use properly — it has no way to know that "delivery" or "promos" are
 // things it may ask for, so it falls back to telling the operator it is unable
 // to help, which is the exact failure this whole mechanism exists to prevent.
-export function contextBlock(domains: Set<Domain>): string {
+export function contextBlock(domains: Set<Domain>, hidden: Iterable<Domain> = []): string {
   const parts: string[] = [];
   const playbooks = playbooksFor(domains);
   if (playbooks) parts.push(playbooks);
-  const menu = domainMenu(domains);
+  const menu = domainMenu(domains, hidden);
   if (menu) {
     parts.push(
       `OTHER AREAS YOU CAN LOAD\nYou do not currently have the tools for these. Call load_context with the ones you need — it is instant and you can use them in this same reply.\n${menu}`

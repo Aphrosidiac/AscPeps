@@ -70,7 +70,8 @@ let fail = 0;
 let skipped = 0;
 
 for (const tool of ALL_TOOLS) {
-  if (tool.write) {
+  // Browser tools need a browser and a conversation: test:agent:browser.
+  if (tool.write || tool.web) {
     skipped++;
     continue;
   }

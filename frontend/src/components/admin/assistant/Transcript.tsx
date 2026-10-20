@@ -290,6 +290,14 @@ export function Transcript({
                   </div>
                 </div>
                 {sentFile && <SentFileCard file={sentFile} token={token} />}
+                {call.name === 'browser_take_screenshot' && result && !result.isError && screenshotOf(result.output) && (
+                  <Thumb
+                    token={token}
+                    mediaId={screenshotOf(result.output)!.mediaId}
+                    alt={screenshotOf(result.output)!.fileName}
+                    onOpen={() => void openMedia(token, screenshotOf(result.output)!.mediaId, screenshotOf(result.output)!.fileName, 'image/png')}
+                  />
+                )}
                 </div>
               );
             })}
@@ -408,6 +416,13 @@ function typeLabel(mime?: string, name?: string) {
   if (mime?.startsWith('image/')) return 'Picture';
   const ext = (name ?? '').split('.').pop()?.toUpperCase();
   return ext && ext.length <= 5 ? ext : 'File';
+}
+
+// The picture a browser screenshot kept in the conversation.
+function screenshotOf(output: unknown): { mediaId: string; fileName: string } | null {
+  const shot = (output as { screenshot?: unknown } | null)?.screenshot;
+  const one = Array.isArray(shot) ? shot[0] : shot;
+  return one && typeof one === 'object' && 'mediaId' in one ? (one as { mediaId: string; fileName: string }) : null;
 }
 
 // A stored picture, fetched with the admin token into a blob URL.

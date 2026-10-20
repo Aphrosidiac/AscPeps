@@ -50,6 +50,7 @@ import internalAgentRoutes from './modules/ai-agent/agent.routes.js';
 import assistantRoutes from './modules/ai-agent/assistant.routes.js';
 import { purgeOldMedia } from './modules/ai-agent/core/media.js';
 import { repairInterruptedTurns } from './modules/ai-agent/core/run.js';
+import { sleepOrphanedBrowser } from './modules/ai-agent/core/browser.js';
 import { maybeReflect } from './modules/ai-agent/reflect.js';
 import { maybeDigest } from './modules/ai-agent/digest.js';
 import { maybeMonthEnd } from './utils/month-end.js';
@@ -226,6 +227,9 @@ try {
     return 0;
   });
   if (interrupted) fastify.log.warn(`closed ${interrupted} assistant turn(s) interrupted by the restart`);
+  if (await sleepOrphanedBrowser().catch((err) => fastify.log.error({ err }, 'could not stop the browser left from before the restart'))) {
+    fastify.log.warn("put Abby's browser to sleep — it was left running by the previous process");
+  }
 
   await fastify.listen({ port: env.PORT, host: env.HOST });
   fastify.log.info(`Ascend MY API running on http://${env.HOST}:${env.PORT}`);

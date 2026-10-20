@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/server.ts'],
+  // The browser worker is its own entry: core/browser.ts forks
+  // dist/browser-worker.js only while Abby's browser is awake.
+  entry: { server: 'src/server.ts', 'browser-worker': 'src/modules/ai-agent/core/browser-worker.ts' },
   format: ['esm'],
   target: 'node22',
   outDir: 'dist',

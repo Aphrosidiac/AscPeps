@@ -32,7 +32,7 @@ export interface ImageReading {
   costUsd: number;
 }
 
-export async function readImage(image: InboundImage, opts: { signal?: AbortSignal; model?: string } = {}): Promise<ImageReading> {
+export async function readImage(image: InboundImage, opts: { signal?: AbortSignal; model?: string; prompt?: string } = {}): Promise<ImageReading> {
   const key = env.OPENROUTER_API_KEY;
   if (!key) throw new Error('OpenRouter is not configured (OPENROUTER_API_KEY missing)');
   const model = opts.model ?? env.AGENT_VISION_MODEL;
@@ -42,7 +42,7 @@ export async function readImage(image: InboundImage, opts: { signal?: AbortSigna
       {
         role: 'user',
         content: [
-          { type: 'text', text: VISION_PROMPT },
+          { type: 'text', text: opts.prompt ?? VISION_PROMPT },
           { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}` } },
         ],
       },

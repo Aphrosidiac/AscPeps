@@ -1,0 +1,3 @@
+# /etc/sudoers.d/abby-browser — what ascend-api (user ubuntu) may do as root
+# for Abby's browser: start it and stop it. Nothing else.
+ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl start abby-browser, /usr/bin/systemctl stop abby-browser

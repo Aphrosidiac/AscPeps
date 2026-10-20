@@ -1,0 +1,13 @@
+# /etc/apparmor.d/abby-chromium — lets Playwright's Chromium build create the
+# user namespaces its sandbox is made of. Ubuntu 24.04 refuses unprivileged
+# user namespaces to anything without a profile saying so; without this
+# Chromium only starts with --no-sandbox, and a browser that reads arbitrary
+# web pages keeps its sandbox.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile abby-chromium /opt/abby-browser/browsers/chromium-*/chrome-linux*/chrome flags=(unconfined) {
+  userns,
+
+  include if exists <local/abby-chromium>
+}

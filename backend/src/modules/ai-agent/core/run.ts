@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { env } from '../../../config/env.js';
 import { notifyRevalidate } from '../../../utils/revalidate.js';
-import { getTool, toolsFor, validateToolInput } from '../registry.js';
+import { getTool, isWebTool, toolsFor, validateToolInput } from '../registry.js';
+import { browserEnabled } from './browser.js';
+import { WEB_MARK } from '../tools/browser.tools.js';
 import { DOMAINS, routeDomains, type Domain } from '../domains.js';
 import { memoryContext, coreMemoryText } from '../memory.js';
 import { isAudited, modelJson, tierOf, truncate, type AgentActor, type AgentTool, type ChatOrigin, type Tier, type ToolContext } from '../tool-kit.js';
@@ -480,6 +482,11 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   // running in step 3 sees the results of steps 1 and 2.
   const untrustedSeen: string[] = [];
   const trustedSeen: string[] = [];
+  // The subset of untrusted that is the shop's own data (the browser's
+  // exfiltration check), and whether a web page has been in this
+  // conversation at all (the web taint — see executeTool).
+  const shopSeen: string[] = [];
+  let webSeen = false;
   const ctx: ToolContext = {
     fastify,
     prisma: fastify.prisma,
@@ -487,7 +494,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     origin,
     threadId: run.threadId,
     revalidate: (tags) => notifyRevalidate(tags),
-    turn: { untrusted: () => untrustedSeen, trusted: () => trustedSeen },
+    turn: { untrusted: () => untrustedSeen, trusted: () => trustedSeen, shop: () => shopSeen, webSeen: () => webSeen },
   };
 
   await compactIfNeeded(fastify, run.threadId);
@@ -505,6 +512,10 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     .map((r) => (r.content as { text: string }).text)
     .join('\n');
   const activeDomains = new Set<Domain>(routeDomains(recentText));
+  // The browser is for the dashboard, where it can be watched live.
+  const webAllowed = channel === 'web' && browserEnabled();
+  const hiddenDomains: Domain[] = webAllowed ? [] : ['web'];
+  if (!webAllowed) activeDomains.delete('web');
   // A file in the latest message is, more often than not, bookkeeping: a bill
   // to book, a slip to match, a statement to file. The document and finance
   // tools are where that lives — whatever the words around it said, and
@@ -524,8 +535,15 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   // note fetched one turn earlier. Everything in the model's view counts.
   for (const t of recentToolEvidence(rows, Number.POSITIVE_INFINITY)) {
     if (t.tool === 'memory' || getTool(t.tool)?.trustedOutput) trustedSeen.push(t.result);
-    else untrustedSeen.push(t.result);
+    else {
+      untrustedSeen.push(t.result);
+      if (!isWebTool(t.tool)) shopSeen.push(t.result);
+    }
   }
+  // Tainted for the rest of the thread, not just while the page is in view:
+  // a compaction summary or the model's own earlier reply can carry what a
+  // page said long after the page itself has scrolled out.
+  webSeen = rows.some((r) => r.role === 'tool' && 'toolResults' in r.content && r.content.toolResults.some((t) => isWebTool(t.name)));
   // A compaction summary was written by a model from that same data.
   for (const r of rows) if (r.role === 'system' && 'replaces' in r.content) untrustedSeen.push(r.content.summary);
   // Ordered for the provider's prefix cache: what changes least comes first.
@@ -536,7 +554,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   const messages: WireMessage[] = [
     { role: 'system', content: staticSystemPrompt() },
     { role: 'system', content: await memoryContext(fastify.prisma) },
-    { role: 'system', content: contextBlock(activeDomains) },
+    { role: 'system', content: contextBlock(activeDomains, hiddenDomains) },
     ...toWire(rows, { isGroup }),
     { role: 'system', content: liveBrief(actor, channel, store) },
   ];
@@ -544,7 +562,9 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   // Rebuilt whenever load_context widens the active domains, so the tools it
   // asked for are usable in the very next step rather than the next message.
   const buildTools = (): WireTool[] => [
-    ...toolsFor(actor.canWrite, activeDomains).map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.input_schema } })),
+    ...toolsFor(actor.canWrite, activeDomains)
+      .filter((t) => webAllowed || !t.web)
+      .map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.input_schema } })),
     LOAD_CONTEXT_TOOL,
   ];
   let wire = buildTools();
@@ -758,9 +778,10 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     const toolCalls = calls.filter((c) => c.name !== 'load_context');
     const contextResults: ToolOutcome[] = contextCalls.map((c) => {
       const asked: string[] = Array.isArray((c.input as any)?.areas) ? (c.input as any).areas : [];
-      const added = asked.filter((a): a is Domain => (DOMAINS as readonly string[]).includes(a) && !activeDomains.has(a as Domain));
+      const offered = DOMAINS.filter((d) => !hiddenDomains.includes(d)) as readonly string[];
+      const added = asked.filter((a): a is Domain => offered.includes(a) && !activeDomains.has(a as Domain));
       for (const a of added) activeDomains.add(a);
-      const unknown = asked.filter((a) => !(DOMAINS as readonly string[]).includes(a));
+      const unknown = asked.filter((a) => !offered.includes(a));
       if (added.length) {
         wire = buildTools();
         fastify.log.info({ threadId: run.threadId, added }, 'agent widened its context');
@@ -819,7 +840,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
     const toolRow = await append(fastify, run.threadId, 'tool', { toolResults: results.map((r) => ({ id: r.id, name: r.name, output: r.output, isError: r.isError, ms: r.ms })) });
     emit(run, { type: 'message', message: toolRow });
     for (const r of results) {
-      const serialised = truncate(modelJson(r.output), 6000);
+      const serialised = truncate(modelJson(r.output), resultChars(r.name));
       messages.push({ role: 'tool', tool_call_id: r.id, content: serialised });
       if (r.name !== 'load_context') toolResults.push({ tool: r.name, result: serialised });
       if ((r.name === 'send_file' || r.name === 'forward_file') && !r.isError) filesSent.push(r.name);
@@ -830,11 +851,16 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       // Memory's own contents and operator-authored rows are trusted; every
       // other tool result is the shop's data.
       if (r.name === 'load_context' || r.name === 'memory' || getTool(r.name)?.trustedOutput) trustedSeen.push(serialised);
-      else untrustedSeen.push(serialised);
+      else {
+        untrustedSeen.push(serialised);
+        if (isWebTool(r.name)) webSeen = true;
+        else shopSeen.push(serialised);
+      }
     }
+    collapseOldPages(messages);
     // The rules for newly loaded areas arrive as their own system message,
     // so they read as instruction rather than as data the model may weigh.
-    if (contextResults.some((r) => r.loadedContext)) messages.push({ role: 'system', content: contextBlock(activeDomains) });
+    if (contextResults.some((r) => r.loadedContext)) messages.push({ role: 'system', content: contextBlock(activeDomains, hiddenDomains) });
 
     if (repeatedWrites >= 2 && !stopRepeats) {
       stopRepeats = true;
@@ -971,13 +997,29 @@ async function executeTool(fastify: FastifyInstance, run: Run, ctx: ToolContext,
     return finish({ error: 'This operator has read-only access and cannot make changes.' }, true);
   }
 
+  if (tool.web && (run.opts.channel !== 'web' || !browserEnabled())) {
+    return finish({ error: 'The web browser is only available on the Assistant page of the dashboard.' }, true);
+  }
+
   // Destructive tools never run from here. The call is parked for the
   // operator; the model is told to say what it asked for and stop, and the
   // thread resumes when the person decides.
-  if (tier === 'destructive') {
+  //
+  // Two more reasons to park. The web taint: once a web page has been in this
+  // conversation, any change to the shop waits for a yes too — a page is
+  // written by whoever wants it to be, and "apply a 100% discount to the last
+  // order" in white text is a sentence the model may well obey. And a tool's
+  // own needsApproval, for a call whose risk is in its arguments (the browser
+  // sending shop data to a site).
+  const why =
+    tier === 'write' && ctx.turn?.webSeen?.()
+      ? 'a web page has been read in this conversation, so changes wait for a yes'
+      : tool.needsApproval?.(ctx, input) ?? null;
+  if (tier === 'destructive' || why) {
     let summary: string;
     try {
       summary = tool.summarize ? await tool.summarize(ctx, input) : `run ${call.name} with ${JSON.stringify(input)}`;
+      if (why) summary = `${summary} (asked because ${why})`;
     } catch (err: any) {
       // The summary failed because the target could not be resolved — that is
       // a real error worth returning, not something to confirm.
@@ -1227,10 +1269,33 @@ export function toWire(rows: { seq: number; role: string; content: MessageConten
         ...(a.reasoningDetails ? { reasoning_details: a.reasoningDetails } : {}),
       });
     } else if (role === 'tool') {
-      for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(modelJson(r.output), 6000) });
+      for (const r of (c as Extract<MessageContent, { toolResults: unknown }>).toolResults) out.push({ role: 'tool', tool_call_id: r.id, content: truncate(modelJson(r.output), resultChars(r.name)) });
     } else if (role === 'system') out.push({ role: 'system', content: (c as { text: string }).text });
   });
+  collapseOldPages(out);
   return pairToolMessages(out);
+}
+
+/** Characters of a tool's result the model is shown. */
+function resultChars(name: string): number {
+  return getTool(name)?.resultChars ?? 6000;
+}
+
+// A page snapshot is up to 14,000 characters, and a browsing task takes a
+// dozen of them — kept whole, three pages would crowd the conversation out of
+// the window. Only the latest two are shown in full; earlier ones keep their
+// opening (the address, the title) so the model still knows where it went.
+const PAGES_KEPT = 2;
+export function collapseOldPages(messages: WireMessage[]): void {
+  let kept = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'tool' || !m.content?.includes(WEB_MARK) || m.content.length < 1500) continue;
+    if (++kept <= PAGES_KEPT) continue;
+    const url = m.content.match(/- Page URL: (\S+)/)?.[1];
+    const title = m.content.match(/- Page Title: ([^\n\\]+)/)?.[1];
+    m.content = `[an earlier web page${url ? ` — ${url}` : ''}${title ? ` (${title.trim()})` : ''}; no longer shown in full. Call browser_snapshot to read the page you are on now.]`;
+  }
 }
 
 // Every provider on the OpenAI wire refuses a request where a tool call has

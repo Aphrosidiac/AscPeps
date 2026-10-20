@@ -394,3 +394,107 @@ export function streamEvents(
     ctrl.abort();
   };
 }
+
+// ── Abby's browser ──
+
+export interface BrowserTab {
+  index: number;
+  url: string;
+  title: string;
+  current: boolean;
+}
+
+export interface BrowserState {
+  enabled: boolean;
+  running: boolean;
+  starting: boolean;
+  tabs: BrowserTab[];
+  owner: string | null;
+  error: string | null;
+}
+
+export interface BrowserFrame {
+  data: string;
+  width: number;
+  height: number;
+}
+
+export type BrowserInput =
+  | { type: 'click'; x: number; y: number; button?: 'left' | 'right' | 'middle' }
+  | { type: 'move'; x: number; y: number }
+  | { type: 'wheel'; x: number; y: number; dx: number; dy: number }
+  | { type: 'key'; key: string }
+  | { type: 'text'; text: string }
+  | { type: 'navigate'; url: string }
+  | { type: 'back' }
+  | { type: 'forward' }
+  | { type: 'reload' }
+  | { type: 'tab'; index: number }
+  | { type: 'newtab' }
+  | { type: 'closetab'; index: number };
+
+export const getBrowser = (token: string) => http.get<BrowserState>('/browser', auth(token)).then((r) => r.data);
+
+export const setBrowserAwake = (token: string, awake: boolean) =>
+  http.post<BrowserState>(`/browser/${awake ? 'start' : 'stop'}`, {}, { ...auth(token), timeout: 40_000 }).then((r) => r.data);
+
+export const browserInput = (token: string, input: BrowserInput) =>
+  http.post('/browser/input', input, { ...auth(token), timeout: 35_000 }).then((r) => r.data);
+
+// The live view: frames and state over SSE, reconnecting until stopped. Only
+// the newest frame matters, so a slow link skips rather than queues.
+export function streamBrowser(token: string, onFrame: (f: BrowserFrame) => void, onState: (s: BrowserState) => void): () => void {
+  const ctrl = new AbortController();
+  let closed = false;
+  const connect = async () => {
+    let attempt = 0;
+    while (!closed) {
+      try {
+        const res = await fetch(`${BASE}/browser/live`, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal });
+        if (res.status === 401) {
+          closed = true;
+          onUnauthorized();
+          return;
+        }
+        if (!res.ok || !res.body) throw new Error(`browser ${res.status}`);
+        attempt = 0;
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let sep: number;
+          while ((sep = buf.indexOf('\n\n')) >= 0) {
+            const block = buf.slice(0, sep);
+            buf = buf.slice(sep + 2);
+            let type = '';
+            let data = '';
+            for (const line of block.split('\n')) {
+              if (line.startsWith('event:')) type = line.slice(6).trim();
+              else if (line.startsWith('data:')) data += line.slice(5).trim();
+            }
+            if (!type || !data) continue;
+            try {
+              if (type === 'frame') onFrame(JSON.parse(data));
+              else if (type === 'state') onState(JSON.parse(data));
+            } catch {
+              /* a malformed frame is skipped */
+            }
+          }
+        }
+      } catch {
+        if (closed) return;
+      }
+      if (closed) return;
+      attempt++;
+      await new Promise((r) => setTimeout(r, Math.min(1000 * attempt, 8000)));
+    }
+  };
+  void connect();
+  return () => {
+    closed = true;
+    ctrl.abort();
+  };
+}

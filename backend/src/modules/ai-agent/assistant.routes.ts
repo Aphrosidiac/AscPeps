@@ -15,6 +15,7 @@ import { env } from '../../config/env.js';
 import { deleteAgentMedia, readAgentMedia } from '../../utils/agent-media-store.js';
 import { attachmentFor, ingestFile, MAX_INBOUND_BYTES } from './core/media.js';
 import type { Attachment } from './core/run.js';
+import { browserEnabled, browserStateFull, ensureBrowser, stopBrowser, viewerInput, watchBrowser, type ViewerInput } from './core/browser.js';
 
 // The Assistant page's API: threads, turns, and a stream of what a turn is
 // doing. The stream is plain SSE over a fetch with the normal auth header —
@@ -216,6 +217,70 @@ export default async function assistantRoutes(fastify: FastifyInstance) {
       clearInterval(ping);
       unsubscribe();
     });
+  });
+
+  // ── The browser's live view ──
+  //
+  // A CDP screencast of the page Abby is on, as SSE (same auth as the event
+  // stream), and the operator's own mouse and keys back as POSTs. Frames are
+  // dropped, not queued, while the connection is behind: a live view that
+  // buffers is a recording of the past.
+  fastify.get('/browser', async () => browserStateFull());
+
+  fastify.get('/browser/live', async (request, reply) => {
+    reply.hijack();
+    const raw = reply.raw;
+    const origin = request.headers.origin;
+    raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      ...(origin ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true', Vary: 'Origin' } : {}),
+    });
+    let behind = false;
+    raw.on('drain', () => (behind = false));
+    const unwatch = watchBrowser((e) => {
+      if (raw.writableEnded) return;
+      if (e.type === 'frame' && behind) return;
+      if (!raw.write(`event: ${e.type}\ndata: ${JSON.stringify(e.type === 'frame' ? { data: e.data, width: e.width, height: e.height } : e.state)}\n\n`)) behind = true;
+    });
+    const ping = setInterval(() => {
+      if (!raw.writableEnded) raw.write(': ping\n\n');
+    }, 15_000);
+    request.raw.on('close', () => {
+      clearInterval(ping);
+      unwatch();
+    });
+  });
+
+  fastify.post('/browser/start', async (_request, reply) => {
+    if (!browserEnabled()) return reply.status(409).send({ message: 'The browser is switched off on this server (AGENT_BROWSER).' });
+    try {
+      await ensureBrowser();
+    } catch (err) {
+      return fail(reply, err);
+    }
+    return browserStateFull();
+  });
+
+  fastify.post('/browser/stop', async () => {
+    await stopBrowser();
+    return browserStateFull();
+  });
+
+  const INPUTS = new Set(['click', 'move', 'wheel', 'key', 'text', 'navigate', 'back', 'forward', 'reload', 'tab', 'newtab', 'closetab']);
+  // Its own limit: driving a page is a click, a scroll and a keystroke at a
+  // time, and the global 100 a minute would freeze the view mid-sentence.
+  fastify.post('/browser/input', { config: { rateLimit: { max: 1200, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const body = (request.body ?? {}) as ViewerInput;
+    if (!INPUTS.has(String(body?.type))) return reply.status(400).send({ message: 'Unknown input' });
+    try {
+      await viewerInput(body);
+    } catch (err) {
+      return reply.status(422).send({ message: (err as Error).message });
+    }
+    return { ok: true };
   });
 
   // ── The operator's decisions ──

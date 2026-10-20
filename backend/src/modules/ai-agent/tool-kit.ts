@@ -103,6 +103,10 @@ export interface ToolContext {
 export interface TurnEvidence {
   untrusted: () => string[];
   trusted: () => string[];
+  /** The untrusted results that came from the shop's own tools — not web pages. */
+  shop?: () => string[];
+  /** A web page is in the model's view (this turn, or still in the transcript). */
+  webSeen?: () => boolean;
 }
 
 export interface AgentTool {
@@ -124,6 +128,16 @@ export interface AgentTool {
   // (Nurul, RM 480.00)" instead of "delete that order". Without this the
   // confirmation step confirms nothing useful.
   summarize?: (ctx: ToolContext, input: any) => Promise<string>;
+  // A browser tool: offered on the dashboard only, and its results are web
+  // pages — untrusted, and they taint the turn (see run.ts).
+  web?: boolean;
+  // Parks this one call for the operator's yes when it returns a reason —
+  // for a call whose risk depends on its arguments, not on the tool. The
+  // reason is shown on the approval card.
+  needsApproval?: (ctx: ToolContext, input: any) => string | null;
+  // How many characters of the result the model is shown. Default 6,000; a
+  // web page needs more to be readable at all.
+  resultChars?: number;
   run: (ctx: ToolContext, input: any) => Promise<unknown>;
   // Reverses a completed call from its audit record. Only offered when `run`
   // returned `audited(...)` with a `before`; returns one line saying what was

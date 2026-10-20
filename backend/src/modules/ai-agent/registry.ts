@@ -14,6 +14,7 @@ import { reportTools } from './tools/reports.tools.js';
 import { deliveryTools } from './tools/delivery.tools.js';
 import { reminderTools } from './tools/reminders.tools.js';
 import { memoryTools } from './tools/memory.tools.js';
+import { browserTools } from './tools/browser.tools.js';
 
 // Domain membership is assigned here rather than as a field on each tool, so
 // the eight tool files stay unaware of routing entirely.
@@ -55,6 +56,8 @@ const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
   // exactly one domain or the duplicate-name check below fires. Routing is not
   // harmed by the split — routeDomains returns every domain a message matches.
   shadow: shadowTools,
+  // Abby's web browser. Empty unless AGENT_BROWSER=on.
+  web: browserTools,
 };
 
 export const ALL_TOOLS: AgentTool[] = DOMAINS.flatMap((d) => DOMAIN_TOOLS[d]);
@@ -63,6 +66,11 @@ const byName = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 
 export function getTool(name: string): AgentTool | undefined {
   return byName.get(name);
+}
+
+/** Whether a stored result came from a browser tool (a web page). */
+export function isWebTool(name: string): boolean {
+  return !!byName.get(name)?.web || name.startsWith('browser_');
 }
 
 // Appended to every destructive tool's description.

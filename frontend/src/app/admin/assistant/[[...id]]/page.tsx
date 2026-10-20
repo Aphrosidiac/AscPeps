@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Brain, CalendarClock, Check, FileText, Loader2, MessagesSquare, Paperclip, SendHorizontal, Square, MessageSquare, X } from 'lucide-react';
+import { AlertTriangle, Brain, CalendarClock, Check, FileText, Globe, Loader2, MessagesSquare, Paperclip, SendHorizontal, Square, MessageSquare, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePresence } from '@/hooks/usePresence';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ import {
   decideAction,
   deleteThread,
   errorMessage,
+  getBrowser,
   getThread,
   listThreads,
   sendTurn,
@@ -29,6 +30,7 @@ import { Transcript, type LiveTurn } from '@/components/admin/assistant/Transcri
 import { MemoryPanel } from '@/components/admin/assistant/MemoryPanel';
 import { RoutinesPanel } from '@/components/admin/assistant/RoutinesPanel';
 import { ModelMenu } from '@/components/admin/assistant/ModelMenu';
+import { BrowserPanel } from '@/components/admin/assistant/BrowserPanel';
 import { money } from '@/components/admin/assistant/format';
 
 // The assistant, from the dashboard. A thread list and a transcript that
@@ -39,7 +41,7 @@ import { money } from '@/components/admin/assistant/format';
 // too, read-only, with the same cards.
 
 type Notice = { kind: 'ok' | 'bad'; text: string } | null;
-type Side = 'memory' | 'routines' | null;
+type Side = 'memory' | 'routines' | 'browser' | null;
 
 export default function AssistantPage() {
   const { token } = useAuth();
@@ -57,6 +59,10 @@ export default function AssistantPage() {
   // for the closing frame.
   const [lastSide, setLastSide] = useState<Exclude<Side, null>>('memory');
   const [lastNotice, setLastNotice] = useState<Exclude<Notice, null> | null>(null);
+  // Abby's browser: whether this server has one, and whether its panel has
+  // taken the whole page.
+  const [browserOn, setBrowserOn] = useState(false);
+  const [browserBig, setBrowserBig] = useState(false);
   const sidePresence = usePresence(side !== null, 160);
   const noticePresence = usePresence(notice !== null, 160);
   const openSide = (s: Side) => {
@@ -83,6 +89,13 @@ export default function AssistantPage() {
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  useEffect(() => {
+    if (!token) return;
+    getBrowser(token)
+      .then((s) => setBrowserOn(s.enabled))
+      .catch(() => setBrowserOn(false));
+  }, [token]);
 
   const newThread = () => {
     if (!token) return;
@@ -123,6 +136,7 @@ export default function AssistantPage() {
         configured={configured}
         side={side}
         setSide={openSide}
+        browserOn={browserOn}
         show={show}
         onThreadsChanged={loadThreads}
         onCreated={(t) => setThreads((ts) => [t, ...ts])}
@@ -134,11 +148,30 @@ export default function AssistantPage() {
       {sidePresence.mounted && (
         <aside
           className={cn(
-            'side-panel absolute inset-y-0 right-0 z-20 w-full max-w-md border-l border-border bg-surface shadow-lg xl:static xl:w-96 xl:shadow-none',
+            'side-panel absolute inset-y-0 right-0 z-20 w-full border-l border-border bg-surface shadow-lg xl:static xl:shadow-none',
+            (side ?? lastSide) !== 'browser'
+              ? 'max-w-md xl:w-96'
+              : browserBig
+                ? 'z-30 max-w-none xl:absolute xl:inset-0 xl:w-full xl:border-l-0'
+                : // Beside the conversation from xl, sharing what the thread
+                  // list leaves — a fixed width squeezed the transcript to
+                  // 120px at 1600.
+                  'max-w-none lg:w-[min(62vw,980px)] xl:w-auto xl:min-w-0 xl:flex-[1.15]',
             sidePresence.closing && 'is-closing'
           )}
         >
-          {(side ?? lastSide) === 'memory' ? (
+          {(side ?? lastSide) === 'browser' ? (
+            <BrowserPanel
+              token={token}
+              expanded={browserBig}
+              onExpand={() => setBrowserBig((b) => !b)}
+              onClose={() => {
+                setSide(null);
+                setBrowserBig(false);
+              }}
+              onNotice={show}
+            />
+          ) : (side ?? lastSide) === 'memory' ? (
             <MemoryPanel token={token} onClose={() => setSide(null)} onNotice={show} />
           ) : (
             <RoutinesPanel
@@ -176,6 +209,7 @@ function Conversation({
   configured,
   side,
   setSide,
+  browserOn,
   show,
   onThreadsChanged,
   onCreated,
@@ -186,6 +220,7 @@ function Conversation({
   configured: boolean;
   side: Side;
   setSide: (s: Side) => void;
+  browserOn: boolean;
   show: (kind: 'ok' | 'bad', text: string) => void;
   onThreadsChanged: () => void;
   onCreated: (t: Thread) => void;
@@ -209,6 +244,13 @@ function Conversation({
   const draftThread = useRef<string | null>(null);
 
   const scroller = useRef<HTMLDivElement | null>(null);
+  // The browser panel opens by itself the first time Abby browses in a turn
+  // — once, so closing it mid-turn sticks.
+  const browserShown = useRef(false);
+  const sideRef = useRef(side);
+  useEffect(() => {
+    sideRef.current = side;
+  }, [side]);
   const composer = useRef<HTMLTextAreaElement | null>(null);
   const stopStream = useRef<(() => void) | null>(null);
   // loadThread attaches a stream and the stream's end reloads the thread —
@@ -261,6 +303,10 @@ function Conversation({
         const m = e.message as Message;
         setMessages((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m]));
       }
+      if (e.type === 'tool_start' && String(e.name).startsWith('browser_') && !browserShown.current) {
+        browserShown.current = true;
+        if (sideRef.current !== 'browser') setSide('browser');
+      }
       if (e.type === 'approval') {
         const a = e.action as Action;
         setActions((as) => (as.some((x) => x.id === a.id) ? as : [...as, a]));
@@ -268,7 +314,7 @@ function Conversation({
       if (e.type === 'error') show('bad', String(e.message ?? 'The assistant hit an error'));
       scrollDown();
     },
-    [show, scrollDown]
+    [show, scrollDown, setSide]
   );
 
   // Refreshed after every render (declared before the effect that uses
@@ -372,6 +418,7 @@ function Conversation({
       setFiles([]);
       setRunning(true);
       setLive({ text: '', reasoning: '', tools: new Map() });
+      browserShown.current = false;
       // Start the turn before navigating to a new thread: the new
       // Conversation loads it, sees it running, and attaches — no race with
       // a load that would report it idle.
@@ -448,6 +495,18 @@ function Conversation({
             )}
           >
             <Square className="h-3.5 w-3.5" strokeWidth={2} /> Stop
+          </button>
+        )}
+        {browserOn && (
+          <button
+            aria-pressed={side === 'browser'}
+            onClick={() => setSide(side === 'browser' ? null : 'browser')}
+            className={cn(
+              'press inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium',
+              side === 'browser' ? 'border-primary bg-primary text-white' : 'border-border text-text-primary hover:bg-surface-elevated'
+            )}
+          >
+            <Globe className="h-4 w-4" strokeWidth={1.75} /> <span className="hidden sm:inline">Browser</span>
           </button>
         )}
         <button

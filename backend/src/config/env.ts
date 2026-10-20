@@ -132,6 +132,17 @@ const envSchema = z.object({
   // before downloading, so a bigger file is never buffered at all. Pictures
   // keep their own 10 MB cap in the worker.
   AGENT_MAX_FILE_MB: z.coerce.number().min(1).max(64).default(20),
+  // Abby's web browser (docs/assistant.md, "The browser"). A headless Chromium
+  // reached over CDP, started on first use and stopped when idle. On the VPS it
+  // is the abby-browser systemd unit — its own user, a hard memory cap, and a
+  // firewall that keeps it off localhost and the private ranges; the start and
+  // stop commands are the two sudo lines deploy/abby-browser/sudoers allows.
+  // Empty BROWSER_START_CMD = the browser is expected to be running already.
+  AGENT_BROWSER: z.enum(['on', 'off']).default('off'),
+  BROWSER_CDP_URL: z.string().default('http://127.0.0.1:9222'),
+  BROWSER_START_CMD: z.string().default(''),
+  BROWSER_STOP_CMD: z.string().default(''),
+  BROWSER_IDLE_MINUTES: z.coerce.number().min(1).max(120).default(5),
   // How long a file sent to or by the assistant keeps its bytes. The row, its
   // extracted text and its place in the transcript stay; only the file goes.
   // Anything worth keeping is filed into the document store, which copies it.

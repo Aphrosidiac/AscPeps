@@ -1,0 +1,43 @@
+# Abby's browser — headless Chromium with CDP on 127.0.0.1:9222.
+# Started on demand by ascend-api (sudo systemctl start abby-browser, see
+# sudoers) and stopped when idle. Installed by install.sh.
+[Unit]
+Description=Abby's web browser (headless Chromium for the Ascend assistant)
+After=network-online.target
+
+[Service]
+Type=simple
+User=abby-browser
+Group=abby-browser
+# Root (+) puts the firewall in place before the browser exists: no localhost,
+# no private ranges, no metadata endpoint, not this box's own public address.
+ExecStartPre=+/opt/abby-browser/firewall.sh
+ExecStart=/opt/abby-browser/launch.sh
+Environment=ABBY_BROWSER_HOME=/var/lib/abby-browser HOME=/var/lib/abby-browser
+StateDirectory=abby-browser
+Restart=no
+KillMode=control-group
+TimeoutStopSec=10
+
+# The box has 2 GB and the shop comes first. The cap is hard; if Chromium hits
+# it, Chromium is what dies — and the kernel picks it first under pressure.
+MemoryMax=600M
+MemorySwapMax=128M
+OOMScoreAdjust=900
+CPUQuota=120%
+TasksMax=256
+Nice=10
+
+# It reads the web, not the server.
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/abby-browser
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
