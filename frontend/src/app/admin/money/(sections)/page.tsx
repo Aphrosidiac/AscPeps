@@ -65,7 +65,9 @@ export default function MoneyOverviewPage() {
   if (data.waiting.needsCosting > 0) {
     needs.push({
       icon: <ClipboardList className="w-4 h-4" />,
-      text: <>{data.waiting.needsCosting} paid order{data.waiting.needsCosting === 1 ? '' : 's'} still need costing — their profit is unknown</>,
+      text: data.waiting.needsCosting === 1
+        ? <>1 paid order still needs costing — its profit is unknown</>
+        : <>{data.waiting.needsCosting} paid orders still need costing — their profit is unknown</>,
       href: '/admin/money/share',
     });
   }
