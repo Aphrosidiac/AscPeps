@@ -15,6 +15,20 @@ import {
   createPayout,
   deletePayout,
 } from './admin-finance.controller.js';
+import {
+  getMoneyOverview,
+  getBankLedger,
+  createBankEntry,
+  deleteBankEntry,
+  createBankCheck,
+  deleteBankCheck,
+  listSplitRules,
+  createSplitRule,
+  deleteSplitRule,
+  getShareOut,
+  createShareOut,
+  deleteShareOut,
+} from './admin-money.controller.js';
 
 export default async function adminFinanceRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -56,5 +70,32 @@ export default async function adminFinanceRoutes(fastify: FastifyInstance) {
   fastify.post('/payouts', async (request) => createPayout(fastify, request.body));
   fastify.delete<{ Params: { id: string } }>('/payouts/:id', async (request) =>
     deletePayout(fastify, request.params.id)
+  );
+
+  /* Ascend Money — the bank, the split rule, share-outs. */
+  const actor = (request: { user?: { email?: string } }) => request.user?.email ?? null;
+
+  fastify.get('/money', async (request) => getMoneyOverview(fastify, request.query));
+
+  fastify.get('/bank', async (request) => getBankLedger(fastify, request.query));
+  fastify.post('/bank/entries', async (request) => createBankEntry(fastify, request.body, actor(request)));
+  fastify.delete<{ Params: { id: string } }>('/bank/entries/:id', async (request) =>
+    deleteBankEntry(fastify, request.params.id)
+  );
+  fastify.post('/bank/checks', async (request) => createBankCheck(fastify, request.body, actor(request)));
+  fastify.delete<{ Params: { id: string } }>('/bank/checks/:id', async (request) =>
+    deleteBankCheck(fastify, request.params.id)
+  );
+
+  fastify.get('/split-rules', async () => listSplitRules(fastify));
+  fastify.post('/split-rules', async (request) => createSplitRule(fastify, request.body, actor(request)));
+  fastify.delete<{ Params: { id: string } }>('/split-rules/:id', async (request) =>
+    deleteSplitRule(fastify, request.params.id)
+  );
+
+  fastify.get('/share-out', async () => getShareOut(fastify));
+  fastify.post('/share-out', async (request) => createShareOut(fastify, request.body, actor(request)));
+  fastify.delete<{ Params: { id: string } }>('/share-out/:id', async (request) =>
+    deleteShareOut(fastify, request.params.id)
   );
 }

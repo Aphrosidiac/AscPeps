@@ -1,6 +1,6 @@
 # Bookkeeping figures
 
-What each number on `/admin/finance` and `/admin/analytics` means, and the four
+What each number on `/admin/money` (Ascend Money, formerly Finance) and `/admin/analytics` means, and the four
 ways they used to be wrong.
 
 Everything is integer cents. Everything except recorded events (funding,
@@ -208,17 +208,81 @@ price drops the line back to "by hand" — a supplier on a line means exactly
 "this figure is their price". The assistant's `set_order_costs` takes a
 supplier's name on a line the same way.
 
-### Partner balances are untouched by all this
+### Partner balances
 
 ```
-owed = earned + capitalFronted + advancesOutstanding − paidOut
+owed = toShare + capitalOwed + advancesOutstanding − payouts on account
 ```
 
-Company spending **never** lands on a person as a charge. If someone paid for
-something, that is money owed back to them, recorded either as capital on an
-order's split or as funding. Contributions are capital never owed back and sit
-outside the sum entirely — that is the whole difference between the two funding
-types.
+- `toShare` — their cut of every costed, paid order **not shared out yet**.
+- `capitalOwed` — capital they fronted on an order not shared out yet and not yet
+  moved into an advance. Zero after the bank cutover (below).
+- `advancesOutstanding` — loans to Ascend not repaid yet.
+- payouts on account — a payout recorded on its own, outside a share-out.
+
+Owed is built from what is still **open**, not from lifetime earnings less
+lifetime payouts. Before the bank, profit was settled by ticking "Profit Shared"
+with the money moving outside the system and almost never a payout recorded, so
+`earned − paidOut` read as months of profit still owed. A shared order is
+settled — its profit and any capital on it. `earned`, `capitalFronted` and
+`paidOut` are still reported, as history.
+
+Company spending **never** lands on a person as a charge. Contributions are
+capital never owed back and sit outside the sum entirely.
+
+---
+
+## Ascend's bank
+
+From 21 Oct 2026 Ascend has its own account. Design and decisions:
+[ascend-bank-plan.md](./ascend-bank-plan.md). Code: `utils/bank.ts`,
+`utils/split-rules.ts`, `modules/admin/admin-money.controller.ts`.
+
+**The balance is derived**, like everything else here. Nearly every movement is
+already a row somewhere:
+
+| In | Out |
+|---|---|
+| `OPENING` and `MONEY_IN` bank entries | `MONEY_OUT` bank entries |
+| a paid order: `total − gatewayFee`, at `paidAt` | a refund: `refundedAmount` |
+| partner funding with `throughBank` | an expense with no `paidByPartnerId` |
+| | a payout (share-out or on account), a repayment |
+
+Only what is dated on or after the `OPENING` entry counts. Crypto (BTCPay) is
+left out — it settles to a wallet; it comes in as `MONEY_IN` when cashed. An
+expense a partner paid personally never touched the bank. **No per-order cost is
+posted to the bank**: the bank sees the supplier payment when it is made
+(category Stock, kind INVENTORY), not each vial's unit cost when it sells —
+posting both is the stock double-count from §1 all over again.
+
+A **statement check** (`bank_checks`) stores what the bank app said and the book
+balance at that moment; the difference stays visible after later movements.
+
+**Ascend is a partner** (`Partner.kind = COMPANY`, exactly one). Its share of a
+split is retained profit: reported as `ascend.retained`, never paid out, never
+"owed".
+
+**The default split** is a versioned rule (`profit_split_rules`). A paid order
+with no split gets the version in effect at `paidAt`, copied onto the order —
+at the PAID transition and in a sweep before every money read. A later rule
+never rewrites an order. Rules: before the bank Asywa 70 / Fakhrul 30; from
+1 Nov 2026 00:00 MYT Fakhrul 35 / Asywa 45 / Ascend 20.
+
+**A share-out** (`payout_runs`) pays each person their part of a set of
+ready orders (paid, delivered, costed, split complete) in one transaction and
+marks them `profitShared` + `payoutRunId`. Undo deletes the run, its payouts,
+and unshares the orders. A `legacy` run pays nobody: orders settled by hand.
+
+### The cutover (`scripts/cutover-ascend-bank.ts`)
+
+Dry-run by default, `--apply` to write; safe to re-run.
+
+1. Every order ticked "Profit Shared" by hand goes into one legacy run, with
+   the payouts recorded before the bank attached to it.
+2. Capital fronted on orders not shared yet becomes one ADVANCE per person
+   (`throughBank: false`), and each share points at it (`capitalFundingId`) —
+   Fakhrul's decision D2: a debt Ascend repays in parts. On the prod copy of
+   21 Oct this was Asywa RM 5,689.00 over 24 orders and Fakhrul RM 1.00.
 
 ---
 

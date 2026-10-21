@@ -11,9 +11,8 @@ import {
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { formatPrice, formatShortDate, cn } from '@/lib/utils';
 import type { CompanyExpense, PartnerBalance, FundingType, ExpenseKind } from '@/types';
-import { PageHeader } from '@/components/admin/ui';
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const emptyForm = {
   occurredAt: todayIso(),
@@ -164,20 +163,15 @@ export default function AdminExpensesPage() {
 
   return (
     <div>
-      {/* Stacks on phones: "Company Spending" plus the back arrow plus the
-          button need more than 375px, and squeezing them onto one row clipped
-          the button. */}
-      <PageHeader
-        back="/admin/finance"
-        title="Company Spending"
-        subtitle={
-          <>
-            {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(operatingTotal)} operating
-            {stockTotal > 0 && <> · {formatPrice(stockTotal)} stock</>}
-          </>
-        }
-        actions={!adding && <Button onClick={() => { setAdding(true); setError(''); }}><Plus className="w-4 h-4" /> Add expense</Button>}
-      />
+      {/* Inside Ascend Money's header and tabs, so the section's own line is
+          a summary and the one action, not a second page title. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[14px] text-text-secondary">
+          {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(operatingTotal)} running costs
+          {stockTotal > 0 && <> · {formatPrice(stockTotal)} stock</>}
+        </p>
+        {!adding && <Button size="sm" onClick={() => { setAdding(true); setError(''); }}><Plus className="w-4 h-4" /> Add expense</Button>}
+      </div>
 
       {adding && (
         <div className={cn('panel-reveal bg-surface border border-border rounded-xl p-5 mb-6', closingForm && 'is-closing')}>
@@ -231,13 +225,18 @@ export default function AdminExpensesPage() {
               </p>
             </div>
             <div>
-              <label htmlFor="e-paidby" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Who paid</label>
+              <label htmlFor="e-paidby" className="block text-[14px] leading-5 font-medium text-text-primary mb-1.5">Paid from</label>
               <select id="e-paidby" value={form.paidByPartnerId}
                 onChange={(e) => setForm((f) => ({ ...f, paidByPartnerId: e.target.value }))}
                 className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface">
-                <option value="">Company account</option>
-                {partners.map((p) => <option key={p.partnerId} value={p.partnerId}>{p.name}</option>)}
+                <option value="">Ascend’s bank</option>
+                {partners.map((p) => <option key={p.partnerId} value={p.partnerId}>{p.name}’s own pocket</option>)}
               </select>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                {form.paidByPartnerId
+                  ? 'Never touches the bank — it is a debt to them, or their investment.'
+                  : 'Comes off the bank balance.'}
+              </p>
             </div>
             {form.paidByPartnerId && (
               <div>
@@ -336,7 +335,7 @@ export default function AdminExpensesPage() {
                       </span>
                     </span>
                   ) : (
-                    <span>Company account</span>
+                    <span>Ascend’s bank</span>
                   )}
                 </div>
               </div>

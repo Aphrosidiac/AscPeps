@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { ensureDefaultSplits } from './split-rules.js';
 import { getGatewayByBillId } from './payment-gateway.js';
 import type { PaymentFailureReason } from './payment-gateway.js';
 import { restoreOrderInventory } from './order-inventory.js';
@@ -76,6 +77,11 @@ export async function applyPaid(
   });
   if (transitioned) {
     fastify.log.info(`Order ${order.orderNumber} marked PAID`);
+    // The default profit split, as of now (utils/split-rules.ts). Never fatal:
+    // the sweep before every money read catches anything missed here.
+    await ensureDefaultSplits(fastify.prisma, [order.id]).catch((err) =>
+      fastify.log.warn({ err, orderId: order.id }, 'default split not applied')
+    );
     // Outside the transaction and after the guard: only a genuine
     // UNPAID -> PAID transition emits revenue, so duplicate callbacks and
     // reconcile sweeps can't double-count.

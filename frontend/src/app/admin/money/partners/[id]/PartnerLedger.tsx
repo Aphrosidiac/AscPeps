@@ -127,7 +127,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
         <p className="text-sm text-text-muted mb-4">The request failed or timed out.</p>
         <div className="flex items-center justify-center gap-4">
           <button onClick={retry} className="text-sm font-medium text-primary underline cursor-pointer">Try again</button>
-          <Link href="/admin/finance" className="text-sm font-medium text-text-muted hover:text-text-primary">Back to Finance</Link>
+          <Link href="/admin/money/partners" className="text-sm font-medium text-text-muted hover:text-text-primary">Back to Partners</Link>
         </div>
       </div>
     );
@@ -137,23 +137,30 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
     return (
       <div className="text-center py-16">
         <p className="text-text-muted mb-4">Partner not found.</p>
-        <Link href="/admin/finance" className="text-primary text-sm font-medium hover:underline">Back to Finance</Link>
+        <Link href="/admin/money/partners" className="text-primary text-sm font-medium hover:underline">Back to Partners</Link>
       </div>
     );
   }
 
-  const { partner, balance, earnings, funding, payouts } = data;
+  const { partner, balance, ascend, earnings, funding, payouts } = data;
   const advances = funding.filter((f) => f.type === 'ADVANCE');
   const contributions = funding.filter((f) => f.type === 'CONTRIBUTION');
 
   return (
     <div>
       <PageHeader
-        back="/admin/finance"
+        back="/admin/money/partners"
         title={partner.name}
-        subtitle={partner.active ? 'Active partner' : 'Inactive'}
-        actions={<Button onClick={() => setDialogOpen(true)}><Plus className="w-4 h-4" /> Record money</Button>}
+        subtitle={ascend ? 'Ascend itself — its share stays in the bank' : partner.active ? 'Active partner' : 'Inactive'}
+        actions={balance ? <Button onClick={() => setDialogOpen(true)}><Plus className="w-4 h-4" /> Record money</Button> : undefined}
       />
+
+      {ascend && (
+        <div className="bg-surface border border-border rounded-xl p-5 mb-6 max-w-md">
+          <Row label="Kept from every split" value={formatPrice(ascend.retained)} />
+          <Row label="On orders not shared yet" value={formatPrice(ascend.toKeep)} tone="muted" />
+        </div>
+      )}
 
       {error && <p className="text-sm text-danger mb-4">{error}</p>}
 
@@ -162,22 +169,27 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
         <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface border border-border rounded-xl p-5 mb-6">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-3">Balance</p>
           <div className="max-w-md">
-            <Row label="Earned from orders" value={formatPrice(balance.earned)} />
-            <Row label="Capital fronted on orders" value={formatPrice(balance.capitalFronted)} />
-            <Row label="Advances outstanding" value={formatPrice(balance.advancesOutstanding)} />
-            <Row label="Profit paid out" value={`−${formatPrice(balance.paidOut)}`} tone="muted" />
+            <Row label="Profit on orders not shared out yet" value={formatPrice(balance.toShare)} />
+            {balance.capitalOwed > 0 && <Row label="Capital fronted, still due" value={formatPrice(balance.capitalOwed)} />}
+            <Row label="Lent to Ascend, not repaid" value={formatPrice(balance.advancesOutstanding)} />
+            {balance.owed !== balance.toShare + balance.capitalOwed + balance.advancesOutstanding && (
+              <Row
+                label="Paid on account"
+                value={`−${formatPrice(balance.toShare + balance.capitalOwed + balance.advancesOutstanding - balance.owed)}`}
+                tone="muted"
+              />
+            )}
             <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2 mt-2">
-              <span className="font-display font-bold">Owed</span>
+              <span className="font-display font-bold">Owed now</span>
               <span className={cn('font-display text-lg font-bold tabular-nums', balance.owed < 0 && 'text-danger')}>
                 {formatPrice(balance.owed)}
               </span>
             </div>
-            {balance.contributed > 0 && (
-              <p className="text-xs text-text-muted mt-3">
-                Plus {formatPrice(balance.contributed)} contributed as capital — never repaid, so it sits
-                outside this sum by design.
-              </p>
-            )}
+            <p className="text-xs text-text-muted mt-3">
+              All time: earned {formatPrice(balance.earned)} · paid out through the system {formatPrice(balance.paidOut)}
+              {balance.capitalFronted > 0 && <> · fronted {formatPrice(balance.capitalFronted)} on orders before the bank</>}
+              {balance.contributed > 0 && <> · invested {formatPrice(balance.contributed)} (never repaid, so outside the sum)</>}
+            </p>
           </div>
         </div>
       )}
@@ -185,8 +197,8 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
       {/* Advances */}
       <div style={{ animationDelay: `45ms` }} className="row-rise bg-surface border border-border rounded-xl overflow-hidden mb-6">
         <div className="px-5 py-3.5 border-b border-border">
-          <h2 className="font-display font-semibold text-sm">Advances</h2>
-          <p className="text-xs text-text-muted mt-0.5">Money in that the company owes back</p>
+          <h2 className="font-display font-semibold text-sm">Lent to Ascend</h2>
+          <p className="text-xs text-text-muted mt-0.5">Ascend owes these back — repay in parts, from the bank</p>
         </div>
         {advances.length === 0 ? (
           <p className="px-5 py-6 text-sm text-text-muted text-center">No advances.</p>
@@ -349,6 +361,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                   <p className="text-xs text-text-muted mt-1">
                     {formatShortDate(e.occurredAt)} · {bpsToPercent(e.shareBps)}% of{' '}
                     {e.costed ? formatPrice(e.orderProfit) : 'an order not costed yet'}
+                    {' · '}{e.shared ? 'shared' : <span className="text-warning">not shared yet</span>}
                   </p>
                 </div>
               ))}
@@ -362,7 +375,8 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                     <th className="text-left px-3 py-2.5">Date</th>
                     <th className="text-right px-3 py-2.5">Share</th>
                     <th className="text-right px-3 py-2.5">Order profit</th>
-                    <th className="text-right px-5 py-2.5">Their cut</th>
+                    <th className="text-right px-3 py-2.5">Their cut</th>
+                    <th className="text-left px-5 py-2.5">Shared</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -378,8 +392,17 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                       <td className="px-3 py-2.5 text-right tabular-nums text-text-secondary">
                         {e.costed ? formatPrice(e.orderProfit) : <span className="text-text-muted">not costed</span>}
                       </td>
-                      <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
+                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
                         {e.costed ? formatPrice(e.amount) : <span className="text-text-muted font-normal">—</span>}
+                      </td>
+                      <td className="px-5 py-2.5 text-xs whitespace-nowrap">
+                        {e.shared ? (
+                          <span className="text-text-secondary">
+                            {e.sharedAt ? formatShortDate(e.sharedAt) : 'Yes'}{e.sharedOutside ? ' · by hand' : ''}
+                          </span>
+                        ) : (
+                          <span className="text-warning">Not yet</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -402,11 +425,16 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
             {payouts.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-4 px-5 py-3">
                 <div className="min-w-0">
-                  <p className="text-sm">{p.note || 'Profit payout'}</p>
+                  <p className="text-sm">{p.runId ? `Share-out${p.note ? ` · ${p.note}` : ''}` : p.note || 'Paid on account'}</p>
                   <p className="text-xs text-text-muted">{formatShortDate(p.occurredAt)}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-sm font-semibold tabular-nums">{formatPrice(p.amount)}</span>
+                  {/* A share-out's payouts go together: undo the share-out,
+                      not one person's half of it. */}
+                  {p.runId ? (
+                    <Link href={`/admin/money/share#run-${p.runId}`} className="text-xs text-primary hover:underline">Share-out</Link>
+                  ) : (
                   <button
                     onClick={() => remove(() => adminDeletePayout(token!, p.id), 'Could not delete that payout.')}
                     aria-label="Delete payout"
@@ -414,6 +442,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                  )}
                 </div>
               </div>
             ))}

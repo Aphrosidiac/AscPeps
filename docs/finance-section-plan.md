@@ -6,6 +6,11 @@
 >
 > For what the code actually does today, read [bookkeeping.md](./bookkeeping.md).
 >
+> **Superseded in part on 2026-10-21 by [ascend-bank-plan.md](./ascend-bank-plan.md):**
+> Ascend has its own bank and is a partner in the split, nobody fronts order
+> capital any more, the default split is a versioned rule on the backend, and
+> Finance became Ascend Money (`/admin/money`).
+>
 > Built: `Partner`, `CompanyExpense`, `PartnerFunding`, `PartnerRepayment` and
 > `ProfitPayout` (migration `20260731000000_add_finance_section`), the
 > `OrderProfitShare.partnerId` backfill, balances recomputed on read, and the

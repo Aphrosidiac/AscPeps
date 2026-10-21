@@ -3,6 +3,7 @@ import { isIncludedItem } from '../../utils/order-lines.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { costOrder, allocate } from '../../utils/profit.js';
 import { RESTOCK_BELOW } from '../../utils/restock.js';
+import { ensureDefaultSplits } from '../../utils/split-rules.js';
 
 export async function getDashboardStats(fastify: FastifyInstance) {
   const today = new Date();
@@ -120,6 +121,9 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
     ? Math.max(1, Math.round((Date.now() - since.getTime()) / 86_400_000))
     : requestedDays;
 
+  // Same sweep as Finance: a paid order with no split gets the default first.
+  await ensureDefaultSplits(fastify.prisma);
+
   const orders = await fastify.prisma.order.findMany({
     where: { createdAt: { gte: since }, deletedAt: null },
     select: {
@@ -142,7 +146,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
         },
       },
       extraCosts: { select: { amount: true } },
-      profitShares: { select: { name: true, shareBps: true } },
+      profitShares: { select: { name: true, shareBps: true, partnerId: true, partner: { select: { name: true, kind: true } } } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -177,7 +181,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   // recorded nowhere — so reported margin was overstated by exactly this.
   let totalGatewayFees = 0;
   let totalRefunded = 0;
-  const profitByPerson: Record<string, number> = {};
+  const profitByPerson: Record<string, { name: string; company: boolean; amount: number }> = {};
 
   for (const order of orders) {
     const dayKey = localDayKey(order.createdAt);
@@ -221,8 +225,13 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
         const shares = order.profitShares;
         if (shares.length > 0) {
           const amounts = allocate(costing.profit, shares.map((s) => s.shareBps));
+          // By partner, labelled with today's name: the frozen name on each
+          // share would split a renamed partner (Asyraf → Asywa) in two.
           shares.forEach((share, i) => {
-            profitByPerson[share.name] = (profitByPerson[share.name] || 0) + amounts[i];
+            const key = share.partnerId ?? `name:${share.name}`;
+            const cur = profitByPerson[key] ?? { name: share.partner?.name ?? share.name, company: share.partner?.kind === 'COMPANY', amount: 0 };
+            cur.amount += amounts[i];
+            profitByPerson[key] = cur;
           });
         }
       }
@@ -260,9 +269,10 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   // Against costedRevenue, not totalRevenue — see the note where these are summed.
   const profitMargin = costedRevenue > 0 ? Math.round((netProfit / costedRevenue) * 10000) / 100 : 0;
 
-  const profitShare = Object.entries(profitByPerson)
-    .map(([name, amount]) => ({ name, amount }))
-    .sort((a, b) => b.amount - a.amount);
+  // People first, Ascend's retained share last.
+  const profitShare = Object.values(profitByPerson).sort(
+    (a, b) => Number(a.company) - Number(b.company) || b.amount - a.amount
+  );
 
   return {
     period: { days, since: since.toISOString() },

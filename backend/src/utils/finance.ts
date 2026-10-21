@@ -34,6 +34,12 @@ export interface FinancePartner {
   id: string;
   name: string;
   active: boolean;
+  /**
+   * COMPANY is Ascend itself: its share of a split is retained profit that
+   * stays in the bank. It is reported apart (`ascend`) and is never "owed".
+   * Absent is read as PERSON, so older callers keep their behaviour.
+   */
+  kind?: 'PERSON' | 'COMPANY';
 }
 
 export interface FinanceOrder extends CostableOrder {
@@ -43,7 +49,19 @@ export interface FinanceOrder extends CostableOrder {
    * COSTS this person paid for up front — money owed back to them on top of
    * their profit cut, never a deduction.
    */
-  profitShares: { partnerId: string | null; shareBps: number; capitalAmount: number }[];
+  profitShares: {
+    partnerId: string | null;
+    shareBps: number;
+    capitalAmount: number;
+    /** Set once this capital became an ADVANCE at the bank cutover. */
+    capitalFundingId?: string | null;
+  }[];
+  /**
+   * The order's profit has been shared out — by a share-out run, or ticked by
+   * hand before the bank. A shared order is settled: its profit and its
+   * fronted capital are no longer owed to anyone.
+   */
+  shared?: boolean;
 }
 
 export type ExpenseKind = 'OPERATING' | 'INVENTORY';
@@ -69,26 +87,53 @@ export interface FinanceFunding {
 export interface FinancePayout {
   partnerId: string;
   amount: number;
+  /**
+   * The share-out it was part of. A run's payouts settle the run's orders,
+   * which drop out of `toShare` — so only a payout with no run (a payment on
+   * account) is taken off what is owed.
+   */
+  runId?: string | null;
 }
 
 export interface PartnerBalance {
   partnerId: string;
   name: string;
   active: boolean;
+  kind: 'PERSON' | 'COMPANY';
   /** Their cut of profit from every fully-costed, paid order. */
   earned: number;
-  /** Order costs they paid for out of pocket. Owed back to them. */
+  /** The part of `earned` from orders not shared out yet. */
+  toShare: number;
+  /**
+   * Order costs they paid for out of pocket, every order ever — history. The
+   * bank pays for orders now; see `capitalOwed` for what is still due.
+   */
   capitalFronted: number;
+  /**
+   * Fronted capital on orders not yet shared out and not yet moved into an
+   * advance at the cutover. Zero once the cutover script has run.
+   */
+  capitalOwed: number;
   /** Capital they never want back. Never counted in `owed`. */
   contributed: number;
   advancesTotal: number;
   advancesRepaid: number;
   /** Money the company still has to return to them. */
   advancesOutstanding: number;
-  /** Earned profit already handed over. */
+  /** Every payout recorded to them — share-outs and payments on account. */
   paidOut: number;
-  /** earned + capitalFronted + advancesOutstanding − paidOut */
+  /** toShare + capitalOwed + advancesOutstanding − payouts on account */
   owed: number;
+}
+
+/** Ascend's own position. Its share is never paid out — it stays in the bank. */
+export interface AscendBalance {
+  partnerId: string;
+  name: string;
+  /** Ascend's share of every costed order's profit. */
+  retained: number;
+  /** The part of `retained` on orders not shared out yet. */
+  toKeep: number;
 }
 
 export interface FinanceSummary {
@@ -139,7 +184,10 @@ export interface FinanceSummary {
   costedOrders: number;
   /** Paid orders still missing a cost — their PROFIT is in none of the above. */
   uncostedOrders: number;
+  /** People only. Ascend is `ascend`. */
   partners: PartnerBalance[];
+  /** Null on a database with no COMPANY partner (before the bank migration). */
+  ascend: AscendBalance | null;
 }
 
 export function computeFinance(input: {
@@ -155,8 +203,11 @@ export function computeFinance(input: {
     partnerId: p.id,
     name: p.name,
     active: p.active,
+    kind: p.kind ?? 'PERSON',
     earned: 0,
+    toShare: 0,
     capitalFronted: 0,
+    capitalOwed: 0,
     contributed: 0,
     advancesTotal: 0,
     advancesRepaid: 0,
@@ -206,7 +257,9 @@ export function computeFinance(input: {
 
     const amounts = allocate(profit, shares.map((s) => s.shareBps));
     shares.forEach((share, i) => {
-      byId.get(share.partnerId as string)!.earned += amounts[i];
+      const balance = byId.get(share.partnerId as string)!;
+      balance.earned += amounts[i];
+      if (!order.shared) balance.toShare += amounts[i];
     });
   }
 
@@ -223,7 +276,13 @@ export function computeFinance(input: {
     for (const share of order.profitShares) {
       if (!share.partnerId || share.capitalAmount === 0) continue;
       const balance = byId.get(share.partnerId);
-      if (balance) balance.capitalFronted += share.capitalAmount;
+      if (!balance) continue;
+      balance.capitalFronted += share.capitalAmount;
+      // A shared order was settled in full, capital included — that is what
+      // ticking "Profit Shared" meant before the bank. Capital that became an
+      // advance at the cutover is owed through that advance instead; counting
+      // it here as well would pay it back twice.
+      if (!order.shared && !share.capitalFundingId) balance.capitalOwed += share.capitalAmount;
     }
   }
 
@@ -262,18 +321,30 @@ export function computeFinance(input: {
   }
 
   /* ----- money out */
+  const onAccount = new Map<string, number>();
   for (const payout of payouts) {
     const balance = byId.get(payout.partnerId);
-    if (balance) balance.paidOut += payout.amount;
+    if (!balance) continue;
+    balance.paidOut += payout.amount;
+    if (!payout.runId) onAccount.set(payout.partnerId, (onAccount.get(payout.partnerId) ?? 0) + payout.amount);
   }
 
-  const balances = [...byId.values()];
-  for (const b of balances) {
-    // Contributions are deliberately absent: that is the entire difference
-    // between the two funding types.
-    b.owed = b.earned + b.capitalFronted + b.advancesOutstanding - b.paidOut;
+  // Owed is built from what is still OPEN, not from lifetime earnings less
+  // lifetime payouts. Before the bank, profit was settled by ticking "Profit
+  // Shared" with the money moving outside the system and almost never a payout
+  // recorded, so earned − paidOut read as months of profit still owed. A shared
+  // order is settled; what is owed is the unshared orders, the capital still
+  // due, open advances, less anything paid on account.
+  //
+  // Contributions are deliberately absent: that is the entire difference
+  // between the two funding types.
+  const all = [...byId.values()];
+  for (const b of all) {
+    b.owed = b.toShare + b.capitalOwed + b.advancesOutstanding - (onAccount.get(b.partnerId) ?? 0);
   }
 
+  const company = all.find((b) => b.kind === 'COMPANY') ?? null;
+  const balances = all.filter((b) => b.kind !== 'COMPANY');
   balances.sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
 
   // Derived from its own components rather than accumulated separately, so the
@@ -301,5 +372,8 @@ export function computeFinance(input: {
     costedOrders,
     uncostedOrders,
     partners: balances,
+    ascend: company
+      ? { partnerId: company.partnerId, name: company.name, retained: company.earned, toKeep: company.toShare }
+      : null,
   };
 }

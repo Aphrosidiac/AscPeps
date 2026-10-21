@@ -52,11 +52,18 @@ const nextConfig: NextConfig = {
       "reconstitution-syringe",
       "syringe",
     ]);
-    return Object.entries(productRedirects as Record<string, string>).map(([from, to]) => ({
-      source: `/products/${from}`,
-      destination: unpublishedTargets.has(to) ? "/products" : `/products/${to}`,
-      permanent: true,
-    }));
+    return [
+      ...Object.entries(productRedirects as Record<string, string>).map(([from, to]) => ({
+        source: `/products/${from}`,
+        destination: unpublishedTargets.has(to) ? "/products" : `/products/${to}`,
+        permanent: true,
+      })),
+      // Finance became Ascend Money when Ascend got its own bank (2026-10-21).
+      // Not permanent: bookmarks and old assistant replies follow, and the
+      // admin path is free to change again without browsers caching a 308.
+      { source: "/admin/finance", destination: "/admin/money", permanent: false },
+      { source: "/admin/finance/:path*", destination: "/admin/money/:path*", permanent: false },
+    ];
   },
 };
 

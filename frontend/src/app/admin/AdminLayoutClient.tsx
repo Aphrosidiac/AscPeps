@@ -14,7 +14,7 @@ const navItems = [
   // AI button wears: Abby is the secretary on the line, not a magic wand.
   { href: '/admin/assistant', label: 'Assistant', icon: Headset },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/admin/finance', label: 'Finance', icon: Wallet },
+  { href: '/admin/money', label: 'Ascend Money', icon: Wallet },
   // Beside Finance, not off with Settings: a document is almost always the
   // receipt behind a number on the page above it.
   { href: '/admin/documents', label: 'Documents', icon: FolderOpen },

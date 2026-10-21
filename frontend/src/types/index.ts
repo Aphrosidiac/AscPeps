@@ -245,6 +245,10 @@ export interface Order {
   // whether a split exists and totals 100%, without shipping every name and
   // amount into a list of 24 orders.
   profitShares?: OrderProfitShare[];
+  /** The share-out that settled this order's profit; legacy = shared by hand. */
+  payoutRun?: { id: string; occurredAt: string; legacy: boolean } | null;
+  /** The default split rule for this order (in effect when it was paid, or now). */
+  defaultSplit?: SplitRuleShare[];
   // Only present on the admin single-order response, not the list.
   extraCosts?: OrderExtraCost[];
 }
@@ -274,14 +278,23 @@ export interface OrderProfitShare {
   name: string;
   // Basis points — 5000 = 50%. Governs PROFIT only.
   shareBps: number;
-  // Cents of this order's COSTS this person paid up front. Owed back to them,
-  // so it is ADDED to their profit cut, never subtracted.
+  // Cents of this order's COSTS this person paid up front, before Ascend's bank
+  // paid for orders. History: what was still unpaid at the cutover became
+  // their advance (capitalFundingId), and nothing writes it any more.
   capitalAmount: number;
+  capitalFundingId?: string | null;
+  partnerId: string | null;
+  /** The partner as they are now — `name` above is frozen as saved. */
+  partner?: { name: string; kind: PartnerKind } | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type OrderProfitShareInput = Pick<OrderProfitShare, 'name' | 'shareBps' | 'capitalAmount'>;
+/** A row of an order's split as sent to the API — by partner, never a typed name. */
+export interface OrderProfitShareInput {
+  partnerId: string;
+  shareBps: number;
+}
 
 export interface DiscountCode {
   id: string;
@@ -399,9 +412,13 @@ export type InsightFigureInput = Pick<
 
 export type FundingType = 'CONTRIBUTION' | 'ADVANCE';
 
+/** PERSON gets paid out; COMPANY is Ascend — its share stays in the bank. */
+export type PartnerKind = 'PERSON' | 'COMPANY';
+
 export interface Partner {
   id: string;
   name: string;
+  kind: PartnerKind;
   active: boolean;
   notes: string | null;
   createdAt: string;
@@ -415,17 +432,31 @@ export interface PartnerBalance {
   /** Nothing references them, so they can be deleted outright rather than only
    *  deactivated. Computed server-side — zero balances do not imply this. */
   removable?: boolean;
+  kind: PartnerKind;
   earned: number;
-  /** Order costs they paid out of pocket. Owed back to them. */
+  /** The part of `earned` on orders not shared out yet. */
+  toShare: number;
+  /** Capital fronted on orders, ever — history since the bank pays for orders. */
   capitalFronted: number;
+  /** Fronted capital still due and not yet moved into an advance. */
+  capitalOwed: number;
   /** Capital they never want back — deliberately absent from `owed`. */
   contributed: number;
   advancesTotal: number;
   advancesRepaid: number;
   advancesOutstanding: number;
   paidOut: number;
-  /** earned + capitalFronted + advancesOutstanding − paidOut */
+  /** toShare + capitalOwed + advancesOutstanding − payouts on account */
   owed: number;
+}
+
+export interface AscendBalance {
+  partnerId: string;
+  name: string;
+  /** Ascend's share of every costed order's profit — kept in the bank. */
+  retained: number;
+  /** The part of `retained` on orders not shared out yet. */
+  toKeep: number;
 }
 
 export interface PartnerRef {
@@ -509,6 +540,8 @@ export interface PartnerFunding {
   description: string;
   /** Set when this funding is a partner having paid a company expense. */
   expenseId: string | null;
+  /** False for money that never touched Ascend's bank. */
+  throughBank?: boolean;
   expense?: { id: string; description: string; category: string } | null;
   repayments: PartnerRepayment[];
 }
@@ -527,6 +560,7 @@ export interface ProfitPayout {
   amount: number;
   occurredAt: string;
   note: string | null;
+  runId?: string | null;
 }
 
 export interface PartnerEarning {
@@ -539,6 +573,11 @@ export interface PartnerEarning {
   costed: boolean;
   /** Money went back to the customer, so this order earned less — or nothing. */
   refunded: boolean;
+  capitalAmount: number;
+  shared: boolean;
+  sharedAt: string | null;
+  /** Shared by hand, outside the system. */
+  sharedOutside: boolean;
 }
 
 export interface FinanceOverview {
@@ -569,7 +608,151 @@ export interface FinanceOverview {
   costedOrders: number;
   uncostedOrders: number;
   partners: PartnerBalance[];
+  ascend: AscendBalance | null;
   recentActivity: FinanceActivity[];
+}
+
+/* -------------------------------------------------------------- Ascend Money */
+
+export type BankSource =
+  | 'OPENING' | 'MONEY_IN' | 'MONEY_OUT' | 'SALE' | 'REFUND' | 'CAPITAL' | 'EXPENSE' | 'PAYOUT' | 'REPAYMENT';
+
+export interface BankMovement {
+  key: string;
+  source: BankSource;
+  occurredAt: string;
+  /** Signed cents: positive in, negative out. */
+  amount: number;
+  description: string;
+  partnerName: string | null;
+  ref: { type: 'bank_entry' | 'order' | 'funding' | 'expense' | 'payout_run' | 'payout' | 'repayment'; id: string; label?: string };
+  /** Running balance after this movement. */
+  balance: number;
+}
+
+export interface BankCheck {
+  id: string;
+  checkedAt: string;
+  statementBalance: number;
+  bookBalance: number;
+  difference: number;
+  note: string | null;
+  createdBy: string | null;
+}
+
+export interface BankFlows {
+  opening: number;
+  moneyIn: number;
+  moneyOut: number;
+  closing: number;
+}
+
+export interface BankLedger {
+  started: boolean;
+  startedAt: string | null;
+  balance: number;
+  flows: BankFlows;
+  /** Newest first. */
+  movements: BankMovement[];
+  checks: BankCheck[];
+  lastCheck: BankCheck | null;
+}
+
+export interface SplitRuleShare {
+  partnerId: string;
+  name: string;
+  kind: PartnerKind;
+  shareBps: number;
+}
+
+export interface SplitRule {
+  id: string;
+  effectiveFrom: string;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  shares: SplitRuleShare[];
+}
+
+export interface ShareOutPart extends SplitRuleShare {
+  /** Null while the order is not costed. */
+  amount: number | null;
+}
+
+export interface ShareOutOrder {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  status: Order['status'];
+  paymentStatus: Order['paymentStatus'];
+  paidAt: string;
+  revenue: number;
+  profit: number | null;
+  costed: boolean;
+  shared: boolean;
+  parts: ShareOutPart[];
+}
+
+export interface PayoutRunSummary {
+  id: string;
+  occurredAt: string;
+  note: string | null;
+  /** Shared by hand, outside the system — no payouts. */
+  legacy: boolean;
+  createdBy: string | null;
+  total: number;
+  payouts: { partnerId: string; name: string; amount: number }[];
+  orders: { id: string; orderNumber: string }[];
+}
+
+export interface ShareOutQueue {
+  ready: ShareOutOrder[];
+  waiting: {
+    needsCosting: { id: string; orderNumber: string; paidAt: string }[];
+    /** Costed, but the split is missing a partner or not 100%. */
+    needsSplit: { id: string; orderNumber: string; paidAt: string }[];
+    onTheWay: { id: string; orderNumber: string; status: Order['status']; paidAt: string }[];
+  };
+  runs: PayoutRunSummary[];
+}
+
+export interface MoneyOverview {
+  period: {
+    from: string | null;
+    to: string | null;
+    revenue: number;
+    refunded: number;
+    costedRevenue: number;
+    uncostedRevenue: number;
+    cogs: number;
+    extraCosts: number;
+    gatewayFees: number;
+    grossOrderProfit: number;
+    operatingSpend: number;
+    inventoryPurchased: number;
+    netProfit: number;
+    costedOrders: number;
+    uncostedOrders: number;
+    ascendKept: number;
+    earnedByPerson: { partnerId: string; name: string; earned: number }[];
+  };
+  bank: {
+    started: boolean;
+    startedAt: string | null;
+    balance: number;
+    flows: BankFlows;
+    lastCheck: BankCheck | null;
+    daysSinceCheck: number | null;
+    recent: BankMovement[];
+  };
+  ascend: AscendBalance | null;
+  partners: PartnerBalance[];
+  stockOnHand: number;
+  totalAdvancesOutstanding: number;
+  readyToShare: { orders: number; people: { partnerId: string; name: string; amount: number }[]; ascend: number; total: number };
+  waiting: { needsCosting: number; needsSplit: number; onTheWay: number };
+  splitRule: SplitRule | null;
+  nextSplitRule: SplitRule | null;
 }
 
 export type FinanceActivityKind =
@@ -598,7 +781,9 @@ export interface FinanceActivity {
 
 export interface PartnerDetail {
   partner: Partner;
-  balance?: PartnerBalance;
+  balance: PartnerBalance | null;
+  /** Set when the partner is Ascend itself. */
+  ascend: AscendBalance | null;
   earnings: PartnerEarning[];
   funding: PartnerFunding[];
   payouts: ProfitPayout[];

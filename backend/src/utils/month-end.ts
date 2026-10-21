@@ -6,6 +6,9 @@ import { computeFinance } from './finance.js';
 import { RESTOCK_BELOW } from './restock.js';
 import { getVariantDisplayName } from './product-addons.js';
 import { loadFinanceInput } from '../modules/admin/admin-finance.controller.js';
+import { getShareOut } from '../modules/admin/admin-money.controller.js';
+import { bankFlows, loadBank } from './bank.js';
+import { ensureDefaultSplits } from './split-rules.js';
 import { malaysiaDay, readHour, readSetting, writeSetting, SETTING_KEYS } from '../modules/ai-agent/schedule.js';
 
 /**
@@ -77,8 +80,14 @@ export interface MonthEndReport {
   inventoryBought: number;
   netProfit: number;
   partners: { name: string; earned: number; capitalFronted: number; owedToDate: number }[];
+  /** Ascend's own share of the month's profit — it stays in the bank. */
+  ascendKept: number;
   /** Profit on costed orders nobody was given a share of. */
   unsplitProfit: number;
+  /** Ascend's bank over the month, and as of now. Null before it is tracked. */
+  bank: { opening: number; moneyIn: number; moneyOut: number; closing: number; now: number; lastCheck: { on: Date; difference: number } | null } | null;
+  /** Orders ready to share out now, and what goes to people from them. */
+  readyToShare: { orders: number; toPeople: number };
   hanging: {
     unpaid: { orderNumber: string; customer: string; total: number; days: number }[];
     toShip: { orderNumber: string; customer: string; total: number; days: number }[];
@@ -104,7 +113,11 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
   const prisma = fastify.prisma;
   const previousMonth = shiftMonth(month, -1);
 
-  const [orders, expenses, openOrders, variants, financeInput, previousRevenue] = await Promise.all([
+  // The default split goes on paid orders first, so the month's orders read
+  // below carry it — the same sweep loadFinanceInput runs.
+  await ensureDefaultSplits(prisma);
+
+  const [orders, expenses, openOrders, variants, financeInput, previousRevenue, bank, share] = await Promise.all([
     prisma.order.findMany({
       where: { deletedAt: null, createdAt: { gte: start, lt: end } },
       select: {
@@ -151,6 +164,8 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
     }),
     loadFinanceInput(fastify),
     monthRevenue(fastify, previousMonth),
+    loadBank(fastify),
+    getShareOut(fastify),
   ]);
 
   const counts = { placed: orders.length, paid: 0, unpaid: 0, failed: 0, cancelled: 0 };
@@ -225,6 +240,10 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
   // Lifetime balances from the Finance page's own maths: what the company
   // owes each partner right now, after payouts and advances.
   const finance = computeFinance(financeInput);
+  const ascendKept = finance.ascend ? earned.get(finance.ascend.partnerId) ?? 0 : 0;
+  const flows = bank.started ? bankFlows(bank.movements, start, end) : null;
+  let toPeople = 0;
+  for (const o of share.ready) for (const p of o.parts) if (p.kind !== 'COMPANY') toPeople += p.amount ?? 0;
   const partners = finance.partners
     .filter((p) => earned.has(p.partnerId) || capital.has(p.partnerId) || (p.active && p.owed !== 0))
     .map((p) => ({ name: p.name, earned: earned.get(p.partnerId) ?? 0, capitalFronted: capital.get(p.partnerId) ?? 0, owedToDate: p.owed }))
@@ -252,7 +271,16 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
     inventoryBought,
     netProfit: grossProfit - operatingSpend,
     partners,
+    ascendKept,
     unsplitProfit,
+    bank: flows
+      ? {
+          ...flows,
+          now: bank.balance,
+          lastCheck: bank.lastCheck ? { on: bank.lastCheck.checkedAt, difference: bank.lastCheck.difference } : null,
+        }
+      : null,
+    readyToShare: { orders: share.ready.length, toPeople },
     hanging: {
       unpaid: openOrders.filter((o) => o.paymentStatus === 'UNPAID').map(open),
       toShip: openOrders.filter((o) => o.paymentStatus === 'PAID').map(open),
@@ -337,9 +365,21 @@ export function monthEndText(r: MonthEndReport): string {
   if (!r.partners.length) out.push('Nothing split yet this month.');
   for (const p of r.partners) {
     out.push(`${p.name}: *${rm(p.earned)}*${p.capitalFronted ? ` · fronted ${rm(p.capitalFronted)} of costs` : ''}`);
-    out.push(`  owed to date ${rm(p.owedToDate)}`);
+    out.push(`  owed now ${rm(p.owedToDate)}`);
   }
+  if (r.ascendKept) out.push(`Ascend kept: *${rm(r.ascendKept)}* (stays in the bank)`);
   if (r.unsplitProfit) out.push(`${rm(r.unsplitProfit)} of profit is on orders with no split set`);
+  if (r.readyToShare.orders) {
+    out.push(`Ready to share now: ${r.readyToShare.orders} order${r.readyToShare.orders === 1 ? '' : 's'}, ${rm(r.readyToShare.toPeople)} to pay out`);
+  }
+
+  if (r.bank) {
+    out.push('', "*Ascend's bank*");
+    out.push(`Start ${rm(r.bank.opening)} · in ${rm(r.bank.moneyIn)} · out ${rm(r.bank.moneyOut)} → end *${rm(r.bank.closing)}*`);
+    if (r.partial || r.bank.now !== r.bank.closing) out.push(`Now ${rm(r.bank.now)}`);
+    if (!r.bank.lastCheck) out.push('Not checked against the bank statement yet.');
+    else if (r.bank.lastCheck.difference !== 0) out.push(`⚠️ Last statement check was off by ${rm(r.bank.lastCheck.difference)}`);
+  }
 
   out.push('', '*Hanging orders*');
   if (!r.hanging.unpaid.length && !r.hanging.toShip.length) out.push('None — everything is paid and shipped.');

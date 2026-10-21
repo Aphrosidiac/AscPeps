@@ -131,10 +131,14 @@ order_items(id, "orderId", "productId" AS the variant id, quantity,
   - "unitCost" is NULL until an admin prices the line.
 order_extra_costs(id, "orderId", label, amount)
 order_profit_shares(id, "orderId", "partnerId", name, "shareBps",
-       "capitalAmount")
-  - "shareBps" is basis points: 5000 = 50%.
-  - "capitalAmount" is cents that person PUT IN to cover the order's costs.
-    It is paid back to them on top of their profit cut — never subtracted.
+       "capitalAmount", "capitalFundingId")
+  - "shareBps" is basis points: 5000 = 50%. The partner with kind COMPANY is
+    Ascend itself — its share stays in Ascend's bank.
+  - "capitalAmount" is LEGACY: cents a person fronted before Ascend's bank
+    (21 Oct 2026) paid for orders. What was unpaid became an ADVANCE
+    ("capitalFundingId"). Never add it to what anyone is owed.
+orders."profitShared" / "payoutRunId": shared out in payout_runs(id,
+       "occurredAt", legacy, note) — legacy = settled by hand, no payouts.
 
 discount_codes(id, code, description, "discountType", "discountValue",
        "minOrderAmount", "maxUses", "usedCount", "isActive", "expiresAt")
@@ -142,13 +146,20 @@ insights(id, title, slug, category, excerpt, published, "publishedAt")
 insight_figures(id, "insightId", "order", "imageUrl", caption)
 email_outbox(id, "orderId", type, "toEmail", status, attempts, "sentAt")
 
-partners(id, name, active, notes)
-company_expenses(id, "occurredAt", category, description, amount,
-       "paidByPartnerId")
+partners(id, name, kind, active, notes)   -- kind: PERSON|COMPANY (Ascend)
+company_expenses(id, "occurredAt", category, description, amount, kind,
+       "paidByPartnerId")   -- paidByPartnerId NULL = paid from Ascend's bank
 partner_funding(id, "partnerId", type, amount, "occurredAt", description,
-       "expenseId")   -- type: CONTRIBUTION|ADVANCE
+       "expenseId", "throughBank")   -- type: CONTRIBUTION|ADVANCE
 partner_repayments(id, "fundingId", amount, "occurredAt")
-profit_payouts(id, "partnerId", amount, "occurredAt")
+profit_payouts(id, "partnerId", amount, "occurredAt", "runId")
+profit_split_rules(id, "effectiveFrom") + profit_split_rule_shares("ruleId",
+       "partnerId", "shareBps")   -- the default split, versioned
+bank_entries(id, kind, amount, "occurredAt", description)
+       -- only OPENING / MONEY_IN / MONEY_OUT. The bank BALANCE is derived from
+       -- these plus paid orders, expenses, funding, payouts and repayments:
+       -- never sum it by hand, use bank_overview.
+bank_checks(id, "checkedAt", "statementBalance", "bookBalance")
 
 agent_threads(id, kind, title, "chatKey", model, "costUsd", turns, "lastMessageAt")
        -- kind: chat|whatsapp|reflect|digest

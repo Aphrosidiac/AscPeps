@@ -23,12 +23,16 @@ export interface ProgressableOrder {
   paymentStatus: Order['paymentStatus'];
   deletedAt: string | null;
   items: { unitCost?: number | null; unitPrice?: number }[];
-  profitShares?: { shareBps: number }[];
+  profitShares?: { shareBps: number; partnerId?: string | null }[];
+  /** In a share-out — the profit has actually gone to its people. */
+  profitShared?: boolean;
 }
 
 export type OrderProgressState =
-  /** Paid, delivered, costed, split recorded. Nothing left to do. */
+  /** Paid, delivered, costed and shared out. Nothing left to do. */
   | 'COMPLETE'
+  /** Paid, delivered and costed — its profit is waiting to be shared out. */
+  | 'TO_SHARE'
   /** Costed and split, but still waiting on payment or delivery. */
   | 'COSTED'
   /** Has line items with no unit cost — profit is unknown. */
@@ -38,7 +42,7 @@ export type OrderProgressState =
   /** Cancelled or deleted — there is nothing to cost or divide. */
   | 'NONE';
 
-export type OrderCheckKey = 'paid' | 'delivered' | 'costed' | 'split';
+export type OrderCheckKey = 'paid' | 'delivered' | 'costed' | 'split' | 'shared';
 
 export interface OrderCheck {
   key: OrderCheckKey;
@@ -65,7 +69,12 @@ const STYLES: Record<OrderProgressState, { label: string; className: string; hin
   COMPLETE: {
     label: 'Complete',
     className: 'bg-green-100 text-green-800',
-    hint: 'Paid, delivered, costed, and the split is recorded.',
+    hint: 'Paid, delivered, costed, and its profit has been shared out.',
+  },
+  TO_SHARE: {
+    label: 'To share',
+    className: 'bg-purple-100 text-purple-800',
+    hint: 'Finished — its profit is waiting on Ascend Money → Profit sharing.',
   },
   COSTED: {
     label: 'Costed',
@@ -98,13 +107,19 @@ export function orderProgress(order: ProgressableOrder): OrderProgress {
   const unpricedCount = items.filter((i) => (i.unitCost === null || i.unitCost === undefined) && i.unitPrice !== 0).length;
   const costed = items.length > 0 && unpricedCount === 0;
 
-  const shares = order.profitShares;
-  const splitRecorded =
-    shares === undefined
-      ? true
-      : shares.length > 0 && shares.reduce((sum, s) => sum + s.shareBps, 0) === 10_000;
-
   const paid = order.paymentStatus === 'PAID';
+  const shares = order.profitShares;
+  // The default split is put on an order when it is paid, so an unpaid order
+  // with none is not missing anything yet.
+  const splitRecorded =
+    shares === undefined || (!paid && shares.length === 0)
+      ? true
+      : shares.length > 0 &&
+        shares.reduce((sum, s) => sum + s.shareBps, 0) === 10_000 &&
+        // A row typed before partners existed carries only a name — the
+        // share-out cannot pay it, so the split is not really recorded.
+        shares.every((s) => s.partnerId !== null);
+  const shared = order.profitShared === true;
   const delivered = order.status === 'DELIVERED';
 
   const checks: OrderCheck[] = [
@@ -122,6 +137,12 @@ export function orderProgress(order: ProgressableOrder): OrderProgress {
       done: splitRecorded,
       todo: !shares?.length ? 'No split saved' : 'Split does not total 100%',
     },
+    {
+      key: 'shared',
+      label: 'Profit shared out',
+      done: shared,
+      todo: 'Not shared out yet',
+    },
   ];
 
   // A cancelled or deleted order is not work in progress — badging it "needs
@@ -135,7 +156,7 @@ export function orderProgress(order: ProgressableOrder): OrderProgress {
       : !splitRecorded
         ? 'NEEDS_SPLIT'
         : paid && delivered
-          ? 'COMPLETE'
+          ? shared ? 'COMPLETE' : 'TO_SHARE'
           : 'COSTED';
 
   return {

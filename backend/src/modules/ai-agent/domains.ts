@@ -102,13 +102,18 @@ const KEYWORDS: Record<Domain, string[]> = {
     'quantity', 'kuantiti', 'qty', 'change order', 'tukar order', 'add to order',
     // "cost it from Chris" — set_order_costs with a supplier on the line.
     'supplier', 'pembekal',
-    // "tick profit shared on September's orders" — set_profit_shared.
+    // "tick profit shared on September's orders" — set_profit_shared, or a
+    // real share-out (finance domain: share_out_profit).
     'shared', 'share', 'kongsi', 'tick',
   ],
   finance: [
     'expense', 'perbelanjaan', 'belanja', 'spending', 'funding', 'capital',
     'modal', 'contribution', 'advance', 'repayment', 'payout', 'partner',
     'rakan', 'withdraw', 'balance', 'cash', 'runway', 'owe', 'hutang', 'debt',
+    // Ascend's bank (2026-10-21) and sharing profit out of it.
+    'bank', 'akaun', 'account', 'baki', 'duit ascend', 'statement', 'penyata',
+    'share out', 'share-out', 'bagi profit', 'kongsi untung', 'agih', 'split rule',
+    'split', 'pecahan', 'repay', 'bayar balik', 'loan', 'pinjam',
   ],
   promos: ['discount', 'diskaun', 'promo', 'coupon', 'voucher', 'code', 'kod', 'percent'],
   content: ['insight', 'article', 'artikel', 'blog', 'post', 'content', 'kandungan', 'write up', 'copy'],
@@ -222,10 +227,13 @@ const PLAYBOOKS: Record<string, Playbook> = {
   moneyflow: {
     title: 'Money, from a sale to a person’s pocket',
     body: `In this order:
-1. The order records what the customer paid (items, shipping, discount).
-2. Someone enters what it *cost* — a per-unit cost on every line, plus extra costs like courier or packaging. Until every line has a cost, profit for that order is genuinely unknown and must be reported as unknown, never as zero.
-3. That order's profit is split between people by percentage, and each person can also carry a flat share of the running costs.
-4. Separately, the finance side tracks company spending, money partners put in, and money paid back out. Money in is either a CONTRIBUTION (capital, never repaid) or an ADVANCE (a debt the company owes back). These are not interchangeable — ask which one if it is not stated.`,
+1. The customer's money lands in ASCEND'S BANK (Ascend's own account since 21 Oct 2026). Customer payments are added to the bank automatically when an order is paid, net of the gateway fee — never record them by hand.
+2. Ascend's bank pays for everything: stock from suppliers (record_expense, category "Stock"), bills (record_expense), courier and packaging. Nobody "fronts" an order's costs any more — there is no capital to enter on an order.
+3. Someone enters what each order *cost* — a per-unit cost on every line, plus extra costs. Until every line has a cost, that order's profit is genuinely unknown and must be reported as unknown, never as zero.
+4. Each paid order gets the DEFAULT SPLIT automatically (get_split_rule): before 1 Nov 2026 Asywa 70% / Fakhrul 30%; from 1 Nov 2026 Fakhrul 35% / Asywa 45% / Ascend 20%. Ascend's share stays in the bank. One order can be changed with set_order_profit_shares; the rule itself with set_split_rule.
+5. When orders are paid, delivered and costed they are READY TO SHARE. share_out_profit pays each person their part from the bank and marks the orders shared in one step. Orders settled by hand outside the system are marked with set_profit_shared instead — never both.
+6. What a person is OWED now = their share of orders not shared out yet + money they lent Ascend (ADVANCE) not repaid yet. Money a partner puts in is either a CONTRIBUTION (their investment, never repaid) or an ADVANCE (a loan Ascend repays, in parts is fine). Ask which if it is not stated. The capital Asywa fronted on orders before the bank became one such advance.
+7. "How much is in the bank" → bank_overview. If an operator reads out the bank app's balance, record it with check_bank_balance and say whether it matches.`,
   },
 
   bookkeeping: {
@@ -233,7 +241,7 @@ const PLAYBOOKS: Record<string, Playbook> = {
     body: `The operators keep the books by sending you the paperwork. Every file they send is already read for you (its text is on their message, with a mediaId), and nothing is in the books until a tool puts it there.
 - A file with no instruction, or "handle this": read it and say in one or two lines what it is — who from, the date, the amount, what for — then PROPOSE the one entry it needs and ask for a yes. Spending (a bill, a receipt, a supplier invoice we paid): "Record RM 230.40 Utilities — TNB bill Sept 2026, dated 3 Oct — and file the bill?" → record_expense with receiptMediaId. A customer's payment slip: name the order it matches and offer to mark it paid and file the slip against it. A statement or a quotation: offer to file it (save_attachment_as_document) — a statement is not an expense.
 - Take the amount, date and vendor from the document exactly, and say which figure you used when there is more than one (total vs subtotal, with or without SST). If the amount or the date cannot be read, ask — never estimate a figure into the books.
-- Category: reuse one already in use (list_expenses shows them) rather than inventing a near-duplicate ("Ads" not "Advertising"). Ask who paid only when it reads like a partner paid personally; otherwise it is company money.
+- Category: reuse one already in use (list_expenses shows them) rather than inventing a near-duplicate ("Ads" not "Advertising"). Ask who paid only when it reads like a partner paid personally; otherwise it came out of Ascend's bank.
 - A file already in the books is refused with where it is filed — tell the operator that and stop; never record it a second time under a different amount or date to get round the refusal.
 - Several files in a row: handle each on its own turn. "File all of those" means every file sent since the last one you filed — list_attachments shows them with their mediaIds; do them in one step, one call each, and report each one.
 - An existing expense with no receipt yet: file the receipt against it (save_attachment_as_document with expenseIds), do not record the expense again.
@@ -331,7 +339,7 @@ export function domainMenu(loaded: Iterable<Domain>, hidden: Iterable<Domain> = 
 const DOMAIN_BLURB: Record<Domain, string> = {
   catalog: 'products, variants, stock levels, prices, sales, add-ons, the supplier price list',
   orders: 'orders, payment status, order costs, profit shares, receipts',
-  finance: 'expenses, partner funding, advances, repayments, payouts',
+  finance: "Ascend's bank, sharing profit out, the split rule, expenses, partner funding, loans and repayments",
   promos: 'discount codes',
   content: 'insight articles and site copy',
   ops: 'store settings, email outbox, operator and group access',

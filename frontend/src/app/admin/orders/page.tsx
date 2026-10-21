@@ -68,7 +68,6 @@ function AdminOrdersContent() {
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [resendingEmail, setResendingEmail] = useState<string | null>(null);
-  const [sharingId, setSharingId] = useState<string | null>(null);
 
   const getTrackingValue = (order: Order) =>
     trackingInputs[order.id] ?? order.trackingNumber ?? '';
@@ -140,19 +139,6 @@ function AdminOrdersContent() {
   // Optimistic: the tick is a bookkeeping note, so waiting on a round trip to
   // show it makes the list feel broken when several are ticked in a row. On
   // failure the value is put back and the error surfaces.
-  const handleProfitShared = async (orderId: string, profitShared: boolean) => {
-    if (!token) return;
-    setSharingId(orderId);
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, profitShared } : o)));
-    try {
-      await adminUpdateOrder(token, orderId, { profitShared });
-    } catch {
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, profitShared: !profitShared } : o)));
-      setTrackingError('Could not update Profit Shared — try again.');
-    } finally {
-      setSharingId(null);
-    }
-  };
 
   const handleSaveTracking = async (orderId: string) => {
     if (!token) return;
@@ -437,36 +423,22 @@ function AdminOrdersContent() {
                         phone; the placeholder only has to hold its column open
                         on the single-line desktop row. */}
                     <span className={progress.state === 'NONE' ? 'hidden sm:inline-flex sm:invisible' : 'inline-flex'}>
-                      <Badge
-                        className={`w-28 justify-center ${progress.state === 'NONE' ? '' : progress.className}`}
-                        title={progress.hint}
-                      >
-                        {progress.label || '—'}
-                      </Badge>
+                      {/* "To share" replaced the old Profit Shared checkbox:
+                          ticking it paid nobody. Sharing happens on Ascend
+                          Money, which pays and marks the orders in one step. */}
+                      {progress.state === 'TO_SHARE' ? (
+                        <Link href="/admin/money/share" onClick={(e) => e.stopPropagation()} title={progress.hint}>
+                          <Badge className={`w-28 justify-center hover:underline ${progress.className}`}>{progress.label}</Badge>
+                        </Link>
+                      ) : (
+                        <Badge
+                          className={`w-28 justify-center ${progress.state === 'NONE' ? '' : progress.className}`}
+                          title={progress.hint}
+                        >
+                          {progress.label || '—'}
+                        </Badge>
+                      )}
                     </span>
-                    {/* Manual: the money actually left the account. The system
-                        cannot observe that, so someone asserts it. stopPropagation
-                        because this sits inside the row's expand toggle.
-
-                        Shown on phones too. This row is the only place in the
-                        admin that can set profitShared, so hiding it below sm
-                        meant the flag could not be read or changed from a phone
-                        at all. Roomier hit area there — a 14px box is not a
-                        finger-sized target. */}
-                    <label
-                      onClick={(e) => e.stopPropagation()}
-                      title={order.profitShared ? 'Profit has been shared' : 'Mark profit as shared'}
-                      className="inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors -my-1 py-1 px-1.5 -mx-1.5 rounded-lg sm:m-0 sm:p-0 sm:rounded-none"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!order.profitShared}
-                        disabled={sharingId === order.id}
-                        onChange={(e) => handleProfitShared(order.id, e.target.checked)}
-                        className="w-4 h-4 sm:w-3.5 sm:h-3.5 rounded border-border accent-primary cursor-pointer disabled:opacity-50"
-                      />
-                      Profit Shared
-                    </label>
                     {isExpanded
                       ? <ChevronUp className="hidden sm:block w-4 h-4 text-text-muted shrink-0" />
                       : <ChevronDown className="hidden sm:block w-4 h-4 text-text-muted shrink-0" />}

@@ -386,7 +386,7 @@ export function DocumentDetail({
                   ) : l.expense ? (
                     <Link
                       key={l.id}
-                      href="/admin/finance/expenses"
+                      href="/admin/money/expenses"
                       className="flex items-center gap-3 px-4 py-3 hover:bg-surface-elevated transition-colors"
                     >
                       <Receipt className="w-4 h-4 text-text-muted shrink-0" />

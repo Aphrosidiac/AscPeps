@@ -570,19 +570,35 @@ writes over it. Marking an order REFUNDED restores its stock and records the
 refund, but no gateway has a refund API, so the money goes back by hand; on a
 ToyyibPay order the agent says so.
 
-## Profit Shared
+## Sharing profit, and Ascend's bank
 
-`set_profit_shared` ticks (or unticks, `shared: false`) the dashboard's "Profit
-Shared" box on one or more orders: the record that an order's profit has
-actually been paid out to the people in its split. The system cannot see money
-leave the account, so it is a manual assertion and the agent only ticks what an
-operator says was paid out. `list_orders` takes `profitShared` (false = paid,
-live orders whose profit has not been shared yet) and every order summary
-carries `profitShared`, so "which orders are left to share?" is one call. The
-write is the dashboard checkbox's own, nothing else moves, and it is undoable
-from the transcript card. Ticking an order that is unpaid or cancelled, still
-has lines with no cost, or has no profit split is not refused — the dashboard
-does not refuse either — but the result carries a warning saying so.
+Since 21 Oct 2026 Ascend has its own bank account ([ascend-bank-plan.md](./ascend-bank-plan.md),
+figures in [bookkeeping.md](./bookkeeping.md#ascends-bank)). Every paid order gets
+the default split on its own (`get_split_rule` / `set_split_rule`); from 1 Nov 2026
+that is Fakhrul 35 / Asywa 45 / Ascend 20, and Ascend's share stays in the bank.
+
+- `ready_to_share` lists the paid, delivered, costed orders not shared out yet,
+  each person's part and what Ascend keeps, and what is not ready and why.
+- `share_out_profit` pays each person their part from the bank and marks the
+  orders shared in one step (approval card names who gets what). Omit
+  `orderRefs` to share everything ready. `undo_share_out` takes it back.
+- `set_profit_shared` is now only for orders settled **outside** the system:
+  it puts them in a "shared by hand" run with no payouts. An unpaid order is
+  refused (there is no profit to share), and an order that went out in a real
+  share-out cannot be unticked — undo the share-out instead.
+- `set_order_profit_shares` changes one order's split, by existing partners
+  only ("Ascend"/"company"/"bank" = Ascend). There is no capital to enter any
+  more; a typed name that is not a partner is refused instead of becoming one.
+- `finance_overview` is the money picture (bank, ready to share, owed now,
+  split, period profit); `bank_overview` the account's movements;
+  `check_bank_balance` records what the bank app says and the difference;
+  `record_bank_movement` covers bank charges, transfers, crypto cashed in and
+  the one-time opening balance.
+- `record_expense` is paid from the bank unless someone says they paid it
+  personally; category "Stock" is recorded as INVENTORY. `record_funding` is
+  money a partner puts into the bank; `record_repayment` repays a loan from it.
+
+`list_orders` still takes `profitShared` (false = paid, live, not shared out yet).
 
 ## The supplier price list
 

@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { ensureDefaultSplits, loadSplitRules, ruleAt } from '../../utils/split-rules.js';
+import { setOrdersSharedOutside } from './admin-money.controller.js';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { restoreOrderInventory } from '../../utils/order-inventory.js';
 import { enqueueEmail } from '../../utils/email-outbox.js';
@@ -69,14 +71,20 @@ const orderItemsSchema = z.object({
 const profitSharesSchema = z.object({
   shares: z
     .array(
-      z.object({
-        name: z.string().trim().min(1, 'Name is required').max(60),
-        // Share of this order's PROFIT.
-        shareBps: z.number().int().min(0).max(10_000),
-        // Cents of this order's COSTS this person paid for up front. Owed
-        // back to them on top of their profit cut — see the schema comment.
-        capitalAmount: z.number().int().min(0).max(100_000_000).optional(),
-      })
+      z
+        .object({
+          // An existing partner, by id (the order page) or by name (the
+          // assistant). Never creates one: a typed name used to, and typos
+          // became partners.
+          partnerId: z.string().min(1).optional(),
+          name: z.string().trim().min(1).max(60).optional(),
+          // Share of this order's PROFIT.
+          shareBps: z.number().int().min(0).max(10_000),
+          // Gone since Ascend's bank pays every order's costs. Accepted only as
+          // zero, so an older client that still sends the field keeps working.
+          capitalAmount: z.literal(0).optional(),
+        })
+        .refine((s) => s.partnerId || s.name, { message: 'Name the person' })
     )
     .max(10),
 });
@@ -165,7 +173,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
         // Only the bps, not the whole row: the list needs to know whether a
         // split exists and totals 100% so it can badge orders that still need
         // costing or dividing. Names and amounts belong to the detail page.
-        profitShares: { select: { shareBps: true } },
+        profitShares: { select: { shareBps: true, partnerId: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -192,13 +200,18 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
       },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
       emails: EMAIL_STATUS_SELECT,
-      profitShares: { orderBy: { createdAt: 'asc' } },
+      profitShares: { orderBy: { createdAt: 'asc' }, include: { partner: { select: { name: true, kind: true } } } },
       extraCosts: { orderBy: { createdAt: 'asc' } },
+      payoutRun: { select: { id: true, occurredAt: true, legacy: true } },
     },
   });
 
   if (!order) throw { statusCode: 404, message: 'Order not found' };
-  return order;
+
+  // The rule this order gets (or got) by default — shown before the order is
+  // paid, and used to say "changed from the default" after.
+  const rule = ruleAt(await loadSplitRules(fastify.prisma), order.paidAt ?? new Date());
+  return { ...order, defaultSplit: rule ? rule.shares : [] };
 }
 
 // Saves per-line costs and extra costs in one call.
@@ -518,62 +531,103 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
 export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id: string, body: unknown) {
   const { shares } = profitSharesSchema.parse(body);
 
-  const order = await fastify.prisma.order.findUnique({ where: { id }, select: { id: true } });
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    select: {
+      id: true, paymentStatus: true, paidAt: true, createdAt: true, profitShared: true,
+      payoutRun: { select: { occurredAt: true, legacy: true } },
+      profitShares: { select: { partnerId: true, name: true, capitalAmount: true, capitalFundingId: true }, orderBy: { createdAt: 'asc' } },
+    },
+  });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
 
-  // An empty list is allowed (it means "no split recorded"); a non-empty one
-  // must be exact. Validated server-side and not just in the form, since the
-  // numbers here decide what people get paid.
-  if (shares.length > 0) {
-    const total = shares.reduce((sum, s) => sum + s.shareBps, 0);
+  // What went out in a share-out was worked out from this split. Changing it
+  // afterwards would leave the payouts disagreeing with the order.
+  if (order.profitShared && order.payoutRun && !order.payoutRun.legacy) {
+    const when = order.payoutRun.occurredAt.toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short' });
+    throw { statusCode: 400, message: `This order was shared out on ${when}. Undo that share-out on Ascend Money first.` };
+  }
+
+  // Resolve every row to an existing partner. Ascend answers to "Ascend",
+  // "company" and "bank" as well, the way the operators say it.
+  const partners = await fastify.prisma.partner.findMany({ select: { id: true, name: true, kind: true, active: true } });
+  const resolve = (s: { partnerId?: string; name?: string }) => {
+    if (s.partnerId) return partners.find((p) => p.id === s.partnerId);
+    const n = (s.name ?? '').trim().toLowerCase();
+    return (
+      partners.find((p) => p.name.toLowerCase() === n) ??
+      (/^(ascend|company|bank|ascend'?s bank|syarikat)$/.test(n) ? partners.find((p) => p.kind === 'COMPANY') : undefined)
+    );
+  };
+  const resolved = shares.map((s) => {
+    const p = resolve(s);
+    if (!p) {
+      throw {
+        statusCode: 400,
+        message: `There is no partner called "${s.name ?? s.partnerId}". Add them on Ascend Money → Partners first.`,
+      };
+    }
+    return { partner: p, shareBps: s.shareBps };
+  });
+
+  if (resolved.length > 0) {
+    const total = resolved.reduce((sum, s) => sum + s.shareBps, 0);
     if (total !== 10_000) {
       throw {
         statusCode: 400,
         message: `Shares must add up to exactly 100% — currently ${(total / 100).toFixed(2)}%.`,
       };
     }
-    const names = shares.map((s) => s.name.toLowerCase());
-    if (new Set(names).size !== names.length) {
+    const ids = resolved.map((s) => s.partner.id);
+    if (new Set(ids).size !== ids.length) {
       throw { statusCode: 400, message: 'Each person can only appear once in the split.' };
     }
   }
 
-  // Resolve each name to a real Partner, creating one if it's new. This is what
-  // lets the finance section total a person's earnings across their whole
-  // history — without it a split is just a string and "what has Asyraf earned"
-  // has no answer. `name` is still stored on the share as a frozen record of
-  // what the order agreed to, so renaming a partner can't rewrite history.
-  const partnerIdByName = new Map<string, string>();
-  for (const share of shares) {
-    if (partnerIdByName.has(share.name)) continue;
-    const partner = await fastify.prisma.partner.upsert({
-      where: { name: share.name },
-      update: {},
-      create: { name: share.name },
-      select: { id: true },
-    });
-    partnerIdByName.set(share.name, partner.id);
+  // Capital fronted before the bank stays attached to whoever fronted it — it
+  // is history, and at the cutover it became their advance. So a person with
+  // capital on this order stays in the split (at 0% if need be).
+  //
+  // A row saved before partners existed has a name and no partner. It cannot
+  // be matched, so its capital follows whoever the operator put in that row's
+  // place — the form keeps rows in their saved order.
+  const legacy = order.profitShares
+    .map((s, i) => ({ ...s, partnerId: s.partnerId ?? resolved[i]?.partner.id ?? null }))
+    .filter((s) => s.capitalAmount > 0);
+  const dropped = legacy.filter((s) => !resolved.some((r) => r.partner.id === s.partnerId));
+  if (dropped.length) {
+    throw {
+      statusCode: 400,
+      message: `${dropped.map((s) => s.name).join(', ')} put capital into this order before the bank — keep them in the split (0% is fine).`,
+    };
   }
 
   // Delete-then-recreate inside a transaction: ids here carry no meaning to
   // anything else, and it keeps "what's stored" identical to "what was sent"
-  // without diffing.
-  await fastify.prisma.$transaction([
-    fastify.prisma.orderProfitShare.deleteMany({ where: { orderId: id } }),
-    ...(shares.length > 0
-      ? [
-          fastify.prisma.orderProfitShare.createMany({
-            data: shares.map((s) => ({
-              orderId: id,
-              name: s.name,
-              shareBps: s.shareBps,
-              capitalAmount: s.capitalAmount ?? 0,
-              partnerId: partnerIdByName.get(s.name) ?? null,
-            })),
-          }),
-        ]
-      : []),
-  ]);
+  // without diffing. `name` is the partner's name as of now, frozen on the
+  // share as the record of what this order agreed to.
+  await fastify.prisma.$transaction(async (tx) => {
+    await tx.orderProfitShare.deleteMany({ where: { orderId: id } });
+    if (resolved.length > 0) {
+      await tx.orderProfitShare.createMany({
+        data: resolved.map((s) => {
+          const kept = legacy.find((l) => l.partnerId === s.partner.id);
+          return {
+            orderId: id,
+            name: s.partner.name,
+            shareBps: s.shareBps,
+            partnerId: s.partner.id,
+            capitalAmount: kept?.capitalAmount ?? 0,
+            capitalFundingId: kept?.capitalFundingId ?? null,
+          };
+        }),
+      });
+    }
+  });
+
+  // An empty list means "back to the default": a paid order is never left
+  // with no split, or its profit would be in nobody's balance.
+  if (resolved.length === 0) await ensureDefaultSplits(fastify.prisma, [id]);
 
   return fastify.prisma.orderProfitShare.findMany({
     where: { orderId: id },
@@ -581,11 +635,20 @@ export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id:
   });
 }
 
-export async function adminUpdateOrder(fastify: FastifyInstance, id: string, body: unknown) {
-  const data = updateOrderSchema.parse(body);
+export async function adminUpdateOrder(fastify: FastifyInstance, id: string, body: unknown, actor: string | null = null) {
+  const { profitShared, ...data } = updateOrderSchema.parse(body);
 
   const order = await fastify.prisma.order.findUnique({ where: { id }, include: { items: true } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
+
+  // "Profit Shared" is not a free flag any more: it means the order is in a
+  // share-out. Ticking it by hand records "settled outside the system" (a run
+  // with no payouts); unticking is refused for a real share-out. See
+  // setOrdersSharedOutside.
+  if (profitShared !== undefined) {
+    await setOrdersSharedOutside(fastify, [id], profitShared, actor);
+    if (Object.keys(data).length === 0) return fastify.prisma.order.findUniqueOrThrow({ where: { id } });
+  }
 
   // The lock exists to stop a genuinely-paid online order being flipped back to
   // UNPAID or FAILED, which restocks goods that were bought and paid for.
@@ -677,6 +740,8 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
     });
     const updated = moved.row;
     if (moved.count === 0) return updated;
+    // The default split, as of now — see utils/split-rules.ts.
+    await ensureDefaultSplits(fastify.prisma, [id]);
     // Manual confirmation is a real payment — WhatsApp orders never reach
     // applyPaid, so without this they'd be invisible in revenue reporting.
     capturePurchase(fastify, updated);

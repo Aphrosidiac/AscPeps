@@ -1,6 +1,7 @@
 import type { AgentTool } from '../tool-kit.js';
 import { resolveOrderLines, linesSubtotal, OrderLineError, groupOrderItems, isIncludedItem } from '../../../utils/order-lines.js';
 import { audited, clampLimit, listResult, money, parseDate, rm, summaryOnly, toCents } from '../tool-kit.js';
+import { setOrdersSharedOutside } from '../../admin/admin-money.controller.js';
 import {
   adminDeleteOrder,
   adminGetOrder,
@@ -28,7 +29,7 @@ import { resolveSupplier } from './suppliers.tools.js';
 
 // Resolve whatever the operator said into one order. They will say
 // "ASC2507/0042", "the Nurul order", or a bare 42 — never a cuid.
-async function resolveOrder(prisma: any, ref: string) {
+export async function resolveOrder(prisma: any, ref: string) {
   const raw = String(ref).trim();
   const direct = await prisma.order.findFirst({
     where: { OR: [{ id: raw }, { orderNumber: raw }, { orderNumber: { equals: raw, mode: 'insensitive' } }] },
@@ -572,10 +573,17 @@ export const orderTools: AgentTool[] = [
         })),
         extraCosts: o.extraCosts.map((c: any) => ({ id: c.id, label: c.label, amount: money(c.amount) })),
         profitShares: o.profitShares.map((s: any) => ({
-          name: s.name,
+          name: s.partner?.name ?? s.name,
           sharePercent: s.shareBps / 100,
-          capitalPutIn: money(s.capitalAmount),
+          ...(s.partner?.kind === 'COMPANY' ? { keptInAscendsBank: true } : {}),
+          // History only: fronted before Ascend's bank paid for orders.
+          ...(s.capitalAmount ? { frontedBeforeTheBank: money(s.capitalAmount) } : {}),
         })),
+        isDefaultSplit: !!o.defaultSplit && o.defaultSplit.length === o.profitShares.length &&
+          o.defaultSplit.every((d: any) => o.profitShares.some((s: any) => s.partnerId === d.partnerId && s.shareBps === d.shareBps)),
+        sharedOut: o.payoutRun
+          ? { on: o.payoutRun.occurredAt, paidOutsideTheSystem: o.payoutRun.legacy }
+          : false,
         allItemsCosted: itemsCosted,
         emails: o.emails,
       };
@@ -932,7 +940,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'set_order_profit_shares',
     description:
-      'Set how one order\'s profit is split between people, and who paid for the order\'s costs. Percentages must total 100. capitalRm is money that person put in to cover the costs before the customer paid — it is returned to them ON TOP of their profit cut, never deducted. Across a split it should normally add up to the order\'s total cost.',
+      'Change how ONE order\'s profit is split. Every paid order already gets the default split automatically (get_split_rule) — use this only when the operator wants this order different. People must be existing partners; Ascend itself is "Ascend" (its share stays in Ascend\'s bank). Percentages must total 100. There is no capital to enter: Ascend\'s bank pays every order\'s costs. Refused on an order already shared out — undo that share-out first. Send an empty shares list to put the order back on the default split.',
     write: true,
     input_schema: {
       type: 'object',
@@ -943,9 +951,8 @@ export const orderTools: AgentTool[] = [
           items: {
             type: 'object',
             properties: {
-              name: { type: 'string' },
-              percent: { type: 'number', description: 'Share of profit, e.g. 30 for 30%. All shares must total 100.' },
-              capitalRm: { type: 'number', description: "Ringgit this person put up to cover this order's costs. Paid back to them on top of their profit share." },
+              name: { type: 'string', description: 'An existing partner, or "Ascend".' },
+              percent: { type: 'number', description: 'Share of profit, e.g. 35 for 35%. All shares must total 100.' },
             },
             required: ['name', 'percent'],
           },
@@ -959,22 +966,17 @@ export const orderTools: AgentTool[] = [
         name: String(s.name).trim(),
         // Basis points, so a three-way split lands exactly on 100%.
         shareBps: Math.round(s.percent * 100),
-        capitalAmount: s.capitalRm ? toCents(s.capitalRm) : 0,
       }));
       const totalBps = shares.reduce((a: number, s: any) => a + s.shareBps, 0);
-      if (totalBps !== 10_000) {
+      if (shares.length && totalBps !== 10_000) {
         throw new Error(
           `Shares total ${(totalBps / 100).toFixed(2)}%, not 100%. Adjust before saving. (For an even three-way split use 33.33 / 33.33 / 33.34.)`
         );
       }
-      await adminUpdateOrderProfitShares(fastify, order.id, { shares });
+      const saved: any[] = await adminUpdateOrderProfitShares(fastify, order.id, { shares });
       return {
         orderNumber: order.orderNumber,
-        shares: shares.map((s: any) => ({
-          name: s.name,
-          percent: s.shareBps / 100,
-          capitalPutIn: money(s.capitalAmount),
-        })),
+        shares: saved.map((s: any) => ({ name: s.name, percent: s.shareBps / 100 })),
       };
     },
   },
@@ -982,7 +984,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'set_profit_shared',
     description:
-      'Tick (or untick) "Profit Shared" on one or more orders — the record that the order\'s profit has actually been paid out to the people in its split. It is a manual assertion: the system cannot see money leave the account, so only tick what the operator says has been paid out. Several orders go in ONE call (orderRefs). Unticking is shared: false. Changes nothing else — costs, splits and payouts stay as they are.',
+      'Mark orders as already shared OUTSIDE the system — profit settled by hand, nothing paid from Ascend\'s bank (mostly orders from before the bank). To actually pay people their share from the bank, use share_out_profit instead. Several orders go in ONE call (orderRefs). shared: false takes orders back out — refused for an order that went out in a real share-out (undo_share_out instead). Changes nothing else.',
     write: true,
     input_schema: {
       type: 'object',
@@ -994,9 +996,11 @@ export const orderTools: AgentTool[] = [
     },
     summarize: async ({ prisma }, input) => {
       const n = input.orderRefs?.length ?? 0;
-      return `${input.shared === false ? 'untick' : 'tick'} Profit Shared on ${n} order${n === 1 ? '' : 's'}`;
+      return input.shared === false
+        ? `mark ${n} order${n === 1 ? '' : 's'} as NOT shared out`
+        : `mark ${n} order${n === 1 ? '' : 's'} as already shared outside the system (nothing paid from the bank)`;
     },
-    run: async ({ fastify, prisma }, input) => {
+    run: async ({ fastify, prisma, actor }, input) => {
       const shared = input.shared !== false;
       // Every reference resolved before anything changes: one typo must not
       // leave half a batch ticked.
@@ -1011,8 +1015,8 @@ export const orderTools: AgentTool[] = [
 
       const before = unique.map((o) => ({ orderId: o.id, orderNumber: o.orderNumber, profitShared: !!o.profitShared }));
       const changed = unique.filter((o) => !!o.profitShared !== shared);
-      // The same write the dashboard's checkbox makes.
-      for (const o of changed) await adminUpdateOrder(fastify, o.id, { profitShared: shared });
+      // One "shared outside the system" run for the batch (or out of theirs).
+      if (changed.length) await setOrdersSharedOutside(fastify, changed.map((o) => o.id), shared, `Abby for ${actor.name || 'an operator'}`);
 
       // Not refused — the dashboard does not refuse either — but said out loud,
       // because ticking these usually means something was missed.
@@ -1042,7 +1046,10 @@ export const orderTools: AgentTool[] = [
       const before: { orderId: string; orderNumber: string; profitShared: boolean }[] = action.before ?? [];
       const touched = new Set<string>(action.after?.orderIds ?? []);
       const restore = before.filter((b) => touched.has(b.orderId));
-      for (const b of restore) await adminUpdateOrder(fastify, b.orderId, { profitShared: b.profitShared });
+      for (const value of [true, false]) {
+        const ids = restore.filter((b) => b.profitShared === value).map((b) => b.orderId);
+        if (ids.length) await setOrdersSharedOutside(fastify, ids, value, 'Abby (undo)');
+      }
       return restore.length
         ? `Put Profit Shared back as it was on ${restore.map((b) => b.orderNumber).join(', ')}.`
         : 'Nothing had changed, so nothing to put back.';

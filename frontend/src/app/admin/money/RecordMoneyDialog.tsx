@@ -17,24 +17,24 @@ import type { PartnerBalance } from '@/types';
 const MOVEMENTS = [
   {
     key: 'CONTRIBUTION',
-    label: 'Contribution',
-    blurb: 'Money in that is never paid back. Becomes capital and never appears in what they are owed.',
+    label: 'Investment',
+    blurb: 'Money they put into Ascend’s bank that is never paid back.',
   },
   {
     key: 'ADVANCE',
-    label: 'Advance',
-    blurb: 'Money in that the company owes back. Stays outstanding until repaid, whole or in parts.',
+    label: 'Loan to Ascend',
+    blurb: 'Money into Ascend’s bank that Ascend owes back — repaid in parts from their page.',
   },
   {
     key: 'PAYOUT',
-    label: 'Profit payout',
-    blurb: 'Paying out profit they have already earned. Reduces what they are owed.',
+    label: 'Payment on account',
+    blurb: 'Profit paid from the bank outside a share-out. Normally use Profit sharing instead.',
   },
 ] as const;
 
 type MovementKey = (typeof MOVEMENTS)[number]['key'];
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 export function RecordMoneyDialog({
   partners, onClose, onSaved, defaultPartnerId,

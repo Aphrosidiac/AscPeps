@@ -477,37 +477,73 @@ await check('set_order_items refuses a cancelled order', async () => {
   throw new Error('edited an order whose stock was already returned');
 });
 
-await check('set_profit_shared ticks a batch, warns, and undoes', async () => {
+await check('set_profit_shared marks a batch shared outside the system, and undoes', async () => {
   exercised.add('set_profit_shared');
   const t = getTool('set_profit_shared')!;
-  const orders = await prisma.order.findMany({ where: { deletedAt: null, paymentStatus: 'PAID', status: { not: 'CANCELLED' } }, take: 2, orderBy: { createdAt: 'desc' } });
-  const unpaid = await prisma.order.findFirst({ where: { deletedAt: null, paymentStatus: { not: 'PAID' } } });
-  assert(orders.length === 2 && unpaid, 'dev db needs two paid orders and an unpaid one');
-  const all = [...orders, unpaid!];
-  const original = new Map(all.map((o) => [o.id, o.profitShared]));
-  await prisma.order.updateMany({ where: { id: { in: all.map((o) => o.id) } }, data: { profitShared: false } });
+  // Since Ascend's bank, ticking puts the orders in ONE "shared outside the
+  // system" run (no payouts) — and an unpaid order has no profit to share, so
+  // the whole batch is refused rather than half-applied.
+  const orders = await prisma.order.findMany({
+    where: { deletedAt: null, paymentStatus: 'PAID', status: { not: 'CANCELLED' }, profitShared: false },
+    take: 2,
+    orderBy: { createdAt: 'desc' },
+  });
+  const unpaid = await prisma.order.findFirst({ where: { deletedAt: null, paymentStatus: 'UNPAID', profitShared: false } });
+  assert(orders.length === 2 && unpaid, 'dev db needs two unshared paid orders and an unpaid one');
+  const ids = orders.map((o) => o.id);
   try {
-    const out: any = await t.run(ctx, { orderRefs: [orders[0].orderNumber, orders[1].orderNumber.toLowerCase(), unpaid!.orderNumber] });
-    const after = await prisma.order.findMany({ where: { id: { in: all.map((o) => o.id) } }, select: { id: true, profitShared: true } });
-    assert(after.every((o) => o.profitShared), 'not every order was ticked');
-    assert(out.result.ticked.length === 3, `ticked ${out.result.ticked}`);
-    assert(out.result.warnings?.some((w: string) => w.startsWith(unpaid!.orderNumber) && /no profit/.test(w)), `no warning for the unpaid order: ${JSON.stringify(out.result.warnings)}`);
+    const withUnpaid = await t.run(ctx, { orderRefs: [orders[0].orderNumber, unpaid!.orderNumber] }).then(() => 'ran', (e: any) => e.message);
+    assert(/not paid/i.test(withUnpaid), `unpaid order not refused: ${withUnpaid}`);
+    const none = await prisma.order.count({ where: { id: orders[0].id, profitShared: true } });
+    assert(none === 0, 'a refused batch half-applied');
+
+    const out: any = await t.run(ctx, { orderRefs: [orders[0].orderNumber, orders[1].orderNumber.toLowerCase()] });
+    const after = await prisma.order.findMany({ where: { id: { in: ids } }, select: { profitShared: true, payoutRunId: true } });
+    assert(after.every((o) => o.profitShared && o.payoutRunId), 'not every order was marked');
+    assert(after[0].payoutRunId === after[1].payoutRunId, 'one batch should be one run');
+    const run = await prisma.payoutRun.findUniqueOrThrow({ where: { id: after[0].payoutRunId! }, include: { payouts: true } });
+    assert(run.legacy && run.payouts.length === 0, 'shared outside the system must pay nobody');
+    assert(out.result.ticked.length === 2, `ticked ${out.result.ticked}`);
 
     const again: any = await t.run(ctx, { orderRefs: [orders[0].orderNumber] });
     assert(again.result.alreadyThatWay.includes(orders[0].orderNumber) && !again.result.ticked.length, 'a second tick changed something');
 
     await t.undo!(ctx, { input: {}, before: out.before, after: out.after });
-    const undone = await prisma.order.findMany({ where: { id: { in: all.map((o) => o.id) } }, select: { profitShared: true } });
-    assert(undone.every((o) => !o.profitShared), 'undo did not put them back');
+    const undone = await prisma.order.findMany({ where: { id: { in: ids } }, select: { profitShared: true, payoutRunId: true } });
+    assert(undone.every((o) => !o.profitShared && !o.payoutRunId), 'undo did not put them back');
+    assert(!(await prisma.payoutRun.findUnique({ where: { id: run.id } })), 'the emptied run was left behind');
 
     const bad = await t.run(ctx, { orderRefs: [orders[0].orderNumber, 'ASC9999/9999'] }).then(() => 'ran', (e: any) => e.message);
     assert(/No order|not found|matching/i.test(bad), `bad ref: ${bad}`);
-    const still = await prisma.order.findUnique({ where: { id: orders[0].id } });
-    assert(!still!.profitShared, 'a batch with a bad reference half-applied');
-    return '3 ticked in one call, unpaid one warned, idempotent, undone, all-or-nothing on a bad ref';
+    return 'unpaid refused whole, 2 marked in one legacy run, idempotent, undone, all-or-nothing on a bad ref';
   } finally {
-    for (const [id, v] of original) await prisma.order.update({ where: { id }, data: { profitShared: v } });
+    const runs = await prisma.order.findMany({ where: { id: { in: ids } }, select: { payoutRunId: true } });
+    await prisma.order.updateMany({ where: { id: { in: ids } }, data: { profitShared: false, payoutRunId: null } });
+    const runIds = runs.map((r) => r.payoutRunId).filter(Boolean) as string[];
+    if (runIds.length) await prisma.payoutRun.deleteMany({ where: { id: { in: runIds }, orders: { none: {} } } });
   }
+});
+
+await check('share_out_profit pays from the bank, previews, refuses twice, undoes', async () => {
+  exercised.add('share_out_profit');
+  exercised.add('undo_share_out');
+  const q: any = await run('ready_to_share', {});
+  assert(q.orders.length > 0, 'dev db needs an order ready to share (paid, delivered, costed)');
+  const ref = q.orders[0].orderNumber;
+  const t = getTool('share_out_profit')!;
+  const summary = await t.summarize!(ctx, { orderRefs: [ref] });
+  assert(/^pay .+ from Ascend's bank for 1 order/.test(summary), `approval card: ${summary}`);
+  const out: any = await run('share_out_profit', { orderRefs: [ref], note: 'test' });
+  try {
+    assert(out.orders === 1 && out.paid.length > 0, `paid ${JSON.stringify(out.paid)}`);
+    const twice = await run('share_out_profit', { orderRefs: [ref] }).then(() => 'ran', (e: any) => e.message);
+    assert(/Already shared out/.test(twice), `paid twice: ${twice}`);
+  } finally {
+    await run('undo_share_out', { shareOutId: out.shareOutId });
+  }
+  const back = await prisma.order.findFirstOrThrow({ where: { orderNumber: ref } });
+  assert(!back.profitShared && !back.payoutRunId, 'undo left the order shared');
+  return `${ref}: paid ${out.paid.map((p: any) => p.name).join(' + ')} — refused twice, undone`;
 });
 
 await check('list_orders profitShared:false lists paid orders left to share', async () => {
@@ -529,28 +565,42 @@ await check('set_order_profit_shares rejects != 100%', async () => {
   throw new Error('accepted shares that do not total 100%');
 });
 
-await check('set_order_profit_shares saves a valid split', async () => {
-  const o = await prisma.order.findFirstOrThrow({ where: { deletedAt: null }, include: { profitShares: true } });
-  const before = o.profitShares.map((s) => ({ name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount }));
-  await run('set_order_profit_shares', {
-    orderRef: o.orderNumber,
-    shares: [
-      { name: 'Fakhrul', percent: 33.33, capitalRm: 5 },
-      { name: 'Asyraf', percent: 33.33 },
-      { name: 'Investors', percent: 33.34 },
-    ],
+await check('set_order_profit_shares saves a valid split by existing partners', async () => {
+  // Not on an order in a real share-out (refused), nor one carrying capital
+  // fronted before the bank (that person must stay in the split).
+  const o = await prisma.order.findFirstOrThrow({
+    where: {
+      deletedAt: null,
+      OR: [{ payoutRunId: null }, { payoutRun: { legacy: true } }],
+      profitShares: { none: { capitalAmount: { gt: 0 } } },
+    },
+    include: { profitShares: true },
   });
-  const saved = await prisma.orderProfitShare.findMany({ where: { orderId: o.id } });
-  assert(saved.length === 3, `expected 3 shares, got ${saved.length}`);
-  assert(saved.reduce((s, x) => s + x.shareBps, 0) === 10000, 'bps do not total 10000');
-  const fakhrul = saved.find((s) => s.name === 'Fakhrul');
-  assert(fakhrul?.capitalAmount === 500, `capital ${fakhrul?.capitalAmount} != 500 cents`);
+  const before = o.profitShares.map(({ id: _id, createdAt: _c, updatedAt: _u, ...rest }) => rest);
+  try {
+    const typo = await run('set_order_profit_shares', { orderRef: o.orderNumber, shares: [{ name: 'Fakhrull', percent: 100 }] }).then(() => 'ran', (e: any) => e.message);
+    assert(/no partner called/i.test(typo), `a typo was accepted (it used to create a partner): ${typo}`);
+    assert(!(await prisma.partner.findFirst({ where: { name: 'Fakhrull' } })), 'the typo became a partner');
 
-  await prisma.orderProfitShare.deleteMany({ where: { orderId: o.id } });
-  if (before.length) {
-    await prisma.orderProfitShare.createMany({ data: before.map((s) => ({ ...s, orderId: o.id })) });
+    await run('set_order_profit_shares', {
+      orderRef: o.orderNumber,
+      shares: [
+        { name: 'fakhrul', percent: 33.33 },
+        { name: 'Asywa', percent: 33.33 },
+        { name: 'company', percent: 33.34 },
+      ],
+    });
+    const saved = await prisma.orderProfitShare.findMany({ where: { orderId: o.id }, include: { partner: true } });
+    assert(saved.length === 3, `expected 3 shares, got ${saved.length}`);
+    assert(saved.reduce((s, x) => s + x.shareBps, 0) === 10000, 'bps do not total 10000');
+    assert(saved.every((x) => x.partnerId), 'a share was saved without a partner');
+    assert(saved.some((x) => x.partner?.kind === 'COMPANY'), '"company" did not resolve to Ascend');
+    assert(saved.some((x) => x.name === 'Fakhrul'), 'name not taken from the partner');
+    return '33.33/33.33/33.34 by existing partners, "company" = Ascend, typo refused (restored)';
+  } finally {
+    await prisma.orderProfitShare.deleteMany({ where: { orderId: o.id } });
+    if (before.length) await prisma.orderProfitShare.createMany({ data: before.map((s) => ({ ...s, orderId: o.id })) });
   }
-  return '33.33/33.33/33.34 = exactly 100% (restored)';
 });
 
 await check('create_order (full lifecycle, rolled back)', async () => {

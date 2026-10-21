@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { computeFinance, type FinanceOrder } from '../../utils/finance.js';
+import { ensureDefaultSplits } from '../../utils/split-rules.js';
 
 // Cents. Capped well above any plausible figure so a mistyped amount can't
 // overflow the INTEGER column.
@@ -65,6 +66,10 @@ const payoutSchema = z.object({
 
 /** Everything the balance maths needs, in one place so nothing drifts. */
 export async function loadFinanceInput(fastify: FastifyInstance) {
+  // A paid order with no split yet gets the default before anything sums it,
+  // or its profit would be in nobody's balance. See utils/split-rules.ts.
+  await ensureDefaultSplits(fastify.prisma);
+
   const [partners, orders, expenses, funding, payouts] = await Promise.all([
     fastify.prisma.partner.findMany(),
     // Orders the money actually arrived on — matching the analytics endpoint
@@ -85,17 +90,26 @@ export async function loadFinanceInput(fastify: FastifyInstance) {
         stockRestored: true,
         items: { select: { quantity: true, unitCost: true, unitPrice: true } },
         extraCosts: { select: { amount: true } },
-        profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true } },
+        profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true, capitalFundingId: true } },
+        profitShared: true,
+        paidAt: true,
+        createdAt: true,
       },
     }),
-    fastify.prisma.companyExpense.findMany({ select: { id: true, amount: true, kind: true } }),
+    fastify.prisma.companyExpense.findMany({ select: { id: true, amount: true, kind: true, occurredAt: true } }),
     fastify.prisma.partnerFunding.findMany({
       select: { id: true, partnerId: true, type: true, amount: true, repayments: { select: { amount: true } } },
     }),
-    fastify.prisma.profitPayout.findMany({ select: { partnerId: true, amount: true } }),
+    fastify.prisma.profitPayout.findMany({ select: { partnerId: true, amount: true, runId: true } }),
   ]);
 
-  return { partners, orders: orders as FinanceOrder[], expenses, funding, payouts };
+  return {
+    partners,
+    orders: orders.map((o) => ({ ...o, shared: o.profitShared })) as (FinanceOrder & { paidAt: Date | null; createdAt: Date })[],
+    expenses,
+    funding,
+    payouts,
+  };
 }
 
 type ActivityKind = 'EXPENSE' | 'CONTRIBUTION' | 'ADVANCE' | 'REPAYMENT' | 'PAYOUT';
@@ -210,12 +224,12 @@ export async function getFinanceOverview(fastify: FastifyInstance) {
   const counts = await fastify.prisma.partner.findMany({
     select: {
       id: true,
-      _count: { select: { profitShares: true, funding: true, payouts: true, expensesPaid: true } },
+      _count: { select: { profitShares: true, funding: true, payouts: true, expensesPaid: true, splitRules: true } },
     },
   });
   const removable = new Set(
     counts
-      .filter((c) => !c._count.profitShares && !c._count.funding && !c._count.payouts && !c._count.expensesPaid)
+      .filter((c) => !c._count.splitRules && !c._count.profitShares && !c._count.funding && !c._count.payouts && !c._count.expensesPaid)
       .map((c) => c.id)
   );
 
@@ -233,7 +247,8 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
 
   const input = await loadFinanceInput(fastify);
   const summary = computeFinance(input);
-  const balance = summary.partners.find((p) => p.partnerId === id);
+  const balance = summary.partners.find((p) => p.partnerId === id) ?? null;
+  const ascend = summary.ascend?.partnerId === id ? summary.ascend : null;
 
   const [funding, payouts, shares] = await Promise.all([
     fastify.prisma.partnerFunding.findMany({
@@ -254,7 +269,9 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
             gatewayFee: true, refundedAmount: true, stockRestored: true,
             items: { select: { quantity: true, unitCost: true, unitPrice: true } },
             extraCosts: { select: { amount: true } },
-            profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true } },
+            profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true, capitalFundingId: true } },
+            profitShared: true,
+            payoutRun: { select: { id: true, occurredAt: true, legacy: true } },
           },
         },
       },
@@ -281,24 +298,37 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
         funding: [],
         payouts: [],
       });
-      const mine = contributing.partners.find((p) => p.partnerId === id);
+      const mine =
+        contributing.partners.find((p) => p.partnerId === id)?.earned ??
+        (contributing.ascend?.partnerId === id ? contributing.ascend.retained : undefined);
       return {
         orderId: s.order.id,
         orderNumber: s.order.orderNumber,
         occurredAt: s.order.createdAt,
         shareBps: s.shareBps,
         orderProfit: contributing.grossOrderProfit,
-        amount: mine?.earned ?? 0,
+        amount: mine ?? 0,
         costed: contributing.costedOrders > 0,
         refunded: s.order.refundedAmount > 0,
+        capitalAmount: s.capitalAmount,
+        shared: s.order.profitShared,
+        sharedAt: s.order.payoutRun?.occurredAt ?? null,
+        sharedOutside: s.order.payoutRun?.legacy ?? (s.order.profitShared ? true : false),
       };
     });
 
-  return { partner, balance, earnings, funding, payouts };
+  return { partner, balance, ascend, earnings, funding, payouts };
 }
 
 export async function saveFinancePartners(fastify: FastifyInstance, body: unknown) {
   const { partners } = partnersSchema.parse(body);
+
+  // Ascend itself can be renamed but never retired: every split from the bank
+  // onwards points at it, and an inactive company would drop out of pickers.
+  const company = await fastify.prisma.partner.findFirst({ where: { kind: 'COMPANY' }, select: { id: true } });
+  if (company && partners.some((p) => p.id === company.id && !p.active)) {
+    throw { statusCode: 400, message: 'Ascend cannot be marked inactive — its share of every split stays in the bank.' };
+  }
 
   const names = partners.map((p) => p.name.trim().toLowerCase());
   if (new Set(names).size !== names.length) {
@@ -512,12 +542,10 @@ export async function deletePayout(fastify: FastifyInstance, id: string) {
 /**
  * Delete a partner that nothing references.
  *
- * Partners are created implicitly: typing a name into an order's Profit Sharing
- * split upserts one. That is the right behaviour — you should not have to
- * register someone before splitting an order with them — but it means a typo,
- * or a split that was written and then removed, leaves a partner behind
- * forever. The Finance page showed four of those, all zeroes, with no way to
- * clear them.
+ * Partners used to be created implicitly: typing a name into an order's Profit
+ * Sharing split upserted one, so a typo left a partner behind forever (dev had
+ * "MmmmAsyraffFakhrul", "Pohasyraf", "Poh"). Splits now pick from existing
+ * partners only, but the strays already made still need clearing.
  *
  * Refused when anything still points at the partner, and the refusal says what.
  * Deactivating instead would be wrong here: `active` already means "not
@@ -530,15 +558,18 @@ export async function deletePartner(fastify: FastifyInstance, id: string) {
     select: {
       id: true,
       name: true,
+      kind: true,
       _count: {
-        select: { profitShares: true, funding: true, payouts: true, expensesPaid: true },
+        select: { profitShares: true, funding: true, payouts: true, expensesPaid: true, splitRules: true },
       },
     },
   });
   if (!partner) throw { statusCode: 404, message: 'Partner not found' };
+  if (partner.kind === 'COMPANY') throw { statusCode: 400, message: 'Ascend cannot be removed.' };
 
-  const { profitShares, funding, payouts, expensesPaid } = partner._count;
+  const { profitShares, funding, payouts, expensesPaid, splitRules } = partner._count;
   const blocking = [
+    splitRules && `a place in ${splitRules} split rule${splitRules === 1 ? '' : 's'}`,
     profitShares && `${profitShares} order split${profitShares === 1 ? '' : 's'}`,
     funding && `${funding} funding record${funding === 1 ? '' : 's'}`,
     payouts && `${payouts} payout${payouts === 1 ? '' : 's'}`,

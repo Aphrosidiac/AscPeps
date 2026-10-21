@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { TrackedOrder } from './order-pipeline';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document,
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document, MoneyOverview, BankLedger, BankCheck, SplitRule, ShareOutQueue,
   ShadowSku,
   Supplier,
   SupplierOption,
@@ -267,6 +267,62 @@ const auth = (token: string) => ({ headers: { Authorization: `Bearer ${token}` }
 export const adminDeletePartner = (token: string, id: string) =>
   api.delete<{ deleted: boolean; name: string }>(`/api/v1/admin/finance/partners/${id}`, auth(token)).then((r) => r.data);
 
+/* -------------------------------------------------------------- Ascend Money */
+
+const periodParams = (period?: { from?: string | null; to?: string | null }) => ({
+  ...(period?.from ? { from: period.from } : {}),
+  ...(period?.to ? { to: period.to } : {}),
+});
+
+export const adminGetMoneyOverview = (token: string, period?: { from?: string | null; to?: string | null }) =>
+  api.get<MoneyOverview>('/api/v1/admin/finance/money', { ...auth(token), params: periodParams(period) }).then((r) => r.data);
+
+export const adminGetBankLedger = (token: string, period?: { from?: string | null; to?: string | null }) =>
+  api.get<BankLedger>('/api/v1/admin/finance/bank', { ...auth(token), params: periodParams(period) }).then((r) => r.data);
+
+export const adminCreateBankEntry = (
+  token: string,
+  data: { kind: 'OPENING' | 'MONEY_IN' | 'MONEY_OUT'; occurredAt: string; amount: number; description?: string }
+) => api.post('/api/v1/admin/finance/bank/entries', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteBankEntry = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/bank/entries/${id}`, auth(token)).then((r) => r.data);
+
+export const adminCreateBankCheck = (token: string, data: { checkedAt?: string; statementBalance: number; note?: string | null }) =>
+  api.post<BankCheck>('/api/v1/admin/finance/bank/checks', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteBankCheck = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/bank/checks/${id}`, auth(token)).then((r) => r.data);
+
+export const adminGetSplitRules = (token: string) =>
+  api.get<{ current: SplitRule | null; rules: SplitRule[] }>('/api/v1/admin/finance/split-rules', auth(token)).then((r) => r.data);
+
+export const adminCreateSplitRule = (
+  token: string,
+  data: { effectiveFrom: string; note?: string | null; shares: { partnerId: string; shareBps: number }[] }
+) => api.post('/api/v1/admin/finance/split-rules', data, auth(token)).then((r) => r.data);
+
+export const adminDeleteSplitRule = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/split-rules/${id}`, auth(token)).then((r) => r.data);
+
+export const adminGetShareOut = (token: string) =>
+  api.get<ShareOutQueue>('/api/v1/admin/finance/share-out', auth(token)).then((r) => r.data);
+
+export const adminCreateShareOut = (
+  token: string,
+  data: { orderIds: string[]; occurredAt?: string; note?: string | null; outsideSystem?: boolean }
+) =>
+  api
+    .post<{ runId: string; orders: number; payouts: { name: string; amount: number }[]; kept: number; bankBalance: number | null; warning: string | null }>(
+      '/api/v1/admin/finance/share-out',
+      data,
+      auth(token)
+    )
+    .then((r) => r.data);
+
+export const adminDeleteShareOut = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/finance/share-out/${id}`, auth(token)).then((r) => r.data);
+
 export const adminGetFinanceOverview = (token: string) =>
   api.get<FinanceOverview>('/api/v1/admin/finance/overview', auth(token)).then((r) => r.data);
 
@@ -275,7 +331,7 @@ export const adminGetPartner = (token: string, id: string) =>
 
 export const adminSavePartners = (
   token: string,
-  partners: { id?: string; name: string; ownershipBps: number; active: boolean; notes?: string | null }[]
+  partners: { id?: string; name: string; active: boolean; notes?: string | null }[]
 ) => api.put<Partner[]>('/api/v1/admin/finance/partners', { partners }, auth(token)).then((r) => r.data);
 
 export const adminGetExpenses = (token: string, params?: Record<string, string>) =>

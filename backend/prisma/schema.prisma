@@ -269,7 +269,14 @@ model Order {
   // split has been RECORDED (order_profit_shares rows) or whether the order is
   // fully costed — money leaving the account is a real-world event the system
   // cannot observe, so someone has to assert it.
+  //
+  // Since Ascend's bank this is set by a share-out (payoutRunId below) and
+  // never on its own: true exactly when payoutRunId is set. Kept as a column
+  // because the orders list and the assistant filter on it.
   profitShared          Boolean       @default(false)
+  // The share-out that paid this order's profit to its people. A legacy run
+  // ("shared by hand") carries no payouts — the money moved outside the system.
+  payoutRunId           String?
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
   deletedAt             DateTime?
@@ -284,8 +291,10 @@ model Order {
   extraCosts   OrderExtraCost[]
   reminders    AgentReminder[]
   documents    DocumentLink[]
+  payoutRun    PayoutRun?         @relation(fields: [payoutRunId], references: [id], onDelete: SetNull)
 
   @@index([phone])
+  @@index([payoutRunId])
   @@index([status])
   @@index([orderNumber])
   @@index([paymentRef])
@@ -401,13 +410,21 @@ model OrderProfitShare {
   //
   // Do NOT also record the same money as an ADVANCE in PartnerFunding. That
   // would pay it back twice.
+  //
+  // LEGACY since Ascend's bank (2026-10-21): the bank pays every order's costs,
+  // so nothing writes this any more. What was still unpaid when the bank
+  // started was moved into one ADVANCE per person (scripts/cutover-ascend-
+  // bank.ts) and `capitalFundingId` points at it — from then on the advance is
+  // the debt, and this figure is history.
   capitalAmount Int     @default(0)
+  capitalFundingId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  partner Partner? @relation(fields: [partnerId], references: [id])
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partner        Partner?        @relation(fields: [partnerId], references: [id])
+  capitalFunding PartnerFunding? @relation(fields: [capitalFundingId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([partnerId])
@@ -674,9 +691,18 @@ model InsightComment {
 //     never want back; an ADVANCE is a debt the company must return. Only the
 //     second belongs in "owed".
 
+// PERSON is someone profit is paid out to. COMPANY is Ascend itself — exactly
+// one row, seeded by the migration. Its share of a split stays in Ascend's
+// bank as retained profit: it is never paid out and never "owed".
+enum PartnerKind {
+  PERSON
+  COMPANY
+}
+
 model Partner {
   id     String  @id @default(cuid())
   name   String  @unique
+  kind   PartnerKind @default(PERSON)
   // Deactivated rather than deleted — a former partner still has history, and
   // inactive partners drop out of the pickers for new records.
   active Boolean @default(true)
@@ -689,6 +715,7 @@ model Partner {
   funding      PartnerFunding[]
   payouts      ProfitPayout[]
   expensesPaid CompanyExpense[]   @relation("ExpensePaidBy")
+  splitRules   ProfitSplitRuleShare[]
 
   @@index([active])
   @@map("partners")
@@ -756,6 +783,11 @@ model PartnerFunding {
   // Set when this funding IS a partner paying a company expense, rather than
   // transferring cash in. Unique: one expense can only be funded once.
   expenseId   String?     @unique
+  // Whether this money went into Ascend's bank. True for cash a partner puts
+  // in; false for money that never touched the account — capital fronted on
+  // orders before the bank existed, moved here at the cutover. (Funding tied
+  // to an expense never touches the bank either; expenseId already says so.)
+  throughBank Boolean     @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -763,6 +795,8 @@ model PartnerFunding {
   partner    Partner            @relation(fields: [partnerId], references: [id])
   expense    CompanyExpense?    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   repayments PartnerRepayment[]
+  // Order splits whose fronted capital this advance took over at the cutover.
+  capitalShares OrderProfitShare[]
 
   @@index([partnerId])
   @@map("partner_funding")
@@ -803,13 +837,118 @@ model ProfitPayout {
   amount     Int
   occurredAt DateTime
   note       String?
+  // The share-out this payout was part of. Null for a payout recorded on its
+  // own — a payment on account against what the person is owed.
+  runId      String?
 
   createdAt DateTime @default(now())
 
-  partner Partner @relation(fields: [partnerId], references: [id])
+  partner Partner    @relation(fields: [partnerId], references: [id])
+  run     PayoutRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([partnerId])
+  @@index([runId])
   @@map("profit_payouts")
+}
+
+// ------------------------------------------------- Ascend's bank
+//
+// Ascend has its own bank account (from 2026-10-21). All capital sits there,
+// every customer payment lands there, and it pays for everything: stock,
+// expenses, and each person's profit share. Design: docs/ascend-bank-plan.md.
+//
+// The balance is DERIVED, like every other figure in the finance section. Most
+// movements are already rows elsewhere — a paid order is money in, an expense
+// paid by the company or a payout is money out — and copying them into a
+// ledger table would let the two drift. BankEntry holds only what has no other
+// home: the opening balance and the odd movement (bank charges, a transfer, a
+// correction). See utils/bank.ts.
+
+// One share-out: the orders whose profit went out together, and the payouts
+// that carried it. `legacy` runs record orders shared by hand before the bank
+// existed — no payouts, nothing left the bank.
+model PayoutRun {
+  id         String   @id @default(cuid())
+  occurredAt DateTime
+  note       String?
+  legacy     Boolean  @default(false)
+  createdBy  String?
+
+  createdAt DateTime @default(now())
+
+  payouts ProfitPayout[]
+  orders  Order[]
+
+  @@index([occurredAt])
+  @@map("payout_runs")
+}
+
+// The default profit split, versioned. A paid order without a split gets the
+// rule in effect when it was paid, copied onto the order — so a later rule
+// never rewrites an order's split, the same reason splits live per order.
+model ProfitSplitRule {
+  id            String   @id @default(cuid())
+  effectiveFrom DateTime
+  note          String?
+  createdBy     String?
+
+  createdAt DateTime @default(now())
+
+  shares ProfitSplitRuleShare[]
+
+  @@index([effectiveFrom])
+  @@map("profit_split_rules")
+}
+
+model ProfitSplitRuleShare {
+  ruleId    String
+  partnerId String
+  shareBps  Int
+
+  rule    ProfitSplitRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  partner Partner         @relation(fields: [partnerId], references: [id])
+
+  @@id([ruleId, partnerId])
+  @@map("profit_split_rule_shares")
+}
+
+enum BankEntryKind {
+  // The balance on the account the day tracking started. Exactly one; its
+  // date is the bank's start — order money is counted from then on.
+  OPENING
+  MONEY_IN
+  MONEY_OUT
+}
+
+model BankEntry {
+  id          String        @id @default(cuid())
+  kind        BankEntryKind
+  occurredAt  DateTime
+  // Cents, always positive; the direction is the kind.
+  amount      Int
+  description String
+  createdBy   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([occurredAt])
+  @@map("bank_entries")
+}
+
+// "The statement said RM X." The book balance at that moment is stored with
+// it, so a difference stays visible after later entries move the balance.
+model BankCheck {
+  id               String   @id @default(cuid())
+  checkedAt        DateTime
+  statementBalance Int
+  bookBalance      Int
+  note             String?
+  createdBy        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([checkedAt])
+  @@map("bank_checks")
 }
 
 // ------------------------------------------------- WhatsApp AI agent

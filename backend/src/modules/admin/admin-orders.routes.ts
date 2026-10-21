@@ -14,7 +14,7 @@ export default async function adminOrderRoutes(fastify: FastifyInstance) {
   });
 
   fastify.patch<{ Params: { id: string } }>('/:id', async (request) => {
-    return adminUpdateOrder(fastify, request.params.id, request.body);
+    return adminUpdateOrder(fastify, request.params.id, request.body, request.user?.email ?? null);
   });
 
   fastify.put<{ Params: { id: string } }>('/:id/costs', async (request) => {

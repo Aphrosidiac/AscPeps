@@ -204,7 +204,7 @@ every route behind a 24-hour JWT with the algorithm pinned.
 | **Dashboard · Analytics** | Revenue and profit by period. Profit is computed only over orders that are *fully costed* and reported against that subset's own revenue, with the uncosted count shown — dividing costed profit by all revenue would understate margin silently |
 | **Orders** | A stepper per order: info, lines, profit split, complete. Lines can be changed after the order is placed (included supplies follow their product). Per-line costs (free included lines may stay uncosted), the gateway fee (stamped automatically, editable — a published rate is a schedule, not a promise), refunds by exact amount, a manual "profit shared" tick because money leaving the account is an event the system cannot observe, and the paperwork filed against the order from the order |
 | **Products** | Parents and size variants: images, pricing, sale windows, stock, featured, COA link, research content, add-ons tagged Included or Suggested, "Add-on only" and "No shipping charge" switches |
-| **Finance · Documents** | [The books](#the-books), below |
+| **Ascend Money · Documents** | Ascend's bank, sharing profit out, the split rule, partners, expenses — [the books](#the-books), below |
 | **Delivery** | Recurring weekly windows, derived slots, a booking calendar pinning one slot to one order |
 | **Emails** | Outbox, editable copy, and a template preview rendered against a real order with a light/dark toggle |
 | **Subscribers · Campaigns** | The list, the welcome flow, broadcast drafting and sending |
@@ -227,9 +227,17 @@ stockOnHand      = inventoryPurchased − cogs
 ```
 
 The first identity holds exactly, because every cost line is measured over
-the same costed orders as the revenue it is set against. The Finance page
+the same costed orders as the revenue it is set against. Ascend Money
 and the Analytics page read the same order set through the same
 `costOrder`, so they cannot disagree.
+
+Since 21 Oct 2026 **Ascend has its own bank**: every customer payment lands
+there and it pays for stock, bills and each person's profit share. Ascend is
+also in the split (from 1 Nov: Fakhrul 35 / Asywa 45 / Ascend 20 — its share
+stays in the bank), the default split is a versioned rule applied when an
+order is paid, and a share-out pays people and marks orders shared in one
+step. See [bookkeeping.md](docs/bookkeeping.md#ascends-bank) and
+[ascend-bank-plan.md](docs/ascend-bank-plan.md).
 
 Four things that used to be wrong:
 
@@ -616,12 +624,12 @@ approve / decline / undo, memory, routines, model settings — are listed in
 | [add-ons.md](docs/add-ons.md) | included vs suggested add-ons, who decides what an order includes, how orders show and change, money and reports |
 | [assistant.md](docs/assistant.md) | the harness: data model, a turn step by step, tiers and undo, memory and the trust rule, routines, the model menu, tests |
 | [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
-| [bookkeeping.md](docs/bookkeeping.md) | every figure the Finance page shows and how it is derived |
+| [bookkeeping.md](docs/bookkeeping.md) | every figure Ascend Money shows and how it is derived, including the bank |
 | [documents.md](docs/documents.md) | the document store and why it is not under `/uploads` |
 | [email-campaigns.md](docs/email-campaigns.md) | campaign template, product cards, audiences and exclusions, switches, sending quota |
 | [shadow-skus.md](docs/shadow-skus.md) | the generalised names products carry on internal paperwork, and how they are resolved |
 | [posthog.md](docs/posthog.md) | what is captured, and the region trap that drops every event silently |
-| [finance-section-plan.md](docs/finance-section-plan.md) · [insights-figures-plan.md](docs/insights-figures-plan.md) | design plans, with a status note on what was built |
+| [ascend-bank-plan.md](docs/ascend-bank-plan.md) · [finance-section-plan.md](docs/finance-section-plan.md) · [insights-figures-plan.md](docs/insights-figures-plan.md) | design plans, with a status note on what was built |
 | [cold-email-plan.md](docs/cold-email-plan.md) | the cold-outreach plan (separate domains, warm-up, lead sources) |
 
 ---

@@ -14,7 +14,7 @@ import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { ManualPayReview } from './ManualPayReview';
 import {
   adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminUpdateOrderProfitShares, adminSetOrderDiscount,
-  adminSetOrderItems, adminGetProducts, adminGetSupplierOptions,
+  adminSetOrderItems, adminGetProducts, adminGetSupplierOptions, adminGetFinanceOverview,
   adminDeleteOrder, adminRestoreOrder, adminOpenReceiptPdf, adminResendOrderEmail,
 } from '@/lib/api';
 import { formatPrice, formatDate, paymentMethodLabel, cn, getEffectivePrice } from '@/lib/utils';
@@ -222,20 +222,33 @@ function carryDiscount(order: Order, subtotal: number): number {
  * on "6.00". Money fields in this form are strings until they are saved.
  */
 interface ShareRow {
+  partnerId: string;
   name: string;
+  kind: 'PERSON' | 'COMPANY';
   shareBps: number;
-  capital: string;
+  /**
+   * Cents this person fronted on the order before Ascend's bank paid for
+   * orders. Read-only history: nothing writes it any more, and what was still
+   * unpaid at the cutover became their advance.
+   */
+  legacyCapital: number;
 }
 
-const shareCapitalCents = (row: ShareRow) => inputToCents(row.capital) ?? 0;
+const sharesFrom = (order: Order): ShareRow[] =>
+  (order.profitShares ?? []).map((s) => ({
+    partnerId: s.partnerId ?? '',
+    name: s.partner?.name ?? s.name,
+    kind: s.partner?.kind ?? 'PERSON',
+    shareBps: s.shareBps,
+    legacyCapital: s.capitalAmount ?? 0,
+  }));
 
-// Prefilled on any order that has no split saved yet. Just a starting point —
-// it's editable per order, and changing it here never touches an order whose
-// split is already recorded.
-const DEFAULT_SHARES: ShareRow[] = [
-  { name: 'Fakhrul', shareBps: 3000, capital: '' },
-  { name: 'Asyraf', shareBps: 7000, capital: '' },
-];
+const defaultSharesFor = (order: Order): ShareRow[] =>
+  (order.defaultSplit ?? []).map((s) => ({ partnerId: s.partnerId, name: s.name, kind: s.kind, shareBps: s.shareBps, legacyCapital: 0 }));
+
+/** Same people on the same percentages, in any order. */
+const sameSplit = (a: { partnerId: string; shareBps: number }[], b: { partnerId: string; shareBps: number }[]) =>
+  a.length === b.length && a.every((x) => b.some((y) => y.partnerId === x.partnerId && y.shareBps === x.shareBps));
 
 export function OrderDetail({ orderId }: { orderId: string }) {
   const { token } = useAuth();
@@ -1331,20 +1344,27 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const [discountMode, setDiscountMode] = useState<'rm' | 'pct'>('rm');
   const [discountInput, setDiscountInput] = useState(() => (order.discountAmount ? centsToInput(order.discountAmount) : ''));
   const [discountNote, setDiscountNote] = useState(order.discountNote ?? '');
-  const [shares, setShares] = useState<ShareRow[]>(() => {
-    const saved = order.profitShares ?? [];
-    return saved.length > 0
-      // Zero shows as an empty field rather than "0.00": most people on a
-      // split put nothing in, and a column of literal zeroes is harder to scan
-      // than a column of blanks with the odd figure in it. Unlike unit cost,
-      // where a zero is unusual enough to be worth stating.
-      ? saved.map((s) => ({
-          name: s.name,
-          shareBps: s.shareBps,
-          capital: s.capitalAmount ? centsToInput(s.capitalAmount) : '',
-        }))
-      : DEFAULT_SHARES;
-  });
+  // No split saved yet (an order not paid yet) shows the default it will get.
+  const [shares, setShares] = useState<ShareRow[]>(() =>
+    (order.profitShares ?? []).length > 0 ? sharesFrom(order) : defaultSharesFor(order)
+  );
+  const [editingSplit, setEditingSplit] = useState(false);
+  // Who can be picked: active people and Ascend. Loaded when the editor opens.
+  const [pickable, setPickable] = useState<{ partnerId: string; name: string; kind: 'PERSON' | 'COMPANY' }[]>([]);
+  useEffect(() => {
+    if (!editingSplit || !token || pickable.length) return;
+    adminGetFinanceOverview(token)
+      .then((d) =>
+        setPickable([
+          ...d.partners.filter((p) => p.active).map((p) => ({ partnerId: p.partnerId, name: p.name, kind: 'PERSON' as const })),
+          ...(d.ascend ? [{ partnerId: d.ascend.partnerId, name: d.ascend.name, kind: 'COMPANY' as const }] : []),
+        ])
+      )
+      .catch(() => {});
+  }, [editingSplit, token, pickable.length]);
+  // A real share-out paid people from this split; changing it now would leave
+  // those payouts disagreeing with the order. The server refuses it too.
+  const splitLocked = !!order.payoutRun && !order.payoutRun.legacy;
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1369,7 +1389,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const pendingLabel = discountLabel({ discountCode: order.discountCode, discountNote: discountNote.trim() || null });
   const {
     itemsRevenue, revenue, refunded, unpricedCount,
-    itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit,
+    itemCostTotal, extrasTotal, gatewayFee, netProfit,
   } = profitSummary(
     order,
     (itemId) => inputToCents(itemCosts[itemId] ?? ''),
@@ -1390,14 +1410,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const savedItemCosts = Object.fromEntries(order.items.map((i) => [i.id, centsToInput(i.unitCost)]));
   const savedItemSuppliers = Object.fromEntries(order.items.map((i) => [i.id, i.supplierId ?? '']));
   const savedExtras = (order.extraCosts ?? []).map((c) => ({ label: c.label, amount: centsToInput(c.amount) }));
-  const savedShares = (order.profitShares ?? []).map((s) => ({
-    name: s.name, shareBps: s.shareBps, capitalAmount: s.capitalAmount ?? 0,
-  }));
-  // Compared in cents, not as typed: "60", "60.00" and "60.0" are the same
-  // saved split, and none of them should light up the Save button.
-  const normalisedShares = shares.map((s) => ({
-    name: s.name, shareBps: s.shareBps, capitalAmount: shareCapitalCents(s),
-  }));
+  const savedShares = (order.profitShares ?? []).length > 0 ? sharesFrom(order) : defaultSharesFor(order);
+  const isDefaultSplit = sameSplit(shares, defaultSharesFor(order));
 
   const normalisedItemCosts = Object.fromEntries(
     order.items.map((i) => [i.id, centsToInput(inputToCents(itemCosts[i.id] ?? ''))])
@@ -1411,7 +1425,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
     JSON.stringify(itemSuppliers) !== JSON.stringify(savedItemSuppliers) ||
     JSON.stringify(normalisedExtras) !== JSON.stringify(savedExtras) ||
     (inputToCents(gatewayFeeInput) ?? 0) !== (order.gatewayFee ?? 0);
-  const sharesDirty = JSON.stringify(normalisedShares) !== JSON.stringify(savedShares);
+  const sharesDirty = !sameSplit(shares, savedShares);
   // The note only counts while there is a discount to attach it to — the API
   // clears it along with a removed discount.
   const discountDirty =
@@ -1424,36 +1438,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   // A blank fee is a real zero here (plenty of orders cost nothing to collect),
   // but a stray character must not save silently as one.
   const gatewayFeeValid = gatewayFeeInput.trim() === '' || inputToCents(gatewayFeeInput) !== null;
-  // Blank capital means "put in nothing", which is fine. Anything typed has to
-  // actually parse, so a stray character cannot silently save as zero.
-  const sharesValid =
-    shares.length === 0 ||
-    (totalBps === 10_000 &&
-      shares.every((s) => s.name.trim() !== '' && (s.capital.trim() === '' || inputToCents(s.capital) !== null)));
+  const sharesValid = shares.length > 0 && totalBps === 10_000 && shares.every((s) => s.partnerId !== '');
   const canSave = extrasValid && sharesValid && gatewayFeeValid && (discountLocked !== null || discountValid);
 
-  /* ----- split editing */
-  const splitEvenly = (list: ShareRow[]) => {
-    if (list.length === 0) return list;
-    const each = Math.floor(10_000 / list.length);
-    return list.map((s, i) => ({ ...s, shareBps: i === list.length - 1 ? 10_000 - each * (list.length - 1) : each }));
-  };
-
-  // Each person's take-home: their cut of the profit PLUS whatever they put in
-  // to cover this order's costs, because that money is owed straight back to
-  // them. On a RM145 order costing RM60, someone who fronted the whole RM60
-  // takes home RM60 + their share of the RM85.
-  //
-  // These sum to more than the profit by design — they sum to the profit plus
-  // all the capital being returned, which is what actually leaves the account.
-  const shareNet = (index: number) =>
-    netProfit === null ? null : (amounts[index] ?? 0) + shareCapitalCents(shares[index]);
-  const capitalTotal = shares.reduce((sum, s) => sum + shareCapitalCents(s), 0);
-  // What the order actually cost, for reconciling against the capital column:
-  // every ringgit of cost came out of somebody's pocket. `totalCost` comes from
-  // profitSummary and now includes the processor's cut, which nobody fronts —
-  // it was withheld from the payment — so a fee-only gap is expected.
-  const capitalGap = totalCost - capitalTotal;
+  // Ascend's bank pays every order's costs, so a person's take-home is just
+  // their cut of the profit. Capital fronted before the bank is shown, not
+  // added: what was still unpaid became their advance at the cutover.
+  const legacyCapitalTotal = shares.reduce((sum, s) => sum + s.legacyCapital, 0);
 
   const handleSave = async () => {
     if (!token || !canSave) return;
@@ -1492,12 +1483,12 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         });
       }
       if (sharesDirty) {
-        // `capital` is the raw typed string; the API takes cents.
         await adminUpdateOrderProfitShares(
           token,
           order.id,
-          shares.map((s) => ({ name: s.name.trim(), shareBps: s.shareBps, capitalAmount: shareCapitalCents(s) }))
+          shares.map((s) => ({ partnerId: s.partnerId, shareBps: s.shareBps }))
         );
+        setEditingSplit(false);
       }
       setSaved(true);
       onChange();
@@ -1955,161 +1946,177 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
 
       {/* Split */}
       <Card title="Split" icon={<Users className="w-4 h-4" />}>
-        {shares.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-sm text-text-muted mb-4">No split recorded for this order.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-sm font-medium">
+              {shares.length === 0 ? 'No split' : isDefaultSplit ? 'Default split' : 'Changed for this order'}
+            </p>
+            <p className="text-xs text-text-muted">
+              {(order.profitShares ?? []).length === 0
+                ? 'Applied when the order is paid. Ascend’s share stays in the bank.'
+                : 'Ascend’s bank paid the costs; each person takes their share of the profit.'}
+            </p>
+          </div>
+          {!editingSplit && !splitLocked && (
             <button
-              onClick={() => { setShares(DEFAULT_SHARES); touch(); }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-light transition-colors cursor-pointer"
+              onClick={() => setEditingSplit(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" /> Add people
+              <Pencil className="w-3.5 h-3.5" /> Change for this order
             </button>
+          )}
+        </div>
+
+        {/* Share-out status: whether this order's profit has actually gone out. */}
+        <p className="mb-4 text-xs">
+          {order.payoutRun ? (
+            <span className="text-text-secondary">
+              Shared out {new Date(order.payoutRun.occurredAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', year: 'numeric' })}
+              {order.payoutRun.legacy ? ' · paid outside the system' : ''} ·{' '}
+              <Link href={`/admin/money/share#run-${order.payoutRun.id}`} className="text-primary hover:underline">see share-out</Link>
+              {splitLocked && ' — undo it there to change this split'}
+            </span>
+          ) : order.paymentStatus === 'PAID' || order.paymentStatus === 'REFUNDED' ? (
+            <span className="text-warning">
+              Not shared out yet ·{' '}
+              <Link href="/admin/money/share" className="text-primary hover:underline">Profit sharing</Link>
+            </span>
+          ) : (
+            <span className="text-text-muted">Shared out once paid, delivered and costed.</span>
+          )}
+        </p>
+
+        {!editingSplit ? (
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {shares.map((row, i) => (
+              <div key={row.partnerId || i} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {row.name}
+                    {row.kind === 'COMPANY' && <span className="ml-1.5 text-xs font-normal text-text-muted">kept in the bank</span>}
+                  </p>
+                  {row.legacyCapital > 0 && (
+                    <p className="text-[11px] text-text-muted">Fronted {formatPrice(row.legacyCapital)} on this order before the bank</p>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-4 shrink-0">
+                  <span className="text-sm text-text-muted tabular-nums">{bpsToPercent(row.shareBps)}%</span>
+                  <span className={cn('w-24 text-right text-sm font-semibold tabular-nums', row.kind === 'COMPANY' && 'text-success', (amounts[i] ?? 0) < 0 && 'text-danger')}>
+                    {netProfit === null ? <span className="text-text-muted font-normal">—</span> : formatPrice(amounts[i] ?? 0)}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {shares.length === 0 && <p className="px-3 py-3 text-sm text-text-muted">No default split is set — add one on Ascend Money → Profit sharing.</p>}
           </div>
         ) : (
           <>
             <div className="hidden sm:flex items-center gap-3 pb-2 text-[11px] font-medium text-text-muted uppercase tracking-wider">
               <span className="flex-1 min-w-0">Person</span>
-              <span className="w-28 shrink-0 text-right">Profit share</span>
-              <span className="w-32 shrink-0 text-right">Capital put in</span>
-              <span className="w-28 shrink-0 text-right">Take-home</span>
+              <span className="w-28 shrink-0 text-right">Share</span>
+              <span className="w-28 shrink-0 text-right">Their part</span>
               <span className="w-7 shrink-0" />
             </div>
-
-            {/* One flex row needed ~430px of fixed widths (112 + 128 + 112 + a
-                button + gaps) before the name field got anything, so on a phone
-                the name collapsed to an empty sliver and you could not tell who
-                a row belonged to. Phones get a bordered card per person laid out
-                on three lines; `sm:contents` dissolves the grouping wrappers at
-                sm and up so the original single-row layout is unchanged. */}
             <div className="space-y-3">
-              {shares.map((row, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-border p-3 sm:flex sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:p-0"
-                >
-                  <input
-                    type="text"
-                    value={row.name}
-                    onChange={(e) => { setShares((p) => p.map((r, j) => (j === i ? { ...r, name: e.target.value } : r))); touch(); }}
-                    placeholder="Name"
-                    maxLength={60}
-                    aria-label={`Person ${i + 1} name`}
-                    className="min-w-0 sm:flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
-                  <button
-                    onClick={() => { setShares((p) => splitEvenly(p.filter((_, j) => j !== i))); touch(); }}
-                    aria-label={`Remove person ${i + 1}`}
-                    className="justify-self-end p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0 sm:order-last"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                  <div className="col-span-2 flex items-center gap-2 sm:contents">
-                  <div className="relative flex-1 sm:flex-none sm:w-28 shrink-0">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={bpsToPercent(row.shareBps)}
-                      onChange={(e) => { setShares((p) => p.map((r, j) => (j === i ? { ...r, shareBps: Math.round(Number(e.target.value) * 100) || 0 } : r))); touch(); }}
-                      aria-label={`Person ${i + 1} share percent`}
-                      className="w-full pl-3 pr-7 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">%</span>
-                  </div>
-                  {/* What this person paid up front to cover the order's
-                      costs. Returned to them on top of their profit cut — it is
-                      money owed back, not a charge. */}
-                  <div className="relative flex-1 sm:flex-none sm:w-32 shrink-0">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">RM</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={row.capital}
+              {shares.map((row, i) => {
+                const used = new Set(shares.map((r) => r.partnerId));
+                const options = [
+                  ...(row.partnerId ? [{ partnerId: row.partnerId, name: row.name, kind: row.kind }] : []),
+                  ...pickable.filter((p) => !used.has(p.partnerId)),
+                ];
+                return (
+                  <div key={i} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-border p-3 sm:flex sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:p-0">
+                    <select
+                      value={row.partnerId}
                       onChange={(e) => {
-                        setShares((p) => p.map((r, j) => (j === i ? { ...r, capital: e.target.value } : r)));
+                        const pick = options.find((o) => o.partnerId === e.target.value);
+                        if (!pick) return;
+                        setShares((p) => p.map((r, j) => (j === i ? { ...r, partnerId: pick.partnerId, name: pick.name, kind: pick.kind } : r)));
                         touch();
                       }}
-                      placeholder="0.00"
-                      aria-label={`Person ${i + 1} capital put in`}
-                      className="w-full pl-9 pr-2 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
+                      aria-label={`Person ${i + 1}`}
+                      className="min-w-0 sm:flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-surface"
+                    >
+                      {!row.partnerId && <option value="">Choose…</option>}
+                      {options.map((o) => <option key={o.partnerId} value={o.partnerId}>{o.name}</option>)}
+                    </select>
+                    <button
+                      onClick={() => { setShares((p) => p.filter((_, j) => j !== i)); touch(); }}
+                      disabled={row.legacyCapital > 0}
+                      title={row.legacyCapital > 0 ? 'Fronted capital on this order before the bank — keep them (0% is fine)' : undefined}
+                      aria-label={`Remove ${row.name || `person ${i + 1}`}`}
+                      className="justify-self-end p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer shrink-0 sm:order-last disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <div className="col-span-2 flex items-center justify-between gap-2 sm:contents">
+                      <div className="relative w-28 shrink-0">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={bpsToPercent(row.shareBps)}
+                          onChange={(e) => { setShares((p) => p.map((r, j) => (j === i ? { ...r, shareBps: Math.round(Number(e.target.value) * 100) || 0 } : r))); touch(); }}
+                          aria-label={`${row.name || `Person ${i + 1}`} share percent`}
+                          className="w-full pl-3 pr-7 py-2 border border-border rounded-lg text-sm bg-surface text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">%</span>
+                      </div>
+                      <span className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums">
+                        {netProfit === null ? <span className="text-text-muted font-normal">—</span> : formatPrice(amounts[i] ?? 0)}
+                      </span>
+                    </div>
                   </div>
-                  </div>
-                  {/* Take-home gets its own line on a phone, labelled — a bare
-                      figure in a third column has no header to explain it once
-                      the desktop header row is hidden. */}
-                  <div className="col-span-2 flex items-baseline justify-between gap-2 sm:contents">
-                  <span className="text-xs text-text-muted sm:hidden">Take-home</span>
-                  <span className="text-right text-sm font-semibold sm:w-28 sm:shrink-0">
-                    {shareNet(i) === null ? (
-                      <span className="text-text-muted">—</span>
-                    ) : (
-                      <>
-                        <span className={(shareNet(i) as number) < 0 ? 'text-danger' : ''}>
-                          {formatPrice(shareNet(i) as number)}
-                        </span>
-                        {/* Spelled out when capital is involved, because
-                            "profit + your money back" is the whole point and a
-                            single figure hides it. */}
-                        {shareCapitalCents(row) > 0 && (
-                          <span className="block text-[11px] font-normal text-text-muted">
-                            {formatPrice(amounts[i] ?? 0)} + {formatPrice(shareCapitalCents(row))} back
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Stacks on phones — the reconciliation line underneath the total
-                ("RM120 put in of RM300 costs — RM180 unaccounted for") is a
-                full sentence and had no room beside the two buttons. */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mt-4 pt-4 border-t border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-border">
               <div className="flex gap-2 flex-wrap">
                 <button
-                  onClick={() => { setShares((p) => splitEvenly([...p, { name: '', shareBps: 0, capital: '' }])); touch(); }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
+                  onClick={() => {
+                    const used = new Set(shares.map((r) => r.partnerId));
+                    const next = pickable.find((p) => !used.has(p.partnerId));
+                    setShares((p) => [...p, next ? { ...next, shareBps: 0, legacyCapital: 0 } : { partnerId: '', name: '', kind: 'PERSON', shareBps: 0, legacyCapital: 0 }]);
+                    touch();
+                  }}
+                  disabled={pickable.length > 0 && shares.length >= pickable.length}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add person
                 </button>
+                {!isDefaultSplit && (order.defaultSplit ?? []).length > 0 && (
+                  <button
+                    onClick={() => {
+                      // Keep anyone carrying old capital, at 0%, so the save is allowed.
+                      const base = defaultSharesFor(order);
+                      const keep = shares.filter((r) => r.legacyCapital > 0 && !base.some((b) => b.partnerId === r.partnerId)).map((r) => ({ ...r, shareBps: 0 }));
+                      setShares([...base.map((b) => ({ ...b, legacyCapital: shares.find((r) => r.partnerId === b.partnerId)?.legacyCapital ?? 0 })), ...keep]);
+                      touch();
+                    }}
+                    className="px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
+                  >
+                    Back to default
+                  </button>
+                )}
                 <button
-                  onClick={() => { setShares(splitEvenly(shares)); touch(); }}
-                  className="px-3 py-1.5 bg-surface-elevated text-text-primary rounded-lg text-sm font-medium hover:bg-border transition-colors cursor-pointer"
+                  onClick={() => { setShares(savedShares); setEditingSplit(false); }}
+                  className="px-3 py-1.5 text-text-secondary rounded-lg text-sm font-medium hover:text-text-primary transition-colors cursor-pointer"
                 >
-                  Split evenly
+                  Cancel
                 </button>
               </div>
-              <div className="sm:text-right">
-                <p className={`text-sm font-medium ${totalBps === 10_000 ? 'text-success' : 'text-danger'}`}>
-                  {bpsToPercent(totalBps)}%{totalBps !== 10_000 && ' — must be 100%'}
-                </p>
-                {/* Every ringgit this order cost came out of somebody's
-                    pocket, so the capital column should add up to the order's
-                    total cost. Shown as a reconciliation rather than enforced:
-                    the company float can legitimately cover part of it, and a
-                    hard gate here would block real orders. */}
-                {(capitalTotal > 0 || totalCost > 0) && unpricedCount === 0 && (
-                  <p className={`text-xs mt-0.5 ${capitalGap === 0 ? 'text-text-muted' : 'text-warning'}`}>
-                    {capitalGap === 0
-                      ? `${formatPrice(capitalTotal)} put in, covering the full cost`
-                      : capitalGap > 0
-                        ? `${formatPrice(capitalTotal)} put in of ${formatPrice(totalCost)} costs — ${formatPrice(capitalGap)} unaccounted for`
-                        : `${formatPrice(capitalTotal)} put in, ${formatPrice(-capitalGap)} more than this order cost`}
-                  </p>
-                )}
-                {capitalTotal > 0 && unpricedCount > 0 && (
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {formatPrice(capitalTotal)} put in — cost the items to check it against
-                  </p>
-                )}
-              </div>
+              <p className={`text-sm font-medium sm:text-right ${totalBps === 10_000 ? 'text-success' : 'text-danger'}`}>
+                {bpsToPercent(totalBps)}%{totalBps !== 10_000 && ' — must be 100%'}
+              </p>
             </div>
           </>
+        )}
+        {legacyCapitalTotal > 0 && !editingSplit && (
+          <p className="mt-3 text-xs text-text-muted">
+            Capital fronted on orders before Ascend’s bank is owed back as a loan to Ascend — see the person’s page on Ascend Money.
+          </p>
         )}
       </Card>
 
@@ -2170,6 +2177,7 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
     delivered: 'detail',
     costed: 'profit',
     split: 'profit',
+    shared: 'profit',
   };
   const checks = progress.checks.map((c) => ({ ...c, fix: FIX_TAB[c.key] }));
   const outstanding = checks.filter((c) => !c.done);
@@ -2246,10 +2254,11 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
                     {share.name.trim().charAt(0).toUpperCase() || '?'}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{share.name}</p>
+                    <p className="text-sm font-medium truncate">{share.partner?.name ?? share.name}</p>
                     <p className="text-xs text-text-muted">
                       {bpsToPercent(share.shareBps)}% share
-                      {share.capitalAmount > 0 && ` · put in ${formatPrice(share.capitalAmount)}`}
+                      {share.partner?.kind === 'COMPANY' && ' · kept in the bank'}
+                      {share.capitalAmount > 0 && ` · fronted ${formatPrice(share.capitalAmount)} before the bank`}
                     </p>
                   </div>
                 </div>
@@ -2258,16 +2267,12 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
                     <p className="text-text-muted text-base">pending costing</p>
                   ) : (
                     <>
-                      {/* Take-home, not profit: capital they fronted is coming
-                          back to them and belongs in the number they're paid. */}
-                      <p className={`font-display text-lg font-bold ${netProfit < 0 ? 'text-danger' : ''}`}>
-                        {formatPrice((amounts[i] ?? 0) + share.capitalAmount)}
+                      {/* Their share of the profit. Ascend's bank paid the costs,
+                          so there is no capital to hand back on top; capital
+                          fronted before the bank is owed as a loan to Ascend. */}
+                      <p className={cn('font-display text-lg font-bold', netProfit < 0 && 'text-danger', share.partner?.kind === 'COMPANY' && 'text-success')}>
+                        {formatPrice(amounts[i] ?? 0)}
                       </p>
-                      {share.capitalAmount > 0 && (
-                        <p className="text-xs text-text-muted">
-                          {formatPrice(amounts[i] ?? 0)} profit + {formatPrice(share.capitalAmount)} back
-                        </p>
-                      )}
                     </>
                   )}
                 </div>
