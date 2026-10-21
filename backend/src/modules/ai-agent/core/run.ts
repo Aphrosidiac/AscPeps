@@ -169,6 +169,8 @@ export interface TurnOutcome {
 }
 
 const runs = new Map<string, Run>();
+// How long a web page read keeps changes waiting for a yes.
+export const WEB_TAINT_MS = 2 * 60 * 60 * 1000;
 const STILL_WAITING = /\b(waiting (on|for) (your )?(\*?yes\*?|approval|go-ahead)|reply \*?yes\*?|needs? (a )?(fresh )?approval)/i;
 const MAX_STEPS = 16;
 const OUTPUT_BUDGET = 30_000;
@@ -574,10 +576,22 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       if (!isWebTool(t.tool)) shopSeen.push(t.result);
     }
   }
-  // Tainted for the rest of the thread, not just while the page is in view:
-  // a compaction summary or the model's own earlier reply can carry what a
-  // page said long after the page itself has scrolled out.
-  webSeen = rows.some((r) => r.role === 'tool' && 'toolResults' in r.content && r.content.toolResults.some((t) => isWebTool(t.name)));
+  // Tainted for WEB_TAINT_MS after the last page read, not just while the
+  // page is in view: a compaction summary or the model's own earlier reply can
+  // carry what a page said after the page itself has scrolled out. Not for
+  // the rest of the thread: a WhatsApp thread is one per chat, forever, and
+  // one DuckDuckGo search in the group on 21 Oct made every change there wait
+  // for a yes from then on — the yes/no back-and-forth that followed
+  // (ASC2610/0027, 0046) went wrong three ways in one night. Destructive
+  // tools still always wait.
+  const taintFrom = Date.now() - WEB_TAINT_MS;
+  webSeen = history.some(
+    (m) =>
+      m.role === 'tool' &&
+      m.createdAt.getTime() >= taintFrom &&
+      'toolResults' in (m.content as MessageContent) &&
+      (m.content as Extract<MessageContent, { toolResults: unknown }>).toolResults.some((t) => isWebTool(t.name))
+  );
   // A compaction summary was written by a model from that same data.
   for (const r of rows) if (r.role === 'system' && 'replaces' in r.content) untrustedSeen.push(r.content.summary);
   // Ordered for the provider's prefix cache: what changes least comes first.

@@ -99,7 +99,16 @@ export function providerConfigured(): boolean {
   return !!env.OPENROUTER_API_KEY;
 }
 
+// Tests only (scripts/test-agent-approval.ts): replies come from a script
+// instead of OpenRouter, so the code around the model — approvals, guards,
+// fallbacks — can be replayed exactly, without spending the shared credit.
+let scripted: ((opts: CompletionOptions) => Promise<CompletionResult>) | null = null;
+export function scriptCompletions(fn: typeof scripted): void {
+  scripted = fn;
+}
+
 export async function streamCompletion(opts: CompletionOptions): Promise<CompletionResult> {
+  if (scripted) return scripted(opts);
   const key = env.OPENROUTER_API_KEY;
   if (!key) throw new Error('OpenRouter is not configured (OPENROUTER_API_KEY missing)');
 
