@@ -290,7 +290,7 @@ export default function MoneyOverviewPage() {
                       {x.advancesOutstanding > 0 && <> · {rm(x.advancesOutstanding)} lent to Ascend</>}
                     </p>
                   </div>
-                  <span className={cn('font-display text-[17px] font-bold tabular-nums', x.owed < 0 && 'text-danger')}>{signedPrice(x.owed)}</span>
+                  <span className={cn('shrink-0 whitespace-nowrap font-display text-[17px] font-bold tabular-nums', x.owed < 0 && 'text-danger')}>{signedPrice(x.owed)}</span>
                 </Link>
               </li>
             ))}
@@ -300,7 +300,7 @@ export default function MoneyOverviewPage() {
                   <p className="text-[15px] font-medium">Ascend</p>
                   <p className="text-[12px] text-text-secondary">Its share, kept in the bank</p>
                 </div>
-                <span className={cn('font-display text-[17px] font-bold tabular-nums', data.ascend.retained > 0 && 'text-success')}>{signedPrice(data.ascend.retained)}</span>
+                <span className={cn('shrink-0 whitespace-nowrap font-display text-[17px] font-bold tabular-nums', data.ascend.retained > 0 && 'text-success')}>{signedPrice(data.ascend.retained)}</span>
               </li>
             )}
           </ul>

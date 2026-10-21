@@ -69,7 +69,7 @@ export default function PartnersPage() {
                   <p className="font-display text-[17px] font-semibold flex items-center gap-1.5"><Landmark className="w-4 h-4 text-success" /> {data.ascend.name}</p>
                   <p className="text-[12px] text-text-secondary">Its share, kept in the bank</p>
                 </div>
-                <span className={cn('font-display text-[24px] leading-8 font-bold tabular-nums', data.ascend.retained > 0 && 'text-success')}>{signedPrice(data.ascend.retained)}</span>
+                <span className={cn('shrink-0 whitespace-nowrap font-display text-[24px] leading-8 font-bold tabular-nums', data.ascend.retained > 0 && 'text-success')}>{signedPrice(data.ascend.retained)}</span>
               </div>
               <dl className="mt-4 space-y-1.5 border-t border-border pt-3 text-[14px]">
                 <Row label="On orders not shared yet" value={rm(data.ascend.toKeep)} />
@@ -96,7 +96,7 @@ export default function PartnersPage() {
                   </p>
                   <p className="text-[12px] text-text-secondary">Owed now</p>
                 </div>
-                <span className={cn('font-display text-[24px] leading-8 font-bold tabular-nums', p.owed < 0 && 'text-danger')}>{signedPrice(p.owed)}</span>
+                <span className={cn('shrink-0 whitespace-nowrap font-display text-[24px] leading-8 font-bold tabular-nums', p.owed < 0 && 'text-danger')}>{signedPrice(p.owed)}</span>
               </div>
               <dl className="mt-4 space-y-1.5 border-t border-border pt-3 text-[14px]">
                 <Row label="Profit not shared yet" value={rm(p.toShare)} />
