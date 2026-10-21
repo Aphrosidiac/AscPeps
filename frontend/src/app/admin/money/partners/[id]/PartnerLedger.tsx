@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Plus, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { rm } from '../../money-ui';
 import {
   adminGetPartner, adminCreateRepayment, adminDeleteFunding,
   adminDeleteRepayment, adminDeletePayout,
 } from '@/lib/api';
-import { formatPrice, formatShortDate, cn } from '@/lib/utils';
+import { formatShortDate, cn } from '@/lib/utils';
 import { RecordMoneyDialog } from '../../RecordMoneyDialog';
 import type { PartnerDetail, PartnerFunding } from '@/types';
 import { PageHeader } from '@/components/admin/ui';
@@ -157,8 +158,8 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
 
       {ascend && (
         <div className="bg-surface border border-border rounded-xl p-5 mb-6 max-w-md">
-          <Row label="Kept from every split" value={formatPrice(ascend.retained)} />
-          <Row label="On orders not shared yet" value={formatPrice(ascend.toKeep)} tone="muted" />
+          <Row label="Kept from every split" value={rm(ascend.retained)} />
+          <Row label="On orders not shared yet" value={rm(ascend.toKeep)} tone="muted" />
         </div>
       )}
 
@@ -169,26 +170,26 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
         <div style={{ animationDelay: `0ms` }} className="row-rise bg-surface border border-border rounded-xl p-5 mb-6">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-3">Balance</p>
           <div className="max-w-md">
-            <Row label="Profit on orders not shared out yet" value={formatPrice(balance.toShare)} />
-            {balance.capitalOwed > 0 && <Row label="Capital fronted, still due" value={formatPrice(balance.capitalOwed)} />}
-            <Row label="Lent to Ascend, not repaid" value={formatPrice(balance.advancesOutstanding)} />
+            <Row label="Profit on orders not shared out yet" value={rm(balance.toShare)} />
+            {balance.capitalOwed > 0 && <Row label="Capital fronted, still due" value={rm(balance.capitalOwed)} />}
+            <Row label="Lent to Ascend, not repaid" value={rm(balance.advancesOutstanding)} />
             {balance.owed !== balance.toShare + balance.capitalOwed + balance.advancesOutstanding && (
               <Row
                 label="Paid on account"
-                value={`−${formatPrice(balance.toShare + balance.capitalOwed + balance.advancesOutstanding - balance.owed)}`}
+                value={`−${rm(balance.toShare + balance.capitalOwed + balance.advancesOutstanding - balance.owed)}`}
                 tone="muted"
               />
             )}
             <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2 mt-2">
               <span className="font-display font-bold">Owed now</span>
               <span className={cn('font-display text-lg font-bold tabular-nums', balance.owed < 0 && 'text-danger')}>
-                {formatPrice(balance.owed)}
+                {rm(balance.owed)}
               </span>
             </div>
             <p className="text-xs text-text-muted mt-3">
-              All time: earned {formatPrice(balance.earned)} · paid out through the system {formatPrice(balance.paidOut)}
-              {balance.capitalFronted > 0 && <> · fronted {formatPrice(balance.capitalFronted)} on orders before the bank</>}
-              {balance.contributed > 0 && <> · invested {formatPrice(balance.contributed)} (never repaid, so outside the sum)</>}
+              All time: earned {rm(balance.earned)} · paid out through the system {rm(balance.paidOut)}
+              {balance.capitalFronted > 0 && <> · fronted {rm(balance.capitalFronted)} on orders before the bank</>}
+              {balance.contributed > 0 && <> · invested {rm(balance.contributed)} (never repaid, so outside the sum)</>}
             </p>
           </div>
         </div>
@@ -213,7 +214,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{f.description}</p>
                       <p className="text-xs text-text-muted mt-0.5">
-                        {formatShortDate(f.occurredAt)} · {formatPrice(f.amount)} advanced
+                        {formatShortDate(f.occurredAt)} · {rm(f.amount)} advanced
                         {f.expense && ' · from a company expense'}
                       </p>
                     </div>
@@ -222,12 +223,12 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                         {settled ? (
                           <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Repaid</span>
                         ) : (
-                          `${formatPrice(outstanding)} left`
+                          `${rm(outstanding)} left`
                         )}
                       </p>
                       {!settled && f.repayments.length > 0 && (
                         <p className="text-xs text-text-muted">
-                          {formatPrice(f.amount - outstanding)} repaid so far
+                          {rm(f.amount - outstanding)} repaid so far
                         </p>
                       )}
                     </div>
@@ -280,7 +281,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                         <div key={r.id} className="flex items-center justify-between gap-3 text-xs text-text-muted">
                           <span>Repaid {formatShortDate(r.occurredAt)}</span>
                           <span className="flex items-center gap-2">
-                            <span className="tabular-nums">{formatPrice(r.amount)}</span>
+                            <span className="tabular-nums">{rm(r.amount)}</span>
                             <button
                               onClick={() => remove(() => adminDeleteRepayment(token!, r.id), 'Could not delete that repayment.')}
                               aria-label="Delete repayment"
@@ -317,7 +318,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                   <p className="text-xs text-text-muted">{formatShortDate(f.occurredAt)}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm font-semibold tabular-nums">{formatPrice(f.amount)}</span>
+                  <span className="text-sm font-semibold tabular-nums">{rm(f.amount)}</span>
                   {!f.expenseId && (
                     <button
                       onClick={() => remove(() => adminDeleteFunding(token!, f.id), 'Could not delete that record.')}
@@ -355,13 +356,13 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                       {e.orderNumber}
                     </Link>
                     <span className="text-sm font-semibold tabular-nums shrink-0">
-                      {e.costed ? formatPrice(e.amount) : <span className="text-text-muted font-normal">—</span>}
+                      {e.costed ? rm(e.amount) : <span className="text-text-muted font-normal">—</span>}
                     </span>
                   </div>
                   <p className="text-xs text-text-muted mt-1">
                     {formatShortDate(e.occurredAt)} · {bpsToPercent(e.shareBps)}% of{' '}
-                    {e.costed ? formatPrice(e.orderProfit) : 'an order not costed yet'}
-                    {' · '}{e.shared ? 'shared' : <span className="text-warning">not shared yet</span>}
+                    {e.costed ? rm(e.orderProfit) : 'an order not costed yet'}
+                    {' · '}{e.shared ? 'shared' : <span className="text-amber-700">not shared yet</span>}
                   </p>
                 </div>
               ))}
@@ -390,10 +391,10 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                       <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">{formatShortDate(e.occurredAt)}</td>
                       <td className="px-3 py-2.5 text-right text-text-secondary">{bpsToPercent(e.shareBps)}%</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-text-secondary">
-                        {e.costed ? formatPrice(e.orderProfit) : <span className="text-text-muted">not costed</span>}
+                        {e.costed ? rm(e.orderProfit) : <span className="text-text-muted">not costed</span>}
                       </td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                        {e.costed ? formatPrice(e.amount) : <span className="text-text-muted font-normal">—</span>}
+                        {e.costed ? rm(e.amount) : <span className="text-text-muted font-normal">—</span>}
                       </td>
                       <td className="px-5 py-2.5 text-xs whitespace-nowrap">
                         {e.shared ? (
@@ -401,7 +402,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                             {e.sharedAt ? formatShortDate(e.sharedAt) : 'Yes'}{e.sharedOutside ? ' · by hand' : ''}
                           </span>
                         ) : (
-                          <span className="text-warning">Not yet</span>
+                          <span className="text-amber-700">Not yet</span>
                         )}
                       </td>
                     </tr>
@@ -429,7 +430,7 @@ export function PartnerLedger({ partnerId }: { partnerId: string }) {
                   <p className="text-xs text-text-muted">{formatShortDate(p.occurredAt)}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm font-semibold tabular-nums">{formatPrice(p.amount)}</span>
+                  <span className="text-sm font-semibold tabular-nums">{rm(p.amount)}</span>
                   {/* A share-out's payouts go together: undo the share-out,
                       not one person's half of it. */}
                   {p.runId ? (

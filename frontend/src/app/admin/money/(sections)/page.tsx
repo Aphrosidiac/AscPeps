@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { ArrowRight, Landmark, Scale, AlertTriangle, CheckCircle2, ClipboardList, Truck, Plus, Minus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetMoneyOverview } from '@/lib/api';
-import { formatPrice, formatShortDate, cn } from '@/lib/utils';
+import { formatShortDate, cn } from '@/lib/utils';
 import { Card, CardHeader } from '@/components/admin/ui';
 import { Button } from '@/components/ui/Button';
 import type { MoneyOverview } from '@/types';
-import { PeriodPicker, periodRange, signedPrice, SOURCE, SplitBar, SplitLegend, type PeriodKey } from '../money-ui';
+import { PeriodPicker, periodRange, signedPrice, SOURCE, SplitBar, SplitLegend, type PeriodKey, rm, TextLink } from '../money-ui';
 import { BankEntryDialog, CheckBalanceDialog, OpeningBalanceForm } from '../bank-dialogs';
 
 export default function MoneyOverviewPage() {
@@ -58,7 +58,7 @@ export default function MoneyOverviewPage() {
   if (data.readyToShare.orders > 0) {
     needs.push({
       icon: <ArrowRight className="w-4 h-4" />,
-      text: <>{data.readyToShare.orders} order{data.readyToShare.orders === 1 ? '' : 's'} ready to share — {formatPrice(data.readyToShare.total)} to pay out</>,
+      text: <>{data.readyToShare.orders} order{data.readyToShare.orders === 1 ? '' : 's'} ready to share — {rm(data.readyToShare.total)} to pay out</>,
       href: '/admin/money/share',
     });
   }
@@ -123,8 +123,8 @@ export default function MoneyOverviewPage() {
             {bank.started ? (
               <>
                 <div className="mt-5 grid grid-cols-3 gap-3 border-t border-border pt-4">
-                  <Mini label="Money in" value={formatPrice(bank.flows.moneyIn)} hint={range.label} tone="good" />
-                  <Mini label="Money out" value={formatPrice(bank.flows.moneyOut)} hint={range.label} />
+                  <Mini label="Money in" value={rm(bank.flows.moneyIn)} hint={range.label} tone={bank.flows.moneyIn > 0 ? 'good' : undefined} />
+                  <Mini label="Money out" value={rm(bank.flows.moneyOut)} hint={range.label} />
                   <Mini
                     label="Statement"
                     value={
@@ -132,7 +132,7 @@ export default function MoneyOverviewPage() {
                         bank.lastCheck.difference === 0 ? (
                           <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="w-4 h-4" /> Matches</span>
                         ) : (
-                          <span className="text-warning">Off by {signedPrice(bank.lastCheck.difference)}</span>
+                          <span className="text-amber-700">Off by {signedPrice(bank.lastCheck.difference)}</span>
                         )
                       ) : (
                         <span className="text-text-secondary">Not checked</span>
@@ -154,7 +154,7 @@ export default function MoneyOverviewPage() {
           <div className="p-5 sm:p-6 flex-1">
             <p className="text-[13px] font-medium text-text-secondary">Ready to share</p>
             <p className="mt-1 font-display text-[28px] leading-[34px] font-bold tabular-nums tracking-[-0.02em]">
-              {formatPrice(data.readyToShare.total)}
+              {rm(data.readyToShare.total)}
             </p>
             <p className="text-[13px] text-text-secondary">
               {data.readyToShare.orders === 0
@@ -166,22 +166,31 @@ export default function MoneyOverviewPage() {
                 {data.readyToShare.people.map((x) => (
                   <li key={x.partnerId} className="flex justify-between text-[14px]">
                     <span>{x.name}</span>
-                    <span className="tabular-nums font-medium">{formatPrice(x.amount)}</span>
+                    <span className="tabular-nums font-medium">{rm(x.amount)}</span>
                   </li>
                 ))}
                 {data.readyToShare.ascend !== 0 && (
                   <li className="flex justify-between text-[14px] text-text-secondary">
                     <span>Ascend keeps</span>
-                    <span className="tabular-nums">{formatPrice(data.readyToShare.ascend)}</span>
+                    <span className="tabular-nums">{rm(data.readyToShare.ascend)}</span>
                   </li>
                 )}
               </ul>
             )}
           </div>
-          <div className="border-t border-border px-5 py-3">
-            <Link href="/admin/money/share" className="inline-flex items-center gap-1.5 text-[14px] font-medium text-primary hover:underline">
-              {data.readyToShare.orders > 0 ? 'Share out' : 'Profit sharing'} <ArrowRight className="w-4 h-4" />
-            </Link>
+          <div className="border-t border-border px-5 py-3 space-y-2">
+            {data.waiting.onTheWay > 0 && (
+              <p className="flex items-center gap-2 text-[13px] text-text-secondary">
+                <Truck className="w-4 h-4 shrink-0" /> {data.waiting.onTheWay} more on the way — they join once delivered
+              </p>
+            )}
+            {data.readyToShare.orders > 0 ? (
+              <Link href="/admin/money/share" className="inline-flex">
+                <Button size="sm">Review and share out <ArrowRight className="w-4 h-4" /></Button>
+              </Link>
+            ) : (
+              <TextLink href="/admin/money/share">Profit sharing</TextLink>
+            )}
           </div>
         </Card>
       </div>
@@ -195,13 +204,13 @@ export default function MoneyOverviewPage() {
               <li key={i}>
                 {n.href === '#check' ? (
                   <button type="button" onClick={() => setDialog('check')} className="flex w-full items-center gap-3 px-6 py-3 text-left text-[14px] hover:bg-surface-elevated cursor-pointer">
-                    <span className="text-warning">{n.icon}</span>
+                    <span className="text-amber-700">{n.icon}</span>
                     <span className="flex-1">{n.text}</span>
                     <ArrowRight className="w-4 h-4 text-text-muted" />
                   </button>
                 ) : (
                   <Link href={n.href} className="flex items-center gap-3 px-6 py-3 text-[14px] hover:bg-surface-elevated">
-                    <span className="text-warning">{n.icon}</span>
+                    <span className="text-amber-700">{n.icon}</span>
                     <span className="flex-1">{n.text}</span>
                     <ArrowRight className="w-4 h-4 text-text-muted" />
                   </Link>
@@ -213,7 +222,9 @@ export default function MoneyOverviewPage() {
       )}
 
       {/* ---------------- P&L + people */}
-      <div className="grid gap-4 lg:grid-cols-5">
+      {/* items-start: the two cards differ in height by nature; stretching the
+          shorter one left a hollow box under "Profit not known yet". */}
+      <div className="grid items-start gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader
             title="Profit"
@@ -222,18 +233,32 @@ export default function MoneyOverviewPage() {
             className="flex-wrap"
           />
           <div className="px-6 py-4">
-            <Line label="Revenue" value={formatPrice(p.revenue)} hint={p.refunded > 0 ? `after ${formatPrice(p.refunded)} refunded` : undefined} strong />
+            <Line label="Revenue" value={rm(p.revenue)} hint={p.refunded > 0 ? `after ${rm(p.refunded)} refunded` : undefined} strong />
+            {p.costedOrders === 0 ? (
+              // Nothing costed means nothing is known — a column of −RM 0.00
+              // ending in a green "Net profit RM 0.00" read as a real result.
+              <div className="mt-3 rounded-lg bg-surface-elevated px-4 py-3">
+                <p className="text-[14px] font-medium">Profit not known yet</p>
+                <p className="text-[13px] text-text-secondary">
+                  {p.uncostedOrders > 0
+                    ? `${p.uncostedOrders} paid order${p.uncostedOrders === 1 ? '' : 's'} still need${p.uncostedOrders === 1 ? 's' : ''} a cost on every line.`
+                    : 'No paid orders in this period.'}
+                  {p.operatingSpend > 0 && ` Running costs so far: ${rm(p.operatingSpend)}.`}
+                </p>
+              </div>
+            ) : (
+            <>
             {p.uncostedRevenue > 0 && (
-              <p className="text-[13px] text-warning -mt-1 mb-2">
-                {formatPrice(p.uncostedRevenue)} of it from {p.uncostedOrders} order{p.uncostedOrders === 1 ? '' : 's'} not costed yet — profit below leaves them out
+              <p className="text-[13px] text-amber-700 -mt-1 mb-2">
+                {rm(p.uncostedRevenue)} of it from {p.uncostedOrders} order{p.uncostedOrders === 1 ? '' : 's'} not costed yet — profit below leaves them out
               </p>
             )}
-            <Line label="Goods" value={`−${formatPrice(p.cogs)}`} muted />
-            <Line label="Courier, packaging & other order costs" value={`−${formatPrice(p.extraCosts)}`} muted />
-            <Line label="Payment gateway fees" value={`−${formatPrice(p.gatewayFees)}`} muted />
+            <Line label="Goods" value={`−${rm(p.cogs)}`} muted />
+            <Line label="Courier, packaging & other order costs" value={`−${rm(p.extraCosts)}`} muted />
+            <Line label="Payment gateway fees" value={`−${rm(p.gatewayFees)}`} muted />
             <Line label="Profit from orders" value={signedPrice(p.grossOrderProfit)} strong divider />
-            <Line label="Running costs" value={`−${formatPrice(p.operatingSpend)}`} muted />
-            <Line label="Net profit" value={signedPrice(p.netProfit)} strong divider tone={p.netProfit < 0 ? 'bad' : 'good'} />
+            <Line label="Running costs" value={`−${rm(p.operatingSpend)}`} muted />
+            <Line label="Net profit" value={signedPrice(p.netProfit)} strong divider tone={p.netProfit < 0 ? 'bad' : p.netProfit > 0 ? 'good' : undefined} />
             {(p.earnedByPerson.length > 0 || p.ascendKept !== 0) && (
               <div className="mt-4 rounded-lg bg-surface-elevated px-4 py-3">
                 <p className="text-[12px] font-medium uppercase tracking-wider text-text-muted mb-1.5">Profit from orders, split</p>
@@ -243,14 +268,16 @@ export default function MoneyOverviewPage() {
                 {p.ascendKept !== 0 && <Line label="Ascend keeps" value={signedPrice(p.ascendKept)} compact muted />}
               </div>
             )}
+            </>
+            )}
           </div>
         </Card>
 
         <Card className="lg:col-span-2">
           <CardHeader
             title="Owed now"
-            description="Not shared yet, plus open advances"
-            actions={<Link href="/admin/money/partners" className="text-[13px] font-medium text-primary hover:underline">Partners</Link>}
+            description="Profit not shared yet, plus money lent to Ascend"
+            actions={<TextLink href="/admin/money/partners">Partners</TextLink>}
           />
           <ul className="divide-y divide-border">
             {peopleOwed.map((x) => (
@@ -259,8 +286,8 @@ export default function MoneyOverviewPage() {
                   <div className="min-w-0">
                     <p className="text-[15px] font-medium truncate">{x.name}</p>
                     <p className="text-[12px] text-text-secondary">
-                      {formatPrice(x.toShare)} to share
-                      {x.advancesOutstanding > 0 && <> · {formatPrice(x.advancesOutstanding)} advanced</>}
+                      {rm(x.toShare)} to share
+                      {x.advancesOutstanding > 0 && <> · {rm(x.advancesOutstanding)} lent to Ascend</>}
                     </p>
                   </div>
                   <span className={cn('font-display text-[17px] font-bold tabular-nums', x.owed < 0 && 'text-danger')}>{signedPrice(x.owed)}</span>
@@ -273,7 +300,7 @@ export default function MoneyOverviewPage() {
                   <p className="text-[15px] font-medium">Ascend</p>
                   <p className="text-[12px] text-text-secondary">Its share, kept in the bank</p>
                 </div>
-                <span className="font-display text-[17px] font-bold tabular-nums text-success">{signedPrice(data.ascend.retained)}</span>
+                <span className={cn('font-display text-[17px] font-bold tabular-nums', data.ascend.retained > 0 && 'text-success')}>{signedPrice(data.ascend.retained)}</span>
               </li>
             )}
           </ul>
@@ -298,33 +325,29 @@ export default function MoneyOverviewPage() {
         <Card>
           <CardHeader
             title="Recent bank activity"
-            actions={<Link href="/admin/money/bank" className="text-[13px] font-medium text-primary hover:underline">All movements</Link>}
+            actions={<TextLink href="/admin/money/bank">All movements</TextLink>}
           />
           {bank.recent.length === 0 ? (
             <p className="px-6 py-5 text-[14px] text-text-secondary">Nothing has moved since the opening balance.</p>
           ) : (
             <ul className="divide-y divide-border">
               {bank.recent.map((m) => (
-                <li key={m.key} className="flex items-center gap-3 px-6 py-3">
-                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', SOURCE[m.source].chip)}>{SOURCE[m.source].label}</span>
+                <li key={m.key} className="flex items-center gap-3 px-4 sm:px-6 py-3">
+                  <span className={cn('hidden sm:inline shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', SOURCE[m.source].chip)}>{SOURCE[m.source].label}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] truncate">{m.partnerName ? `${m.partnerName} · ${m.description}` : m.description}</p>
-                    <p className="text-[12px] text-text-secondary">{formatShortDate(m.occurredAt)}</p>
+                    <p className="text-[14px] sm:truncate">{m.partnerName ? `${m.partnerName} · ${m.description}` : m.description}</p>
+                    <p className="text-[12px] text-text-secondary">
+                      <span className="sm:hidden">{SOURCE[m.source].label} · </span>{formatShortDate(m.occurredAt)}
+                    </p>
                   </div>
                   <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', m.amount > 0 && 'text-success')}>
-                    {m.amount > 0 ? '+' : '−'}{formatPrice(Math.abs(m.amount))}
+                    {m.amount > 0 ? '+' : '−'}{rm(Math.abs(m.amount))}
                   </span>
                 </li>
               ))}
             </ul>
           )}
         </Card>
-      )}
-
-      {data.waiting.onTheWay > 0 && (
-        <p className="flex items-center gap-2 text-[13px] text-text-secondary">
-          <Truck className="w-4 h-4" /> {data.waiting.onTheWay} costed order{data.waiting.onTheWay === 1 ? ' is' : 's are'} still on the way — they join the share-out once delivered.
-        </p>
       )}
 
       {dialog === 'in' && <BankEntryDialog direction="in" onClose={() => setDialog(null)} onSaved={load} />}
@@ -369,3 +392,4 @@ function Line({
     </div>
   );
 }
+

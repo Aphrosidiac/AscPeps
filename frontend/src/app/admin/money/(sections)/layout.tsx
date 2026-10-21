@@ -11,7 +11,9 @@ import { SectionTabs } from '../money-ui';
  */
 export default function MoneyLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div>
+    // Capped: at 1920 the page ran 1,600px wide and amounts sat a screen's
+    // width from the names they belong to.
+    <div className="mx-auto max-w-[1280px]">
       <PageHeader
         icon={Wallet}
         title="Ascend Money"

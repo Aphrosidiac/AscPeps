@@ -15,12 +15,12 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   adminCreateBankCheck, adminCreateBankEntry, adminCreateExpense, adminCreateFunding, adminGetExpenses, adminGetMoneyOverview,
 } from '@/lib/api';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn} from '@/lib/utils';
 import { Dialog } from '@/components/admin/Dialog';
 import { Affixed, Field, SelectInput, TextInput } from '@/components/admin/ui';
 import { Button } from '@/components/ui/Button';
 import type { PartnerBalance } from '@/types';
-import { apiError, mytDayOrNow, mytDayStart, parseRinggit, signedPrice, todayIso } from './money-ui';
+import { apiError, mytDayOrNow, mytDayStart, parseRinggit, signedPrice, todayIso, rm } from './money-ui';
 
 /* ------------------------------------------------------------ opening */
 
@@ -171,13 +171,14 @@ export function BankEntryDialog({
       footer={(close) => (
         <>
           <Button type="button" variant="ghost" size="sm" onClick={close} disabled={busy}>Cancel</Button>
-          <Button type="button" size="sm" disabled={busy || !valid} onClick={() => save(close)}>
+          <Button type="submit" form="bank-entry-form" size="sm" disabled={busy || !valid}>
             {busy ? 'Saving…' : 'Record'}
           </Button>
         </>
       )}
     >
-      <div className="space-y-4">
+      {(close) => (
+      <form id="bank-entry-form" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void save(close); }}>
         <div role="radiogroup" aria-label="What was it" className="grid gap-2">
           {kinds.map((k) => (
             <button
@@ -216,7 +217,7 @@ export function BankEntryDialog({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Amount" htmlFor="bank-amount">
             <Affixed prefix="RM">
-              <input id="bank-amount" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+              <input id="bank-amount" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} data-autofocus />
             </Affixed>
           </Field>
           <Field label="Day" htmlFor="bank-day">
@@ -249,7 +250,8 @@ export function BankEntryDialog({
         </Field>
 
         {error && <p className="text-[13px] text-danger">{error}</p>}
-      </div>
+      </form>
+      )}
     </Dialog>
   );
 }
@@ -288,36 +290,38 @@ export function CheckBalanceDialog({ bookBalance, onClose, onSaved }: { bookBala
       footer={(close) => (
         <>
           <Button type="button" variant="ghost" size="sm" onClick={close} disabled={busy}>Cancel</Button>
-          <Button type="button" size="sm" disabled={busy || cents === null} onClick={() => save(close)}>
+          <Button type="submit" form="bank-check-form" size="sm" disabled={busy || cents === null}>
             {busy ? 'Saving…' : 'Save check'}
           </Button>
         </>
       )}
     >
-      <div className="space-y-4">
+      {(close) => (
+      <form id="bank-check-form" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void save(close); }}>
         <div className="flex items-baseline justify-between rounded-lg bg-surface-elevated px-4 py-3">
           <span className="text-[14px] text-text-secondary">Ascend Money says</span>
           <span className="font-display text-[18px] font-bold tabular-nums">{signedPrice(bookBalance)}</span>
         </div>
         <Field label="The bank says" htmlFor="check-amount">
           <Affixed prefix="RM">
-            <input id="check-amount" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+            <input id="check-amount" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} data-autofocus />
           </Affixed>
         </Field>
         {difference !== null && (
-          <p className={cn('text-[14px]', difference === 0 ? 'text-success' : 'text-warning')}>
+          <p className={cn('text-[14px]', difference === 0 ? 'text-success' : 'text-amber-700')}>
             {difference === 0
               ? 'Matches to the sen.'
               : difference > 0
-                ? `The bank has ${formatPrice(difference)} more — money came in that isn’t recorded (or a Billplz settlement is still on its way).`
-                : `The bank has ${formatPrice(-difference)} less — something went out that isn’t recorded, or a settlement hasn’t landed yet.`}
+                ? `The bank has ${rm(difference)} more — money came in that isn’t recorded (or a Billplz settlement is still on its way).`
+                : `The bank has ${rm(-difference)} less — something went out that isn’t recorded, or a settlement hasn’t landed yet.`}
           </p>
         )}
         <Field label="Note (optional)" htmlFor="check-note">
           <TextInput id="check-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="e.g. Billplz for the 21st not in yet" />
         </Field>
         {error && <p className="text-[13px] text-danger">{error}</p>}
-      </div>
+      </form>
+      )}
     </Dialog>
   );
 }

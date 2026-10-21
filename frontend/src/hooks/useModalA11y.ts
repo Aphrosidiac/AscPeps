@@ -57,9 +57,15 @@ export function useModalA11y({
     // Focus the panel itself rather than its first control: putting the caret
     // straight into a text field means a screen reader announces the field and
     // skips the dialog's own title.
+    //
+    // A dialog that is one number and a button (an amount, a balance) opts in
+    // with `data-autofocus` on that field instead: there the field IS the
+    // dialog, and focusing the panel meant the first keystrokes typed into
+    // nothing. The dialog's aria-label still names it to a screen reader.
     if (panel) {
       panel.setAttribute('tabindex', '-1');
-      panel.focus({ preventScroll: true });
+      const preferred = panel.querySelector<HTMLElement>('[data-autofocus]');
+      (preferred ?? panel).focus({ preventScroll: true });
     }
 
     const onKey = (e: KeyboardEvent) => {

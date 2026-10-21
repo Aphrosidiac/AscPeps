@@ -241,8 +241,14 @@ export async function createShareOut(fastify: FastifyInstance, body: unknown, ac
 
 /** Undo a share-out: its payouts go, its orders go back to unshared. */
 export async function deleteShareOut(fastify: FastifyInstance, id: string) {
-  const run = await fastify.prisma.payoutRun.findUnique({ where: { id }, select: { id: true } });
+  const run = await fastify.prisma.payoutRun.findUnique({ where: { id }, select: { id: true, createdBy: true } });
   if (!run) throw { statusCode: 404, message: 'Share-out not found' };
+  // The cutover's record of everything shared by hand before the bank. On
+  // prod it holds 69 orders; undoing it would put months of settled profit
+  // back into what people are owed.
+  if (run.createdBy === 'cutover') {
+    throw { statusCode: 400, message: 'This is the record of orders shared by hand before Ascend’s bank. It cannot be undone here.' };
+  }
   await fastify.prisma.$transaction([
     fastify.prisma.order.updateMany({ where: { payoutRunId: id }, data: { payoutRunId: null, profitShared: false } }),
     // Payouts cascade with the run.

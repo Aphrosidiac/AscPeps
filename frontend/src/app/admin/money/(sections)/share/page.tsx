@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { ClipboardList, Truck, Undo2, Pencil, History, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminCreateShareOut, adminDeleteShareOut, adminGetMoneyOverview, adminGetShareOut, adminGetSplitRules } from '@/lib/api';
-import { formatPrice, formatShortDate, cn } from '@/lib/utils';
+import { formatShortDate, cn } from '@/lib/utils';
 import { Card, CardHeader, Field, SaveBar, TextInput } from '@/components/admin/ui';
 import { ConfirmDialog, Dialog } from '@/components/admin/Dialog';
 import { Button } from '@/components/ui/Button';
 import type { MoneyOverview, ShareOutQueue, SplitRule } from '@/types';
-import { apiError, bpsLabel, mytDayOrNow, signedPrice, SplitBar, SplitLegend, todayIso } from '../../money-ui';
+import { apiError, bpsLabel, mytDayOrNow, signedPrice, SplitBar, SplitLegend, todayIso, rm } from '../../money-ui';
 import { SplitRuleDialog } from '../../SplitRuleDialog';
 
 export default function ShareOutPage() {
@@ -166,7 +166,7 @@ export default function ShareOutPage() {
                     </div>
                     <p className="text-[12px] text-text-secondary truncate">{o.customerName} · paid {formatShortDate(o.paidAt)}</p>
                     <p className="mt-1 text-[12px] text-text-secondary">
-                      {o.parts.map((p) => `${p.kind === 'COMPANY' ? 'Ascend' : p.name} ${formatPrice(p.amount ?? 0)}`).join(' · ')}
+                      {o.parts.map((p) => `${p.kind === 'COMPANY' ? 'Ascend' : p.name} ${rm(p.amount ?? 0)}`).join(' · ')}
                     </p>
                   </div>
                 </label>
@@ -245,10 +245,10 @@ export default function ShareOutPage() {
               <span className="text-text-secondary">Tick the orders to share out.</span>
             ) : (
               <>
-                <span className="font-semibold">Pay {formatPrice(payTotal)}</span>
+                <span className="font-semibold">Pay {rm(payTotal)}</span>
                 <span className="text-text-secondary">
-                  {' '}— {payPeople.filter((p) => p.amount > 0).map((p) => `${p.name} ${formatPrice(p.amount)}`).join(', ')}
-                  {keep !== 0 && ` · Ascend keeps ${formatPrice(keep)}`}
+                  {' '}— {payPeople.filter((p) => p.amount > 0).map((p) => `${p.name} ${rm(p.amount)}`).join(', ')}
+                  {keep !== 0 && ` · Ascend keeps ${rm(keep)}`}
                 </span>
               </>
             )}
@@ -264,7 +264,7 @@ export default function ShareOutPage() {
           <div className="grid gap-4 px-6 py-4 sm:grid-cols-2">
             {queue.waiting.needsCosting.length > 0 && (
               <div>
-                <p className="flex items-center gap-2 text-[14px] font-medium"><ClipboardList className="w-4 h-4 text-warning" /> Needs costing</p>
+                <p className="flex items-center gap-2 text-[14px] font-medium"><ClipboardList className="w-4 h-4 text-amber-700" /> Needs costing</p>
                 <p className="text-[13px] text-text-secondary mb-2">Profit is unknown until every line has a cost.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {queue.waiting.needsCosting.map((o) => (
@@ -277,7 +277,7 @@ export default function ShareOutPage() {
             )}
             {queue.waiting.needsSplit.length > 0 && (
               <div>
-                <p className="flex items-center gap-2 text-[14px] font-medium"><Users className="w-4 h-4 text-warning" /> Split needs fixing</p>
+                <p className="flex items-center gap-2 text-[14px] font-medium"><Users className="w-4 h-4 text-amber-700" /> Split needs fixing</p>
                 <p className="text-[13px] text-text-secondary mb-2">A person on the split isn’t a partner, or it doesn’t add up to 100%. Open the order and change its split.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {queue.waiting.needsSplit.map((o) => (
@@ -317,19 +317,20 @@ export default function ShareOutPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[14px] font-medium">
-                      {formatShortDate(r.occurredAt)} · {r.orders.length} order{r.orders.length === 1 ? '' : 's'}
+                      {formatShortDate(r.occurredAt)}{r.orders.length > 0 && ` · ${r.orders.length} order${r.orders.length === 1 ? '' : 's'}`}
                       {r.legacy ? (
                         <span className="ml-2 rounded-full bg-surface-elevated px-2 py-0.5 text-[11px] font-medium text-text-secondary">Paid outside the system</span>
                       ) : (
-                        <span className="ml-2 tabular-nums">{formatPrice(r.total)} paid</span>
+                        <span className="ml-2 tabular-nums">{rm(r.total)} paid</span>
                       )}
                     </p>
                     {r.payouts.length > 0 && (
-                      <p className="text-[13px] text-text-secondary">{r.payouts.map((p) => `${p.name} ${formatPrice(p.amount)}`).join(' · ')}</p>
+                      <p className="text-[13px] text-text-secondary">{r.payouts.map((p) => `${p.name} ${rm(p.amount)}`).join(' · ')}</p>
                     )}
                     <p className="text-[12px] text-text-muted">
-                      {r.note ? `${r.note} · ` : ''}{r.createdBy ?? ''}
+                      {[r.note, r.createdBy === 'cutover' ? 'moved over when the bank started' : r.createdBy ? `by ${r.createdBy}` : null].filter(Boolean).join(' · ')}
                     </p>
+                    {r.orders.length > 0 && (
                     <details className="mt-1">
                       <summary className="cursor-pointer text-[12px] text-text-secondary hover:text-text-primary">Orders</summary>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -338,10 +339,13 @@ export default function ShareOutPage() {
                         ))}
                       </div>
                     </details>
+                    )}
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => { setUndoError(null); setUndoing(r); }}>
-                    <Undo2 className="w-3.5 h-3.5" /> Undo
-                  </Button>
+                  {r.createdBy !== 'cutover' && (
+                    <Button variant="ghost" size="sm" onClick={() => { setUndoError(null); setUndoing(r); }}>
+                      <Undo2 className="w-3.5 h-3.5" /> Undo
+                    </Button>
+                  )}
                 </div>
               </li>
             ))}
@@ -363,7 +367,7 @@ export default function ShareOutPage() {
       )}
       {editingRule && (
         <SplitRuleDialog
-          current={rules.current}
+          current={upcoming[0] ?? rules.current}
           partners={[
             ...overview.partners.filter((p) => p.active).map((p) => ({ partnerId: p.partnerId, name: p.name, kind: 'PERSON' as const })),
             ...(overview.ascend ? [{ partnerId: overview.ascend.partnerId, name: overview.ascend.name, kind: 'COMPANY' as const }] : []),
@@ -378,7 +382,7 @@ export default function ShareOutPage() {
           body={
             undoing.legacy
               ? `Its ${undoing.orders.length} order${undoing.orders.length === 1 ? '' : 's'} go back to Ready to share.`
-              : `The ${formatPrice(undoing.total)} of payouts are deleted and its ${undoing.orders.length} order${undoing.orders.length === 1 ? '' : 's'} go back to Ready to share. Only do this if the money did not actually go out.`
+              : `The ${rm(undoing.total)} of payouts are deleted and its ${undoing.orders.length} order${undoing.orders.length === 1 ? '' : 's'} go back to Ready to share. Only do this if the money did not actually go out.`
           }
           confirmLabel="Undo"
           tone="danger"
@@ -438,7 +442,7 @@ function ShareOutDialog({
       onDone(
         outside
           ? `${res.orders} order${res.orders === 1 ? '' : 's'} marked shared (paid outside the system).`
-          : `Shared out ${formatPrice(total)} from ${res.orders} order${res.orders === 1 ? '' : 's'}.${res.warning ? ` ${res.warning}` : ''}`
+          : `Shared out ${rm(total)} from ${res.orders} order${res.orders === 1 ? '' : 's'}.${res.warning ? ` ${res.warning}` : ''}`
       );
       close();
     } catch (err) {
@@ -456,24 +460,25 @@ function ShareOutDialog({
       footer={(close) => (
         <>
           <Button type="button" variant="ghost" size="sm" onClick={close} disabled={busy}>Cancel</Button>
-          <Button type="button" size="sm" disabled={busy} onClick={() => submit(close)}>
-            {busy ? 'Working…' : outside ? 'Mark shared' : `Pay ${formatPrice(total)}`}
+          <Button type="submit" form="share-out-form" size="sm" disabled={busy}>
+            {busy ? 'Working…' : outside ? 'Mark shared' : `Pay ${rm(total)}`}
           </Button>
         </>
       )}
     >
-      <div className="space-y-4">
+      {(close) => (
+      <form id="share-out-form" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(close); }}>
         <div className="rounded-lg border border-border divide-y divide-border">
           {people.filter((p) => p.amount !== 0).map((p) => (
             <div key={p.partnerId} className="flex justify-between px-4 py-2.5 text-[15px]">
               <span>{outside ? p.name : `Pay ${p.name}`}</span>
-              <span className="font-semibold tabular-nums">{formatPrice(p.amount)}</span>
+              <span className="font-semibold tabular-nums">{rm(p.amount)}</span>
             </div>
           ))}
           {keep !== 0 && (
             <div className="flex justify-between px-4 py-2.5 text-[14px] text-text-secondary">
               <span>Ascend keeps</span>
-              <span className="tabular-nums">{formatPrice(keep)}</span>
+              <span className="tabular-nums">{rm(keep)}</span>
             </div>
           )}
         </div>
@@ -492,12 +497,12 @@ function ShareOutDialog({
               className={cn('rounded-lg border px-3 py-2.5 text-left cursor-pointer', outside === o.v ? 'border-primary bg-primary/5' : 'border-border hover:bg-surface-elevated')}
             >
               <span className="block text-[14px] font-medium">{o.label}</span>
-              <span className={cn('block text-[13px]', !o.v && bankBalance !== null && bankBalance - total < 0 ? 'text-warning' : 'text-text-secondary')}>{o.blurb}</span>
+              <span className={cn('block text-[13px]', !o.v && bankBalance !== null && bankBalance - total < 0 ? 'text-amber-700' : 'text-text-secondary')}>{o.blurb}</span>
             </button>
           ))}
         </div>
         {beforeBank > 0 && beforeBank < orders.length && (
-          <p className="text-[13px] text-warning">{beforeBank} of these were paid before the bank started — their money may never have been in it.</p>
+          <p className="text-[13px] text-amber-700">{beforeBank} of these were paid before the bank started — their money may never have been in it.</p>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -509,7 +514,8 @@ function ShareOutDialog({
           </Field>
         </div>
         {error && <p className="text-[13px] text-danger">{error}</p>}
-      </div>
+      </form>
+      )}
     </Dialog>
   );
 }

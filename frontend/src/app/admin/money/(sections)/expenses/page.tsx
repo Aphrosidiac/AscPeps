@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Plus, X, Receipt, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { rm } from '../../money-ui';
 import {
   adminGetExpenses, adminCreateExpense, adminUpdateExpense, adminDeleteExpense, adminGetFinanceOverview,
 } from '@/lib/api';
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
-import { formatPrice, formatShortDate, cn } from '@/lib/utils';
+import { formatShortDate, cn } from '@/lib/utils';
 import type { CompanyExpense, PartnerBalance, FundingType, ExpenseKind } from '@/types';
 
 const todayIso = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -167,8 +168,8 @@ export default function AdminExpensesPage() {
           a summary and the one action, not a second page title. */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="text-[14px] text-text-secondary">
-          {expenses.length} record{expenses.length === 1 ? '' : 's'} · {formatPrice(operatingTotal)} running costs
-          {stockTotal > 0 && <> · {formatPrice(stockTotal)} stock</>}
+          {expenses.length} record{expenses.length === 1 ? '' : 's'} · {rm(operatingTotal)} running costs
+          {stockTotal > 0 && <> · {rm(stockTotal)} stock</>}
         </p>
         {!adding && <Button size="sm" onClick={() => { setAdding(true); setError(''); }}><Plus className="w-4 h-4" /> Add expense</Button>}
       </div>
@@ -246,7 +247,7 @@ export default function AdminExpensesPage() {
                 <select id="e-funding" value={form.paidByFundingType}
                   onChange={(e) => setForm((f) => ({ ...f, paidByFundingType: e.target.value as FundingType }))}
                   className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface">
-                  <option value="ADVANCE">Yes — company owes them back</option>
+                  <option value="ADVANCE">Yes — Ascend owes them back</option>
                   <option value="CONTRIBUTION">No — pure investment</option>
                 </select>
               </div>
@@ -302,7 +303,7 @@ export default function AdminExpensesPage() {
                   <p className="font-medium text-sm min-w-0">{e.description}</p>
                   <div className="flex items-baseline gap-1 shrink-0">
                     <DocsButton expense={e} />
-                    <span className="text-sm font-semibold tabular-nums">{formatPrice(e.amount)}</span>
+                    <span className="text-sm font-semibold tabular-nums">{rm(e.amount)}</span>
                     <button onClick={() => remove(e.id)} aria-label={`Delete ${e.description}`}
                       className="p-1 -mr-1 rounded-lg text-text-muted hover:text-danger transition-colors cursor-pointer">
                       <X className="w-4 h-4" />
@@ -330,7 +331,7 @@ export default function AdminExpensesPage() {
                   {e.paidBy ? (
                     <span>
                       {e.paidBy.name}
-                      <span className={cn(e.funding?.type === 'ADVANCE' ? 'text-warning' : 'text-text-muted')}>
+                      <span className={cn(e.funding?.type === 'ADVANCE' ? 'text-amber-700' : 'text-text-muted')}>
                         {e.funding?.type === 'ADVANCE' ? ' · owed back' : ' · investment'}
                       </span>
                     </span>
@@ -393,16 +394,16 @@ export default function AdminExpensesPage() {
                       {e.paidBy ? (
                         <span>
                           {e.paidBy.name}
-                          <span className={cn('block', e.funding?.type === 'ADVANCE' ? 'text-warning' : 'text-text-muted')}>
+                          <span className={cn('block', e.funding?.type === 'ADVANCE' ? 'text-amber-700' : 'text-text-muted')}>
                             {e.funding?.type === 'ADVANCE' ? 'owed back' : 'investment'}
                           </span>
                         </span>
                       ) : (
-                        <span className="text-text-muted">Company</span>
+                        <span className="text-text-muted">Ascend’s bank</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-center"><DocsButton expense={e} /></td>
-                    <td className="px-3 py-3 text-right font-semibold tabular-nums whitespace-nowrap">{formatPrice(e.amount)}</td>
+                    <td className="px-3 py-3 text-right font-semibold tabular-nums whitespace-nowrap">{rm(e.amount)}</td>
                     <td className="px-5 py-3 text-right">
                       <button onClick={() => remove(e.id)} aria-label={`Delete ${e.description}`}
                         className="p-1 rounded-lg text-text-muted hover:text-danger transition-colors cursor-pointer">
@@ -432,7 +433,7 @@ export default function AdminExpensesPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="min-w-0">
                 <p className="text-white font-display font-semibold truncate">{docsFor.description}</p>
-                <p className="text-white/70 text-xs">{docsFor.category} · {formatPrice(docsFor.amount)}</p>
+                <p className="text-white/70 text-xs">{docsFor.category} · {rm(docsFor.amount)}</p>
               </div>
               <button
                 onClick={() => { setDocsFor(null); load(); }}

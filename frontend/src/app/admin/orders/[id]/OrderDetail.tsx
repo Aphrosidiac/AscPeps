@@ -1973,13 +1973,13 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
             <span className="text-text-secondary">
               Shared out {new Date(order.payoutRun.occurredAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', year: 'numeric' })}
               {order.payoutRun.legacy ? ' · paid outside the system' : ''} ·{' '}
-              <Link href={`/admin/money/share#run-${order.payoutRun.id}`} className="text-primary hover:underline">see share-out</Link>
+              <Link href={`/admin/money/share#run-${order.payoutRun.id}`} className="font-medium text-text-primary underline underline-offset-4">see share-out</Link>
               {splitLocked && ' — undo it there to change this split'}
             </span>
           ) : order.paymentStatus === 'PAID' || order.paymentStatus === 'REFUNDED' ? (
-            <span className="text-warning">
+            <span className="text-amber-700">
               Not shared out yet ·{' '}
-              <Link href="/admin/money/share" className="text-primary hover:underline">Profit sharing</Link>
+              <Link href="/admin/money/share" className="font-medium text-text-primary underline underline-offset-4">go to Profit sharing</Link>
             </span>
           ) : (
             <span className="text-text-muted">Shared out once paid, delivered and costed.</span>
@@ -2012,7 +2012,8 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
         ) : (
           <>
             <div className="hidden sm:flex items-center gap-3 pb-2 text-[11px] font-medium text-text-muted uppercase tracking-wider">
-              <span className="flex-1 min-w-0">Person</span>
+              <span className="flex-1 min-w-0 max-w-xs">Person</span>
+              <span className="flex-1 hidden sm:block" />
               <span className="w-28 shrink-0 text-right">Share</span>
               <span className="w-28 shrink-0 text-right">Their part</span>
               <span className="w-7 shrink-0" />
@@ -2035,11 +2036,12 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
                         touch();
                       }}
                       aria-label={`Person ${i + 1}`}
-                      className="min-w-0 sm:flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-surface"
+                      className="min-w-0 sm:flex-1 sm:max-w-xs px-3 py-2 border border-border rounded-lg text-sm bg-surface"
                     >
                       {!row.partnerId && <option value="">Choose…</option>}
                       {options.map((o) => <option key={o.partnerId} value={o.partnerId}>{o.name}</option>)}
                     </select>
+                    <span className="hidden sm:block flex-1" aria-hidden="true" />
                     <button
                       onClick={() => { setShares((p) => p.filter((_, j) => j !== i)); touch(); }}
                       disabled={row.legacyCapital > 0}

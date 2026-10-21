@@ -5,9 +5,11 @@
  * picker, money parsing, and the labels for each kind of bank movement.
  */
 import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import type { BankSource, SplitRuleShare } from '@/types';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 export const SECTIONS = [
   { href: '/admin/money', label: 'Overview' },
@@ -23,15 +25,24 @@ export function SectionTabs() {
   const current =
     [...SECTIONS].reverse().find((s) => (s.href === '/admin/money' ? pathname === s.href : pathname.startsWith(s.href)))?.href ??
     '/admin/money';
+  // On a phone the last tab sits off the edge; the one you are on must not.
+  const activeRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }, [current]);
   return (
-    <nav className="mb-6 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Ascend Money sections">
-      <div className="flex w-max min-w-full gap-6">
+    <nav
+      className="mb-6 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:[mask-image:linear-gradient(to_right,black_85%,transparent)]"
+      aria-label="Ascend Money sections"
+    >
+      <div className="flex w-max min-w-full gap-6 pr-8 sm:pr-0">
         {SECTIONS.map((s) => {
           const active = s.href === current;
           return (
             <Link
               key={s.href}
               href={s.href}
+              ref={active ? activeRef : undefined}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 '-mb-px shrink-0 border-b-2 pb-3 pt-1 text-[15px] leading-[22px] font-medium transition-colors duration-[160ms]',
@@ -107,10 +118,18 @@ export function parseRinggit(input: string): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
-/** Signed money with a real minus sign, for balances and differences. */
-export function signedPrice(cents: number): string {
-  return cents < 0 ? `−${formatPrice(-cents)}` : formatPrice(cents);
+/**
+ * Money on Ascend Money: "RM 2,802.40". The admin-wide formatPrice prints
+ * "RM2802.40", which is fine for a product price but hard to read down a
+ * column of balances. A real minus sign for anything below zero.
+ */
+export function rm(cents: number): string {
+  const n = (Math.abs(cents) / 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${cents < 0 ? '−' : ''}RM ${n}`;
 }
+
+/** Kept for readability at call sites that are about a signed balance. */
+export const signedPrice = rm;
 
 export const todayIso = () => new Date(Date.now() + MYT_MS).toISOString().slice(0, 10);
 
@@ -177,10 +196,19 @@ export function SplitLegend({ shares, amounts }: { shares: Pick<SplitRuleShare, 
           <span className="text-text-primary font-medium">{s.name}</span>
           <span className="tabular-nums">{bpsLabel(s.shareBps)}</span>
           {amounts && amounts[i] !== undefined && amounts[i] !== null ? (
-            <span className="tabular-nums text-text-primary">· {formatPrice(amounts[i] as number)}</span>
+            <span className="tabular-nums text-text-primary">· {rm(amounts[i] as number)}</span>
           ) : null}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A link that looks like one: underlined, with an arrow. */
+export function TextLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="inline-flex items-center gap-1 text-[13px] font-medium text-text-primary underline decoration-border-hover underline-offset-4 hover:decoration-text-primary">
+      {children} <ArrowRight className="w-3.5 h-3.5" />
+    </Link>
   );
 }

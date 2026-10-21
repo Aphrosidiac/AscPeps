@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { Plus, Minus, Scale, Trash2, CheckCircle2, Download } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminDeleteBankCheck, adminDeleteBankEntry, adminGetBankLedger } from '@/lib/api';
-import { formatPrice, formatShortDate, cn } from '@/lib/utils';
+import { formatShortDate, cn } from '@/lib/utils';
 import { Card, CardHeader } from '@/components/admin/ui';
 import { ConfirmDialog } from '@/components/admin/Dialog';
 import { Button } from '@/components/ui/Button';
 import type { BankLedger, BankMovement, BankSource } from '@/types';
-import { PeriodPicker, periodRange, signedPrice, SOURCE, apiError, type PeriodKey } from '../../money-ui';
+import { PeriodPicker, periodRange, signedPrice, SOURCE, apiError, type PeriodKey, rm } from '../../money-ui';
 import { BankEntryDialog, CheckBalanceDialog, OpeningBalanceForm } from '../../bank-dialogs';
 
 const FILTERS: { key: string; label: string; sources: BankSource[] }[] = [
@@ -39,7 +39,7 @@ export default function BankPage() {
   const [data, setData] = useState<BankLedger | null>(null);
   const [error, setError] = useState(false);
   const [dialog, setDialog] = useState<'in' | 'out' | 'check' | null>(null);
-  const [removing, setRemoving] = useState<{ kind: 'entry' | 'check'; id: string; label: string } | null>(null);
+  const [removing, setRemoving] = useState<{ kind: 'entry' | 'check'; id: string; label: string; opening?: boolean } | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -102,21 +102,38 @@ export default function BankPage() {
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-text-secondary">
+        {data.lastCheck ? (
+          data.lastCheck.difference === 0 ? (
+            <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="w-4 h-4" /> Matched the bank statement on {formatShortDate(data.lastCheck.checkedAt)}</span>
+          ) : (
+            <span className="text-amber-700">Last statement check ({formatShortDate(data.lastCheck.checkedAt)}) was off by {signedPrice(data.lastCheck.difference)}</span>
+          )
+        ) : (
+          <span>Not checked against the bank statement yet.</span>
+        )}
+        <span aria-hidden="true">·</span>
+        <span>Tracked since {formatShortDate(data.startedAt as string)}</span>
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setDialog('in')}><Plus className="w-3.5 h-3.5" /> Money in</Button>
+          <Button variant="outline" size="sm" onClick={() => setDialog('out')}><Minus className="w-3.5 h-3.5" /> Money out</Button>
+          <Button variant="outline" size="sm" onClick={() => setDialog('check')}><Scale className="w-3.5 h-3.5" /> Check balance</Button>
+          <Button variant="ghost" size="sm" onClick={exportCsv} title="Download CSV"><Download className="w-3.5 h-3.5" /> CSV</Button>
+        </div>
+      </div>
+
+      {/* Start + in − out = end, so the four cards add up on their own. */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Stat label="Balance now" value={signedPrice(data.balance)} strong tone={data.balance < 0 ? 'bad' : undefined} />
-        <Stat label={`In · ${range.label}`} value={formatPrice(data.flows.moneyIn)} tone="good" />
-        <Stat label={`Out · ${range.label}`} value={formatPrice(data.flows.moneyOut)} />
+        <Stat label={period === 'all' ? 'Opening balance' : `Start of ${range.label}`} value={signedPrice(data.flows.opening)} />
+        <Stat label="Money in" value={`+${rm(data.flows.moneyIn)}`} tone={data.flows.moneyIn > 0 ? 'good' : undefined} />
+        <Stat label="Money out" value={`−${rm(data.flows.moneyOut)}`} />
         <Stat
-          label="Statement"
-          value={
-            data.lastCheck
-              ? data.lastCheck.difference === 0
-                ? 'Matches'
-                : `Off ${signedPrice(data.lastCheck.difference)}`
-              : 'Not checked'
-          }
-          hint={data.lastCheck ? formatShortDate(data.lastCheck.checkedAt) : `Tracked since ${formatShortDate(data.startedAt as string)}`}
-          tone={data.lastCheck ? (data.lastCheck.difference === 0 ? 'good' : 'warn') : undefined}
+          label={period === 'all' ? 'Balance now' : `End of ${range.label}`}
+          value={signedPrice(data.flows.closing)}
+          strong
+          tone={data.flows.closing < 0 ? 'bad' : undefined}
         />
       </div>
 
@@ -141,10 +158,6 @@ export default function BankPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <PeriodPicker value={period} onChange={setPeriod} />
-            <Button variant="outline" size="sm" onClick={() => setDialog('in')}><Plus className="w-3.5 h-3.5" /> In</Button>
-            <Button variant="outline" size="sm" onClick={() => setDialog('out')}><Minus className="w-3.5 h-3.5" /> Out</Button>
-            <Button variant="outline" size="sm" onClick={() => setDialog('check')}><Scale className="w-3.5 h-3.5" /> Check</Button>
-            <Button variant="ghost" size="sm" onClick={exportCsv} aria-label="Download CSV"><Download className="w-3.5 h-3.5" /></Button>
           </div>
         </div>
 
@@ -158,12 +171,11 @@ export default function BankPage() {
                 <li key={m.key} className="px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', SOURCE[m.source].chip)}>{SOURCE[m.source].label}</span>
-                      <p className="mt-1 text-[14px] break-words">{m.partnerName ? `${m.partnerName} · ${m.description}` : m.description}</p>
-                      <p className="text-[12px] text-text-secondary">{formatShortDate(m.occurredAt)} · balance {signedPrice(m.balance)}</p>
+                      <p className="text-[14px] break-words">{m.partnerName ? `${m.partnerName} · ${m.description}` : m.description}</p>
+                      <p className="text-[12px] text-text-secondary">{SOURCE[m.source].label} · {formatShortDate(m.occurredAt)} · <span className="whitespace-nowrap">balance {signedPrice(m.balance)}</span></p>
                     </div>
-                    <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', m.amount > 0 && 'text-success')}>
-                      {m.amount > 0 ? '+' : '−'}{formatPrice(Math.abs(m.amount))}
+                    <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums whitespace-nowrap', m.amount > 0 && 'text-success')}>
+                      {m.amount > 0 ? '+' : '−'}{rm(Math.abs(m.amount))}
                     </span>
                   </div>
                 </li>
@@ -199,14 +211,14 @@ export default function BankPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-success">{m.amount > 0 ? formatPrice(m.amount) : ''}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{m.amount < 0 ? formatPrice(-m.amount) : ''}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-success">{m.amount > 0 ? rm(m.amount) : ''}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{m.amount < 0 ? rm(-m.amount) : ''}</td>
                         <td className={cn('px-3 py-2.5 text-right tabular-nums font-medium', m.balance < 0 && 'text-danger')}>{signedPrice(m.balance)}</td>
                         <td className="pr-4 text-right">
                           {m.ref.type === 'bank_entry' && (
                             <button
                               type="button"
-                              onClick={() => { setRemoveError(null); setRemoving({ kind: 'entry', id: m.ref.id, label: m.description }); }}
+                              onClick={() => { setRemoveError(null); setRemoving({ kind: 'entry', id: m.ref.id, label: m.description, opening: m.source === 'OPENING' }); }}
                               aria-label={`Delete ${m.description}`}
                               className="p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger/10 cursor-pointer"
                             >
@@ -227,16 +239,16 @@ export default function BankPage() {
       <Card>
         <CardHeader title="Statement checks" description="Each time someone compared this page with the bank app." />
         {data.checks.length === 0 ? (
-          <p className="px-6 py-5 text-[14px] text-text-secondary">No checks yet. Use Check above whenever you open the bank app.</p>
+          <p className="px-6 py-5 text-[14px] text-text-secondary">No checks yet. Use Check balance above whenever you open the bank app.</p>
         ) : (
           <ul className="divide-y divide-border">
             {data.checks.map((c) => (
               <li key={c.id} className="flex items-center gap-3 px-6 py-3">
-                {c.difference === 0 ? <CheckCircle2 className="w-4 h-4 text-success shrink-0" /> : <Scale className="w-4 h-4 text-warning shrink-0" />}
+                {c.difference === 0 ? <CheckCircle2 className="w-4 h-4 text-success shrink-0" /> : <Scale className="w-4 h-4 text-amber-700 shrink-0" />}
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px]">
                     Bank {signedPrice(c.statementBalance)} · here {signedPrice(c.bookBalance)}
-                    {c.difference !== 0 && <span className="text-warning"> · off {signedPrice(c.difference)}</span>}
+                    {c.difference !== 0 && <span className="text-amber-700"> · off {signedPrice(c.difference)}</span>}
                   </p>
                   <p className="text-[12px] text-text-secondary">
                     {formatShortDate(c.checkedAt)}{c.createdBy ? ` · ${c.createdBy}` : ''}{c.note ? ` · ${c.note}` : ''}
@@ -266,7 +278,13 @@ export default function BankPage() {
       {removing && (
         <ConfirmDialog
           title={removing.kind === 'entry' ? `Delete “${removing.label}”?` : 'Delete this check?'}
-          body={removing.kind === 'entry' ? 'The balance changes by its amount.' : 'Only the record of the check goes; the balance does not change.'}
+          body={
+            removing.kind === 'check'
+              ? 'Only the record of the check goes; the balance does not change.'
+              : removing.opening
+                ? 'This stops tracking the bank: every movement disappears from this page until an opening balance is entered again. Nothing else is deleted.'
+                : 'The balance changes by its amount.'
+          }
           confirmLabel="Delete"
           tone="danger"
           error={removeError}
@@ -298,7 +316,7 @@ function Stat({ label, value, hint, strong, tone }: { label: string; value: stri
           strong ? 'text-[22px] leading-7' : 'text-[17px] leading-6',
           tone === 'good' && 'text-success',
           tone === 'bad' && 'text-danger',
-          tone === 'warn' && 'text-warning'
+          tone === 'warn' && 'text-amber-700'
         )}
       >
         {value}
