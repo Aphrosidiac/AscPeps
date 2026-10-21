@@ -640,7 +640,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
   const lastUser = [...rows].reverse().find((r) => r.role === 'user');
   const lastUserAt = lastUser ? history.find((h) => h.seq === lastUser.seq)?.createdAt : undefined;
   const approved = lastUserAt
-    ? await fastify.prisma.agentAction.findMany({ where: { threadId: run.threadId, status: 'done', tier: { not: 'read' }, createdAt: { gte: lastUserAt } }, select: { tool: true, output: true } })
+    ? await fastify.prisma.agentAction.findMany({ where: { threadId: run.threadId, status: 'done', tier: { not: 'read' }, createdAt: { gte: lastUserAt } }, select: { tool: true, output: true, summary: true } })
     : [];
   const writesSucceeded: string[] = approved.map((a) => a.tool);
   // send_file runs at read tier (anyone allowed to ask may have a file in
@@ -730,13 +730,24 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
           { threadId: run.threadId, step, model: result.model, finishReason: result.finishReason, usage: result.usage, reasoningChars: result.reasoning.length, lastRole: messages[messages.length - 1]?.role },
           'agent returned an empty final reply'
         );
+        // As a user message: on a resumed approval the transcript already
+        // ends in system notes, and GLM flash answered a second system nudge
+        // with one empty token too (22 Oct 2026, ASC2610/0027 + 0029).
         if (!emptyRetried && step < MAX_STEPS) {
           emptyRetried = true;
-          messages.push({ role: 'system', content: 'Your last message was empty. Answer the operator now, in one or two sentences.' });
+          messages.push({ role: 'user', content: '(automatic) Your last message was empty. Answer now, in one or two sentences.' });
           continue;
         }
       }
-      let text = result.text.trim() || 'I ran that but have nothing to report back — try asking again more specifically.';
+      // Still empty after the nudge. If an approved action ran, say so —
+      // "nothing to report back" after a write that went through read as
+      // if it had not happened.
+      const carriedOut = approved.map((a) => a.summary ?? a.tool);
+      let text =
+        result.text.trim() ||
+        (carriedOut.length
+          ? `Done ✅ — approved and carried out: ${carriedOut.join('; ')}.`
+          : 'I ran that but have nothing to report back — try asking again more specifically.');
       let guard: GuardNote | undefined;
 
       // Honesty guard, WRITE side. Only fires when NOTHING was written this
