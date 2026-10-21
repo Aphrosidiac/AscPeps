@@ -169,6 +169,7 @@ export interface TurnOutcome {
 }
 
 const runs = new Map<string, Run>();
+const STILL_WAITING = /\b(waiting (on|for) (your )?(\*?yes\*?|approval|go-ahead)|reply \*?yes\*?|needs? (a )?(fresh )?approval)/i;
 const MAX_STEPS = 16;
 const OUTPUT_BUDGET = 30_000;
 const MAX_TOKENS_PER_STEP = 4096;
@@ -748,6 +749,13 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
         (carriedOut.length
           ? `Done ✅ — approved and carried out: ${carriedOut.join('; ')}.`
           : 'I ran that but have nothing to report back — try asking again more specifically.');
+      // Resumed after an approval, the model has answered "still waiting on
+      // your yes" with the APPROVED note right in front of it (22 Oct 2026,
+      // ASC2610/0046 — already paid). Nothing is parked, so that is false.
+      if (carriedOut.length && !outcome.pending.length && STILL_WAITING.test(text)) {
+        fastify.log.warn({ threadId: run.threadId, reply: text.slice(0, 200) }, 'agent asked for approval of an action already approved — replaced');
+        text = `Done ✅ — approved and carried out: ${carriedOut.join('; ')}.`;
+      }
       let guard: GuardNote | undefined;
 
       // Honesty guard, WRITE side. Only fires when NOTHING was written this

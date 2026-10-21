@@ -211,6 +211,12 @@ const AFFIRMATIVE =
   /^(y|ya|yes|yep|yeah|yup|ok|okay|okey|k|confirm|confirmed|go|go ahead|do it|proceed|betul|boleh|sure)(\s+(please|pls|boss|ab|abby|thanks|tq))?\s*[.!]*$/i;
 const NEGATIVE =
   /^(n|no|nope|nah|cancel|stop|abort|jangan|tak|tidak|nevermind|never mind)(\s+(thanks|thank you|tq|please|pls|boss|ab|abby))?\s*[.!]*$/i;
+// A sentence that starts with a yes: "Yes paid on waldo only". Not a bare yes,
+// but not moving on either — 22 Oct 2026 it was read as moving on, the
+// parked mark-paid was cancelled, and Abby asked a second time. Quoting the
+// confirmation and saying yes approves it; otherwise it is asked once, in
+// code, rather than dropped.
+const YES_LED = /^(y|ya|yes|yep|yeah|yup|ok|okay|okey|confirm|confirmed|go ahead|do it|proceed|betul|boleh|sure)\b/i;
 
 // ------------------------------------------------------------- mentions
 //
@@ -480,6 +486,19 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
         return { action: 'reply', text: `Couldn't do it: ${err?.message ?? String(err)}` };
       }
       return { action: 'reply', text: await relay(thread.id, directory) };
+    }
+    if (YES_LED.test(text) && !text.includes('?')) {
+      const summary = mine.summary ?? mine.tool;
+      const quotesIt = !!msg.quoted?.fromBot && msg.quoted.text.includes(`About to ${summary}`);
+      if (quotesIt) {
+        try {
+          await approveAction(fastify, mine.id, opts);
+        } catch (err: any) {
+          return { action: 'reply', text: `Couldn't do it: ${err?.message ?? String(err)}` };
+        }
+        return { action: 'reply', text: await relay(thread.id, directory) };
+      }
+      return { action: 'reply', text: `Is that a yes to: ${summary}?\n\n${CONFIRM_SUFFIX}` };
     }
     if (NEGATIVE.test(text)) {
       // No model turn on a decline: "Cancelled" needs no narration, and the
