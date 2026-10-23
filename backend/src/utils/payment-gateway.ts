@@ -3,8 +3,19 @@ import * as billplz from './billplz.js';
 import * as toyyibpay from './toyyibpay.js';
 import * as btcpay from './btcpay.js';
 
-export type { PaymentFailureReason, BillTransactionStatus } from './toyyibpay.js';
-import type { BillTransactionStatus } from './toyyibpay.js';
+export type { PaymentFailureReason, BillTransactionStatus, NormalizedAttempt } from './toyyibpay.js';
+import type { BillTransactionStatus, NormalizedAttempt } from './toyyibpay.js';
+
+/**
+ * Everything one look at a bill turned up: the verdict, every attempt, and the
+ * gateway's answers verbatim (stored on the GATEWAY_CHECK event).
+ */
+export interface BillInspection extends BillTransactionStatus {
+  /** The bill's own state where the gateway has one (Billplz: due/paid/deleted). */
+  state?: string;
+  attempts: NormalizedAttempt[];
+  raw: unknown;
+}
 
 export interface CreateBillParams {
   name: string;
@@ -53,6 +64,11 @@ export interface PaymentGateway {
    * UNKNOWN instead of inventing a story about the customer.
    */
   verifyPaid(billId: string): Promise<BillTransactionStatus>;
+  /**
+   * verifyPaid plus every attempt the gateway lists, for the payment trail.
+   * Gateways without attempt detail (BTCPay) leave it out.
+   */
+  inspectBill?(billId: string): Promise<BillInspection>;
   /** Best-effort: stop a bill being payable after we've released its stock. */
   deactivateBill?(billId: string): Promise<boolean>;
   /** Where to send a customer to finish paying an existing, still-open bill. */
@@ -75,6 +91,17 @@ function getFrontendUrl(): string {
  * reserves a second lot of stock and can hard-block them on a low-stock
  * variant). The frontend re-validates the host before rendering it as a link.
  */
+/**
+ * Where a customer is sent to pay an existing bill: our own route, which
+ * records the visit (PAGE_OPENED) and redirects to the gateway's page. It is
+ * the only way to know whether a customer who never paid ever even saw the
+ * payment page. `src` says where the link was clicked from.
+ */
+export type PayLinkSource = 'checkout' | 'email' | 'retry' | 'track';
+export function payLink(billId: string, src: PayLinkSource): string {
+  return `${getBackendUrl()}/api/v1/payments/go/${encodeURIComponent(billId)}?src=${src}`;
+}
+
 function failedUrl(frontendUrl: string, retryUrl?: string | false): string {
   const base = `${frontendUrl}/checkout/failed`;
   return retryUrl ? `${base}?retry=${encodeURIComponent(retryUrl)}` : base;
@@ -118,14 +145,24 @@ const billplzGateway: PaymentGateway = {
     const frontendUrl = getFrontendUrl();
     return paid
       ? `${frontendUrl}/checkout/success`
-      : failedUrl(frontendUrl, query['billplz[id]'] && this.billUrl(query['billplz[id]']));
+      : failedUrl(frontendUrl, query['billplz[id]'] && payLink(query['billplz[id]'], 'retry'));
   },
   async verifyPaid(billId) {
     const bill = await billplz.getBill(billId);
-    // Billplz's bill resource reports only the final state ("due"/"paid"), not
-    // whether the payer ever selected a bank — so there is nothing here that
-    // could distinguish a decline from an abandon. Left undefined on purpose.
+    // The bill resource alone: the cheap check for "is it paid". The attempts
+    // that tell a decline from an abandon are a second GET — see inspectBill,
+    // which every path that records a failure uses instead.
     return { paid: bill.paid, amount: bill.paid_amount };
+  },
+  async inspectBill(billId) {
+    const bill = await billplz.getBill(billId);
+    const transactions = await billplz.getBillTransactions(billId);
+    return {
+      ...billplz.classifyBillplz(bill, transactions),
+      state: bill.state,
+      attempts: billplz.billplzAttempts(bill, transactions),
+      raw: { bill, transactions },
+    };
   },
   async deactivateBill(billId) {
     return billplz.deleteBill(billId);
@@ -193,10 +230,14 @@ const toyyibpayGateway: PaymentGateway = {
     const frontendUrl = getFrontendUrl();
     return paid
       ? `${frontendUrl}/checkout/success`
-      : failedUrl(frontendUrl, query.billcode && this.billUrl(query.billcode));
+      : failedUrl(frontendUrl, query.billcode && payLink(query.billcode, 'retry'));
   },
   async verifyPaid(billId) {
     return toyyibpay.getBillTransactions(billId, env.TOYYIBPAY_SECRET_KEY!);
+  },
+  async inspectBill(billId) {
+    const rows = await toyyibpay.getBillRows(billId, env.TOYYIBPAY_SECRET_KEY!);
+    return { ...toyyibpay.classifyBillRows(rows), attempts: toyyibpay.toyyibpayAttempts(rows), raw: rows };
   },
   async deactivateBill(billId) {
     return toyyibpay.inactiveBill(billId, env.TOYYIBPAY_SECRET_KEY!);

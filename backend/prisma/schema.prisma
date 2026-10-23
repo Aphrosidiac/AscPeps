@@ -264,6 +264,11 @@ model Order {
   // The channel the customer actually tried, when the gateway reports one —
   // e.g. "FPX B2C", "DuitNow QR". Null when they never chose anything.
   paymentFailureChannel String?
+  // Placed by the team to test checkout, not by a customer. Kept out of the
+  // payment analytics (Admin → Payments) unless asked for, because a handful
+  // of test orders is enough to swing a conversion rate measured on a few
+  // dozen real ones. Ticked by hand on the order page.
+  isTest                Boolean       @default(false)
   // Operational tick-box: the profit for this order has actually been paid out
   // to the people in its split. Deliberately manual and separate from whether a
   // split has been RECORDED (order_profit_shares rows) or whether the order is
@@ -292,6 +297,8 @@ model Order {
   reminders    AgentReminder[]
   documents    DocumentLink[]
   payoutRun    PayoutRun?         @relation(fields: [payoutRunId], references: [id], onDelete: SetNull)
+  paymentAttempts PaymentAttempt[]
+  paymentEvents   PaymentEvent[]
 
   @@index([phone])
   @@index([payoutRunId])
@@ -457,6 +464,64 @@ enum EmailStatus {
 // change, and a background worker (utils/email-worker.ts) drains it via
 // Resend. Emails are never sent inline — a gateway outage can't fail a
 // checkout, and a crashed send is retried instead of lost.
+// One try at paying an order's bill, exactly as the gateway reports it.
+//
+// Billplz lists these per bill (GET /v3/bills/:id/transactions): an id, a
+// status, a completion time and the channel — and nothing else. It never says
+// which bank was chosen or why an attempt failed. ToyyibPay's rows carry more
+// (invoice no., a timestamp on every row, the channel) and also write a
+// channel-less row each time the bill page is shown. Either way the whole row
+// is kept in `raw`, so nothing the gateway said is lost to a summary.
+//
+// Upserted on every look at the bill (return, callback, sweep, the admin
+// refresh, the backfill): `firstSeenAt` is the closest we get to when a failed
+// Billplz attempt happened, since Billplz gives failed attempts no time.
+model PaymentAttempt {
+  id          String    @id @default(cuid())
+  orderId     String
+  gateway     String
+  // Billplz transaction id / ToyyibPay billpaymentInvoiceNo.
+  externalId  String
+  // completed | failed | pending, plus ToyyibPay's channel-less "opened".
+  status      String
+  // FPX, TOUCHNGO, BOOST, "DuitNow QR"… as the gateway names it.
+  channel     String?
+  amount      Int?
+  // When the gateway says the attempt happened (ToyyibPay billPaymentDate,
+  // Billplz completed_at). Null for a failed Billplz attempt.
+  attemptedAt DateTime?
+  completedAt DateTime?
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  raw         Json
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([gateway, externalId])
+  @@index([orderId])
+  @@map("payment_attempts")
+}
+
+// Everything that happened to an order's payment, in order: placed (with the
+// device), bill opened or refused, each visit to the payment page, each
+// return from the gateway, each callback, each time we asked the gateway,
+// paid, released, a late payment. `data` holds what we were told, verbatim
+// (signatures stripped). Utils: utils/payment-trail.ts.
+model PaymentEvent {
+  id      String   @id @default(cuid())
+  orderId String
+  type    String
+  gateway String?
+  at      DateTime @default(now())
+  data    Json
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, at])
+  @@index([type, at])
+  @@map("payment_events")
+}
+
 model EmailOutbox {
   id            String      @id @default(cuid())
   orderId       String

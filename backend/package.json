@@ -29,7 +29,8 @@
     "test:agent:wire": "tsx scripts/test-agent-wire.ts",
     "test:agent:browser": "tsx scripts/test-agent-browser.ts",
     "audit:agent:grounding": "tsx scripts/audit-agent-grounding.ts",
-    "test:payment-failure": "tsx scripts/test-payment-failure.ts"
+    "test:payment-failure": "tsx scripts/test-payment-failure.ts",
+    "test:payment-trail": "tsx scripts/test-payment-trail.ts"
   },
   "keywords": [],
   "author": "",

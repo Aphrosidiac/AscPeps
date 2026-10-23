@@ -7,6 +7,7 @@ import { enqueueEmail } from './email-outbox.js';
 import { capturePurchase } from './posthog.js';
 import { computeGatewayFee } from './gateway-fee.js';
 import { notifyOrder } from './order-notify.js';
+import { inspectAndRecord, recordPaymentEvent, releaseReason } from './payment-trail.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
@@ -59,7 +60,10 @@ export async function applyPaid(
     discountAmount: number;
     paymentMethod: string;
     paymentGateway: string | null;
-  }
+  },
+  // Which path confirmed it, for the payment trail: callback, return, sweep,
+  // admin (the refresh button), backfill.
+  via = 'unknown'
 ): Promise<boolean> {
   // Stamped at the transition rather than derived on read: what it cost to
   // collect this payment is a fact about this order, and must not move when the
@@ -77,6 +81,7 @@ export async function applyPaid(
   });
   if (transitioned) {
     fastify.log.info(`Order ${order.orderNumber} marked PAID`);
+    await recordPaymentEvent(fastify, { orderId: order.id, type: 'PAID', gateway: order.paymentGateway, data: { via, gatewayFee } });
     // The default profit split, as of now (utils/split-rules.ts). Never fatal:
     // the sweep before every money read catches anything missed here.
     await ensureDefaultSplits(fastify.prisma, [order.id]).catch((err) =>
@@ -148,16 +153,28 @@ export async function applyFailed(
     where: { id: orderId },
     select: { paymentRef: true, paymentGateway: true },
   });
+  // What became of the bill, for the trail: closed, refused by the gateway
+  // (Billplz answers 422 for a bill that was paid meanwhile), errored, or
+  // there was none.
+  let billClosed: 'closed' | 'refused' | 'error' | 'no_bill' | 'not_supported' = 'no_bill';
   if (order?.paymentRef) {
     const gateway = getGatewayByBillId(order.paymentRef, order.paymentGateway ?? undefined);
+    billClosed = 'not_supported';
     if (gateway?.deactivateBill) {
       try {
-        await gateway.deactivateBill(order.paymentRef);
+        billClosed = (await gateway.deactivateBill(order.paymentRef)) ? 'closed' : 'refused';
       } catch (err) {
+        billClosed = 'error';
         fastify.log.warn({ err, orderId, billId: order.paymentRef }, 'failed to deactivate bill');
       }
     }
   }
+  await recordPaymentEvent(fastify, {
+    orderId,
+    type: 'RELEASED',
+    gateway: order?.paymentGateway,
+    data: { reason, channel: failure?.channel ?? null, billClosed },
+  });
   return true;
 }
 
@@ -204,14 +221,19 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
     // 24 h) and rate-limits status reads to 100 — or 10 — per 5 minutes per
     // account, shared with the redirect's own check. Re-querying every unpaid
     // bill every 2 minutes would eat that budget, so a Billplz bill is only
-    // re-read once, just before the order would be released.
+    // re-read once, just before the order would be released (two GETs: the
+    // bill and its attempts, which is what the release reason comes from).
     if (gateway.name === 'billplz' && order.createdAt.getTime() >= now - releaseAfterMs) continue;
 
     try {
-      const { paid, failureReason, channel } = await gateway.verifyPaid(order.paymentRef);
+      const releasing = order.createdAt.getTime() < now - releaseAfterMs;
+      // Every attempt the gateway lists is stored on the way (payment trail);
+      // ToyyibPay is looked at every sweep, so its routine checks are quiet.
+      const inspection = await inspectAndRecord(fastify, order, 'sweep', { quiet: !releasing });
+      const { paid, failureReason, channel } = inspection ?? (await gateway.verifyPaid(order.paymentRef));
       if (paid) {
-        await applyPaid(fastify, order);
-      } else if (order.createdAt.getTime() < now - releaseAfterMs) {
+        await applyPaid(fastify, order, 'sweep');
+      } else if (releasing) {
         // Classified from the same re-query that just decided the order's fate,
         // so this costs no extra gateway call. Note that seeing a decline here
         // deliberately does NOT shorten the release window: ToyyibPay bills stay
@@ -219,7 +241,7 @@ export async function reconcileStaleOrders(fastify: FastifyInstance): Promise<vo
         // the same bill (ASC2608/0020 took five tries), so releasing on the
         // first refusal would take a live sale away from them.
         await applyFailed(fastify, order.id, {
-          reason: failureReason ?? 'UNKNOWN',
+          reason: await releaseReason(fastify, order.id, failureReason, inspection?.attempts ?? []),
           channel,
         });
       }

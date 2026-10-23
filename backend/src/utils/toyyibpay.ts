@@ -119,10 +119,33 @@ export type PaymentFailureReason =
   | 'ABANDONED_MID_PAYMENT'
   /** The bill was issued and no payment method was ever chosen. */
   | 'NO_ATTEMPT'
+  /**
+   * The bill was issued and the customer never even opened the payment page
+   * (no visit through our pay link, no attempt). Only knowable for orders
+   * whose bill went out through the tracked link — see utils/payment-trail.ts.
+   */
+  | 'NEVER_OPENED'
   /** createBill never produced a bill, so there was nothing to pay. */
   | 'NO_BILL'
   /** The gateway couldn't be asked, or doesn't report attempt detail. */
   | 'UNKNOWN';
+
+/**
+ * One payment attempt, normalised across gateways for the payment trail
+ * (PaymentAttempt rows). `raw` is the gateway's own row, untouched.
+ *
+ * `opened` exists for ToyyibPay only: the channel-less row it writes when the
+ * bill page is shown, before anything is chosen.
+ */
+export interface NormalizedAttempt {
+  externalId: string;
+  status: 'completed' | 'failed' | 'pending' | 'opened';
+  channel?: string;
+  amount?: number;
+  attemptedAt?: Date;
+  completedAt?: Date;
+  raw: unknown;
+}
 
 export interface BillTransactionStatus {
   paid: boolean;
@@ -150,6 +173,15 @@ export async function getBillTransactions(
   billCode: string,
   secretKey: string
 ): Promise<BillTransactionStatus> {
+  return classifyBillRows(await getBillRows(billCode, secretKey));
+}
+
+/**
+ * The raw getBillTransactions answer: an array of rows, or ToyyibPay's bare
+ * "No data found!" string. Kept unparsed so the payment trail can store every
+ * field ToyyibPay sent (invoice no., time, channel, settlement…).
+ */
+export async function getBillRows(billCode: string, secretKey: string): Promise<unknown> {
   const formData = new URLSearchParams();
   formData.append('userSecretKey', secretKey);
   formData.append('billCode', billCode);
@@ -159,8 +191,7 @@ export async function getBillTransactions(
     formData.toString(),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000 }
   );
-
-  return classifyBillRows(data);
+  return data;
 }
 
 /**
@@ -208,6 +239,46 @@ export function classifyBillRows(data: unknown): BillTransactionStatus {
   }
 
   return { paid: false, failureReason: 'NO_ATTEMPT' };
+}
+
+/**
+ * ToyyibPay's rows as attempts, every row kept. Its status codes: 1 success,
+ * 2 pending, 3 unsuccessful, 4 the channel-less row; a 4 that does carry a
+ * channel is someone who chose a method and never finished (the same reading
+ * classifyBillRows gives it). `billPaymentDate` is "DD-MM-YYYY HH:mm:ss" in
+ * Malaysia time. Rows without an invoice number get a stable stand-in id from
+ * their own fields, so a re-read upserts rather than duplicates.
+ */
+export function toyyibpayAttempts(data: unknown): NormalizedAttempt[] {
+  const rows: Record<string, string>[] = Array.isArray(data) ? data : [];
+  return rows.map((row, i) => {
+    const code = String(row?.billpaymentStatus ?? '');
+    const channel = String(row?.billpaymentChannel ?? '').trim() || undefined;
+    const status: NormalizedAttempt['status'] =
+      code === '1' ? 'completed' : code === '3' ? 'failed' : code === '2' || channel ? 'pending' : 'opened';
+    const raw = row?.billpaymentAmount;
+    const amount = raw != null && !Number.isNaN(parseFloat(raw)) ? Math.round(parseFloat(raw) * 100) : undefined;
+    const attemptedAt = parseToyyibpayDate(row?.billPaymentDate);
+    return {
+      externalId:
+        String(row?.billpaymentInvoiceNo ?? '').trim() ||
+        `${row?.billExternalReferenceNo ?? ''}#${row?.billPaymentDate ?? ''}#${code}#${i}`,
+      status,
+      channel,
+      amount,
+      attemptedAt,
+      completedAt: status === 'completed' ? attemptedAt : undefined,
+      raw: row,
+    };
+  });
+}
+
+function parseToyyibpayDate(value: string | undefined): Date | undefined {
+  const m = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(value ?? '').trim());
+  if (!m) return undefined;
+  const [, dd, mm, yyyy, hh, mi, ss] = m;
+  const d = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}+08:00`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 /**

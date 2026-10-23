@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createOrder, lookupOrders } from './orders.controller.js';
+import { clientContext } from '../../utils/payment-trail.js';
 import { getReceiptData, getReceiptPdf } from './receipt.controller.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 
@@ -21,7 +22,7 @@ export default async function orderRoutes(fastify: FastifyInstance) {
     '/',
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request) => {
-      return createOrder(fastify, request.body);
+      return createOrder(fastify, request.body, {}, clientContext(request));
     }
   );
 

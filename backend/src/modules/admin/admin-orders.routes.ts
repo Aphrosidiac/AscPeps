@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { adminListOrders, adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminSetOrderDiscount, adminSetOrderItems, adminUpdateOrderProfitShares, adminDeleteOrder, adminRestoreOrder, adminResendOrderEmail } from './admin-orders.controller.js';
+import { adminListOrders, adminGetOrder, adminUpdateOrder, adminUpdateOrderCosts, adminSetOrderDiscount, adminSetOrderItems, adminUpdateOrderProfitShares, adminDeleteOrder, adminRestoreOrder, adminResendOrderEmail, adminCheckOrderPayment, adminSetOrderTest } from './admin-orders.controller.js';
 import { adminGetReceiptPdf } from '../orders/receipt.controller.js';
 
 export default async function adminOrderRoutes(fastify: FastifyInstance) {
@@ -35,6 +35,14 @@ export default async function adminOrderRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>('/:id', async (request) => {
     return adminDeleteOrder(fastify, request.params.id);
+  });
+
+  fastify.post<{ Params: { id: string } }>('/:id/payment-check', async (request) => {
+    return adminCheckOrderPayment(fastify, request.params.id);
+  });
+
+  fastify.put<{ Params: { id: string } }>('/:id/test', async (request) => {
+    return adminSetOrderTest(fastify, request.params.id, request.body);
   });
 
   fastify.post<{ Params: { id: string } }>('/:id/restore', async (request) => {

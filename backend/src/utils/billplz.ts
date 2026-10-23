@@ -1,6 +1,7 @@
 import axios from 'axios';
 import crypto from 'crypto';
 import { env } from '../config/env.js';
+import type { BillTransactionStatus, NormalizedAttempt } from './toyyibpay.js';
 
 const getBaseUrl = () =>
   env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com/api' : 'https://www.billplz.com/api';
@@ -22,13 +23,16 @@ interface CreateBillParams {
   referenceOne?: string;
 }
 
-interface BillResponse {
+export interface BillResponse {
   id: string;
   collection_id: string;
   paid: boolean;
+  /** due | paid | deleted */
   state: string;
   amount: number;
   paid_amount: number;
+  paid_at?: string | null;
+  due_at?: string;
   url: string;
   name: string;
   description: string;
@@ -60,6 +64,82 @@ export async function getBill(billId: string): Promise<BillResponse> {
     { auth: getAuth(), timeout: 30000 }
   );
   return data;
+}
+
+export interface BillplzTransaction {
+  id: string;
+  /** pending | completed | failed */
+  status: string;
+  /** ISO 8601; null unless completed. */
+  completed_at: string | null;
+  /** FPX, TOUCHNGO, BOOST, BILLPLZ (card), TWOCTWOP… */
+  payment_channel: string | null;
+}
+
+/**
+ * Every payment attempt on a bill — the only attempt detail Billplz has: an
+ * id, a status, a completion time and a channel. No bank, no decline reason,
+ * and no time at all on a failed attempt. An empty list means the payer never
+ * picked a payment method. Still answers for deleted bills.
+ *
+ * 15 per page; read until a page comes back short. Each page is one GET
+ * against the 100 (or 10) per 5 minutes budget, so callers ask once per look
+ * at a bill, never on a timer.
+ */
+export async function getBillTransactions(billId: string): Promise<BillplzTransaction[]> {
+  const all: BillplzTransaction[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const { data } = await axios.get<{ transactions?: BillplzTransaction[] }>(
+      `${getBaseUrl()}/v3/bills/${billId}/transactions`,
+      { auth: getAuth(), timeout: 30000, params: { page } }
+    );
+    const rows = data.transactions ?? [];
+    all.push(...rows);
+    if (rows.length < 15) break;
+  }
+  return all;
+}
+
+/**
+ * A bill's verdict from its own state and its attempts. Pure, so it is tested
+ * against real recorded bills (scripts/test-payment-trail.ts).
+ *
+ *  - paid: the bill says so; the channel is the completed attempt's.
+ *  - DECLINED: at least one attempt failed and none completed. Billplz's
+ *    "failed" covers a bank refusal AND a customer pressing cancel at the
+ *    bank — it does not say which.
+ *  - ABANDONED_MID_PAYMENT: an attempt is still pending — a method was chosen
+ *    and handed to the bank, and no result came back.
+ *  - NO_ATTEMPT: no attempts at all; the payer never picked a method. Unlike
+ *    ToyyibPay an empty list is a real answer here, not "could not tell".
+ */
+export function classifyBillplz(bill: Pick<BillResponse, 'paid' | 'paid_amount'>, txns: BillplzTransaction[]): BillTransactionStatus {
+  const completed = txns.find((t) => t.status === 'completed');
+  if (bill.paid) {
+    return { paid: true, amount: bill.paid_amount, channel: completed?.payment_channel || undefined };
+  }
+  const failed = txns.find((t) => t.status === 'failed');
+  if (failed) return { paid: false, failureReason: 'DECLINED', channel: failed.payment_channel || undefined };
+  const pending = txns.find((t) => t.status === 'pending');
+  if (pending) return { paid: false, failureReason: 'ABANDONED_MID_PAYMENT', channel: pending.payment_channel || undefined };
+  return { paid: false, failureReason: 'NO_ATTEMPT' };
+}
+
+// Billplz lists a bill's attempts newest first; they are stored oldest first,
+// so a first sighting (firstSeenAt) keeps the order they happened in.
+export function billplzAttempts(bill: Pick<BillResponse, 'amount'>, txns: BillplzTransaction[]): NormalizedAttempt[] {
+  return [...txns].reverse().map((t) => {
+    const completedAt = t.completed_at ? new Date(t.completed_at) : undefined;
+    return {
+      externalId: t.id,
+      status: t.status === 'completed' || t.status === 'failed' ? t.status : 'pending',
+      channel: t.payment_channel || undefined,
+      amount: bill.amount,
+      attemptedAt: completedAt,
+      completedAt,
+      raw: t,
+    };
+  });
 }
 
 /**

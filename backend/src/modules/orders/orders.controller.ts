@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateOrderNumber } from '../../utils/order-number.js';
 import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
-import { getActiveGateway, isOnlineMethod, gatewayNameForMethod, type PaymentGateway } from '../../utils/payment-gateway.js';
+import { getActiveGateway, isOnlineMethod, gatewayNameForMethod, payLink, type PaymentGateway } from '../../utils/payment-gateway.js';
+import { recordPaymentEvent, type ClientContext } from '../../utils/payment-trail.js';
 import { resolveOrderLines, linesSubtotal, stockDemand, OrderLineError, groupOrderItems, groupedLineTotal, includesText, itemName, type ResolvedLine } from '../../utils/order-lines.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
@@ -130,12 +131,9 @@ async function ensureManualPaySession(
 }
 
 function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
-  if (order.paymentGateway === 'billplz' && order.paymentRef) {
-    return getActiveGateway('billplz')?.billUrl(order.paymentRef);
-  }
-  if (order.paymentGateway === 'toyyibpay' && order.paymentRef) {
-    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
-    return `${host}/${order.paymentRef}`;
+  // Through the pay link, as the first checkout was: the visit is recorded.
+  if ((order.paymentGateway === 'billplz' || order.paymentGateway === 'toyyibpay') && order.paymentRef) {
+    return payLink(order.paymentRef, 'checkout');
   }
   // A BTCPay invoice URL is derivable from its id, so a retry hands the
   // customer back the invoice they already have rather than minting a second
@@ -169,7 +167,15 @@ export interface CreateOrderInternal {
   manualDiscount?: ManualDiscountInput;
 }
 
-export async function createOrder(fastify: FastifyInstance, body: unknown, internal: CreateOrderInternal = {}) {
+// `client` is the browser that placed the order (device, country), read by the
+// route from the request headers — never from the body. Absent for orders the
+// assistant keys in.
+export async function createOrder(
+  fastify: FastifyInstance,
+  body: unknown,
+  internal: CreateOrderInternal = {},
+  client?: ClientContext
+) {
   const data = createOrderSchema.parse(body);
 
   // Refuse a switched-off payment method BEFORE anything is written. The
@@ -421,6 +427,21 @@ export async function createOrder(fastify: FastifyInstance, body: unknown, inter
     }
   }
 
+  // The first entry on the order's payment trail: how it was placed and on
+  // what device. Every method, not just online — it is what failures by
+  // device are measured against.
+  await recordPaymentEvent(fastify, {
+    orderId: order.id,
+    type: 'ORDER_PLACED',
+    gateway: onlineGateway?.name ?? (isManualPay ? MANUALPAY_GATEWAY : null),
+    data: {
+      method: data.paymentMethod,
+      total: order.total,
+      source: client ? 'storefront' : 'assistant',
+      client: client ?? null,
+    },
+  });
+
   let whatsappUrl: string | undefined;
   let paymentUrl: string | undefined;
 
@@ -513,6 +534,14 @@ async function openBill(
       { gateway: gateway.name, orderNumber: order.orderNumber, status: response?.status, data: response?.data, err: response ? undefined : err },
       'Could not create payment bill'
     );
+    // Billplz's whole answer (a 422 names the field it refused) goes on the
+    // trail — it is the entire explanation of a NO_BILL order.
+    await recordPaymentEvent(fastify, {
+      orderId: order.id,
+      type: 'BILL_FAILED',
+      gateway: gateway.name,
+      data: { status: response?.status ?? null, answer: response?.data ?? null, message: (err as Error)?.message ?? String(err) },
+    });
     throw { statusCode: 502, message: 'We could not open the payment page. Please try again in a moment.' };
   }
 
@@ -520,7 +549,15 @@ async function openBill(
     where: { id: order.id },
     data: { paymentRef: bill.billId, paymentGateway: bill.gateway },
   });
-  return bill.paymentUrl;
+  await recordPaymentEvent(fastify, {
+    orderId: order.id,
+    type: 'BILL_CREATED',
+    gateway: bill.gateway,
+    data: { billId: bill.billId, gatewayUrl: bill.paymentUrl, amount: order.total, emailSent: !!order.email },
+  });
+  // Billplz and ToyyibPay go through the pay link so the visit is recorded;
+  // BTCPay's checkout is handed over as it is.
+  return bill.gateway === 'billplz' || bill.gateway === 'toyyibpay' ? payLink(bill.billId, 'checkout') : bill.paymentUrl;
 }
 
 export async function lookupOrders(fastify: FastifyInstance, phone: string, orderNumber: string) {

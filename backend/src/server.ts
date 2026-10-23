@@ -27,6 +27,7 @@ import adminProductRoutes from './modules/admin/admin-products.routes.js';
 import adminOrderRoutes from './modules/admin/admin-orders.routes.js';
 import adminEmailRoutes from './modules/admin/admin-emails.routes.js';
 import adminDashboardRoutes from './modules/admin/admin-dashboard.routes.js';
+import adminPaymentRoutes from './modules/admin/admin-payments.routes.js';
 import adminFinanceRoutes from './modules/admin/admin-finance.routes.js';
 import adminDocumentsRoutes from './modules/admin/admin-documents.routes.js';
 import adminShadowSkusRoutes from './modules/admin/admin-shadow-skus.routes.js';
@@ -166,6 +167,7 @@ await fastify.register(adminProductRoutes, { prefix: '/api/v1/admin/products' })
 await fastify.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
 await fastify.register(adminEmailRoutes, { prefix: '/api/v1/admin/emails' });
 await fastify.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
+await fastify.register(adminPaymentRoutes, { prefix: '/api/v1/admin/payments' });
 await fastify.register(adminFinanceRoutes, { prefix: '/api/v1/admin/finance' });
 // Documents are NOT served from the static /uploads mount above — every route
 // in here, the file stream included, sits behind the admin JWT. See

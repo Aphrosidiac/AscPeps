@@ -9,6 +9,7 @@ import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput,
   ShadowCoverage,
   ShadowSummary,
   ShadowOrderRow,
+  PaymentAnalytics,
 } from '@/types';
 
 const api = axios.create({
@@ -161,6 +162,16 @@ export const adminRestoreOrder = (token: string, id: string) =>
 
 export const adminResendOrderEmail = (token: string, id: string, type: 'ORDER_CONFIRMATION' | 'PAYMENT_RECEIPT') =>
   api.post(`/api/v1/admin/orders/${id}/resend-email`, { type }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+// Payment trail: ask the gateway about the bill now; mark an order as a test.
+export const adminCheckOrderPayment = (token: string, id: string) =>
+  api.post<Order>(`/api/v1/admin/orders/${id}/payment-check`, {}, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminSetOrderTest = (token: string, id: string, isTest: boolean) =>
+  api.put<{ id: string; isTest: boolean }>(`/api/v1/admin/orders/${id}/test`, { isTest }, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
+
+export const adminGetPaymentAnalytics = (token: string, params: { days: number; gateway: string; tests: '0' | '1' }) =>
+  api.get<PaymentAnalytics>('/api/v1/admin/payments/analytics', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
 
 export const adminGetEmails = (token: string, params: { status?: string; page?: number; pageSize?: number }) =>
   api.get<AdminEmailsResponse>('/api/v1/admin/emails', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);

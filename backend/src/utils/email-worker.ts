@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { payLink } from './payment-gateway.js';
 import type { EmailOutbox } from '@prisma/client';
 import { env } from '../config/env.js';
 import { isEmailEnabled, sendEmail } from './email.js';
@@ -19,18 +20,14 @@ const BACKOFF_MS = [
 ];
 const MAX_ATTEMPTS = BACKOFF_MS.length;
 
-// Rebuild the gateway's payment URL from what IS persisted on the order —
-// the bill URL itself never is. Both gateways use stable <host>/<ref> style
-// URLs, so this matches what createBill originally returned.
+// Rebuild the payment URL from what IS persisted on the order — the bill URL
+// itself never is. Billplz and ToyyibPay bills go through our pay link (it
+// records that the customer opened the page from this email, then redirects
+// to the gateway's stable <host>/<ref> page).
 export function reconstructPaymentUrl(order: { paymentGateway: string | null; paymentRef: string | null }): string | undefined {
   if (!order.paymentRef) return undefined;
-  if (order.paymentGateway === 'toyyibpay') {
-    const host = env.TOYYIBPAY_SANDBOX ? 'https://dev.toyyibpay.com' : 'https://toyyibpay.com';
-    return `${host}/${order.paymentRef}`;
-  }
-  if (order.paymentGateway === 'billplz') {
-    const host = env.BILLPLZ_SANDBOX ? 'https://www.billplz-sandbox.com' : 'https://www.billplz.com';
-    return `${host}/bills/${order.paymentRef}`;
+  if (order.paymentGateway === 'toyyibpay' || order.paymentGateway === 'billplz') {
+    return payLink(order.paymentRef, 'email');
   }
   // The hosted manual checkout is ours, so its page is always re-openable.
   if (order.paymentGateway === 'manualpaygate') {

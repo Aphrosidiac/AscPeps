@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Headset, Handshake } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Headset, Handshake, CreditCard } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,8 @@ const navItems = [
   // AI button wears: Abby is the secretary on the line, not a magic wand.
   { href: '/admin/assistant', label: 'Assistant', icon: Headset },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+  // Beside Analytics: why online payments do and don't go through.
+  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
   { href: '/admin/money', label: 'Ascend Money', icon: Wallet },
   // Beside Finance, not off with Settings: a document is almost always the
   // receipt behind a number on the page above it.

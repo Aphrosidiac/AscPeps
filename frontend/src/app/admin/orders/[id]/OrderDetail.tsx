@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { InternalSummaryCard } from './InternalSummaryCard';
+import { PaymentTrailCard } from './PaymentTrailCard';
 import { AttachedDocuments } from '@/app/admin/documents/AttachedDocuments';
 import { ManualPayReview } from './ManualPayReview';
 import {
@@ -480,6 +481,8 @@ function OrderInfoTab({ order, onChange }: { order: Order; onChange: () => void 
           </div>
         )}
       </Card>
+
+      <PaymentTrailCard order={order} onChange={onChange} />
 
       <OrderItemsCard order={order} onChange={onChange} />
 

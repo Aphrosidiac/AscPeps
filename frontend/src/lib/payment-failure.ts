@@ -30,7 +30,7 @@ export function paymentFailureCopy(order: Pick<Order, 'paymentStatus' | 'payment
     case 'DECLINED':
       return {
         label: 'Declined',
-        detail: `The customer ${chose} and the payment was refused. No money moved. Worth following up — they were trying to buy.`,
+        detail: `The customer ${chose} and the attempt failed — refused by the bank, or cancelled on the bank's page (the gateway does not say which). No money moved. Worth following up — they were trying to buy.`,
         chase: true,
       };
     case 'ABANDONED_MID_PAYMENT':
@@ -43,6 +43,12 @@ export function paymentFailureCopy(order: Pick<Order, 'paymentStatus' | 'payment
       return {
         label: 'Never attempted',
         detail: 'The customer reached the payment page and never chose a payment method. Ordinary checkout drop-off.',
+        chase: false,
+      };
+    case 'NEVER_OPENED':
+      return {
+        label: 'Never opened',
+        detail: 'The bill was ready but the customer never opened the payment page — not from checkout and not from the email link. They left before reaching the gateway.',
         chase: false,
       };
     case 'NO_BILL':

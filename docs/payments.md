@@ -116,6 +116,51 @@ admin (or through the assistant) records the refund — revenue reversed by the
 exact amount, stock and discount restored — and logs a reminder; the money
 itself is returned by hand from the gateway dashboard or by bank transfer.
 
+## The payment trail
+
+Every online order keeps a record of what happened to its payment, so a
+failure can be explained instead of guessed at. Code:
+`backend/src/utils/payment-trail.ts`; tables `payment_events` and
+`payment_attempts`.
+
+- **Attempts** — every try at paying, exactly as the gateway lists it, raw row
+  included. Billplz (`GET /v3/bills/:id/transactions`) gives an attempt an id,
+  a status (completed / failed / pending), a channel (FPX, TOUCHNGO…) and,
+  only if it succeeded, a time. It never says which bank was chosen or why an
+  attempt failed — "failed" covers a bank refusal and a customer cancelling on
+  the bank page alike. ToyyibPay's rows carry an invoice no. and a time on
+  every row, and a channel-less row each time its bill page is shown.
+- **Events** — in order: `ORDER_PLACED` (device, browser, in-app app, country),
+  `BILL_CREATED` / `BILL_FAILED` (Billplz's whole answer), `PAGE_OPENED`,
+  `RETURNED` (every parameter the gateway sent back), `CALLBACK` (every field,
+  signature valid or not), `GATEWAY_CHECK` (what we asked and what it said),
+  `PAID` (and how), `RELEASED` (reason, whether the bill was closed),
+  `LATE_PAYMENT`.
+- **The pay link.** Checkout, emails and the "try again" button send customers
+  to `/api/v1/payments/go/:billId?src=…`, which records `PAGE_OPENED` and
+  redirects to the gateway's page. It is the only way to tell a customer who
+  never opened the payment page (`NEVER_OPENED`) from one who opened it and
+  picked nothing (`NO_ATTEMPT`).
+- **When the gateway is asked**: on every return from the gateway (a failed
+  return is the only moment a Billplz failure is seen as it happens — Billplz
+  sends no callback for one), after a paid callback, once before release, and
+  from **Check with Billplz** on the order page.
+
+Where it shows: the **Payment trail** panel on an order's Info tab (facts,
+attempts, timeline, raw data per row; Mark as test), and **Admin → Payments**
+(funnel, reasons, attempts by channel, devices, every failed order and whether
+the same phone bought within 7 days). Test orders are left out unless asked for.
+
+**Turn on "Extra Payment Completion Information"** in Billplz (Settings → Keys
+& Integration) and a returning customer's failed attempt arrives with its
+transaction id and status. Signatures keep verifying: every `billplz[...]`
+parameter is signed.
+
+History: `npx tsx scripts/backfill-payment-trail.ts --apply` reads every
+Billplz and ToyyibPay bill on record and fills in attempts and missing
+failure reasons (never overwriting one). Device, page visits, returns and
+callbacks exist only for orders placed after the trail went live.
+
 ## Testing on live
 
 The **Payment Test** product (`/products/payment-test`, SKU `PAYTEST`, RM1) has
@@ -135,3 +180,4 @@ by the signed callback.
 | Paid on the gateway, order still UNPAID | API log for `Payment callback: invalid signature` (wrong `BILLPLZ_SIGNATURE_KEY`, or X-Signature not enabled) and for `/api/v1/payments/callback` reaching the API at all |
 | `Could not create payment bill` | the logged Billplz status and body: 401 = wrong key or wrong environment, 422 = a field Billplz refused |
 | `LATE PAYMENT` | money arrived for a released order — reinstate or refund it by hand |
+| Why did this one fail? | The order's Payment trail panel. Press **Check with Billplz** to read the bill again |

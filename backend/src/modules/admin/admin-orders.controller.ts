@@ -10,6 +10,8 @@ import { isOnlineMethod } from '../../utils/payment-gateway.js';
 import { computeGatewayFee } from '../../utils/gateway-fee.js';
 import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
 import { notifyOrder } from '../../utils/order-notify.js';
+import { applyPaid } from '../../utils/payment-reconcile.js';
+import { inspectAndRecord, recordPaymentEvent, refineFailureReason } from '../../utils/payment-trail.js';
 import { carryDiscount, goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
@@ -203,6 +205,9 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
       profitShares: { orderBy: { createdAt: 'asc' }, include: { partner: { select: { name: true, kind: true } } } },
       extraCosts: { orderBy: { createdAt: 'asc' } },
       payoutRun: { select: { id: true, occurredAt: true, legacy: true } },
+      // The payment trail (utils/payment-trail.ts), oldest first.
+      paymentAttempts: { orderBy: [{ firstSeenAt: 'asc' }, { id: 'asc' }] },
+      paymentEvents: { orderBy: [{ at: 'asc' }, { id: 'asc' }] },
     },
   });
 
@@ -793,4 +798,55 @@ export async function adminResendOrderEmail(fastify: FastifyInstance, id: string
     update: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, toEmail: order.email },
     create: { orderId: order.id, type, toEmail: order.email },
   });
+}
+
+/**
+ * "Check with Billplz now": read the bill and its attempts, store them, and act
+ * on what the gateway says exactly as the sweep would — mark an unpaid order
+ * paid, or flag money that arrived for a released one. For a released order
+ * with no recorded reason it also fills one in (refineFailureReason).
+ */
+export async function adminCheckOrderPayment(fastify: FastifyInstance, id: string) {
+  const order = await fastify.prisma.order.findUnique({ where: { id } });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+  if (!order.paymentRef || (order.paymentGateway !== 'billplz' && order.paymentGateway !== 'toyyibpay')) {
+    throw { statusCode: 400, message: 'This order has no Billplz or ToyyibPay bill to check.' };
+  }
+
+  let inspection;
+  try {
+    inspection = await inspectAndRecord(fastify, order, 'admin');
+  } catch (err) {
+    const status = (err as { response?: { status?: number } }).response?.status;
+    throw {
+      statusCode: 502,
+      message: status === 429
+        ? 'Billplz is rate-limiting status checks right now (100 per 5 minutes). Try again in a few minutes.'
+        : `Could not reach ${order.paymentGateway === 'billplz' ? 'Billplz' : 'ToyyibPay'}${status ? ` (HTTP ${status})` : ''}.`,
+    };
+  }
+  if (!inspection) throw { statusCode: 400, message: 'This gateway does not report payment attempts.' };
+
+  if (inspection.paid && order.paymentStatus === 'UNPAID') {
+    await applyPaid(fastify, order, 'admin');
+  } else if (inspection.paid && order.paymentStatus === 'FAILED') {
+    const already = await fastify.prisma.paymentEvent.count({ where: { orderId: id, type: 'LATE_PAYMENT' } });
+    if (!already) {
+      fastify.log.error({ orderNumber: order.orderNumber }, 'LATE PAYMENT: money received for an order already released as FAILED — reinstate or refund by hand');
+      await recordPaymentEvent(fastify, { orderId: id, type: 'LATE_PAYMENT', gateway: order.paymentGateway, data: { via: 'admin', amount: inspection.amount } });
+    }
+  } else {
+    await refineFailureReason(fastify, order, inspection);
+  }
+  return adminGetOrder(fastify, id);
+}
+
+const setTestSchema = z.object({ isTest: z.boolean() });
+
+/** Tick an order as the team's own test — kept out of payment analytics. */
+export async function adminSetOrderTest(fastify: FastifyInstance, id: string, body: unknown) {
+  const { isTest } = setTestSchema.parse(body);
+  const { count } = await fastify.prisma.order.updateMany({ where: { id }, data: { isTest } });
+  if (!count) throw { statusCode: 404, message: 'Order not found' };
+  return { id, isTest };
 }

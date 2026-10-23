@@ -27,6 +27,10 @@ function safeRetryUrl(raw: string | null): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:') return null;
+    // Our own pay link (records the visit, then redirects to the gateway).
+    if (typeof window !== 'undefined' && url.host === window.location.host && url.pathname.startsWith('/api/v1/payments/go/')) {
+      return url.toString();
+    }
     return GATEWAY_HOSTS.has(url.hostname) ? url.toString() : null;
   } catch {
     return null;

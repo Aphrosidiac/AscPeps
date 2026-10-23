@@ -228,9 +228,14 @@ export interface Order {
   stockRestored?: boolean;
   // Why a FAILED order failed. Null on orders that failed before this was
   // recorded, and on every order that didn't fail. See lib/payment-failure.ts.
-  paymentFailureReason: 'DECLINED' | 'ABANDONED_MID_PAYMENT' | 'NO_ATTEMPT' | 'NO_BILL' | 'UNKNOWN' | null;
+  paymentFailureReason: PaymentFailureReason | null;
   /** The channel the customer actually tried, e.g. "FPX B2C" / "DuitNow QR". */
   paymentFailureChannel: string | null;
+  /** Placed by the team to test checkout; left out of Admin → Payments. */
+  isTest?: boolean;
+  // The payment trail, on the admin single-order response only.
+  paymentAttempts?: PaymentAttempt[];
+  paymentEvents?: PaymentEvent[];
   discountCodeId: string | null;
   discountCode?: { code: string; discountType: string; discountValue: number } | null;
   notes: string | null;
@@ -906,4 +911,89 @@ export interface SupplierOption {
   supplierId: string;
   name: string;
   cost: number;
+}
+
+export type PaymentFailureReason = 'DECLINED' | 'ABANDONED_MID_PAYMENT' | 'NO_ATTEMPT' | 'NEVER_OPENED' | 'NO_BILL' | 'UNKNOWN';
+
+/** One try at paying, exactly as the gateway listed it (backend PaymentAttempt). */
+export interface PaymentAttempt {
+  id: string;
+  gateway: string;
+  externalId: string;
+  status: 'completed' | 'failed' | 'pending' | 'opened';
+  channel: string | null;
+  amount: number | null;
+  attemptedAt: string | null;
+  completedAt: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  raw: Record<string, unknown>;
+}
+
+export type PaymentEventType =
+  | 'ORDER_PLACED' | 'BILL_CREATED' | 'BILL_FAILED' | 'PAGE_OPENED' | 'RETURNED' | 'CALLBACK'
+  | 'GATEWAY_CHECK' | 'GATEWAY_CHECK_FAILED' | 'PAID' | 'RELEASED' | 'LATE_PAYMENT';
+
+export interface PaymentDevice {
+  os: string;
+  browser: string;
+  inApp?: string;
+  mobile: boolean;
+}
+
+export interface PaymentClient {
+  userAgent?: string;
+  country?: string;
+  referrer?: string;
+  device: PaymentDevice;
+}
+
+/** Something that happened to an order's payment (backend PaymentEvent). */
+export interface PaymentEvent {
+  id: string;
+  type: PaymentEventType;
+  gateway: string | null;
+  at: string;
+  data: Record<string, any>;
+}
+
+export interface PaymentFailedOrderRow {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  total: number;
+  customerName: string;
+  gateway: string | null;
+  reason: PaymentFailureReason;
+  channel: string | null;
+  attempts: { failed: number; pending: number; channels: string[] };
+  tracked: boolean;
+  opens: number;
+  openSources: string[];
+  returns: number;
+  lastReturnPaid: string | null;
+  device: PaymentDevice | null;
+  isTest: boolean;
+  recoveredBy: { id: string; orderNumber: string; total: number; method: string; gateway: string | null; hoursLater: number } | null;
+}
+
+export interface PaymentAnalytics {
+  period: { days: number; since: string | null; gateway: 'all' | 'billplz' | 'toyyibpay'; includeTests: boolean };
+  trackingSince: string | null;
+  totals: {
+    orders: number; paid: number; paidAmount: number; open: number; openAmount: number;
+    failed: number; failedAmount: number; recovered: number; recoveredAmount: number;
+    lost: number; lostAmount: number; conversion: number | null;
+  };
+  funnel: { placed: number; billCreated: number; billFailed: number; tracked: number; opened: number; attempted: number; paid: number };
+  reasons: { reason: PaymentFailureReason; orders: number; amount: number; recovered: number; lost: number; lostAmount: number }[];
+  attempts: {
+    total: number; completed: number; failed: number; pending: number; ordersAttempted: number;
+    paidFirstTry: number; paidAfterRetry: number; failureRate: number | null;
+    byChannel: { channel: string; attempts: number; completed: number; failed: number; pending: number; orders: number; paidOrders: number }[];
+  };
+  byGateway: { gateway: string; orders: number; paid: number; failed: number; paidAmount: number }[];
+  devices: { device: string; orders: number; paid: number; failed: number; open: number }[];
+  timing: { medianMinutesToPay: number | null; medianMinutesToFirstOpen: number | null };
+  failedOrders: PaymentFailedOrderRow[];
 }
