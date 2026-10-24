@@ -127,22 +127,27 @@ plain signature: name, Ascend MY, the redirect site. No `info@`, `sales@` or
    set at Shinjiru (registrar, rikaidrawings@gmail.com login). MX, SPF,
    DMARC (`p=none`, no `rua` yet), both A records and the 301 redirect rule
    are in on all three. DNSSEC not enabled (needs a DS record at Shinjiru).
-2. Workspace sign-up with `ascendhq.my`, Business Starter. Verify with the
-   TXT record Google gives. Admin console → Account → Domains → Manage
-   domains → add the other two as **secondary domains** (not aliases), each
-   with its own verification TXT.
+2. **Done 24 Oct 2026.** Workspace sign-up with `ascendhq.my`, Business
+   Starter, admin `admin@ascendhq.my` (admin only, never sends). Google's
+   payment check took ~4 days. All three domains verified (TXT
+   `google-site-verification`), the other two as **secondary domains**.
 3. Create the six users, add photos and signatures.
 4. Per domain, add the records below.
 5. DKIM: Admin console → Apps → Google Workspace → Gmail → Authenticate
    email → pick the domain → Generate new record (2048-bit, selector
    `google`) → paste into Cloudflare → back in Google, **Start
-   authentication**.
+   authentication**. **Done 24 Oct 2026** on all three; published keys match
+   Google's byte for byte. Google shows a 24–72 h wait after enabling Gmail
+   but generated the keys anyway.
 6. Admin console → Security → Access and data control → API controls →
    App access control: mark **Instantly** as Trusted, so its Google sign-in
-   isn't blocked.
+   isn't blocked. Search by client ID
+   `536726988839-pt93oro4685dtb1emb0pp2vjgjol5mls.apps.googleusercontent.com`
+   ("Instantly oAuth Email v1", 500+ orgs); searching "Instantly" by name
+   returns look-alike apps. Scope: all users, access: Trusted.
 7. Connect the six inboxes to Instantly with Google sign-in; turn warm-up
    on for all six. No campaign before week 4.
-8. Add every domain to Google Postmaster Tools.
+8. **Done 24 Oct 2026.** All three in Google Postmaster Tools (admin@ascendhq.my), verified.
 
 **Records, per domain** (`@` = the domain itself; all DNS only except the
 redirect):
