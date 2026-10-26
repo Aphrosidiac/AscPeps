@@ -511,7 +511,7 @@ function ShadowSkusContent() {
           {/* Pinned: mapping a dozen SKUs means scrolling, and an action bar
               that scrolls away with the rows it applies to is no use. */}
           {active.size > 0 && (
-            <div className="fixed bottom-0 left-0 lg:left-64 right-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
+            <div className="fixed bottom-0 left-0 lg:left-(--admin-nav-w) right-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
               <div className="p-3 sm:px-6 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">
                   {active.size} SKU{active.size === 1 ? '' : 's'} selected

@@ -1,41 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
-import { LayoutDashboard, Package, ShoppingBag, Settings, LogOut, Menu, X, Tag, BarChart3, Newspaper, Mail, Store, Wallet, Bot, Truck, Users, Megaphone, MessageSquare, FolderOpen, Tags, Headset, Handshake, CreditCard } from 'lucide-react';
+import Image from 'next/image';
+import { Menu } from 'lucide-react';
 import { useAuth, AuthProvider } from '@/hooks/useAuth';
+import { adminGetMe } from '@/lib/api';
 import { cn } from '@/lib/utils';
-
-const navItems = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  // Second, not last: it can do everything below it, and it is where a
-  // question about any of it gets asked. A headset, not the sparkles every
-  // AI button wears: Abby is the secretary on the line, not a magic wand.
-  { href: '/admin/assistant', label: 'Assistant', icon: Headset },
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  // Beside Analytics: why online payments do and don't go through.
-  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { href: '/admin/money', label: 'Ascend Money', icon: Wallet },
-  // Beside Finance, not off with Settings: a document is almost always the
-  // receipt behind a number on the page above it.
-  { href: '/admin/documents', label: 'Documents', icon: FolderOpen },
-  { href: '/admin/products', label: 'Products', icon: Package },
-  // Directly under Products: it is a second name for the same catalogue, and
-  // the first thing anyone does after adding a SKU is map it.
-  { href: '/admin/shadow-skus', label: 'Shadow SKUs', icon: Tags },
-  { href: '/admin/suppliers', label: 'Suppliers', icon: Handshake },
-  { href: '/admin/insights', label: 'Insights', icon: Newspaper },
-  { href: '/admin/comments', label: 'Comments', icon: MessageSquare },
-  { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
-  { href: '/admin/delivery', label: 'Delivery', icon: Truck },
-  { href: '/admin/emails', label: 'Emails', icon: Mail },
-  { href: '/admin/subscribers', label: 'Subscribers', icon: Users },
-  { href: '/admin/campaigns', label: 'Campaigns', icon: Megaphone },
-  { href: '/admin/discounts', label: 'Discounts', icon: Tag },
-  { href: '/admin/agent', label: 'WhatsApp', icon: Bot },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
-];
+import { AdminNav, RAIL_KEY } from './AdminNav';
 
 export function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   return (
@@ -51,16 +23,57 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    if (!loading) {
-      if (!token && pathname !== '/admin/login') {
-        router.push('/admin/login');
-      } else {
-        setReady(true);
-      }
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeDrawer = useCallback((dismissed?: boolean) => {
+    setSidebarOpen(false);
+    if (dismissed) menuButtonRef.current?.focus();
+  }, []);
+  // Desktop only: the bar folded to an icon rail. Remembered per browser.
+  // Read in the initialiser: the first client paint is the loading screen,
+  // which does not depend on it, so the server's `false` cannot mismatch.
+  const [rail, setRail] = useState(() => {
+    try {
+      return localStorage.getItem(RAIL_KEY) === 'true';
+    } catch {
+      return false;
     }
-  }, [loading, token, pathname, router]);
+  });
+  const changeRail = (next: boolean) => {
+    setRail(next);
+    try {
+      localStorage.setItem(RAIL_KEY, String(next));
+    } catch {}
+  };
+
+  // Nothing admin renders until the session is known to be good: no token
+  // (or an expired one, dropped by useAuth) goes straight to login, and a
+  // token that looks fine is asked about once — /auth/me — so a revoked one
+  // never flashes the dashboard first. `replace`, so Back does not bounce
+  // through the page you were turned away from. A network failure is not a
+  // verdict: the page renders and reports its own errors.
+  useEffect(() => {
+    if (loading || ready || pathname === '/admin/login') return;
+    if (!token) {
+      router.replace('/admin/login');
+      return;
+    }
+    let live = true;
+    adminGetMe(token)
+      .then(() => live && setReady(true))
+      .catch((err) => {
+        if (!live) return;
+        const status = err?.response?.status;
+        if (status === 401 || status === 403 || status === 404) {
+          logout();
+          router.replace('/admin/login');
+        } else {
+          setReady(true);
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [loading, ready, token, pathname, router, logout]);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -70,72 +83,32 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   if (!ready) return <div className="flex items-center justify-center min-h-screen"><p className="text-text-muted">Loading...</p></div>;
 
   return (
-    <div className="flex min-h-screen">
+    // --admin-nav-w: anything fixed beside the bar (a save bar) clears it.
+    <div className="flex min-h-screen" style={{ '--admin-nav-w': rail ? '4rem' : '16rem' } as React.CSSProperties}>
       {/* Mobile top bar */}
-      <div className="fixed top-0 left-0 right-0 z-40 lg:hidden bg-surface border-b border-border px-4 h-14 flex items-center justify-between">
-        <h2 className="font-display font-bold text-lg">Ascend MY Admin</h2>
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-surface-elevated rounded-lg cursor-pointer">
-          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      <div className="fixed top-0 left-0 right-0 z-40 lg:hidden bg-surface border-b border-border px-2 h-14 flex items-center gap-2">
+        <button ref={menuButtonRef} onClick={() => setSidebarOpen(true)} aria-label="Open menu" aria-expanded={sidebarOpen} className="h-11 w-11 flex items-center justify-center hover:bg-surface-elevated rounded-lg cursor-pointer">
+          <Menu className="w-5 h-5" />
         </button>
+        <Image src="/brand/ascend-my-primary-black.svg" alt="Ascend MY" width={120} height={17} unoptimized />
+        <span className="rounded-md border border-border px-1.5 py-0.5 text-xs font-medium text-text-muted">Admin</span>
       </div>
 
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => closeDrawer(true)} />
       )}
 
-      {/* Sidebar — stays position:fixed at every breakpoint (previously
-          lg:static let it fall into the row's normal flow on desktop, so it
-          stretched to match main's content height instead of the viewport;
-          on a page taller than one screen that left a tall blank gap below
-          Logout, matching only the content height rather than the actual
-          viewport). h-screen instead of h-full for the same reason: fixed
-          positioning's containing block is the viewport, so an explicit
-          viewport unit is the more direct/robust way to express "full
-          height" than a percentage. */}
-      <aside className={cn(
-        'fixed top-0 left-0 z-30 h-screen w-64 bg-surface border-r border-border p-4 flex flex-col transition-transform duration-300',
-        'lg:translate-x-0',
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      )}>
-        <div className="mb-8 pt-1">
-          <h2 className="font-display font-bold text-lg">Ascend MY Admin</h2>
-        </div>
-        <nav className="space-y-1 flex-1">
-          {navItems.map((item, i) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              // Nav items cascade in on first paint. Capped so a longer menu
-              // never leaves the last item arriving noticeably late.
-              style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
-              className={cn(
-                'row-rise flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                pathname === item.href || (item.href === '/admin/assistant' && pathname.startsWith('/admin/assistant/'))
-                  ? 'bg-primary text-white'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated hover:translate-x-0.5'
-              )}
-            >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        {/* Back to the storefront. A plain <Link> rather than target="_blank"
-            so it's a normal same-tab navigation; the admin session survives it
-            either way since the token lives in localStorage. */}
-        <Link
-          href="/"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors border-t border-border mt-2 pt-3"
-        >
-          <Store className="w-4 h-4" />
-          View Storefront
-        </Link>
-        <button onClick={() => { logout(); router.push('/admin/login'); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-danger transition-colors cursor-pointer">
-          <LogOut className="w-4 h-4" />
-          Logout
-        </button>
-      </aside>
+      {/* Sidebar — position:fixed at every breakpoint with h-dvh, so it is
+          always the viewport's height, never the page's (lg:static once left
+          a tall blank gap under it on long pages). */}
+      <AdminNav
+        drawerOpen={sidebarOpen}
+        onCloseDrawer={closeDrawer}
+        rail={rail}
+        onRailChange={changeRail}
+        onLogout={() => { logout(); router.push('/admin/login'); }}
+      />
 
       {/* Main content — aside is fixed (out of flow) at every breakpoint
           now, so this needs its own left margin to clear it on desktop
@@ -149,7 +122,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           around it. `clip` contains stray horizontal overflow the same way
           without creating a scroll container. Tables scroll in their own
           overflow-x-auto wrappers. */}
-      <main className="admin-main flex-1 min-w-0 lg:ml-64 p-4 sm:p-6 lg:p-8 bg-background overflow-x-clip pt-18 lg:pt-8 min-h-screen">{children}</main>
+      <main
+        className={cn(
+          'admin-main flex-1 min-w-0 p-4 sm:p-6 lg:p-8 bg-background overflow-x-clip pt-18 lg:pt-8 min-h-screen',
+          'transition-[margin] duration-200 ease-out motion-reduce:transition-none',
+          rail ? 'lg:ml-16' : 'lg:ml-64'
+        )}
+      >{children}</main>
     </div>
   );
 }

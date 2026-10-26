@@ -36,7 +36,7 @@ api.interceptors.response.use(
       localStorage.removeItem('ascend-admin-token');
       // Only redirect if we're on an admin page (extra safety for customer pages)
       if (window.location.pathname.startsWith('/admin')) {
-        window.location.href = '/admin/login';
+        window.location.replace('/admin/login');
       }
     }
     return Promise.reject(error);
