@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { includesSummary, lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
+import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
@@ -18,6 +18,7 @@ import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 import { rememberPendingPayment } from '@/lib/pending-payment';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
+import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
 
@@ -128,6 +129,7 @@ const redirectTo = (url: string) => {
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clearCart, hydrated } = useCart();
+  const { leadTime: preorderLead } = usePreorder();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
@@ -686,6 +688,9 @@ export default function CheckoutPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-display font-bold truncate">{item.code}</p>
                     <p className="text-xs text-text-muted truncate">{item.name} &middot; Qty: {item.quantity}</p>
+                    {preorderUnits(item.quantity, item.stock, item.preorder) > 0 && (
+                      <p className="text-xs font-medium text-text-primary">{preorderLabel(item.quantity, item.stock)}</p>
+                    )}
                     {(item.includes ?? []).length > 0 && (
                       <p className="text-xs text-text-muted line-clamp-2">Includes {includesSummary(item)}</p>
                     )}
@@ -694,6 +699,13 @@ export default function CheckoutPage() {
                 </div>
               ))}
             </div>
+
+            {items.some((i) => preorderUnits(i.quantity, i.stock, i.preorder) > 0) && (
+              <div className="flex gap-2 rounded-lg border border-border bg-surface-elevated/60 px-3 py-2.5 mb-4 text-xs text-text-secondary leading-relaxed">
+                <Clock className="w-4 h-4 shrink-0 text-text-primary" aria-hidden="true" />
+                <p><span className="font-semibold text-text-primary">Includes a pre-order.</span> Your order ships together in {preorderLead}, when the restock lands.</p>
+              </div>
+            )}
 
             {/* Discount Code */}
             <div className="border-t border-border pt-4 mb-4">

@@ -125,6 +125,8 @@ interface ProductGroupVariantJsonLd {
   saleEndsAt?: string | null;
   imageUrl?: string | null;
   inStock: boolean;
+  /** Sold out but on pre-order — schema.org/PreOrder rather than OutOfStock. */
+  preorder?: boolean;
 }
 
 interface ProductGroupJsonLdProps {
@@ -233,7 +235,7 @@ export function ProductGroupJsonLd({
         priceCurrency: 'MYR',
         ...(onSale ? { validFrom: v.saleStartsAt, priceValidUntil: v.saleEndsAt } : {}),
         itemCondition: 'https://schema.org/NewCondition',
-        availability: v.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        availability: v.inStock ? 'https://schema.org/InStock' : v.preorder ? 'https://schema.org/PreOrder' : 'https://schema.org/OutOfStock',
         url,
         areaServed: { '@type': 'Country', name: 'Malaysia' },
         seller: { '@type': 'Organization', name: 'Ascend MY' },

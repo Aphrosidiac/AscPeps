@@ -5,8 +5,10 @@ import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lin
 import Link from 'next/link';
 import {
   Check, X, Receipt, CreditCard, Package, Truck, Home,
-  Copy, ExternalLink, ChevronDown, FileText, MessageCircle,
+  Copy, ExternalLink, ChevronDown, FileText, MessageCircle, Clock,
 } from 'lucide-react';
+import { usePreorder } from '@/lib/preorder';
+import type { GroupBuyStage } from '@/types';
 import { cn, formatPrice } from '@/lib/utils';
 import {
   orderSteps, orderHeadline, shortDate, shortTime,
@@ -48,6 +50,9 @@ export function OrderPipeline({ order, phone }: { order: TrackedOrder; phone: st
       <div className="px-5 sm:px-7 pb-6">
         <Stepper steps={steps} />
       </div>
+
+      {order.groupBuy && order.status !== 'CANCELLED' && <BatchSection order={order} />}
+      {!order.groupBuy && order.isPreorder && !shipped && order.status !== 'CANCELLED' && <PreorderNote />}
 
       {shipped && order.tracking && (
         // While it is in transit the headline already carries "Track parcel".
@@ -351,3 +356,57 @@ export function OrderPipelineSkeleton() {
   );
 }
 
+
+// ------------------------------------------------------- group buy / pre-order
+
+/**
+ * A Group Buy order ships with its batch, so the batch's own timeline (moved
+ * by the team in Admin → Group Buys) is what tells the customer where it is.
+ */
+function BatchSection({ order }: { order: TrackedOrder }) {
+  const gb = order.groupBuy!;
+  const stages = (Array.isArray(gb.stages) ? gb.stages : []) as GroupBuyStage[];
+  const at = Math.max(stages.findIndex((s) => s.key === gb.stageKey), 0);
+  return (
+    <section className="mx-5 sm:mx-7 mb-6 rounded-xl border border-border p-4 sm:p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <p className="font-display font-semibold">Group Buy · Batch {String(gb.number).padStart(2, '0')}</p>
+        <a href={`/group-buy/${gb.slug}`} className="text-sm text-text-secondary hover:text-text-primary hover:underline">{gb.title}</a>
+      </div>
+      <ol className="space-y-0">
+        {stages.map((s, i) => {
+          const done = i < at;
+          const now = i === at;
+          return (
+            <li key={s.key} className="relative flex gap-3 pb-4 last:pb-0">
+              {i < stages.length - 1 && <span className={cn('absolute left-[9px] top-5 bottom-0 w-0.5', done ? 'bg-primary' : 'bg-border')} aria-hidden />}
+              <span className={cn('relative z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                now ? 'border-success bg-success ring-4 ring-success/15' : done ? 'border-primary bg-primary' : 'border-border bg-surface')}>
+                {(done || now) && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+              </span>
+              <div className="min-w-0">
+                <p className={cn('text-sm leading-5', now || done ? 'font-semibold' : 'text-text-secondary')}>{s.label}</p>
+                <p className="text-xs text-text-muted">
+                  {(done || now) && s.doneAt ? new Date(s.doneAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' }) : s.eta ? `Expected ${s.eta}` : ''}
+                  {now && s.detail ? `${s.doneAt ? ' · ' : ''}${s.detail}` : ''}
+                </p>
+                {s.note && (done || now) && <p className="mt-1.5 border-l-2 border-primary pl-2.5 text-sm text-text-secondary">{s.note}</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {gb.shipEstimate && <p className="mt-4 text-xs text-text-muted">Estimated to ship {gb.shipEstimate}. We email you at every step.</p>}
+    </section>
+  );
+}
+
+function PreorderNote() {
+  const { leadTime } = usePreorder();
+  return (
+    <div className="mx-5 sm:mx-7 mb-6 flex gap-2.5 rounded-xl border border-border bg-surface-elevated/60 px-4 py-3 text-sm">
+      <Clock className="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" aria-hidden />
+      <p className="text-text-secondary"><span className="font-semibold text-text-primary">Includes a pre-order.</span> Your order ships together in {leadTime}, when the restock lands.</p>
+    </div>
+  );
+}

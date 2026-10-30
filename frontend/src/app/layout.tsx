@@ -3,9 +3,11 @@ import Script from 'next/script';
 import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
 import { SiteChrome } from '@/components/layout/SiteChrome';
+import { PreorderProvider } from '@/lib/preorder';
+import { parsePreorderSettings } from '@/lib/preorder-rules';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { PostHogPageView } from '@/components/PostHogPageView';
-import { getSettingsServer, getProductsServer } from '@/lib/server-api';
+import { getSettingsServer, getProductsServer, getGroupBuyPromoServer } from '@/lib/server-api';
 import './globals.css';
 
 const inter = Inter({
@@ -108,7 +110,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [settings, catalog] = await Promise.all([getSettingsServer(), getProductsServer({ limit: 100 })]);
+  const [settings, catalog, groupBuyPromo] = await Promise.all([getSettingsServer(), getProductsServer({ limit: 100 }), getGroupBuyPromoServer()]);
   const announcementEnabled = settings.announcement_enabled === 'true' && !!settings.announcement_text;
 
   // Real min-max price range for Organization.priceRange, computed from the
@@ -147,20 +149,23 @@ gtag('config', 'G-4PHY1Z9BHD');`}
         {/* PostHog's automatic $pageview is suppressed by this project's
             remote config — see the component. Renders nothing. */}
         <PostHogPageView />
-        <CartProvider>
-          <SiteChrome
-            announcementEnabled={announcementEnabled}
-            announcementText={settings.announcement_text || ''}
-            newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
-            newsletterPopupHeading={settings.newsletter_popup_heading || 'Reconstitution reference, free'}
-            newsletterPopupBody={
-              settings.newsletter_popup_body ||
-              'Dosing calculator, storage and handling guide, and batch COAs — plus a note when something is back in stock.'
-            }
-          >
-            {children}
-          </SiteChrome>
-        </CartProvider>
+        <PreorderProvider value={parsePreorderSettings(settings)}>
+          <CartProvider>
+            <SiteChrome
+              announcementEnabled={announcementEnabled}
+              announcementText={settings.announcement_text || ''}
+              newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
+              groupBuyPromo={groupBuyPromo}
+              newsletterPopupHeading={settings.newsletter_popup_heading || 'Reconstitution reference, free'}
+              newsletterPopupBody={
+                settings.newsletter_popup_body ||
+                'Dosing calculator, storage and handling guide, and batch COAs — plus a note when something is back in stock.'
+              }
+            >
+              {children}
+            </SiteChrome>
+          </CartProvider>
+        </PreorderProvider>
       </body>
     </html>
   );

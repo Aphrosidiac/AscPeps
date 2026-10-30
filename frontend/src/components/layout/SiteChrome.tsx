@@ -7,6 +7,9 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { WhatsAppButton } from './WhatsAppButton';
 import { NewsletterPopup } from '@/components/newsletter/NewsletterPopup';
+import { GroupBuyBanner } from '@/components/group-buy/GroupBuyBanner';
+import { GroupBuyPopup } from '@/components/group-buy/GroupBuyPopup';
+import type { GroupBuyPromo } from '@/types';
 
 interface SiteChromeProps {
   announcementEnabled: boolean;
@@ -14,6 +17,8 @@ interface SiteChromeProps {
   newsletterPopupEnabled: boolean;
   newsletterPopupHeading: string;
   newsletterPopupBody: string;
+  /** What Group Buy shows on the store right now (Admin → Group Buys → Promotion). */
+  groupBuyPromo?: GroupBuyPromo;
   children: React.ReactNode;
 }
 
@@ -27,6 +32,7 @@ export function SiteChrome({
   newsletterPopupEnabled,
   newsletterPopupHeading,
   newsletterPopupBody,
+  groupBuyPromo,
   children,
 }: SiteChromeProps) {
   const pathname = usePathname();
@@ -35,6 +41,8 @@ export function SiteChrome({
   // no header, footer, announcement bar or newsletter popup between the
   // customer and the bank details.
   const isPayPage = pathname?.startsWith('/pay/');
+  // The Group Buy portal brings its own shell (app/group-buy/PortalShell.tsx).
+  const isGroupBuy = pathname === '/group-buy' || pathname?.startsWith('/group-buy/');
   // Only the product detail page has the mobile sticky Add to Cart bar the
   // WhatsApp button needs to clear — see WhatsAppButton's `raised` prop.
   const isProductDetail = pathname ? /^\/products\/[^/]+$/.test(pathname) : false;
@@ -43,9 +51,24 @@ export function SiteChrome({
     return <>{children}</>;
   }
 
+  // The portal brings its own chrome, but the batch banner stays on top so
+  // switching between the store and Group Buy doesn't make the bar jump.
+  if (isGroupBuy) {
+    return (
+      <>
+        {groupBuyPromo?.banner && <GroupBuyBanner banner={groupBuyPromo.banner} />}
+        {children}
+      </>
+    );
+  }
+
   return (
     <>
-      <AnnouncementBar enabled={announcementEnabled} text={announcementText} />
+      {/* A live Group Buy banner takes the announcement bar's place: two
+          strips above the logo would push the store below the fold. */}
+      {groupBuyPromo?.banner
+        ? <GroupBuyBanner banner={groupBuyPromo.banner} />
+        : <AnnouncementBar enabled={announcementEnabled} text={announcementText} />}
       <PendingPaymentBar />
       <Navbar />
       <main className="flex-1">{children}</main>
@@ -54,8 +77,10 @@ export function SiteChrome({
       {/* Mounted at the chrome level so the popup's own path exclusions are
           the single place that decides where it may appear — a per-page mount
           would mean every new storefront page has to remember to opt out. */}
+      {groupBuyPromo?.popup && <GroupBuyPopup popup={groupBuyPromo.popup} />}
+      {/* One popup per shopper: the newsletter waits while a batch has its own. */}
       <NewsletterPopup
-        enabled={newsletterPopupEnabled}
+        enabled={newsletterPopupEnabled && !groupBuyPromo?.popup}
         heading={newsletterPopupHeading}
         body={newsletterPopupBody}
       />

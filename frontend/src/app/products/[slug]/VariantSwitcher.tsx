@@ -9,6 +9,7 @@ import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayNam
 import { AddToCartPanel } from './AddToCartPanel';
 import { ProductGallery, buildSlides } from './ProductGallery';
 import { SkuBadge } from '@/components/products/SkuBadge';
+import { canPreorder, usePreorder } from '@/lib/preorder';
 import type { Product, ProductVariant } from '@/types';
 
 interface Props {
@@ -148,6 +149,7 @@ function SizeSelector({
   const selectedVariant = index >= 0 ? variants[index] : undefined;
   const pricing = getUnitPricing(variants);
 
+  const preorder = usePreorder();
   const step = (delta: number) => {
     const next = (index + delta + variants.length) % variants.length;
     onSelect(variants[next]);
@@ -237,7 +239,9 @@ function SizeSelector({
                 {formatPrice(getEffectivePrice(v))}
               </span>
               {soldOut && (
-                <span className="block text-xs mt-0.5 leading-tight font-medium text-text-secondary">Sold out</span>
+                <span className="block text-xs mt-0.5 leading-tight font-medium text-text-secondary">
+                  {canPreorder(preorder, v) ? 'Pre-order' : 'Sold out'}
+                </span>
               )}
               {!soldOut && perUnit != null && (
                 <span className="block text-xs mt-0.5 leading-tight text-text-muted">
@@ -269,6 +273,7 @@ export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
   // active variants, and useMemo keeps its identity stable so the gallery's
   // variant-follow effect doesn't re-run on every render.
   const slides = useMemo(() => buildSlides(product, activeVariants), [product, activeVariants]);
+  const preorder = usePreorder();
 
   if (!variant) {
     return <p className="text-danger font-medium py-8">This product is currently unavailable.</p>;
@@ -276,6 +281,7 @@ export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
 
   const onSale = isSaleActive(variant);
   const effectivePrice = getEffectivePrice(variant);
+  const preorderable = canPreorder(preorder, variant);
 
   return (
     <>
@@ -347,9 +353,11 @@ export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
               />
             )}
 
-            {variant.stock === 0 && <p className="text-danger text-sm font-medium">Out of stock</p>}
+            {variant.stock === 0 && (preorderable
+              ? <p className="text-sm font-medium text-text-primary">Sold out · available on pre-order, ships in {preorder.leadTime}</p>
+              : <p className="text-danger text-sm font-medium">Out of stock</p>)}
             {variant.stock > 0 && variant.stock <= 5 && (
-              <p className="text-amber-700 text-sm">Only {variant.stock} left in stock</p>
+              <p className="text-amber-700 text-sm">Only {variant.stock} left in stock{preorderable ? ' — more on pre-order' : ''}</p>
             )}
 
             <AddToCartPanel
@@ -364,6 +372,7 @@ export function VariantSwitcher({ product, benefits, cryptoEnabled }: Props) {
               addOns={product.addOns}
               addOnReminder={product.addOnReminder}
               noShipping={product.noShipping}
+              preorder={preorderable}
             />
 
             {/* This badge deliberately does NOT link to product.coaUrl, even

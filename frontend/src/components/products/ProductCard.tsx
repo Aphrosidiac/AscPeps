@@ -8,6 +8,7 @@ import { formatPrice, getDefaultVariant, getEffectivePrice, getVariantDisplayNam
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { SkuBadge } from '@/components/products/SkuBadge';
+import { canPreorder, usePreorder } from '@/lib/preorder';
 
 interface ProductCardProps {
   product: Product;
@@ -16,6 +17,8 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCart();
   const variant = getDefaultVariant(product);
+  const preorderSettings = usePreorder();
+  const preorderable = !!variant && canPreorder(preorderSettings, variant);
   const activeVariants = product.variants.filter((v) => v.active);
   // "From RMxx" only when active sizes genuinely differ in price — a plain
   // price on a single-price product isn't misleading, so don't hedge it.
@@ -34,6 +37,7 @@ export function ProductCard({ product }: ProductCardProps) {
       stock: variant.stock,
       imageUrl: variant.imageUrl,
       noShipping: product.noShipping,
+      preorder: preorderable,
       // The list API sends only the REQUIRED included supplies — the same ones
       // the server would add — so the cart can show them under the product.
       includes: (product.addOns ?? [])
@@ -105,8 +109,12 @@ export function ProductCard({ product }: ProductCardProps) {
                     )}
                   </span>
                 </span>
-                {variant.stock === 0 ? (
+                {variant.stock === 0 && !preorderable ? (
                   <span className="text-xs font-semibold text-danger shrink-0">Out of stock</span>
+                ) : variant.stock === 0 ? (
+                  // Sold out but pre-orderable: the page explains the lead
+                  // time before anything goes in the cart, so link there.
+                  <span className="text-xs font-semibold text-text-primary shrink-0 rounded-full border border-border px-2.5 py-1">Pre-order</span>
                 ) : (
                   <Button
                     variant="primary"

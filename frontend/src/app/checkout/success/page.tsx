@@ -1,5 +1,6 @@
 'use client';
 
+import { clearBasket, forgetGroupBuyCheckout, readGroupBuyCheckout } from '@/lib/group-buy';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -57,9 +58,21 @@ function CheckoutSuccessContent() {
   // The ref + `hydrated`-only dep list are also deliberate: CartProvider builds
   // its context value inline, so `clearCart` has a fresh identity every render
   // and depending on it would re-run this effect after its own dispatch.
+  //
+  // A Group Buy order comes back through this same page (the gateway has one
+  // return URL). Its basket lives apart from the store cart, so that is what
+  // empties — the store cart is left exactly as it was.
+  const [groupBuy, setGroupBuy] = useState<{ slug: string; orderNumber: string } | null>(null);
   useEffect(() => {
     if (!hydrated || cleared.current) return;
     cleared.current = true;
+    const gb = readGroupBuyCheckout();
+    if (gb) {
+      setGroupBuy(gb);
+      clearBasket(gb.slug);
+      forgetGroupBuyCheckout();
+      return;
+    }
     clearCart();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
@@ -76,7 +89,9 @@ function CheckoutSuccessContent() {
         <p className="text-text-secondary mb-6">
           {manual
             ? 'We have your payment screenshot. A team member will check it against your order, usually within a few hours during business hours, and you will get a receipt by email once it is confirmed.'
-            : 'Your payment has been confirmed. Your order is now being processed — check your order status anytime on the Track Order page.'}
+            : groupBuy
+              ? `Your payment has been confirmed. Order ${groupBuy.orderNumber} is in the Group Buy and ships with the batch — we’ll email you at every step.`
+              : 'Your payment has been confirmed. Your order is now being processed — check your order status anytime on the Track Order page.'}
         </p>
         {manual && sessionId && (
           <p className="text-xs text-text-muted mb-6">
@@ -85,8 +100,17 @@ function CheckoutSuccessContent() {
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link href="/products"><Button variant="primary">Continue Shopping</Button></Link>
-          <Link href="/track"><Button variant="outline">Track Order</Button></Link>
+          {groupBuy ? (
+            <>
+              <Link href="/group-buy/orders"><Button variant="primary">Follow the batch</Button></Link>
+              <Link href="/products"><Button variant="outline">Back to the store</Button></Link>
+            </>
+          ) : (
+            <>
+              <Link href="/products"><Button variant="primary">Continue Shopping</Button></Link>
+              <Link href="/track"><Button variant="outline">Track Order</Button></Link>
+            </>
+          )}
         </div>
 
         <p className="text-xs text-text-muted mt-4">

@@ -1,3 +1,4 @@
+import { canPreorder, parsePreorderSettings } from '@/lib/preorder-rules';
 import type { Metadata } from 'next';
 import { ProductGroupJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
 import { getProductServer, getSettingsServer } from '@/lib/server-api';
@@ -104,6 +105,7 @@ export default async function ProductLayout({ params, children }: Props) {
               saleEndsAt: v.saleEndsAt,
               imageUrl: v.imageUrl,
               inStock: v.stock > 0,
+              preorder: v.stock <= 0 && canPreorder(parsePreorderSettings(settings), v),
             }))}
           />
           <BreadcrumbJsonLd

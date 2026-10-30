@@ -1,5 +1,7 @@
 'use client';
 
+import { GroupBuyHomeSection } from '@/components/group-buy/GroupBuyHomeSection';
+import type { GroupBuyPromo } from '@/types';
 import { useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -24,6 +26,8 @@ interface HomeClientProps {
   hardsellSlide2Product: Product | null;
   hardsellSlide2Headline: string;
   hardsellSlide2Subheadline: string;
+  /** The Group Buy home section, when a batch has it on. */
+  groupBuyHome?: GroupBuyPromo['home'];
 }
 
 export function HomeClient({
@@ -37,6 +41,7 @@ export function HomeClient({
   hardsellSlide2Product,
   hardsellSlide2Headline,
   hardsellSlide2Subheadline,
+  groupBuyHome,
 }: HomeClientProps) {
   const triggerJiggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const el = e.currentTarget as HTMLElement;
@@ -142,6 +147,8 @@ export function HomeClient({
           </Stagger>
         </div>
       </section>
+
+      {groupBuyHome && <GroupBuyHomeSection home={groupBuyHome} />}
 
       {(() => {
         const slides = [

@@ -68,6 +68,8 @@ export const createOrder = (data: {
   items: { variantId: string; quantity: number }[];
   discountCode?: string;
   idempotencyKey?: string;
+  /** A Group Buy order: items are priced from this batch, quantity in its sell units. */
+  groupBuyId?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
 // Both are required: the phone is the ownership proof for the guessable order number.
@@ -862,3 +864,7 @@ export const adminGetSupplierOptions = (token: string, variantIds: string[]) =>
       params: { variantIds: variantIds.join(',') },
     })
     .then((r) => r.data);
+
+// The shared client, for feature modules that keep their own calls
+// (lib/group-buy-api.ts) — same base URL, timeout and 401 handling.
+export { api as http };

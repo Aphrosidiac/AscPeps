@@ -1,4 +1,4 @@
-import type { Order } from '@/types';
+import type { GroupBuyRef, Order } from '@/types';
 
 // What /track gets back from GET /orders/lookup: the order without the
 // customer's details, plus what the pipeline needs to place it.
@@ -37,6 +37,9 @@ export interface TrackedOrder
   proofSubmitted: boolean;
   // Hosted bank transfer only, while unpaid: the way back to the payment page.
   paymentUrl?: string;
+  isPreorder?: boolean;
+  // A Group Buy order's batch, with the batch's own timeline.
+  groupBuy?: GroupBuyRef | null;
 }
 
 export type StepKey = 'placed' | 'paid' | 'packing' | 'shipped' | 'delivered';
