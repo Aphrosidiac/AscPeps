@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useState } from 'react';
 import { X, ArrowUp, ArrowDown, ImageIcon } from 'lucide-react';
@@ -68,9 +69,9 @@ export function FeaturedOrderModal({ products, token, onClose, onSaved }: Props)
               const variant = getLowestPriceVariant(p);
               return (
               <div key={p.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface">
-                <div className="w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
+                <div className="relative w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
                   {variant?.imageUrl ? (
-                    <img src={variant.imageUrl} alt="" className="w-full h-full object-cover" />
+                    <Image src={variant.imageUrl} alt="" fill sizes="40px" className="object-cover" />
                   ) : (
                     <ImageIcon className="w-4 h-4 text-text-muted" />
                   )}

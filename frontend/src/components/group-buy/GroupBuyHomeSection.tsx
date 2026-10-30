@@ -1,11 +1,12 @@
 'use client';
+import Image from 'next/image';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Users } from 'lucide-react';
 import type { GroupBuyPromo } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { countdown, rewardHeadline, sortTiers } from '@/lib/group-buy';
+import { useNow } from '@/lib/use-now';
 
 /**
  * The home page's Group Buy section (Admin → Group Buys → Promotion → Home
@@ -14,14 +15,8 @@ import { countdown, rewardHeadline, sortTiers } from '@/lib/group-buy';
  */
 export function GroupBuyHomeSection({ home }: { home: NonNullable<GroupBuyPromo['home']> }) {
   const upcoming = home.phase === 'UPCOMING';
-  const [left, setLeft] = useState<ReturnType<typeof countdown> | null>(null);
-  useEffect(() => {
-    const target = upcoming ? home.opensAt : home.closesAt;
-    const tick = () => setLeft(countdown(target));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [home, upcoming]);
+  const now = useNow();
+  const left = now === null ? null : countdown(upcoming ? home.opensAt : home.closesAt, now);
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -77,8 +72,8 @@ export function GroupBuyHomeSection({ home }: { home: NonNullable<GroupBuyPromo[
               const off = i.storePrice > 0 ? Math.round((1 - bestVial / i.storePrice) * 100) : 0;
               return (
                 <li key={i.name} className="flex items-center gap-3 py-3">
-                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-white/10">
-                    {i.imageUrl && <img src={i.imageUrl} alt="" className="h-full w-full object-cover" />}
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-white/10">
+                    {i.imageUrl && <Image src={i.imageUrl} alt="" fill sizes="48px" className="object-cover" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{i.name}</p>

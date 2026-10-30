@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -7,7 +8,7 @@ import { AlertCircle, ArrowRight, Check, Minus, Plus, Truck, Users } from 'lucid
 import type { GroupBuyDetail, GroupBuyItem } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
-import { basketLines, readBasket, tierRange, unitDescription, unitWord, vialsPerUnit, writeBasket, sortTiers } from '@/lib/group-buy';
+import { basketLines, tierRange, unitDescription, unitWord, useBasket, vialsPerUnit, writeBasket, sortTiers } from '@/lib/group-buy';
 import { getGroupBuy } from '@/lib/group-buy-api';
 import { useMemberSession } from '@/lib/member-session';
 import { Countdown, PageHead, PhaseChip, SignupPanel, Timeline } from '@/components/group-buy/portal-ui';
@@ -16,11 +17,8 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
   const gb = initial;
   const router = useRouter();
   const { member } = useMemberSession();
-  const [qtys, setQtys] = useState<Record<string, number>>({});
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => { setQtys(readBasket(gb.slug)); setLoaded(true); }, [gb.slug]);
-  useEffect(() => { if (loaded) writeBasket(gb.slug, qtys); }, [qtys, loaded, gb.slug]);
+  const stored = useBasket(gb.slug);
+  const qtys = useMemo(() => stored ?? {}, [stored]);
 
   const lines = useMemo(() => basketLines(gb.items, qtys), [gb.items, qtys]);
   const chosen = lines.filter((l) => l.qty > 0);
@@ -37,12 +35,12 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
   const setQty = (item: GroupBuyItem, next: number) => {
     let q = Math.max(0, Math.floor(next));
     if (item.maxQty != null) q = Math.min(q, item.maxQty);
-    setQtys((prev) => ({ ...prev, [item.variantId]: q }));
+    writeBasket(gb.slug, { ...qtys, [item.variantId]: q });
   };
 
   return (
     <div>
-      {gb.heroImageUrl && <img src={gb.heroImageUrl} alt="" className="gbp-hero-img" />}
+      {gb.heroImageUrl && <Image src={gb.heroImageUrl} alt="" width={1200} height={462} sizes="(min-width: 1200px) 1100px, 100vw" style={{ height: 'auto' }} className="gbp-hero-img" />}
       <PageHead eyebrow={`Group Buy · ${gb.label}`} title={gb.title} back={{ href: '/group-buy', label: 'All batches' }}>
         <PhaseChip phase={gb.phase} stageLabel={gb.stages.find((s) => s.key === gb.stageKey)?.label} />
         {gb.tagline && <span>{gb.tagline}</span>}
@@ -139,7 +137,7 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
               <div style={{ marginTop: 14, display: 'grid', gap: 4 }}>
                 <div className="gbp-check muted"><Check size={14} />Paid online at checkout</div>
                 <div className="gbp-check muted"><Truck size={14} />Ships with the batch{gb.shipEstimate ? ` · ${gb.shipEstimate}` : ''}</div>
-                {!member && <div className="gbp-check muted"><Check size={14} /><span><Link href={`/account/register?next=/group-buy/${gb.slug}`} style={{ color: '#fff', textDecoration: 'underline' }}>Make an account</Link> to follow the timeline for every order. Guests can buy too.</span></div>}
+                {!member && <div className="gbp-check muted"><Check size={14} /><span><Link href={`/group-buy/join?next=/group-buy/${gb.slug}`} style={{ color: '#fff', textDecoration: 'underline' }}>Make an account</Link> to follow the timeline for every order. Guests can buy too.</span></div>}
               </div>
             </div>
           </div>
@@ -172,7 +170,7 @@ function ItemRow({ line, onQty, disabled }: { line: ReturnType<typeof basketLine
 
   return (
     <div className={`gbp-item ${qty > 0 ? 'on' : ''}`}>
-      <div className="gbp-thumb-img">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.code}</div>
+      <div className="gbp-thumb-img">{item.imageUrl ? <Image src={item.imageUrl} alt="" width={72} height={72} /> : item.code}</div>
       <div style={{ minWidth: 0 }}>
         <div className="gbp-code">{item.code}</div>
         <div className="h3">{item.name}</div>
@@ -226,8 +224,9 @@ export function DraftPreview({ slug }: { slug: string }) {
   useEffect(() => {
     let token: string | null = null;
     try { token = localStorage.getItem('ascend-admin-token'); } catch { /* private mode */ }
-    if (!token) { setGb(null); return; }
-    getGroupBuy(slug, token).then(setGb).catch(() => setGb(null));
+    // Without an admin token there's nothing to preview; settled in the same
+    // promise chain so the effect never sets state synchronously.
+    (token ? getGroupBuy(slug, token) : Promise.resolve(null)).then(setGb).catch(() => setGb(null));
   }, [slug]);
   if (gb === undefined) return <div className="gbp-skel" style={{ height: 320 }} />;
   if (gb === null) {

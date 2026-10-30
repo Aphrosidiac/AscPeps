@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { Card, CardBody, CardHeader, Field, SelectInput, TextArea, TextInput, Toggle } from '@/components/admin/ui';
 import { DateTimeInput, ImageField, IntInput, nullIfEmpty } from '../shared';
@@ -91,7 +92,7 @@ export function PromoTab({ draft, set, token }: { draft: Draft; set: SetDraft; t
           <div>
             <p className="mb-2 text-[13px] text-text-secondary">Preview</p>
             <div className={`overflow-hidden rounded-[12px] border border-border bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${draft.popupEnabled ? '' : 'opacity-40'}`}>
-              {draft.popupImageUrl && <img src={draft.popupImageUrl} alt="" className="aspect-[1.9] w-full object-cover" />}
+              {draft.popupImageUrl && <Image src={draft.popupImageUrl} alt="" width={800} height={421} unoptimized className="aspect-[1.9] w-full object-cover" />}
               <div className="space-y-2 p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">Group Buy</p>
                 <p className="font-display text-[20px] font-semibold leading-tight">{draft.popupTitle || 'Popup title'}</p>

@@ -28,7 +28,13 @@ export function TimelineTab({ gb, token, onSaved, notify, setNotify }: {
   const [notices, setNotices] = useState<NoticeRow[]>([]);
   const [preview, setPreview] = useState('');
 
-  useEffect(() => { setStages(gb.stages); setCurrent(gb.stageKey); }, [gb.stages, gb.stageKey]);
+  // A save hands back new stages: start editing from those (during render).
+  const [stagesFrom, setStagesFrom] = useState({ stages: gb.stages, key: gb.stageKey });
+  if (stagesFrom.stages !== gb.stages || stagesFrom.key !== gb.stageKey) {
+    setStagesFrom({ stages: gb.stages, key: gb.stageKey });
+    setStages(gb.stages);
+    setCurrent(gb.stageKey);
+  }
   const loadNotices = () => adminGroupBuyNotices(token, gb.id).then(setNotices).catch(() => {});
   useEffect(() => { loadNotices(); }, [token, gb.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {

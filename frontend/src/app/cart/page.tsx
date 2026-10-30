@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import Link from 'next/link';
 import { lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
@@ -39,9 +40,9 @@ export default function CartPage() {
           {items.map((item) => (
             <div key={lineIdOf(item)} className="bg-surface rounded-xl border border-border p-4">
               <div className="flex items-center gap-3">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="relative w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                   {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                    <Image src={item.imageUrl} alt={item.name} fill sizes="64px" className="object-cover" />
                   ) : (
                     <span className="w-full text-center text-[9px] sm:text-[10px] leading-tight font-bold text-text-muted px-1 line-clamp-2 break-words">{item.code}</span>
                   )}

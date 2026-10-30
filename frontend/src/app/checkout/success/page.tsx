@@ -1,6 +1,6 @@
 'use client';
 
-import { clearBasket, forgetGroupBuyCheckout, readGroupBuyCheckout } from '@/lib/group-buy';
+import { clearBasket, forgetGroupBuyCheckout, readGroupBuyCheckout, usePendingGroupBuyCheckout } from '@/lib/group-buy';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -62,13 +62,12 @@ function CheckoutSuccessContent() {
   // A Group Buy order comes back through this same page (the gateway has one
   // return URL). Its basket lives apart from the store cart, so that is what
   // empties — the store cart is left exactly as it was.
-  const [groupBuy, setGroupBuy] = useState<{ slug: string; orderNumber: string } | null>(null);
+  const groupBuy = usePendingGroupBuyCheckout();
   useEffect(() => {
     if (!hydrated || cleared.current) return;
     cleared.current = true;
     const gb = readGroupBuyCheckout();
     if (gb) {
-      setGroupBuy(gb);
       clearBasket(gb.slug);
       forgetGroupBuyCheckout();
       return;

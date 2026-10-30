@@ -7,7 +7,7 @@ import { AlertCircle, ArrowRight, Check, Lock, Tag, X } from 'lucide-react';
 import type { GroupBuyDetail } from '@/types';
 import { createOrder, getSettings, http } from '@/lib/api';
 import { getGroupBuy } from '@/lib/group-buy-api';
-import { basketLines, clearBasket, readBasket, rememberGroupBuyCheckout, unitWord } from '@/lib/group-buy';
+import { basketLines, clearBasket, rememberGroupBuyCheckout, unitWord, useBasket } from '@/lib/group-buy';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import { isEastMalaysia, resolveShippingFeeSen } from '@/lib/shipping-region';
 import { formatPrice, normalizePhone } from '@/lib/utils';
@@ -30,10 +30,11 @@ export default function GroupBuyCheckoutPage() {
   const { member } = useMemberSession();
   const [gb, setGb] = useState<GroupBuyDetail | null>(null);
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [qtys, setQtys] = useState<Record<string, number> | null>(null);
+  const qtys = useBasket(slug);
   const [form, setForm] = useState({ customerName: '', phone: '', email: '', address: '', city: '', state: '', postcode: '', notes: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [method, setMethod] = useState<Method>('BILLPLZ');
+  const [picked, setMethod] = useState<Method>('BILLPLZ');
+  const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [discount, setDiscount] = useState<{ code: string; discountAmount: number } | null>(null);
   const [codeError, setCodeError] = useState('');
@@ -45,11 +46,13 @@ export default function GroupBuyCheckoutPage() {
   useEffect(() => {
     getGroupBuy(slug).then(setGb).catch(() => setError('This batch could not be loaded.'));
     getSettings().then(setSettings).catch(() => {});
-    setQtys(readBasket(slug));
   }, [slug]);
-  useEffect(() => {
-    if (member) setForm((f) => ({ ...f, email: f.email || member.email, customerName: f.customerName || member.displayName }));
-  }, [member]);
+  // Fill in a signed-in member's name and email once, during render (React's
+  // "adjust state when a prop changes" pattern) rather than in an effect.
+  if (member && prefilledFor !== member.id) {
+    setPrefilledFor(member.id);
+    setForm((f) => ({ ...f, email: f.email || member.email, customerName: f.customerName || member.displayName }));
+  }
 
   const online = settings.online_payment_enabled === 'true';
   const manual = settings.manual_payment_enabled === 'true';
@@ -58,9 +61,9 @@ export default function GroupBuyCheckoutPage() {
     ...(manual ? [{ id: 'MANUAL' as const, title: 'Bank transfer / DuitNow QR', body: 'Pay on the next page and upload your receipt.' }] : []),
     ...(gb?.allowWhatsapp ? [{ id: 'WHATSAPP' as const, title: 'Order on WhatsApp', body: 'Send the order to us and pay by transfer.' }] : []),
   ];
-  useEffect(() => {
-    if (methods.length && !methods.some((m) => m.id === method)) setMethod(methods[0].id);
-  }, [methods.map((m) => m.id).join(), method]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The picked method, or the first one on offer when it isn't (settings and
+  // the batch decide what's available) — derived, so nothing to sync.
+  const method: Method = methods.some((m) => m.id === picked) ? picked : (methods[0]?.id ?? picked);
 
   const lines = useMemo(() => (gb && qtys ? basketLines(gb.items, qtys).filter((l) => l.qty > 0) : []), [gb, qtys]);
   const subtotal = lines.reduce((s, l) => s + l.total, 0);
@@ -155,8 +158,10 @@ export default function GroupBuyCheckoutPage() {
         return;
       }
       keyRef.current = null;
-      clearBasket(slug);
+      // Done first: clearing the basket re-renders straight away, and the
+      // thank-you screen has to be up before the basket reads empty.
       setDone({ orderNumber: result.order.orderNumber, whatsappUrl: result.whatsappUrl });
+      clearBasket(slug);
       if (result.whatsappUrl) window.open(result.whatsappUrl, '_blank');
     } catch (err) {
       const d = (err as { response?: { data?: { error?: string; message?: string; details?: { path?: string; message?: string }[] } } })?.response?.data;
@@ -187,7 +192,7 @@ export default function GroupBuyCheckoutPage() {
           {!member && (
             <div className="gbp-note">
               <Check size={16} />
-              <span>Buying as a guest is fine. <Link className="link" href={`/account/login?next=/group-buy/${slug}/checkout`}>Sign in</Link> or <Link className="link" href={`/account/register?next=/group-buy/${slug}/checkout`}>create an account</Link> with the same email to follow this order and the batch timeline on My orders.</span>
+              <span>Buying as a guest is fine. <Link className="link" href={`/group-buy/sign-in?next=/group-buy/${slug}/checkout`}>Sign in</Link> or <Link className="link" href={`/group-buy/join?next=/group-buy/${slug}/checkout`}>create an account</Link> with the same email to follow this order and the batch timeline on My orders.</span>
             </div>
           )}
           <section className="gbp-panel">

@@ -1,6 +1,7 @@
 'use client';
+import Image from 'next/image';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Pencil, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -99,15 +100,15 @@ export default function AdminProductsPage() {
   // lines) that search/category/status/featured/stock filters all run
   // client-side in `displayedProducts` below rather than round-tripping to
   // the server. The add-ons picker also uses `products` directly.
-  const load = () => {
+  const load = useCallback(() => {
     if (!token) return;
     adminGetProducts(token, { limit: '100' })
       .then((r) => setProducts(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [token]);
 
-  useEffect(() => { load(); }, [token]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => { getCategories().then(setCategories).catch(() => {}); }, []);
 
   const handleSort = (key: SortKey) => {
@@ -253,9 +254,9 @@ export default function AdminProductsPage() {
                   className="row-rise p-4"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
+                    <div className="relative w-10 h-10 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
                       {defaultVariant?.imageUrl ? (
-                        <img src={defaultVariant.imageUrl} alt="" className="w-full h-full object-cover" />
+                        <Image src={defaultVariant.imageUrl} alt="" fill sizes="40px" className="object-cover" />
                       ) : (
                         <span className="text-[8px] font-bold text-text-muted">{defaultVariant?.code ?? '—'}</span>
                       )}
@@ -319,9 +320,9 @@ export default function AdminProductsPage() {
                   <tr key={product.id} style={{ animationDelay: `${Math.min(rowIndex * 30, 300)}ms` }} className="row-rise border-b border-border last:border-0 hover:bg-surface-elevated/50 transition-colors">
                     <td className="px-4 py-3 font-medium">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
+                        <div className="relative w-8 h-8 rounded bg-surface-elevated overflow-hidden shrink-0 flex items-center justify-center">
                           {defaultVariant?.imageUrl ? (
-                            <img src={defaultVariant.imageUrl} alt="" className="w-full h-full object-cover" />
+                            <Image src={defaultVariant.imageUrl} alt="" fill sizes="32px" className="object-cover" />
                           ) : (
                             <span className="text-[8px] font-bold text-text-muted">{defaultVariant?.code ?? '—'}</span>
                           )}

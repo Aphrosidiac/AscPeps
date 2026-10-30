@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Plus, Pencil, Trash2, Search, X, Tag, Percent, DollarSign } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetDiscounts, adminCreateDiscount, adminUpdateDiscount, adminDeleteDiscount } from '@/lib/api';
-import { formatPrice, formatDate, cn } from '@/lib/utils';
+import { formatPrice, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -81,7 +81,7 @@ export default function AdminDiscountsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Discount | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!token) return;
     const params: Record<string, string> = { limit: '100' };
     if (search) params.search = search;
@@ -89,9 +89,9 @@ export default function AdminDiscountsPage() {
       .then((r) => setDiscounts(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [token, search]);
 
-  useEffect(() => { load(); }, [token, search]);
+  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditingId(null);

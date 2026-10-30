@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -77,7 +77,7 @@ function AdminOrdersContent() {
     setTrackingError(null);
   };
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!token) return;
     const params: Record<string, string> = { limit: '50' };
     if (statusFilter !== 'ALL') params.status = statusFilter;
@@ -92,9 +92,9 @@ function AdminOrdersContent() {
     adminGetOrders(token, { limit: '1', awaitingProof: 'true' })
       .then((r) => setAwaitingCount(r.pagination?.total ?? r.data.length))
       .catch(() => {});
-  };
+  }, [token, statusFilter, canHideCancelled, hideCancelled, paidOnly, awaitingProof, search]);
 
-  useEffect(() => { load(); }, [token, statusFilter, hideCancelled, paidOnly, awaitingProof, search]);
+  useEffect(() => { load(); }, [load]);
 
   // Runs once the target order has actually loaded — a plain status filter
   // (e.g. the order is CANCELLED) could otherwise leave this waiting forever,
@@ -206,10 +206,6 @@ function AdminOrdersContent() {
     }
   };
 
-  const statusCounts = orders.reduce((acc, o) => {
-    acc[o.status] = (acc[o.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
 
   return (
     <div>

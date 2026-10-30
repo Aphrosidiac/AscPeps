@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { groupOrderItems, isIncludedItem } from '@/lib/order-lines';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -259,15 +259,15 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [step, setStep] = useState<StepKey>('info');
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!token) return;
     adminGetOrder(token, orderId)
       .then(setOrder)
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  };
+  }, [token, orderId]);
 
-  useEffect(() => { load(); }, [token, orderId]);
+  useEffect(() => { load(); }, [load]);
 
   if (loading) {
     return (

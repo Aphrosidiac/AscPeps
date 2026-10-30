@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useState as useStateField, type ReactNode } from 'react';
 import { ImagePlus, X as XIcon } from 'lucide-react';
@@ -115,8 +116,8 @@ export function ImageField({ token, value, onChange, hint }: { token: string; va
   const [error, setError] = useStateField('');
   return (
     <div className="flex items-start gap-3">
-      <div className="flex h-20 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-border bg-surface-elevated">
-        {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : <ImagePlus className="h-5 w-5 text-text-muted" />}
+      <div className="relative flex h-20 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-border bg-surface-elevated">
+        {value ? <Image src={value} alt="" fill sizes="112px" unoptimized className="object-cover" /> : <ImagePlus className="h-5 w-5 text-text-muted" />}
       </div>
       <div className="min-w-0 space-y-1.5">
         <div className="flex flex-wrap gap-2">

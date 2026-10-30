@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
@@ -61,6 +61,18 @@ const TABS: { id: TabId; label: string; blurb: string; keys: string[] }[] = [
 
 const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
+// selectTab uses replaceState, which fires no hashchange — so it announces
+// the change itself and the tab reads straight from the URL either way.
+const TAB_EVENT = 'ascend-settings-tab';
+function subscribeHash(onChange: () => void) {
+  window.addEventListener('hashchange', onChange);
+  window.addEventListener(TAB_EVENT, onChange);
+  return () => {
+    window.removeEventListener('hashchange', onChange);
+    window.removeEventListener(TAB_EVENT, onChange);
+  };
+}
+
 function tabFromHash(): TabId {
   if (typeof window === 'undefined') return 'storefront';
   const h = window.location.hash.replace(/^#/, '');
@@ -76,20 +88,13 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<TabId>('storefront');
-
-  useEffect(() => {
-    setTab(tabFromHash());
-    const onHash = () => setTab(tabFromHash());
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  const tab = useSyncExternalStore(subscribeHash, tabFromHash, (): TabId => 'storefront');
 
   const selectTab = (id: TabId) => {
-    setTab(id);
     // replaceState, not location.hash: no scroll jump and no history entry
     // per click, but the URL still deep-links and survives a reload.
     window.history.replaceState(null, '', `#${id}`);
+    window.dispatchEvent(new Event(TAB_EVENT));
   };
 
   useEffect(() => {

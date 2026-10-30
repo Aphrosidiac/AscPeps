@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useState, useRef, useEffect } from 'react';
 import { includesSummary, lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
@@ -678,9 +679,9 @@ export default function CheckoutPage() {
             <div className="space-y-3 mb-4">
               {items.map((item) => (
                 <div key={lineIdOf(item)} className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="relative w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                     {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                      <Image src={item.imageUrl} alt={item.name} fill sizes="40px" className="object-cover" />
                     ) : (
                       <span className="w-full text-center text-[7px] leading-tight font-bold text-text-muted px-0.5 line-clamp-2 break-words">{item.code}</span>
                     )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,15 +20,15 @@ export default function AdminInsightsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!token) return;
     adminGetInsights(token, { limit: '100' })
       .then((r) => setInsights(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [token]);
 
-  useEffect(() => { load(); }, [token]);
+  useEffect(() => { load(); }, [load]);
 
   const displayed = insights
     .filter((i) => !search.trim() || i.title.toLowerCase().includes(search.trim().toLowerCase()))

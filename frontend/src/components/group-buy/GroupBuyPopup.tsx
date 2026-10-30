@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -98,7 +99,7 @@ export function GroupBuyPopup({ popup }: { popup: Popup }) {
         <button type="button" onClick={close} aria-label="Close" className="absolute top-3 right-3 z-10 p-2 rounded-lg bg-surface/80 text-text-muted hover:text-text-primary cursor-pointer">
           <X className="w-4 h-4" />
         </button>
-        {popup.imageUrl && <img src={popup.imageUrl} alt="" className="w-full aspect-[1.9] object-cover" />}
+        {popup.imageUrl && <Image src={popup.imageUrl} alt="" width={640} height={337} sizes="(min-width: 640px) 448px, 100vw" className="w-full aspect-[1.9] object-cover" />}
         <div className="p-5 sm:p-7">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">Group Buy · {popup.label}</p>
           <h2 id="gb-popup-title" className="mt-1 font-display text-xl font-bold leading-snug pr-8">{popup.title}</h2>

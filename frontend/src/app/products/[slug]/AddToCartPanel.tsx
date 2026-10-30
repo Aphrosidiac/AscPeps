@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { formatPrice, getEffectivePrice, getVariantDisplayName, isSaleActive } from '@/lib/utils';
 import type { AddOnVariant, CartInclude, CartItem } from '@/types';
 import { STORE_MAX_PER_ITEM, preorderUnits, usePreorder } from '@/lib/preorder';
+import { useIsClient } from '@/hooks/useIsClient';
 
 interface Props {
   variantId: string;
@@ -34,9 +35,9 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
   const [quantity, setQuantity] = useState(1);
   // Cleared whenever the selection changes: at that point the sticky bar is
   // about a different purchase and must go back to offering Add to Cart.
-  const [added, setAdded] = useState(false);
+  const [addedFor, setAddedFor] = useState<string | null>(null);
   const [inlineButtonVisible, setInlineButtonVisible] = useState(true);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   // Required add-ons start selected and locked — the customer cannot
   // uncheck them (enforced again server-side at order creation).
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>(() =>
@@ -51,7 +52,6 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
   }
 
   useEffect(() => {
-    setMounted(true);
     const el = inlineButtonRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(([entry]) => setInlineButtonVisible(entry.isIntersecting), {
@@ -61,9 +61,10 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    setAdded(false);
-  }, [variantId, quantity, selectedAddOnIds]);
+  // "Added" belongs to the exact selection that was added; changing the size,
+  // quantity or add-ons makes it a different purchase again.
+  const selection = `${variantId}|${quantity}|${selectedAddOnIds.join(',')}`;
+  const added = addedFor === selection;
 
   const handleAddToCart = () => {
     // INCLUDED add-ons (syringes, swabs, vials) ride inside the product's line,
@@ -122,7 +123,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     // tapping there was no trace anything had happened and no way forward — the
     // page looked exactly as it had before. It now stays as the next step until
     // the customer changes what they are buying.
-    setAdded(true);
+    setAddedFor(selection);
   };
 
   return (

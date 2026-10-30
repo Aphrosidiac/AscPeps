@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useEffect, useState } from 'react';
 import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
@@ -283,9 +284,9 @@ function Details({ order, phone }: { order: TrackedOrder; phone: string }) {
         <ul className="divide-y divide-border">
           {lines.map(({ item, includes }) => (
             <li key={item.id} className="flex items-center gap-3 py-3">
-              <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-surface-elevated">
+              <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-surface-elevated">
                 {item.variant.imageUrl ? (
-                  <img src={item.variant.imageUrl} alt="" className="h-full w-full object-cover" />
+                  <Image src={item.variant.imageUrl} alt="" fill sizes="44px" className="object-cover" />
                 ) : (
                   <Package className="m-3.5 w-4 h-4 text-text-muted" />
                 )}

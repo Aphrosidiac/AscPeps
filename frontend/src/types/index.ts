@@ -963,13 +963,43 @@ export interface PaymentClient {
   device: PaymentDevice;
 }
 
+/** A payment event's payload. Each event type records its own bits (see
+ *  backend payment-trail), so it stays open; the fields the admin reads are
+ *  typed here. */
+export interface PaymentEventData {
+  source?: string;
+  method?: string;
+  total?: number;
+  client?: PaymentClient;
+  billId?: string;
+  emailSent?: boolean;
+  status?: number | string;
+  answer?: unknown;
+  message?: string;
+  src?: string;
+  params?: Record<string, string | undefined>;
+  fields?: Record<string, string | undefined>;
+  signatureValid?: boolean;
+  attempts?: { completed?: number; failed?: number; pending?: number; opened?: number };
+  trigger?: string;
+  paid?: boolean;
+  verdict?: string;
+  state?: string;
+  via?: string;
+  gatewayFee?: number;
+  reason?: string;
+  channel?: string;
+  billClosed?: string;
+  [key: string]: unknown;
+}
+
 /** Something that happened to an order's payment (backend PaymentEvent). */
 export interface PaymentEvent {
   id: string;
   type: PaymentEventType;
   gateway: string | null;
   at: string;
-  data: Record<string, any>;
+  data: PaymentEventData;
 }
 
 export interface PaymentFailedOrderRow {

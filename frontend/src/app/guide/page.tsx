@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { FlaskConical, AlertTriangle, Droplets, Syringe, Pipette } from 'lucide-react';
 import { Animate, Stagger } from '@/components/ui/Animate';
 import { StorageGuidelines } from '@/components/guide/StorageGuidelines';
@@ -157,7 +158,7 @@ export default function GuidePage() {
           </table>
           </div>
           <p className="text-sm text-text-muted">
-            Ascend MY offers Acetic Acid in our <a href="/products" className="underline">store</a> for peptides that require it.
+            Ascend MY offers Acetic Acid in our <Link href="/products" className="underline">store</Link> for peptides that require it.
           </p>
         </Animate>
       </div>

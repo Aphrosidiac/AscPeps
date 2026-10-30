@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Gift, Mail } from 'lucide-react';
 import type { GroupBuyPhase, GroupBuyReward, GroupBuyStage } from '@/types';
 import { countdown, rewardHeadline, rewardOff } from '@/lib/group-buy';
 import { signupGroupBuy, type SignupResult } from '@/lib/group-buy-api';
 import { useMemberSession } from '@/lib/member-session';
+import { useNow } from '@/lib/use-now';
 
 /** Pieces of the Group Buy portal (styles in app/group-buy/portal.css). */
 
@@ -35,12 +36,7 @@ export function PhaseChip({ phase, stageLabel }: { phase: GroupBuyPhase; stageLa
 
 /** Ticks once a second; renders dashes on the server pass to avoid a mismatch. */
 export function Countdown({ to }: { to: string }) {
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const now = useNow();
   const c = countdown(to, now ?? 0);
   const cells: [number, string][] = [[c.d, 'days'], [c.h, 'hrs'], [c.m, 'min'], [c.s, 'sec']];
   return (
@@ -129,7 +125,7 @@ export function SignupPanel({ slug, reward, source = 'PAGE', closed = false, dar
             </div>
           )}
           {done.rewardNeedsMember && (
-            <p className="small" style={{ marginTop: 12 }}>The reward is for members. <Link className="link" href={`/account/register?next=/group-buy/${slug}`}>Create an account</Link> with this email, then join again.</p>
+            <p className="small" style={{ marginTop: 12 }}>The reward is for members. <Link className="link" href={`/group-buy/join?next=/group-buy/${slug}`}>Create an account</Link> with this email, then join again.</p>
           )}
         </div>
       ) : (

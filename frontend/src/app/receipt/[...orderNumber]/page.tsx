@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -22,10 +22,33 @@ export default function ReceiptPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [phone, setPhone] = useState(phoneParam);
   const [verifiedPhone, setVerifiedPhone] = useState('');
-  const [loading, setLoading] = useState(false);
+  // A ?phone= link loads straight away, so it starts in the loading state.
+  const [loading, setLoading] = useState(() => normalizePhone(phoneParam).length >= 10);
   const [error, setError] = useState('');
 
-  const fetchReceipt = async (p: string) => {
+  // Every setState here lands in a promise callback, so the ?phone= effect
+  // below can call it.
+  const requestReceipt = useCallback((normalized: string) =>
+    getReceiptData(orderNumber, normalized)
+      .then((data) => {
+        setOrder(data);
+        setVerifiedPhone(normalized);
+      })
+      .catch((err: unknown) => {
+        const status = err && typeof err === 'object' && 'response' in err
+          ? (err as { response: { status: number } }).response?.status
+          : 0;
+        if (status === 403) {
+          setError('Phone number does not match this order');
+        } else if (status === 404) {
+          setError('Order not found');
+        } else {
+          setError('Failed to load receipt');
+        }
+      })
+      .finally(() => setLoading(false)), [orderNumber]);
+
+  const fetchReceipt = (p: string) => {
     const normalized = normalizePhone(p);
     if (normalized.length < 10) {
       setError('Please enter a valid phone number');
@@ -33,29 +56,13 @@ export default function ReceiptPage() {
     }
     setLoading(true);
     setError('');
-    try {
-      const data = await getReceiptData(orderNumber, normalized);
-      setOrder(data);
-      setVerifiedPhone(normalized);
-    } catch (err: unknown) {
-      const status = err && typeof err === 'object' && 'response' in err
-        ? (err as { response: { status: number } }).response?.status
-        : 0;
-      if (status === 403) {
-        setError('Phone number does not match this order');
-      } else if (status === 404) {
-        setError('Order not found');
-      } else {
-        setError('Failed to load receipt');
-      }
-    } finally {
-      setLoading(false);
-    }
+    requestReceipt(normalized);
   };
 
   useEffect(() => {
-    if (phoneParam) fetchReceipt(phoneParam);
-  }, []);
+    const normalized = normalizePhone(phoneParam);
+    if (normalized.length >= 10) requestReceipt(normalized);
+  }, [phoneParam, requestReceipt]);
 
   if (!order) {
     return (

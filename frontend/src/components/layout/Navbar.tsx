@@ -14,12 +14,15 @@ export function Navbar() {
   const { itemCount } = useCart();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  // menuOpen is the logical on/off state; menuMounted keeps the overlay in
-  // the DOM for the exit transition's duration after menuOpen flips false,
-  // and menuVisible is flipped a frame after mount so the entrance
-  // transition actually has a "from" state to animate out of.
-  const [menuMounted, setMenuMounted] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
+  // menuOpen is the logical on/off state. menuClosing keeps the overlay in
+  // the DOM for the exit transition after it flips false, and menuEntered
+  // flips two frames after opening so the entrance has a "from" state.
+  const [menuClosing, setMenuClosing] = useState(false);
+  const [menuEntered, setMenuEntered] = useState(false);
+  const menuMounted = menuOpen || menuClosing;
+  const menuVisible = menuOpen && menuEntered;
+  const openMenu = () => { setMenuEntered(false); setMenuClosing(false); setMenuOpen(true); };
+  const closeMenu = () => { if (!menuOpen) return; setMenuClosing(true); setMenuOpen(false); };
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,27 +43,26 @@ export function Navbar() {
 
   useEffect(() => {
     if (menuOpen) {
-      setMenuMounted(true);
       // A single rAF isn't enough: it can fire before the browser has ever
       // painted the just-mounted "closed" frame, so the transition has no
       // starting point to animate from and the menu simply pops in. Waiting
       // two frames guarantees the closed state actually painted first.
       let raf2 = 0;
       const raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => setMenuVisible(true));
+        raf2 = requestAnimationFrame(() => setMenuEntered(true));
       });
       return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
     }
-    setMenuVisible(false);
-    const timeout = setTimeout(() => setMenuMounted(false), 500);
+    if (!menuClosing) return;
+    const timeout = setTimeout(() => { setMenuClosing(false); setMenuEntered(false); }, 500);
     return () => clearTimeout(timeout);
-  }, [menuOpen]);
+  }, [menuOpen, menuClosing]);
 
   useEffect(() => {
     if (!menuMounted) return;
     const original = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMenuClosing(true); setMenuOpen(false); } };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = original;
@@ -147,7 +149,7 @@ export function Navbar() {
 
             {!searchOpen && (
               <button
-                onClick={() => { setSearchOpen(true); setMenuOpen(false); }}
+                onClick={() => { setSearchOpen(true); closeMenu(); }}
                 className="p-1.5 sm:p-3 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
                 aria-label="Search"
               >
@@ -182,7 +184,7 @@ export function Navbar() {
 
             {!searchOpen && (
               <button
-                onClick={() => setMenuOpen(!menuOpen)}
+                onClick={() => (menuOpen ? closeMenu() : openMenu())}
                 className="md:hidden p-1.5 sm:p-3 hover:bg-surface-elevated rounded-lg transition-colors cursor-pointer"
                 aria-label={menuOpen ? 'Close menu' : 'Open menu'}
                 aria-expanded={menuOpen}
@@ -214,12 +216,12 @@ export function Navbar() {
             style={{ transitionTimingFunction: EASE, transform: menuVisible ? 'translateY(0)' : 'translateY(-16px)' }}
           >
             <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8 shrink-0">
-              <Link href="/" className="flex items-center gap-2" onClick={() => setMenuOpen(false)}>
+              <Link href="/" className="flex items-center gap-2" onClick={closeMenu}>
                 <Image src="/images/pill-icon.png" alt="" width={32} height={32} className="invert" />
                 <span className="font-display font-bold text-xl tracking-tight text-white">Ascend MY</span>
               </Link>
               <button
-                onClick={() => setMenuOpen(false)}
+                onClick={closeMenu}
                 aria-label="Close menu"
                 className="p-3 hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-white"
               >
@@ -232,7 +234,7 @@ export function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  onClick={() => setMenuOpen(false)}
+                  onClick={closeMenu}
                   className="py-4 border-b border-white/10 font-display text-3xl font-bold text-white transition-all duration-500"
                   style={{
                     transitionTimingFunction: EASE,

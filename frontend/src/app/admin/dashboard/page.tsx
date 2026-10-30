@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ShoppingBag, DollarSign, Package, AlertTriangle, ArrowRight, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,13 +33,13 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState(false);
 
-  const loadStats = () => {
+  const fetchStats = useCallback(() => {
     if (!token) return;
-    setError(false);
     adminGetDashboard(token).then(setStats).catch(() => setError(true));
-  };
+  }, [token]);
+  const loadStats = () => { setError(false); fetchStats(); };
 
-  useEffect(() => { loadStats(); }, [token]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   if (error) {
     return (

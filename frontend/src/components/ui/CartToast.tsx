@@ -26,7 +26,13 @@ interface CartToastProps {
  */
 export function CartToast({ item, onDone }: CartToastProps) {
   const [visible, setVisible] = useState(false);
+  // The last item shown — kept through the fade-out after `item` clears.
   const [display, setDisplay] = useState<ToastItem | null>(null);
+  // A new item shows straight away: set during render, not in an effect.
+  if (item && item !== display) {
+    setDisplay(item);
+    setVisible(true);
+  }
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -35,9 +41,6 @@ export function CartToast({ item, onDone }: CartToastProps) {
 
     if (timerRef.current) clearTimeout(timerRef.current);
     if (fadeRef.current) clearTimeout(fadeRef.current);
-
-    setDisplay(item);
-    setVisible(true);
 
     timerRef.current = setTimeout(() => {
       setVisible(false);

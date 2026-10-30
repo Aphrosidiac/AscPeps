@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useCallback, useSyncExternalStore, type ReactNode } from 'react';
 import React from 'react';
 
 interface AuthContextType {
@@ -26,27 +26,45 @@ function tokenExpired(token: string): boolean {
   }
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+const KEY = 'ascend-admin-token';
+// Same-tab listeners: the native `storage` event only reaches other tabs.
+const CHANGE_EVENT = 'ascend-admin-change';
 
+function subscribe(onChange: () => void) {
+  window.addEventListener(CHANGE_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(CHANGE_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
+function readToken(): string | null {
+  const saved = localStorage.getItem(KEY);
+  return saved && !tokenExpired(saved) ? saved : null;
+}
+
+const noSubscribe = () => () => {};
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  // Read through useSyncExternalStore: null and `loading` on the server and
+  // during hydration, then the stored token — no mount effect setting state.
+  const token = useSyncExternalStore(subscribe, readToken, () => null);
+  const loading = useSyncExternalStore(noSubscribe, () => false, () => true);
+
+  // An expired token is ignored by readToken; this clears it from storage.
   useEffect(() => {
-    let saved = localStorage.getItem('ascend-admin-token');
-    if (saved && tokenExpired(saved)) {
-      localStorage.removeItem('ascend-admin-token');
-      saved = null;
-    }
-    setTokenState(saved);
-    setLoading(false);
+    const saved = localStorage.getItem(KEY);
+    if (saved && tokenExpired(saved)) localStorage.removeItem(KEY);
   }, []);
 
   const setToken = useCallback((t: string | null) => {
     if (t) {
-      localStorage.setItem('ascend-admin-token', t);
+      localStorage.setItem(KEY, t);
     } else {
-      localStorage.removeItem('ascend-admin-token');
+      localStorage.removeItem(KEY);
     }
-    setTokenState(t);
+    window.dispatchEvent(new Event(CHANGE_EVENT));
   }, []);
 
   const logout = useCallback(() => setToken(null), [setToken]);

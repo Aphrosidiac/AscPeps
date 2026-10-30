@@ -25,7 +25,12 @@ export function ItemsTab({ gb, token, onSaved }: { gb: AdminGroupBuy; token: str
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => { adminGroupBuyVariants(token).then(setVariants).catch(() => {}); }, [token]);
-  useEffect(() => { setItems(gb.items); }, [gb.items]);
+  // A save hands back new items: start editing from those (during render).
+  const [itemsFrom, setItemsFrom] = useState(gb.items);
+  if (itemsFrom !== gb.items) {
+    setItemsFrom(gb.items);
+    setItems(gb.items);
+  }
 
   const dirty = JSON.stringify(strip(items)) !== JSON.stringify(strip(gb.items));
   const update = (i: number, patch: Partial<AdminGroupBuyItem>) => setItems((list) => list.map((it, j) => (j === i ? { ...it, ...patch } : it)));

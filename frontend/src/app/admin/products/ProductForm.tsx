@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -101,8 +102,8 @@ function GalleryEditor({
         <div className="flex flex-wrap gap-3">
           {images.map((url, i) => (
             <div key={`${url}-${i}`} className="relative w-24 group">
-              <div className="w-24 h-24 rounded-lg border border-border overflow-hidden bg-surface">
-                <img src={url} alt="" className="w-full h-full object-cover" />
+              <div className="relative w-24 h-24 rounded-lg border border-border overflow-hidden bg-surface">
+                <Image src={url} alt="" fill sizes="96px" unoptimized className="object-cover" />
               </div>
               <div className="mt-1 flex items-center justify-between gap-1">
                 <button
@@ -250,7 +251,7 @@ function VariantCard({
             } ${uploading ? 'cursor-wait' : 'cursor-pointer'}`}
           >
             {variant.imageUrl ? (
-              <img src={variant.imageUrl} alt="" className="w-full h-full object-cover" />
+              <Image src={variant.imageUrl} alt="" fill sizes="64px" unoptimized className="object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <ImageIcon className="w-5 h-5 text-text-muted" />
@@ -485,7 +486,8 @@ export function ProductForm({ productId }: { productId?: string }) {
       }
     }
     setUploadStatus((s) => {
-      const { [GALLERY_UPLOAD_KEY]: _removed, ...rest } = s;
+      const rest = { ...s };
+      delete rest[GALLERY_UPLOAD_KEY];
       return rest;
     });
   };
@@ -501,7 +503,8 @@ export function ProductForm({ productId }: { productId?: string }) {
       setUploadStatus((s) => ({ ...s, [key]: { status: 'success', progress: 100 } }));
       setTimeout(() => {
         setUploadStatus((s) => {
-          const { [key]: _removed, ...rest } = s;
+          const rest = { ...s };
+          delete rest[key];
           return rest;
         });
       }, 1500);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties } from 'react';
 
 interface AnimateProps {
   children: ReactNode;
@@ -46,13 +46,16 @@ const variants: Record<string, { from: CSSProperties; to: CSSProperties }> = {
 // instead of leaving it permanently opacity:0. A short fallback timer also
 // forces visibility for anyone whose element never intersects (e.g. an
 // automated full-page capture that doesn't scroll).
+const REDUCE = '(prefers-reduced-motion: reduce)';
+function subscribeMotion(onChange: () => void) {
+  const mq = window.matchMedia(REDUCE);
+  mq.addEventListener('change', onChange);
+  return () => mq.removeEventListener('change', onChange);
+}
+// False on the server and during hydration, so the HTML always has its content
+// visible; true afterwards unless the visitor asked for reduced motion.
 function usePlaysAnimation() {
-  const [plays, setPlays] = useState(false);
-  useEffect(() => {
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    setPlays(!reduceMotion);
-  }, []);
-  return plays;
+  return useSyncExternalStore(subscribeMotion, () => !window.matchMedia(REDUCE).matches, () => false);
 }
 
 export function Animate({
@@ -65,25 +68,27 @@ export function Animate({
   threshold = 0.1,
 }: AnimateProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(true);
+  // Whether it has scrolled into view. Only matters once animation plays —
+  // until then (server, reduced motion) the content simply shows.
+  const [inView, setInView] = useState(false);
   const plays = usePlaysAnimation();
+  const visible = !plays || inView;
 
   useEffect(() => {
     if (!plays) return;
     const el = ref.current;
     if (!el) return;
 
-    setVisible(false);
-    const fallback = setTimeout(() => setVisible(true), 1500);
+    const fallback = setTimeout(() => setInView(true), 1500);
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           clearTimeout(fallback);
-          setVisible(true);
+          setInView(true);
           if (once) observer.unobserve(el);
         } else if (!once) {
-          setVisible(false);
+          setInView(false);
         }
       },
       { threshold }
@@ -122,22 +127,24 @@ interface StaggerProps {
 
 export function Stagger({ children, className, stagger = 0.06, variant = 'fadeUp', duration = 0.45 }: StaggerProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(true);
+  // Whether it has scrolled into view. Only matters once animation plays —
+  // until then (server, reduced motion) the content simply shows.
+  const [inView, setInView] = useState(false);
   const plays = usePlaysAnimation();
+  const visible = !plays || inView;
 
   useEffect(() => {
     if (!plays) return;
     const el = ref.current;
     if (!el) return;
 
-    setVisible(false);
-    const fallback = setTimeout(() => setVisible(true), 1500);
+    const fallback = setTimeout(() => setInView(true), 1500);
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           clearTimeout(fallback);
-          setVisible(true);
+          setInView(true);
           observer.unobserve(el);
         }
       },

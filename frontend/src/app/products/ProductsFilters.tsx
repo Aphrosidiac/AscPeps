@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { CategoryFilter } from '@/components/products/CategoryFilter';
@@ -20,9 +20,15 @@ export function ProductsFilters({ categories, selectedCategory, search }: Produc
   const router = useRouter();
   const pathname = usePathname();
   const [searchValue, setSearchValue] = useState(search);
+  const [syncedSearch, setSyncedSearch] = useState(search);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => setSearchValue(search), [search]);
+  // Back/forward or a link changes ?search=: take it, during render rather
+  // than in an effect.
+  if (syncedSearch !== search) {
+    setSyncedSearch(search);
+    setSearchValue(search);
+  }
 
   function navigate(next: { category?: string | null; search?: string }) {
     const params = new URLSearchParams();

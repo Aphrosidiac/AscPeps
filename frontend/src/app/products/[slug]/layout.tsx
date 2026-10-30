@@ -81,7 +81,6 @@ export default async function ProductLayout({ params, children }: Props) {
   const { slug } = await params;
   const [product, settings] = await Promise.all([getProductServer(slug), getSettingsServer()]);
   const variant = product ? getDefaultVariant(product) : null;
-  const fullName = product && variant ? getVariantDisplayName(product, variant) : product?.name ?? '';
 
   return (
     <>

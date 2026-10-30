@@ -109,7 +109,7 @@ export function describeEvent(e: PaymentEvent): { title: string; detail?: string
     case 'PAGE_OPENED':
       return {
         title: 'Opened the payment page',
-        detail: `From ${SOURCE_LABELS[d.src] ?? d.src} · ${deviceText(d.client?.device, d.client?.country)}`,
+        detail: `From ${SOURCE_LABELS[d.src ?? ''] ?? d.src} · ${deviceText(d.client?.device, d.client?.country)}`,
       };
     case 'RETURNED': {
       const p = d.params ?? {};
@@ -150,7 +150,7 @@ export function describeEvent(e: PaymentEvent): { title: string; detail?: string
         backfill: 'backfill',
       };
       return {
-        title: `Checked with ${gw} (${trigger[d.trigger] ?? d.trigger})`,
+        title: `Checked with ${gw} (${trigger[d.trigger ?? ''] ?? d.trigger})`,
         detail: [
           d.paid ? 'paid' : d.verdict ? REASON_LABELS[d.verdict as PaymentFailureReason] ?? d.verdict : null,
           d.state ? `bill ${d.state}` : null,
@@ -174,7 +174,7 @@ export function describeEvent(e: PaymentEvent): { title: string; detail?: string
       };
       return {
         title: 'Released — cancelled, stock back',
-        detail: `${REASON_LABELS[d.reason as PaymentFailureReason] ?? d.reason}${d.channel ? ` (${d.channel})` : ''} · ${closed[d.billClosed] ?? d.billClosed}`,
+        detail: `${REASON_LABELS[d.reason as PaymentFailureReason] ?? d.reason}${d.channel ? ` (${d.channel})` : ''} · ${closed[d.billClosed ?? ''] ?? d.billClosed}`,
         tone: 'bad',
       };
     }

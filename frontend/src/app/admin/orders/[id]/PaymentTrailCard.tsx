@@ -128,7 +128,7 @@ export function PaymentTrailCard({ order, onChange }: { order: Order; onChange: 
           </Fact>
           <Fact label="Payment page opened">
             {opens.length
-              ? `${opens.length}× — first ${sinceOrder(opens[0].at, order.createdAt)}, from ${[...new Set(opens.map((o) => SOURCE_LABELS[o.data?.src] ?? o.data?.src))].join(', ')}`
+              ? `${opens.length}× — first ${sinceOrder(opens[0].at, order.createdAt)}, from ${[...new Set(opens.map((o) => SOURCE_LABELS[o.data?.src ?? ''] ?? o.data?.src))].join(', ')}`
               : tracked
                 ? <span className="text-warning">Never</span>
                 : views.length

@@ -1,3 +1,4 @@
+import { useMemo, useSyncExternalStore } from 'react';
 import type { GroupBuyItem, GroupBuyReward, GroupBuyTier } from '@/types';
 
 /**
@@ -92,10 +93,11 @@ export function rewardOff(r: Pick<GroupBuyReward, 'type' | 'value'>): string {
 // ─── The basket, per batch, kept in this browser ────────────────────────────
 
 const key = (slug: string) => `ascend-gb-basket:${slug}`;
+// Same-tab listeners: the native `storage` event only reaches other tabs.
+const BASKET_EVENT = 'ascend-gb-basket-change';
 
-export function readBasket(slug: string): Record<string, number> {
+function parseBasket(raw: string | null): Record<string, number> {
   try {
-    const raw = localStorage.getItem(key(slug));
     const v = raw ? JSON.parse(raw) : {};
     return v && typeof v === 'object' ? v : {};
   } catch {
@@ -103,15 +105,44 @@ export function readBasket(slug: string): Record<string, number> {
   }
 }
 
+function rawBasket(slug: string): string {
+  try { return localStorage.getItem(key(slug)) ?? ''; } catch { return ''; }
+}
+
+export function readBasket(slug: string): Record<string, number> {
+  return parseBasket(rawBasket(slug));
+}
+
 export function writeBasket(slug: string, qtys: Record<string, number>): void {
   try {
     const clean = Object.fromEntries(Object.entries(qtys).filter(([, q]) => q > 0));
     localStorage.setItem(key(slug), JSON.stringify(clean));
   } catch { /* private mode */ }
+  window.dispatchEvent(new Event(BASKET_EVENT));
 }
 
 export function clearBasket(slug: string): void {
   try { localStorage.removeItem(key(slug)); } catch { /* private mode */ }
+  window.dispatchEvent(new Event(BASKET_EVENT));
+}
+
+function subscribeBasket(onChange: () => void) {
+  window.addEventListener(BASKET_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(BASKET_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
+/**
+ * The batch's basket, live. Null on the server and during hydration (the
+ * basket lives in this browser), then the stored quantities — read through
+ * useSyncExternalStore so there's no mount effect and no hydration mismatch.
+ */
+export function useBasket(slug: string): Record<string, number> | null {
+  const raw = useSyncExternalStore(subscribeBasket, () => rawBasket(slug), () => null);
+  return useMemo(() => (raw === null ? null : parseBasket(raw)), [raw]);
 }
 
 // A Group Buy order handed to the payment gateway. The gateway returns to the
@@ -134,6 +165,19 @@ export function readGroupBuyCheckout(): { slug: string; orderNumber: string } | 
 
 export function forgetGroupBuyCheckout(): void {
   try { localStorage.removeItem(PENDING); } catch { /* private mode */ }
+}
+
+// Read once per page load and kept: the success page forgets the record as
+// soon as it has cleared the basket, but must keep showing the batch wording.
+let pendingSnapshot: { slug: string; orderNumber: string } | null | undefined;
+const noSubscribe = () => () => {};
+
+/** The Group Buy order this browser just paid for, if any (null on the server). */
+export function usePendingGroupBuyCheckout(): { slug: string; orderNumber: string } | null {
+  return useSyncExternalStore(noSubscribe, () => {
+    if (pendingSnapshot === undefined) pendingSnapshot = readGroupBuyCheckout();
+    return pendingSnapshot;
+  }, () => null);
 }
 
 /** "3d 4h", "5h 12m", "12m" until a time. */
