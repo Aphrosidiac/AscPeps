@@ -392,6 +392,8 @@ export interface Member {
   email: string;
   displayName: string;
   emailVerified: boolean;
+  // A requested email change waiting for its confirmation link to be clicked.
+  pendingEmail?: string | null;
 }
 
 // The moderation-queue view of a comment: carries the hidden flag, the article

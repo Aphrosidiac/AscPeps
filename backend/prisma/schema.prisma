@@ -731,6 +731,20 @@ model Member {
   verifyTokenHash      String?
   verifyTokenExpiresAt DateTime?
 
+  // A requested address change waits here until the link sent to the new
+  // inbox is clicked; `email` stays the old one until then. Hashed for the
+  // same reason as the verify token.
+  pendingEmail         String?
+  emailChangeTokenHash String?
+  emailChangeExpiresAt DateTime?
+
+  // Forgot-password link (hash only, short-lived).
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+  // Member tokens issued before this are refused (see authenticateMember), so
+  // a password change or reset signs out every other device.
+  passwordChangedAt DateTime?
+
   // Moderation of last resort. Banned members keep their rows (so their past
   // comments stay attributable) but can neither sign in nor post.
   banned Boolean @default(false)
@@ -742,6 +756,8 @@ model Member {
   groupBuySignups GroupBuySignup[]
 
   @@index([verifyTokenHash])
+  @@index([emailChangeTokenHash])
+  @@index([resetTokenHash])
   @@map("members")
 }
 

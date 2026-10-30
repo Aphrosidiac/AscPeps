@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { env } from '../../config/env.js';
 import { isEmailEnabled, sendEmail } from '../../utils/email.js';
 import { renderVerifyEmail } from '../../emails/verify-email.js';
+import { renderConfirmNewEmail, renderEmailChangedNotice, renderResetPasswordEmail } from '../../emails/account.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(200),
@@ -36,7 +37,7 @@ const REGISTER_RESPONSE = {
   message: "Check your inbox — if that address isn't already registered, a confirmation link is on its way.",
 };
 
-const publicFields = { id: true, email: true, displayName: true, emailVerified: true } as const;
+const publicFields = { id: true, email: true, displayName: true, emailVerified: true, pendingEmail: true } as const;
 
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -135,6 +136,7 @@ export async function login(fastify: FastifyInstance, body: unknown) {
       email: member.email,
       displayName: member.displayName,
       emailVerified: member.emailVerified,
+      pendingEmail: member.pendingEmail,
     },
   };
 }
@@ -185,4 +187,221 @@ export async function resendVerification(fastify: FastifyInstance, body: unknown
 
   // Non-enumerating, same as register.
   return { success: true, message: 'If that account still needs confirming, a new link is on its way.' };
+}
+
+// ---- Account settings ----
+
+const RESET_TTL_MS = 60 * 60 * 1000;
+const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Links in these mails land back where the member asked from, so someone in
+// the Group Buy portal never gets dropped into the store's chrome.
+const whereSchema = z.enum(['store', 'group-buy']).default('store');
+type Where = z.infer<typeof whereSchema>;
+
+function accountUrl(where: Where, page: string, token: string): string {
+  return `${env.FRONTEND_URL}${where === 'group-buy' ? '/group-buy' : '/account'}/${page}?token=${token}`;
+}
+
+const newPassword = z.string().min(8, 'Password must be at least 8 characters').max(200);
+
+const profileSchema = z.object({
+  displayName: z.string().trim().min(2, 'Name must be at least 2 characters').max(40),
+});
+const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword });
+const changeEmailSchema = z.object({ newEmail: z.string().email().max(200), password: z.string().min(1), where: whereSchema });
+const forgotSchema = z.object({ email: z.string().email().max(200), where: whereSchema });
+const resetSchema = z.object({ token: z.string().min(1), password: newPassword });
+const tokenSchema = z.object({ token: z.string().min(1) });
+
+function signMember(fastify: FastifyInstance, member: { id: string; email: string }): string {
+  return fastify.jwt.sign({ id: member.id, email: member.email, kind: 'member' });
+}
+
+/** Sends one account mail, or logs the link when email is switched off (as issueVerification does). */
+async function mailMember(
+  fastify: FastifyInstance,
+  to: string,
+  what: string,
+  link: string | null,
+  render: (settings: Record<string, string>) => { subject: string; html: string }
+): Promise<void> {
+  if (!(await isEmailEnabled(fastify.prisma))) {
+    fastify.log.warn(`Email disabled — ${what} for ${to}${link ? `: ${link}` : ''}`);
+    return;
+  }
+  const settingsRows = await fastify.prisma.setting.findMany();
+  const { subject, html } = render(Object.fromEntries(settingsRows.map((s) => [s.key, s.value])));
+  try {
+    await sendEmail({ to, subject, html });
+  } catch (err) {
+    // The member can ask again; failing the request would not help them.
+    fastify.log.error({ err }, `Failed to send ${what} to ${to}`);
+  }
+}
+
+/** The signed-in member's row with its password hash, for the checks below. */
+async function loadMember(fastify: FastifyInstance, memberId: string) {
+  const member = await fastify.prisma.member.findUnique({ where: { id: memberId } });
+  if (!member) throw { statusCode: 404, message: 'Account not found' };
+  return member;
+}
+
+async function checkPassword(hash: string, password: string): Promise<void> {
+  // 400, not 401: a 401 reads as "session expired" to the client and signs
+  // the member out over a typo.
+  if (!(await bcrypt.compare(password, hash))) {
+    throw { statusCode: 400, message: 'That password is not right.' };
+  }
+}
+
+export async function updateProfile(fastify: FastifyInstance, memberId: string, body: unknown) {
+  const { displayName } = profileSchema.parse(body);
+  return fastify.prisma.member.update({ where: { id: memberId }, data: { displayName }, select: publicFields });
+}
+
+export async function changePassword(fastify: FastifyInstance, memberId: string, body: unknown) {
+  const { currentPassword, newPassword: password } = changePasswordSchema.parse(body);
+  const member = await loadMember(fastify, memberId);
+  await checkPassword(member.passwordHash, currentPassword);
+
+  const updated = await fastify.prisma.member.update({
+    where: { id: memberId },
+    data: {
+      passwordHash: await bcrypt.hash(password, 12),
+      // Signs every other device out (authenticateMember); this one gets the
+      // fresh token below.
+      passwordChangedAt: new Date(),
+      resetTokenHash: null,
+      resetTokenExpiresAt: null,
+    },
+    select: publicFields,
+  });
+  return { token: signMember(fastify, updated), member: updated };
+}
+
+export async function requestEmailChange(fastify: FastifyInstance, memberId: string, body: unknown) {
+  const { newEmail, password, where } = changeEmailSchema.parse(body);
+  const member = await loadMember(fastify, memberId);
+  await checkPassword(member.passwordHash, password);
+
+  const normalised = newEmail.trim().toLowerCase();
+  if (normalised === member.email) {
+    throw { statusCode: 400, message: 'That is already your email.' };
+  }
+  // Behind a correct password and a tight rate limit, saying the address is
+  // taken is worth more to the member than hiding it.
+  if (await fastify.prisma.member.findUnique({ where: { email: normalised }, select: { id: true } })) {
+    throw { statusCode: 409, message: 'Another account already uses that email.' };
+  }
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const updated = await fastify.prisma.member.update({
+    where: { id: memberId },
+    data: {
+      pendingEmail: normalised,
+      emailChangeTokenHash: hashToken(token),
+      emailChangeExpiresAt: new Date(Date.now() + EMAIL_CHANGE_TTL_MS),
+    },
+    select: publicFields,
+  });
+
+  const url = accountUrl(where, 'confirm-email', token);
+  await mailMember(fastify, normalised, 'new-email confirmation', url, (settings) =>
+    renderConfirmNewEmail(member.displayName, normalised, url, settings)
+  );
+  return updated;
+}
+
+export async function cancelEmailChange(fastify: FastifyInstance, memberId: string) {
+  return fastify.prisma.member.update({
+    where: { id: memberId },
+    data: { pendingEmail: null, emailChangeTokenHash: null, emailChangeExpiresAt: null },
+    select: publicFields,
+  });
+}
+
+export async function confirmEmailChange(fastify: FastifyInstance, body: unknown) {
+  const { token } = tokenSchema.parse(body);
+  const member = await fastify.prisma.member.findFirst({
+    where: { emailChangeTokenHash: hashToken(token), emailChangeExpiresAt: { gt: new Date() } },
+  });
+  if (!member?.pendingEmail) {
+    throw { statusCode: 400, message: 'This link is invalid or has expired.' };
+  }
+  const newEmail = member.pendingEmail;
+  // Someone may have registered it since the change was asked for.
+  const taken = await fastify.prisma.member.findUnique({ where: { email: newEmail }, select: { id: true } });
+  if (taken && taken.id !== member.id) {
+    throw { statusCode: 409, message: 'Another account now uses that email.' };
+  }
+
+  await fastify.prisma.member.update({
+    where: { id: member.id },
+    data: {
+      email: newEmail,
+      // Clicking the link proves the new inbox is theirs.
+      emailVerified: true,
+      verifyTokenHash: null,
+      verifyTokenExpiresAt: null,
+      pendingEmail: null,
+      emailChangeTokenHash: null,
+      emailChangeExpiresAt: null,
+    },
+  });
+
+  await mailMember(fastify, member.email, 'email-changed notice', null, (settings) =>
+    renderEmailChangedNotice(member.displayName, newEmail, settings)
+  );
+  return { success: true, email: newEmail };
+}
+
+export async function forgotPassword(fastify: FastifyInstance, body: unknown) {
+  const { email, where } = forgotSchema.parse(body);
+  const member = await fastify.prisma.member.findUnique({ where: { email: email.trim().toLowerCase() } });
+
+  if (member && !member.banned) {
+    const token = crypto.randomBytes(32).toString('hex');
+    await fastify.prisma.member.update({
+      where: { id: member.id },
+      data: { resetTokenHash: hashToken(token), resetTokenExpiresAt: new Date(Date.now() + RESET_TTL_MS) },
+    });
+    const url = accountUrl(where, 'reset-password', token);
+    await mailMember(fastify, member.email, 'password reset link', url, (settings) =>
+      renderResetPasswordEmail(member.displayName, url, settings)
+    );
+  }
+
+  // Non-enumerating, same as register.
+  return { success: true, message: 'If that email has an account, a reset link is on its way.' };
+}
+
+export async function resetPassword(fastify: FastifyInstance, body: unknown) {
+  const { token, password } = resetSchema.parse(body);
+  const member = await fastify.prisma.member.findFirst({
+    where: { resetTokenHash: hashToken(token), resetTokenExpiresAt: { gt: new Date() } },
+  });
+  if (!member) {
+    throw { statusCode: 400, message: 'This reset link is invalid or has expired.' };
+  }
+  if (member.banned) {
+    throw { statusCode: 403, message: 'This account has been suspended.' };
+  }
+
+  const updated = await fastify.prisma.member.update({
+    where: { id: member.id },
+    data: {
+      passwordHash: await bcrypt.hash(password, 12),
+      passwordChangedAt: new Date(),
+      resetTokenHash: null,
+      resetTokenExpiresAt: null,
+      // The link reached their inbox, which is all confirming does.
+      emailVerified: true,
+      verifyTokenHash: null,
+      verifyTokenExpiresAt: null,
+    },
+    select: publicFields,
+  });
+  // Signed straight in, so the reset ends where they were going.
+  return { token: signMember(fastify, updated), member: updated };
 }

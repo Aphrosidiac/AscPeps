@@ -74,7 +74,7 @@ export default function MyOrdersPage() {
       {data && !data.verified && (
         <div className="gbp-note" style={{ marginBottom: 24 }}>
           <Mail size={16} />
-          <span>Confirm your email to see your orders — we only show orders to the person who owns the inbox. <Link className="link" href="/account">Resend the confirmation</Link></span>
+          <span>Confirm your email to see your orders — we only show orders to the person who owns the inbox. <Link className="link" href="/group-buy/account">Resend the confirmation</Link></span>
         </div>
       )}
 

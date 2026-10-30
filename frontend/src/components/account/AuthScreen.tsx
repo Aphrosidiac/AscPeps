@@ -3,22 +3,23 @@
 import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, Check, Eye, EyeOff, Loader2, Lock, Mail, MailCheck, User } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, KeyRound, Loader2, Mail, MailCheck, User } from 'lucide-react';
 import type { GroupBuySummary } from '@/types';
-import { memberLogin, memberRegister, memberResendVerification } from '@/lib/api';
+import { memberForgotPassword, memberLogin, memberRegister, memberResendVerification, memberResetPassword } from '@/lib/api';
 import { setMemberSession } from '@/lib/member-session';
 import { useNow } from '@/lib/use-now';
 import { signupGroupBuy } from '@/lib/group-buy-api';
 import { countdown, rewardOff } from '@/lib/group-buy';
 import { safeNextPath } from '@/app/account/safe-next';
+import { Field, PasswordField, MIN_PASSWORD, apiError, inputCls } from './fields';
 
 export type AuthBatch = Pick<GroupBuySummary, 'slug' | 'label' | 'title' | 'phase' | 'opensAt' | 'closesAt' | 'reward'>;
-type Mode = 'signin' | 'signup';
+type Mode = 'signin' | 'signup' | 'forgot' | 'reset';
 type Where = 'store' | 'group-buy';
 
-const ROUTES: Record<Where, Record<Mode, string>> = {
-  store: { signin: '/account/login', signup: '/account/register' },
-  'group-buy': { signin: '/group-buy/sign-in', signup: '/group-buy/join' },
+const ROUTES: Record<Where, Record<'signin' | 'signup' | 'forgot', string>> = {
+  store: { signin: '/account/login', signup: '/account/register', forgot: '/account/forgot-password' },
+  'group-buy': { signin: '/group-buy/sign-in', signup: '/group-buy/join', forgot: '/group-buy/forgot-password' },
 };
 
 // Everything here is something an account really does today — keep it that
@@ -30,18 +31,16 @@ const PERKS = [
   'Comment on Insights articles',
 ];
 
-const errorMessage = (err: unknown, fallback: string) =>
-  (err as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
-
 function rewardWhere(r: NonNullable<AuthBatch['reward']>) {
   return r.scope === 'GROUP_BUY' ? 'your batch order' : r.scope === 'STORE' ? 'your next store order' : 'your next order';
 }
 
 /**
- * Sign in and create account, one screen for both the store (/account/…) and
- * the Group Buy portal (/group-buy/…) so each keeps its own chrome. Creating
- * an account signs you straight in, and while a batch is open it can also put
- * you on that batch's list (which is what issues its reward code).
+ * Sign in, create account, forgot password and reset password: one screen for
+ * both the store (/account/…) and the Group Buy portal (/group-buy/…) so each
+ * keeps its own chrome. Creating an account signs you straight in, and while a
+ * batch is open it can also put you on that batch's list (which is what issues
+ * its reward code).
  */
 export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; batch: AuthBatch | null }) {
   const router = useRouter();
@@ -59,14 +58,13 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [show, setShow] = useState(false);
   const [joinList, setJoinList] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState<null | { name: string; email: string; joined: boolean; inbox: boolean }>(null);
   const [resent, setResent] = useState('');
 
-  const longEnough = password.length >= 8;
+  const longEnough = password.length >= MIN_PASSWORD;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +100,7 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
         router.refresh();
       }
     } catch (err) {
-      setError(errorMessage(err, signup ? 'Could not create that account. Please try again.' : 'Invalid email or password'));
+      setError(apiError(err, signup ? 'Could not create that account. Please try again.' : 'Invalid email or password'));
     } finally {
       setLoading(false);
     }
@@ -111,7 +109,7 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
   const resend = async () => {
     if (!email) { setError('Type your email above first.'); return; }
     try { setResent((await memberResendVerification(email)).message); }
-    catch (err) { setError(errorMessage(err, 'Could not send that right now.')); }
+    catch (err) { setError(apiError(err, 'Could not send that right now.')); }
   };
 
   return (
@@ -120,7 +118,9 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
         {/* Form */}
         <div className="order-2 lg:order-1 flex flex-col justify-center">
           <div className="mx-auto w-full max-w-[420px]">
-            {done ? (
+            {mode === 'forgot' || mode === 'reset' ? (
+              <Recover mode={mode} where={where} next={next} signinHref={routes.signin + q} forgotHref={routes.forgot + q} />
+            ) : done ? (
               <Done done={done} next={next} batch={batch} signinHref={routes.signin + q} />
             ) : (
               <>
@@ -147,18 +147,12 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
                   <Field id={`${uid}-email`} label="Email" icon={Mail}>
                     <input id={`${uid}-email`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required placeholder="you@email.com" className={inputCls} />
                   </Field>
-                  <Field id={`${uid}-password`} label="Password" icon={Lock}>
-                    <input id={`${uid}-password`} type={show ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={signup ? 'new-password' : 'current-password'} required minLength={signup ? 8 : undefined} placeholder={signup ? 'Password (8+ characters)' : 'Password'} className={`${inputCls} ${signup ? 'pr-[5.5rem]' : 'pr-11'}`} />
-                    {/* Live length check inside the field, so typing never shifts the layout. */}
-                    {signup && password && (
-                      <span className={`pointer-events-none absolute right-11 top-1/2 flex -translate-y-1/2 items-center gap-1 text-xs font-medium transition-colors ${longEnough ? 'text-[#15803D]' : 'text-[#0A0A0A]/40'}`}>
-                        <Check className="h-3.5 w-3.5" />{longEnough ? 'Good' : `${password.length}/8`}
-                      </span>
-                    )}
-                    <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#0A0A0A]/45 hover:text-[#0A0A0A] cursor-pointer">
-                      {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </Field>
+                  <PasswordField id={`${uid}-password`} label="Password" value={password} onChange={setPassword} fresh={signup} />
+                  {!signup && (
+                    <div className="flex justify-end">
+                      <Link href={routes.forgot + q} className="text-xs font-medium text-[#0A0A0A]/55 underline-offset-2 hover:text-[#0A0A0A] hover:underline">Forgot password?</Link>
+                    </div>
+                  )}
 
                   {signup && listOpen && (
                     <label className="!mt-3.5 flex cursor-pointer items-start gap-3 rounded-xl border border-[#22C55E]/40 bg-[#22C55E]/[0.07] px-3.5 py-3">
@@ -222,20 +216,6 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
             <p className="mt-auto hidden pt-6 text-xs text-white/40 lg:block">Free to create · Buying as a guest still works</p>
           </div>
         </aside>
-      </div>
-    </div>
-  );
-}
-
-const inputCls = 'h-11 w-full rounded-xl border border-[#0A0A0A]/15 bg-white pl-10 pr-3.5 text-[15px] text-[#0A0A0A] placeholder:text-[#0A0A0A]/35 outline-none transition-[border-color,box-shadow] focus:border-[#0A0A0A] focus:ring-4 focus:ring-[#0A0A0A]/[0.06]';
-
-function Field({ id, label, icon: Icon, children }: { id: string; label: string; icon: typeof Mail; children: React.ReactNode }) {
-  return (
-    <div>
-      <label htmlFor={id} className="sr-only">{label}</label>
-      <div className="relative">
-        <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#0A0A0A]/40" />
-        {children}
       </div>
     </div>
   );
@@ -312,6 +292,120 @@ function Done({ done, next, batch, signinHref }: { done: { name: string; email: 
         {toBatch ? `Continue to ${batch.label}` : next.startsWith('/group-buy') ? 'Continue to Group Buy' : 'Continue'}
         <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-[3px]" />
       </Link>
+    </div>
+  );
+}
+
+/** Forgot password (asks for the email) and reset password (the emailed link lands here). */
+function Recover({ mode, where, next, signinHref, forgotHref }: { mode: 'forgot' | 'reset'; where: Where; next: string; signinHref: string; forgotHref: string }) {
+  const router = useRouter();
+  const params = useSearchParams();
+  const token = params.get('token') ?? '';
+  const uid = useId();
+  const [email, setEmail] = useState(params.get('email') ?? '');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(mode === 'reset' && !token ? 'This link is missing its reset token. Ask for a new one below.' : '');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const send = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await memberForgotPassword(email, where);
+      setSent(true);
+    } catch (err) {
+      setError(apiError(err, 'Could not send that right now. Please try again shortly.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (password.length < MIN_PASSWORD) { setError(`Use at least ${MIN_PASSWORD} characters for your password.`); return; }
+    setLoading(true);
+    try {
+      const res = await memberResetPassword(token, password);
+      setMemberSession(res.token, res.member);
+      setSaved(true);
+      router.refresh();
+    } catch (err) {
+      setError(apiError(err, 'This reset link is invalid or has expired.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const back = (
+    <Link href={signinHref} replace className="inline-flex items-center gap-1.5 text-sm font-medium text-[#0A0A0A]/55 hover:text-[#0A0A0A]">
+      <ArrowLeft className="h-4 w-4" />Back to sign in
+    </Link>
+  );
+
+  if (sent) {
+    return (
+      <div>
+        {back}
+        <span className="mt-8 grid h-14 w-14 place-items-center rounded-full bg-[#22C55E]/15 text-[#15803D]"><MailCheck className="h-7 w-7" /></span>
+        <h1 className="mt-5 font-display text-[32px] font-bold leading-[1.08] tracking-tight text-[#0A0A0A]">Check your inbox</h1>
+        <p className="mt-2 text-[15px] leading-relaxed text-[#0A0A0A]/60">If <b className="font-semibold text-[#0A0A0A]">{email}</b> has an account, a link to choose a new password is on its way. It works once and expires in 1 hour.</p>
+        <p className="mt-6 text-sm text-[#0A0A0A]/55">Nothing yet? Check spam, or <button type="button" onClick={() => send()} disabled={loading} className="font-medium text-[#0A0A0A] underline underline-offset-2 cursor-pointer disabled:opacity-50">send it again</button>.</p>
+        {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      </div>
+    );
+  }
+
+  if (saved) {
+    return (
+      <div>
+        <span className="grid h-14 w-14 place-items-center rounded-full bg-[#22C55E] text-[#0A0A0A]"><Check className="h-7 w-7" strokeWidth={3} /></span>
+        <h1 className="mt-6 font-display text-[34px] font-bold leading-[1.08] tracking-tight text-[#0A0A0A]">Password updated.</h1>
+        <p className="mt-2 text-[15px] leading-relaxed text-[#0A0A0A]/60">You&apos;re signed in with your new password. Any other device signed in to this account has been signed out.</p>
+        <Link href={next} className="group mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#22C55E] text-[15px] font-semibold text-[#0A0A0A] hover:bg-[#1eb455]">
+          {next.startsWith('/group-buy') ? 'Continue to Group Buy' : 'Continue'}
+          <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-[3px]" />
+        </Link>
+      </div>
+    );
+  }
+
+  const forgot = mode === 'forgot';
+  return (
+    <div>
+      {back}
+      <span className="mt-8 grid h-12 w-12 place-items-center rounded-2xl bg-[#0A0A0A] text-white"><KeyRound className="h-5 w-5" /></span>
+      <h1 className="mt-5 font-display text-[26px] sm:text-[32px] font-bold leading-[1.08] tracking-tight text-[#0A0A0A]">
+        {forgot ? 'Forgot your password?' : 'Choose a new password'}
+      </h1>
+      <p className="mt-1.5 text-[15px] leading-relaxed text-[#0A0A0A]/60">
+        {forgot ? 'Type the email you signed up with and we’ll send you a link to choose a new one.' : 'Pick something you don’t use anywhere else. You’ll be signed in straight after.'}
+      </p>
+
+      <form onSubmit={forgot ? send : save} className="mt-6 space-y-2.5">
+        {forgot ? (
+          <Field id={`${uid}-email`} label="Email" icon={Mail}>
+            <input id={`${uid}-email`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required autoFocus placeholder="you@email.com" className={inputCls} />
+          </Field>
+        ) : (
+          <PasswordField id={`${uid}-password`} label="New password" value={password} onChange={setPassword} fresh placeholder={`New password (${MIN_PASSWORD}+ characters)`} />
+        )}
+
+        {error && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}{!forgot && <> <Link href={forgotHref} className="font-medium underline underline-offset-2">Get a new link</Link></>}
+          </p>
+        )}
+
+        <button type="submit" disabled={loading || (!forgot && !token)} className="group !mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#22C55E] text-[15px] font-semibold text-[#0A0A0A] transition-colors hover:bg-[#1eb455] disabled:opacity-60 cursor-pointer">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {loading ? (forgot ? 'Sending…' : 'Saving…') : forgot ? 'Send reset link' : 'Save new password'}
+          {!loading && <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-[3px]" />}
+        </button>
+      </form>
     </div>
   );
 }

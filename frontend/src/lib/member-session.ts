@@ -29,6 +29,12 @@ export function setMemberSession(token: string, member: Member): void {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
+/** Replaces the cached member after an account change, keeping the token. */
+export function updateMemberCache(member: Member): void {
+  localStorage.setItem(MEMBER_KEY, JSON.stringify(member));
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
 export function clearMemberSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(MEMBER_KEY);

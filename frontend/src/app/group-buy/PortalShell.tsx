@@ -5,17 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ArrowRight, Layers, Package, Store, UserRound } from 'lucide-react';
 import { useMemberSession } from '@/lib/member-session';
+import { AccountMenu } from './AccountMenu';
 
 const NAV = [
-  { href: '/group-buy', label: 'Batches', icon: Layers, match: (p: string) => p === '/group-buy' || (/^\/group-buy\/[^/]+/.test(p) && !/^\/group-buy\/(orders|sign-in|join)(\/|$)/.test(p)) },
+  { href: '/group-buy', label: 'Batches', icon: Layers, match: (p: string) => p === '/group-buy' || (/^\/group-buy\/[^/]+/.test(p) && !/^\/group-buy\/(orders|account|sign-in|join|forgot-password|reset-password|confirm-email)(\/|$)/.test(p)) },
   { href: '/group-buy/orders', label: 'My orders', icon: Package, match: (p: string) => p.startsWith('/group-buy/orders') },
 ];
 
 /**
  * The portal frame: blurred top bar with the store's own logo plus a "Group Buy" tag,
  * section nav (Cobalt rule under the current one), the green Store pill and the
- * member's account on the right, and a thumb bar on phones (the account moves
- * there). Content is capped at 1280px, like the store.
+ * member's account menu on the right, and a thumb bar on phones (the account
+ * moves there). Content is capped at 1280px, like the store.
  */
 export function PortalShell({ children, className }: { children: React.ReactNode; className?: string }) {
   const pathname = usePathname() ?? '/group-buy';
@@ -42,10 +43,7 @@ export function PortalShell({ children, className }: { children: React.ReactNode
           <Link href="/products" className="gbp-switch"><Store size={16} className="ico" />Store<ArrowRight size={16} className="ir" /></Link>
           <div className="gbp-acct">
             {!ready ? null : member ? (
-              <>
-                <button type="button" onClick={signOut} className="gbp-btn ghost sm" title={member.email}>Sign out</button>
-                <span className="gbp-avatar" aria-label={`Signed in as ${member.displayName}`}>{member.displayName.slice(0, 1).toUpperCase()}</span>
-              </>
+              <AccountMenu member={member} onSignOut={signOut} />
             ) : (
               <>
                 <Link href={`/group-buy/sign-in?next=${next}`} className="gbp-btn ghost sm">Sign in</Link>
@@ -74,7 +72,7 @@ export function PortalShell({ children, className }: { children: React.ReactNode
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} aria-current={n.match(pathname) ? 'page' : undefined}><n.icon size={19} />{n.label}</Link>
         ))}
-        <Link href={member ? '/account' : `/group-buy/sign-in?next=${next}`}><UserRound size={19} />{member ? 'Account' : 'Sign in'}</Link>
+        <Link href={member ? '/group-buy/account' : `/group-buy/sign-in?next=${next}`} aria-current={pathname.startsWith('/group-buy/account') ? 'page' : undefined}><UserRound size={19} />{member ? 'Account' : 'Sign in'}</Link>
       </nav>
     </div>
   );

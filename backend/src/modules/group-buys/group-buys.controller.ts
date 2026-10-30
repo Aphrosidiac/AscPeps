@@ -28,9 +28,14 @@ export async function optionalMember(fastify: FastifyInstance, request: FastifyR
   if (request.user.kind !== 'member') return null;
   const member = await fastify.prisma.member.findUnique({
     where: { id: request.user.id },
-    select: { id: true, email: true, displayName: true, emailVerified: true, banned: true },
+    select: { id: true, email: true, displayName: true, emailVerified: true, banned: true, passwordChangedAt: true },
   });
-  return member && !member.banned ? member : null;
+  if (!member || member.banned) return null;
+  // Same cut-off as authenticateMember: a token from before the last password
+  // change no longer counts.
+  const { passwordChangedAt, ...rest } = member;
+  if (passwordChangedAt && (request.user.iat ?? 0) < Math.floor(passwordChangedAt.getTime() / 1000)) return null;
+  return rest;
 }
 
 async function realJoined(fastify: FastifyInstance, groupBuyId: string): Promise<number> {

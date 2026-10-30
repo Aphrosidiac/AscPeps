@@ -717,6 +717,31 @@ export const memberResendVerification = (email: string) =>
     .post<{ success: boolean; message: string }>('/api/v1/members/resend-verification', { email })
     .then((r) => r.data);
 
+// Account settings. `where` picks which chrome the emailed link opens in
+// (/account/… or /group-buy/…).
+export type AccountWhere = 'store' | 'group-buy';
+
+export const memberUpdateProfile = (token: string, data: { displayName: string }) =>
+  api.patch<Member>('/api/v1/members/me', data, auth(token)).then((r) => r.data);
+
+export const memberChangePassword = (token: string, data: { currentPassword: string; newPassword: string }) =>
+  api.post<{ token: string; member: Member }>('/api/v1/members/me/password', data, auth(token)).then((r) => r.data);
+
+export const memberRequestEmailChange = (token: string, data: { newEmail: string; password: string; where: AccountWhere }) =>
+  api.post<Member>('/api/v1/members/me/email', data, auth(token)).then((r) => r.data);
+
+export const memberCancelEmailChange = (token: string) =>
+  api.delete<Member>('/api/v1/members/me/email', auth(token)).then((r) => r.data);
+
+export const memberConfirmEmailChange = (token: string) =>
+  api.post<{ success: boolean; email: string }>('/api/v1/members/confirm-email', { token }).then((r) => r.data);
+
+export const memberForgotPassword = (email: string, where: AccountWhere) =>
+  api.post<{ success: boolean; message: string }>('/api/v1/members/forgot-password', { email, where }).then((r) => r.data);
+
+export const memberResetPassword = (token: string, password: string) =>
+  api.post<{ token: string; member: Member }>('/api/v1/members/reset-password', { token, password }).then((r) => r.data);
+
 export const getInsightComments = (slug: string) =>
   api.get<{ data: InsightComment[] }>(`/api/v1/insights/${encodeURIComponent(slug)}/comments`).then((r) => r.data);
 
