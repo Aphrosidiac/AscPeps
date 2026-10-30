@@ -351,6 +351,11 @@ function AdminOrdersContent() {
                       >
                         {order.orderNumber}
                       </Link>
+                      {(order.groupBuy || order.isPreorder) && (
+                        <span className={`ml-1.5 align-middle rounded-full px-1.5 py-0.5 text-[11px] font-medium ${order.groupBuy ? 'bg-blue-50 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {order.groupBuy ? `GB ${String(order.groupBuy.number).padStart(2, '0')}` : 'Pre-order'}
+                        </span>
+                      )}
                       <p className="text-xs text-text-muted">{formatDate(order.createdAt)}</p>
                       {/* The customer has their own column from sm up. Below
                           that it folds in here, so a phone row still says who

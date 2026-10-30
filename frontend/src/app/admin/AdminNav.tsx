@@ -51,6 +51,7 @@ export const NAV: Entry[] = [
     icon: ShoppingBag,
     items: [
       { href: '/admin/orders', label: 'Orders' },
+      { href: '/admin/group-buys', label: 'Group Buys' },
       { href: '/admin/payments', label: 'Payments' },
       { href: '/admin/delivery', label: 'Delivery' },
       { href: '/admin/emails', label: 'Order emails' },

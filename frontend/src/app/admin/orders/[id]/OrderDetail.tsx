@@ -311,6 +311,12 @@ export function OrderDetail({ orderId }: { orderId: string }) {
               <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
               <Badge className={PAYMENT_STATUS_COLORS[order.paymentStatus]}>{order.paymentStatus}</Badge>
               {order.deletedAt && <Badge className="bg-red-100 text-red-800">Deleted</Badge>}
+              {order.groupBuy && (
+                <Link href={`/admin/group-buys/${order.groupBuy.id}`} className="inline-flex">
+                  <Badge className="bg-blue-50 text-blue-800 hover:underline">Group Buy · Batch {String(order.groupBuy.number).padStart(2, '0')}</Badge>
+                </Link>
+              )}
+              {order.isPreorder && <Badge className="bg-amber-100 text-amber-800">Pre-order</Badge>}
             </div>
             <div className="flex items-center gap-3 mt-1.5 text-sm text-text-muted flex-wrap">
               <span className="inline-flex items-center gap-1.5">
@@ -827,6 +833,7 @@ function OrderItemsCard({ order, onChange }: { order: Order; onChange: () => voi
                   <p className="text-xs text-text-muted mt-0.5">
                     <span className="font-mono">{item.variant.code}</span> · {item.quantity} × {formatPrice(item.unitPrice)}
                   </p>
+                  <LineFlags item={item} groupBuy={!!order.groupBuyId} />
                 </div>
                 <span className="text-sm font-semibold shrink-0 tabular-nums">
                   {formatPrice(item.unitPrice * item.quantity)}
@@ -854,6 +861,7 @@ function OrderItemsCard({ order, onChange }: { order: Order; onChange: () => voi
                         {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
                       </span>
                       <span className="text-text-muted ml-2 text-xs font-mono">{item.variant.code}</span>
+                      <LineFlags item={item} groupBuy={!!order.groupBuyId} />
                     </td>
                     <td className="px-5 py-4 text-right">{item.quantity}</td>
                     <td className="px-5 py-4 text-right whitespace-nowrap">{formatPrice(item.unitPrice)}</td>
@@ -2389,5 +2397,19 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
         </div>
       </Card>
     </div>
+  );
+}
+
+/** Under an item: how a kit line splits, and how many units are on pre-order. */
+function LineFlags({ item, groupBuy }: { item: { quantity: number; preorderQty?: number; packSize?: number | null }; groupBuy: boolean }) {
+  const kits = item.packSize && item.packSize > 1 ? item.quantity / item.packSize : null;
+  const pre = !groupBuy && (item.preorderQty ?? 0) > 0;
+  if (!kits && !pre) return null;
+  return (
+    <p className="text-xs text-text-muted mt-0.5">
+      {kits ? `${kits} kit${kits === 1 ? '' : 's'} of ${item.packSize} vials` : null}
+      {kits && pre ? ' · ' : null}
+      {pre ? <span className="font-medium text-amber-700">{item.preorderQty === item.quantity ? 'Pre-order' : `${item.preorderQty} of ${item.quantity} on pre-order`}</span> : null}
+    </p>
   );
 }

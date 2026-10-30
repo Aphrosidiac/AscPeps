@@ -31,6 +31,8 @@ interface VariantFormData {
   stock: string;
   imageUrl: string;
   active: boolean;
+  // Can be bought when sold out (pre-order). Defaults on.
+  preorder: boolean;
 }
 
 interface UploadState {
@@ -67,7 +69,7 @@ const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRF
 function newVariant(): VariantFormData {
   return {
     key: crypto.randomUUID(),
-    code: '', size: '', price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '', stock: '0', imageUrl: '', active: true,
+    code: '', size: '', price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '', stock: '0', imageUrl: '', active: true, preorder: true,
   };
 }
 
@@ -322,10 +324,16 @@ function VariantCard({
             <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${saleOpen ? 'rotate-180' : ''}`} />
             Sale pricing {variant.salePrice ? '(active)' : '(optional)'}
           </button>
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <input type="checkbox" checked={variant.active} onChange={(e) => onChange('active', e.target.checked)} className="rounded" />
-            Active
-          </label>
+          <span className="flex items-center gap-4">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" title="When sold out, customers can still buy it and it ships on the restock (Store settings → Shipping sets the lead time).">
+              <input type="checkbox" checked={variant.preorder} onChange={(e) => onChange('preorder', e.target.checked)} className="rounded" />
+              Pre-order when sold out
+            </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" checked={variant.active} onChange={(e) => onChange('active', e.target.checked)} className="rounded" />
+              Active
+            </label>
+          </span>
         </div>
 
         <div className={`grid transition-all duration-300 ease-out ${saleOpen ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
@@ -411,6 +419,7 @@ export function ProductForm({ productId }: { productId?: string }) {
             stock: String(v.stock),
             imageUrl: v.imageUrl || '',
             active: v.active,
+            preorder: v.preorder !== false,
           })),
           images: (found.images ?? []).map((img) => img.url),
         });
@@ -548,6 +557,7 @@ export function ProductForm({ productId }: { productId?: string }) {
         stock: parseInt(v.stock) || 0,
         imageUrl: v.imageUrl || null,
         active: v.active,
+        preorder: v.preorder,
       });
     }
 

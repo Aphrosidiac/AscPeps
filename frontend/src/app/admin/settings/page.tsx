@@ -39,8 +39,8 @@ const TABS: { id: TabId; label: string; blurb: string; keys: string[] }[] = [
   {
     id: 'shipping',
     label: 'Shipping',
-    blurb: 'What delivery costs, and the East Malaysia rules.',
-    keys: ['shipping_fee', 'east_malaysia_shipping_fee', 'east_malaysia_min_order'],
+    blurb: 'What delivery costs, the East Malaysia rules and pre-orders.',
+    keys: ['shipping_fee', 'east_malaysia_shipping_fee', 'east_malaysia_min_order', 'preorder_enabled', 'preorder_lead_time'],
   },
   {
     id: 'business',
@@ -332,6 +332,22 @@ export default function AdminSettingsPage() {
                     <Affixed prefix="RM">
                       <input id="east_malaysia_min_order" type="number" min="0" step="0.01" value={get('east_malaysia_min_order')} onChange={setText('east_malaysia_min_order')} placeholder="0.00" />
                     </Affixed>
+                  </Field>
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader title="Pre-orders" description="A sold-out size can still be bought. Units past stock ship when the restock lands; the rest of the order waits for them." />
+                <CardBody className="space-y-5">
+                  {/* Absent means on — only an explicit 'false' turns it off (utils/preorder.ts). */}
+                  <Toggle
+                    checked={settings.preorder_enabled !== 'false'}
+                    onChange={setBool('preorder_enabled')}
+                    label="Allow pre-orders on sold-out sizes"
+                    description="A size can opt out on its product page (Pre-order when sold out)."
+                  />
+                  <Field label="Ships in" htmlFor="preorder_lead_time" help="Shown on the product page, cart, checkout, emails and tracking." className="max-w-xs">
+                    <TextInput id="preorder_lead_time" value={get('preorder_lead_time')} onChange={setText('preorder_lead_time')} placeholder="10–14 days" />
                   </Field>
                 </CardBody>
               </Card>
