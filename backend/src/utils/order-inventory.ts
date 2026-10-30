@@ -30,10 +30,14 @@ export async function restoreOrderInventory(
     });
     if (!order) return false;
 
+    // Only what the order took: pre-ordered units (and every Group Buy unit)
+    // never came out of stock, so giving them back would invent stock.
     for (const item of order.items) {
+      const taken = item.quantity - item.preorderQty;
+      if (taken <= 0) continue;
       await tx.productVariant.update({
         where: { id: item.variantId },
-        data: { stock: { increment: item.quantity } },
+        data: { stock: { increment: taken } },
       });
     }
     if (order.discountCodeId) {

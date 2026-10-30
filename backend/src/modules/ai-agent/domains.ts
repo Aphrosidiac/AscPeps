@@ -105,6 +105,8 @@ const KEYWORDS: Record<Domain, string[]> = {
     // "tick profit shared on September's orders" — set_profit_shared, or a
     // real share-out (finance domain: share_out_profit).
     'shared', 'share', 'kongsi', 'tick',
+    // Pre-orders (sold-out sizes bought anyway) and Group Buy batch orders.
+    'pre-order', 'preorder', 'group buy', 'groupbuy', 'batch',
   ],
   finance: [
     'expense', 'perbelanjaan', 'belanja', 'spending', 'funding', 'capital',
@@ -209,7 +211,11 @@ const PLAYBOOKS: Record<string, Playbook> = {
 - *WhatsApp checkout* (paymentMethod WHATSAPP). The customer is handed a pre-filled wa.me link at checkout and messages the shop's public number. Payment is arranged by hand, usually a bank transfer, and the customer sends proof. Nothing is automatic. A human confirms the money arrived and marks the order paid. There is NO payment link to send and no automated chase — this path is a conversation between two people.
 - *Online payment*. The customer pays at checkout through the store's fiat gateway and it calls back to mark the order paid. Once such an order is PAID it is LOCKED — its payment status can never be changed again, deliberately. A sweep also releases stock from online orders left unpaid for more than two hours.
   Naming: the database stores this payment method as the enum value "BILLPLZ" for historical reasons. That is NOT the gateway in use — it only means "paid online", and the live gateway is the one named in STORE STATE. Never LABEL an order or a figure "Billplz": call it "online payment" or use the real gateway's name. You may explain the legacy enum name if someone asks specifically why the data says BILLPLZ, but do not volunteer it in routine answers.
-- *Crypto* (paymentMethod CRYPTO). Bitcoin, on-chain, always settled by the self-hosted BTCPay Server — never by the fiat gateway, and the "payment_gateway" setting has no bearing on it. It is a SEPARATE payment method offered alongside the other two, not a third choice of online gateway: crypto being switched on or off ("crypto_payment_enabled") says nothing about whether FPX is on. Same PAID lock as online payment. Two things differ: settlement is not instant, because it waits for on-chain confirmation, so a CRYPTO order sitting UNPAID for a while is normal rather than a problem; and the stock-release sweep gives it 24 hours instead of two, because a slow-confirming payment is still a real one. There is no such thing as a crypto refund you can issue from here — moving Bitcoin back is a manual, human action.`,
+- *Crypto* (paymentMethod CRYPTO). Bitcoin, on-chain, always settled by the self-hosted BTCPay Server — never by the fiat gateway, and the "payment_gateway" setting has no bearing on it. It is a SEPARATE payment method offered alongside the other two, not a third choice of online gateway: crypto being switched on or off ("crypto_payment_enabled") says nothing about whether FPX is on. Same PAID lock as online payment. Two things differ: settlement is not instant, because it waits for on-chain confirmation, so a CRYPTO order sitting UNPAID for a while is normal rather than a problem; and the stock-release sweep gives it 24 hours instead of two, because a slow-confirming payment is still a real one. There is no such thing as a crypto refund you can issue from here — moving Bitcoin back is a manual, human action.
+
+Two kinds of order that do not ship straight away:
+- *Pre-order* (isPreorder). A sold-out size can still be bought; the units beyond stock are the line's preorderQty and ship when the restock lands, in the store's pre-order lead time (setting preorder_lead_time, 10–14 days by default). Only the units actually in stock were taken from stock. When someone asks what to restock first, pre-ordered units are owed to customers already.
+- *Group Buy* (groupBuyId). Bought in a time-boxed batch (Admin → Group Buys) at the batch's own tier prices; none of it comes out of store stock — the batch is ordered from the supplier after it closes, and the order ships with the batch. A kit line stores vials (quantity) with packSize = vials per kit. Its prices come from the batch, so never re-price a Group Buy line from the store's price list.`,
   },
 
   statuses: {

@@ -15,6 +15,7 @@ import { inspectAndRecord, recordPaymentEvent, refineFailureReason } from '../..
 import { carryDiscount, goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
+import { canPreorder, getPreorderSettings } from '../../utils/preorder.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED']).optional(),
@@ -176,6 +177,7 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
         // split exists and totals 100% so it can badge orders that still need
         // costing or dividing. Names and amounts belong to the detail page.
         profitShares: { select: { shareBps: true, partnerId: true } },
+        groupBuy: { select: { id: true, number: true, title: true, slug: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -208,6 +210,7 @@ export async function adminGetOrder(fastify: FastifyInstance, id: string) {
       // The payment trail (utils/payment-trail.ts), oldest first.
       paymentAttempts: { orderBy: [{ firstSeenAt: 'asc' }, { id: 'asc' }] },
       paymentEvents: { orderBy: [{ at: 'asc' }, { id: 'asc' }] },
+      groupBuy: { select: { id: true, number: true, title: true, slug: true, stageKey: true, stages: true } },
     },
   });
 
@@ -420,6 +423,12 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
     }
 
     const addedIds = [...wanted.keys()].filter((v) => !topIds.has(v) && wanted.get(v)! > 0);
+    // A Group Buy line is priced from its batch's tiers; a product added here
+    // would be priced from the store instead. Quantities can change (the line
+    // keeps the price it was sold at); new products go on a new order.
+    if (order.groupBuyId && addedIds.length) {
+      throw { statusCode: 400, message: 'This is a Group Buy order — its quantities can change, but new products need a new Group Buy order.' };
+    }
     const added = addedIds.length
       ? await tx.productVariant.findMany({
           where: { id: { in: addedIds }, active: true, product: { active: true } },
@@ -459,29 +468,73 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
       qty: wanted.get(v.id)!,
       includes: addedRels.filter((r) => r.productId === v.product.id).map((r) => ({ addOn: r.addOn, qty: r.quantity * wanted.get(v.id)! })),
     }));
-    for (const p of newParents) {
-      plan.push({ variantId: p.v.id, next: p.qty, name: getVariantDisplayName(p.v.product, p.v) });
-      for (const inc of p.includes) plan.push({ variantId: inc.addOn.id, next: inc.qty, name: getVariantDisplayName(inc.addOn.product, inc.addOn) });
-    }
+    const newSteps = new Map<string, Plan>();
+    newParents.forEach((p, i) => {
+      const step: Plan = { variantId: p.v.id, next: p.qty, name: getVariantDisplayName(p.v.product, p.v) };
+      plan.push(step);
+      newSteps.set(`${i}`, step);
+      p.includes.forEach((inc, j) => {
+        const incStep: Plan = { variantId: inc.addOn.id, next: inc.qty, name: getVariantDisplayName(inc.addOn.product, inc.addOn) };
+        plan.push(incStep);
+        newSteps.set(`${i}.${j}`, incStep);
+      });
+    });
 
     // Stock first, so an oversell rolls the whole edit back before any line
     // has moved. Decrements are conditional (the WHERE only matches while
     // enough remains); increments never fail.
-    const delta = new Map<string, { d: number; name: string }>();
+    //
+    // Pre-ordered units never came out of stock, so a line that shrinks drops
+    // its pre-ordered units first and gives back only what it took. A line
+    // that grows takes from stock, and when the size allows pre-order the
+    // shortfall is pre-ordered instead of refused. A Group Buy order takes
+    // nothing from stock at all: every unit is bought for the batch.
+    const isGroupBuy = !!order.groupBuyId;
+    const preorder = await getPreorderSettings(tx);
+    const stepPre = new Map<Plan, number>();
+    const delta = new Map<string, { d: number; name: string; growing: Plan[] }>();
     for (const step of plan) {
-      const d = step.next - (step.row?.quantity ?? 0);
-      const cur = delta.get(step.variantId);
-      delta.set(step.variantId, { d: (cur?.d ?? 0) + d, name: cur?.name ?? step.name });
+      const cur = delta.get(step.variantId) ?? { d: 0, name: step.name, growing: [] };
+      const prevQty = step.row?.quantity ?? 0;
+      const prevPre = step.row?.preorderQty ?? 0;
+      if (isGroupBuy) {
+        stepPre.set(step, step.next);
+      } else if (step.next <= prevQty) {
+        const nextPre = Math.max(0, prevPre - (prevQty - step.next));
+        stepPre.set(step, nextPre);
+        cur.d += (step.next - nextPre) - (prevQty - prevPre);
+      } else {
+        stepPre.set(step, prevPre);
+        cur.d += step.next - prevQty;
+        cur.growing.push(step);
+      }
+      delta.set(step.variantId, cur);
     }
-    for (const [variantId, { d, name }] of delta) {
+    for (const [variantId, { d, name, growing }] of delta) {
       if (d > 0) {
         const dec = await tx.productVariant.updateMany({
           where: { id: variantId, stock: { gte: d } },
           data: { stock: { decrement: d } },
         });
         if (dec.count === 0) {
-          const v = await tx.productVariant.findUnique({ where: { id: variantId }, select: { stock: true } });
-          throw { statusCode: 400, message: `Only ${v?.stock ?? 0} more of ${name} in stock — ${d} more needed.` };
+          const v = await tx.productVariant.findUnique({ where: { id: variantId }, select: { stock: true, preorder: true } });
+          const have = Math.max(v?.stock ?? 0, 0);
+          if (!v || !canPreorder(preorder, v)) {
+            throw { statusCode: 400, message: `Only ${have} more of ${name} in stock — ${d} more needed.` };
+          }
+          if (have > 0) {
+            const part = await tx.productVariant.updateMany({ where: { id: variantId, stock: { gte: have } }, data: { stock: { decrement: have } } });
+            if (part.count === 0) throw { statusCode: 409, message: `Stock of ${name} just changed — try again.` };
+          }
+          // The shortfall rides on the lines that grew, last one first.
+          let short = d - have;
+          for (const step of [...growing].reverse()) {
+            if (short <= 0) break;
+            const room = step.next - (stepPre.get(step) ?? 0);
+            const add = Math.min(room, short);
+            stepPre.set(step, (stepPre.get(step) ?? 0) + add);
+            short -= add;
+          }
         }
       } else if (d < 0) {
         await tx.productVariant.update({ where: { id: variantId }, data: { stock: { increment: -d } } });
@@ -493,17 +546,24 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
     // take them anyway; being explicit keeps the order of writes obvious).
     for (const step of [...plan].reverse()) {
       if (!step.row) continue;
+      const nextPre = stepPre.get(step) ?? 0;
       if (step.next === 0) await tx.orderItem.delete({ where: { id: step.row.id } }).catch(() => undefined);
-      else if (step.next !== step.row.quantity) await tx.orderItem.update({ where: { id: step.row.id }, data: { quantity: step.next } });
+      else if (step.next !== step.row.quantity || nextPre !== step.row.preorderQty) {
+        await tx.orderItem.update({ where: { id: step.row.id }, data: { quantity: step.next, preorderQty: nextPre } });
+      }
     }
-    for (const p of newParents) {
+    const preOf = (key: string) => {
+      const step = newSteps.get(key);
+      return step ? stepPre.get(step) ?? 0 : 0;
+    };
+    for (const [i, p] of newParents.entries()) {
       const parent = await tx.orderItem.create({
-        data: { orderId: id, variantId: p.v.id, quantity: p.qty, unitPrice: getEffectivePrice(p.v, now) },
+        data: { orderId: id, variantId: p.v.id, quantity: p.qty, unitPrice: getEffectivePrice(p.v, now), preorderQty: preOf(`${i}`) },
       });
       if (p.includes.length) {
         await tx.orderItem.createMany({
-          data: p.includes.map((inc) => ({
-            orderId: id, variantId: inc.addOn.id, quantity: inc.qty, unitPrice: getEffectivePrice(inc.addOn, now), parentItemId: parent.id,
+          data: p.includes.map((inc, j) => ({
+            orderId: id, variantId: inc.addOn.id, quantity: inc.qty, unitPrice: getEffectivePrice(inc.addOn, now), preorderQty: preOf(`${i}.${j}`), parentItemId: parent.id,
           })),
         });
       }
@@ -520,9 +580,14 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
       };
     }
     // A discount that has shrunk to nothing takes its reason with it.
+    const preordered = await tx.orderItem.count({ where: { orderId: id, preorderQty: { gt: 0 } } });
     await tx.order.update({
       where: { id },
-      data: { subtotal, discountAmount, discountNote: discountAmount > 0 ? order.discountNote : null, total },
+      data: {
+        subtotal, discountAmount, discountNote: discountAmount > 0 ? order.discountNote : null, total,
+        // A Group Buy order ships with its batch, not as a store pre-order.
+        isPreorder: !isGroupBuy && preordered > 0,
+      },
     });
 
     return order;

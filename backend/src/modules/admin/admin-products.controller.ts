@@ -29,6 +29,7 @@ const variantObjectSchema = z.object({
   stock: z.number().int().min(0).optional(),
   imageUrl: z.string().nullable().optional(),
   active: z.boolean().optional(),
+  preorder: z.boolean().optional(),
 }).superRefine((v, ctx) => {
   checkSaleDateOrder(v, ctx);
   if (!v.id && (v.code === undefined || v.price === undefined)) {
@@ -169,6 +170,7 @@ function toVariantData(v: z.infer<typeof variantObjectSchema>) {
     stock: v.stock,
     imageUrl: v.imageUrl,
     active: v.active,
+    preorder: v.preorder,
   };
 }
 
