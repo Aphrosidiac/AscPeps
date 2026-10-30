@@ -44,8 +44,12 @@
   display: flex;
   flex-direction: column;
 }
-.gbp :where(a) { color: inherit; text-decoration: none; }
-.gbp :where(button) { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+/* In Tailwind's base layer: unlayered rules beat every layered one, so the
+   reset would otherwise wipe Tailwind utilities on anything inside the portal. */
+@layer base {
+  :where(.gbp a) { color: inherit; text-decoration: none; }
+  :where(.gbp button) { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+}
 .gbp :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 4px; }
 
 /* ---------- type ---------- */
@@ -87,6 +91,8 @@
 .gbp-switch:hover .ir { transform: translateX(3px); }
 .gbp-avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: #fff; font-family: var(--display); font-size: 14px; font-weight: 600; }
 .gbp-content { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 44px 32px 72px; }
+/* Sign in / create account bring their own frame (components/account/AuthScreen). */
+.gbp-content:has(> .gbp-auth) { padding: 0; max-width: none; }
 .gbp-foot { border-top: 1px solid var(--line); }
 .gbp-foot-in { max-width: 1280px; margin: 0 auto; padding: 22px 32px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
 .gbp-foot-in nav { display: flex; gap: 18px; flex-wrap: wrap; }

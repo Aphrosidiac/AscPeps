@@ -39,8 +39,8 @@ export default function MyOrdersPage() {
             <div className="h2">Sign in to see your orders.</div>
             <p className="muted">Use the email you ordered with. Orders placed as a guest with that email show up here too.</p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Link href="/account/login?next=/group-buy/orders" className="gbp-btn primary">Sign in</Link>
-              <Link href="/account/register?next=/group-buy/orders" className="gbp-btn ghost">Create an account</Link>
+              <Link href="/group-buy/sign-in?next=/group-buy/orders" className="gbp-btn primary">Sign in</Link>
+              <Link href="/group-buy/join?next=/group-buy/orders" className="gbp-btn ghost">Create an account</Link>
             </div>
           </div>
           <div className="gbp-panel pad">

@@ -13,22 +13,17 @@ export function VerifyClient() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
-  const [state, setState] = useState<State>('working');
-  const [error, setError] = useState('');
+  // A link without a token fails before anything is sent.
+  const [state, setState] = useState<State>(token ? 'working' : 'failed');
+  const [error, setError] = useState(token ? '' : 'This link is missing its confirmation token.');
   // React runs effects twice in development StrictMode. The verify token is
   // single-use, so the second call would legitimately 400 and flip a genuinely
   // successful confirmation to "link expired".
   const attempted = useRef(false);
 
   useEffect(() => {
-    if (attempted.current) return;
+    if (attempted.current || !token) return;
     attempted.current = true;
-
-    if (!token) {
-      setState('failed');
-      setError('This link is missing its confirmation token.');
-      return;
-    }
 
     memberVerifyEmail(token)
       .then(() => setState('done'))
@@ -72,13 +67,13 @@ export function VerifyClient() {
       <div className="text-center py-2">
         <CheckCircle2 className="w-8 h-8 text-success mx-auto mb-3" />
         <p className="text-sm text-text-secondary leading-relaxed">
-          You're all set. Sign in and you can comment on any Insights article.
+          You&apos;re all set. Your Group Buy orders and reward codes now show in your account, and you can comment on Insights.
         </p>
         <Link
-          href="/account/login"
+          href="/group-buy/orders"
           className="inline-block mt-5 text-sm text-text-primary underline hover:text-primary transition-colors"
         >
-          Sign in
+          See my orders
         </Link>
       </div>
     </AccountShell>

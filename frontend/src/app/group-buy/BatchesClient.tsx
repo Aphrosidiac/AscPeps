@@ -45,7 +45,7 @@ export function BatchesClient({ batches }: { batches: GroupBuySummary[] }) {
         )}
 
         <section className="gbp-panel">
-          <div className="gbp-panel-head"><span className="h3">How a batch works</span>{!member && <Link href="/account/register?next=/group-buy/orders" className="link small">Create an account to follow your orders</Link>}</div>
+          <div className="gbp-panel-head"><span className="h3">How a batch works</span>{!member && <Link href="/group-buy/join?next=/group-buy/orders" className="link small">Create an account to follow your orders</Link>}</div>
           <div className="gbp-panel-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
             {STEPS.map((s, i) => (
               <div key={s.t}>

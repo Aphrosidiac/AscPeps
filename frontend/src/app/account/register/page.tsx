@@ -1,17 +1,19 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { RegisterClient } from './RegisterClient';
+import { AuthScreen } from '@/components/account/AuthScreen';
+import { pickAuthBatch } from '@/components/account/auth-batch';
 
 export const metadata: Metadata = {
-  title: 'Create an account | Ascend MY',
-  description: 'Create an Ascend MY account to comment on Insights articles.',
+  title: 'Create an account',
+  description: 'Create a free Ascend MY account to follow your orders, Group Buy batches and rewards.',
   robots: { index: false, follow: true },
 };
 
-export default function AccountRegisterPage() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const batch = await pickAuthBatch((await searchParams).next);
   return (
     <Suspense>
-      <RegisterClient />
+      <AuthScreen mode="signup" where="store" batch={batch} />
     </Suspense>
   );
 }

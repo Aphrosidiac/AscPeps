@@ -7,7 +7,7 @@ import { ArrowRight, Layers, Package, Store, UserRound } from 'lucide-react';
 import { useMemberSession } from '@/lib/member-session';
 
 const NAV = [
-  { href: '/group-buy', label: 'Batches', icon: Layers, match: (p: string) => p === '/group-buy' || (/^\/group-buy\/[^/]+/.test(p) && !p.startsWith('/group-buy/orders')) },
+  { href: '/group-buy', label: 'Batches', icon: Layers, match: (p: string) => p === '/group-buy' || (/^\/group-buy\/[^/]+/.test(p) && !/^\/group-buy\/(orders|sign-in|join)(\/|$)/.test(p)) },
   { href: '/group-buy/orders', label: 'My orders', icon: Package, match: (p: string) => p.startsWith('/group-buy/orders') },
 ];
 
@@ -48,8 +48,8 @@ export function PortalShell({ children, className }: { children: React.ReactNode
               </>
             ) : (
               <>
-                <Link href={`/account/login?next=${next}`} className="gbp-btn ghost sm">Sign in</Link>
-                <Link href={`/account/register?next=${next}`} className="gbp-btn primary sm">Create account</Link>
+                <Link href={`/group-buy/sign-in?next=${next}`} className="gbp-btn ghost sm">Sign in</Link>
+                <Link href={`/group-buy/join?next=${next}`} className="gbp-btn primary sm">Create account</Link>
               </>
             )}
           </div>
@@ -74,7 +74,7 @@ export function PortalShell({ children, className }: { children: React.ReactNode
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} aria-current={n.match(pathname) ? 'page' : undefined}><n.icon size={19} />{n.label}</Link>
         ))}
-        <Link href={member ? '/account' : `/account/login?next=${next}`}><UserRound size={19} />{member ? 'Account' : 'Sign in'}</Link>
+        <Link href={member ? '/account' : `/group-buy/sign-in?next=${next}`}><UserRound size={19} />{member ? 'Account' : 'Sign in'}</Link>
       </nav>
     </div>
   );
