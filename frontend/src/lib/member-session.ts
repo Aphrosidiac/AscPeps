@@ -18,9 +18,19 @@ const MEMBER_KEY = 'ascend-member';
 // signing in would not update the composer on the page you signed in from.
 const CHANGE_EVENT = 'ascend-member-change';
 
+// Storage can throw (site data blocked); these run during render, so a throw
+// would take the whole page down. No storage reads as signed out.
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function getMemberToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return read(TOKEN_KEY);
 }
 
 export function setMemberSession(token: string, member: Member): void {
@@ -75,7 +85,7 @@ export function useMemberSession(): MemberSession {
   // is what hydration renders, so there's no mismatch with localStorage, and
   // sign-in/out in this tab or another re-renders every reader.
   const token = useSyncExternalStore(subscribe, getMemberToken, () => null);
-  const memberRaw = useSyncExternalStore(subscribe, () => localStorage.getItem(MEMBER_KEY), () => null);
+  const memberRaw = useSyncExternalStore(subscribe, () => read(MEMBER_KEY), () => null);
   const member = useMemo(() => parseMember(memberRaw), [memberRaw]);
   const ready = useSyncExternalStore(noSubscribe, () => true, () => false);
 

@@ -429,6 +429,13 @@ export async function adminSetOrderItems(fastify: FastifyInstance, id: string, b
     if (order.groupBuyId && addedIds.length) {
       throw { statusCode: 400, message: 'This is a Group Buy order — its quantities can change, but new products need a new Group Buy order.' };
     }
+    // A kit line is stored per vial; it can only grow or shrink by whole kits.
+    for (const row of topLevel) {
+      const next = wanted.get(row.variantId);
+      if (row.packSize && row.packSize > 1 && next != null && next % row.packSize !== 0) {
+        throw { statusCode: 400, message: `${getVariantDisplayName(row.variant.product, row.variant)} is sold in kits of ${row.packSize} vials — use a multiple of ${row.packSize}.` };
+      }
+    }
     const added = addedIds.length
       ? await tx.productVariant.findMany({
           where: { id: { in: addedIds }, active: true, product: { active: true } },

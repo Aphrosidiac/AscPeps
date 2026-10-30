@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { normalizePhone } from '../../utils/phone.js';
@@ -6,7 +7,7 @@ import { getEffectivePrice } from '../../utils/product-pricing.js';
 import { parseTracking } from '../../utils/courier.js';
 import { resolveShippingFeeSen } from '../../utils/shipping-region.js';
 import {
-  batchLabel, groupBuyPhase, inWindow, itemMinQty, joinedCount, parseStages, sortTiers, GROUP_BUY_ORDER_INCLUDE,
+  batchLabel, groupBuyPhase, inWindow, itemMinQty, joinedCount, parseStages, sortTiers, vialsPerUnit, GROUP_BUY_ORDER_INCLUDE,
   type GroupBuyForOrder,
 } from '../../utils/group-buy.js';
 import { createSignup } from '../../utils/group-buy-signup.js';
@@ -81,6 +82,11 @@ function publicItems(gb: GroupBuyForOrder, now: Date) {
     }));
 }
 
+function popupKey(gb: GroupBuyForOrder): string {
+  const parts = [gb.popupTitle, gb.popupBody, gb.popupImageUrl, gb.popupCta, gb.popupStartsAt?.toISOString(), gb.popupEndsAt?.toISOString(), gb.popupFrequency, gb.popupPages];
+  return createHash('sha1').update(JSON.stringify(parts)).digest('hex').slice(0, 12);
+}
+
 function publicStages(gb: { stages: unknown; stageKey: string }) {
   return { stages: parseStages(gb.stages), stageKey: gb.stageKey };
 }
@@ -97,7 +103,8 @@ export async function listGroupBuys(fastify: FastifyInstance) {
   const counts = await fastify.prisma.groupBuySignup.groupBy({ by: ['groupBuyId'], _count: true, where: { groupBuyId: { in: rows.map((r) => r.id) } } });
   return rows.map((gb) => {
     const items = publicItems(gb, now);
-    const prices = items.flatMap((i) => i.tiers.map((t) => t.price));
+    // Per vial, so a kit batch and a vial batch read the same way.
+    const prices = items.flatMap((i) => i.tiers.map((t) => Math.round(t.price / vialsPerUnit(i))));
     const real = counts.find((c) => c.groupBuyId === gb.id)?._count ?? 0;
     return {
       id: gb.id,
@@ -216,9 +223,10 @@ export async function getGroupBuyPromo(fastify: FastifyInstance) {
     popup: popupGb
       ? {
           ...base(popupGb),
-          // Changes whenever the popup's copy or schedule changes, so a
-          // shopper who closed last week's popup still sees the new one.
-          key: `${popupGb.id}:${popupGb.updatedAt.getTime()}`,
+          // Changes when the popup's own copy or schedule changes, so a
+          // shopper who closed last week's popup still sees the new one —
+          // but not on every unrelated save of the batch (a stage move).
+          key: `${popupGb.id}:${popupKey(popupGb)}`,
           title: popupGb.popupTitle,
           body: popupGb.popupBody,
           imageUrl: popupGb.popupImageUrl,
@@ -265,7 +273,9 @@ export async function getMyGroupBuys(fastify: FastifyInstance, member: { id: str
     orderBy: { createdAt: 'desc' },
   });
   if (!member.emailVerified) {
-    return { verified: false, orders: [], signups: signups.map(shapeSignup) };
+    // A reward code is tied to an inbox; until this one is confirmed the code
+    // stays in the email, same as on the sign-up form.
+    return { verified: false, orders: [], signups: signups.map((s) => ({ ...shapeSignup(s), reward: null })) };
   }
   const orders = await fastify.prisma.order.findMany({
     where: { email: { equals: email, mode: 'insensitive' }, deletedAt: null },

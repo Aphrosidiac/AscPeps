@@ -57,11 +57,15 @@ export function GroupBuyPopup({ popup }: { popup: Popup }) {
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  // The page it last opened on. "Every page view" means once per page: closing
+  // it must not start the timer again on the same page.
+  const shownOn = useRef<string | null>(null);
 
   useEffect(() => {
-    if (open || !onPage(popup.pages, pathname) || seen(popup)) return;
+    if (open || shownOn.current === pathname || !onPage(popup.pages, pathname) || seen(popup)) return;
     const t = setTimeout(() => {
       markSeen(popup);
+      shownOn.current = pathname;
       setOpen(true);
       posthog.capture('group_buy_popup_shown', { batch: popup.slug, path: pathname });
     }, Math.max(popup.delaySec, 0) * 1000);

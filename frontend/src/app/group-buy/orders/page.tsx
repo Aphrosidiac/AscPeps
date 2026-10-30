@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, ArrowRight, ChevronDown, Copy, Mail, Package, Truck } from 'lucide-react';
 import { getMyGroupBuys, type MyOrder, type MySignup } from '@/lib/group-buy-api';
 import { useMemberSession } from '@/lib/member-session';
-import { groupOrderItems } from '@/lib/order-lines';
+import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lines';
 import { formatPrice } from '@/lib/utils';
 import { rewardOff } from '@/lib/group-buy';
 import { PageHead, Timeline } from '@/components/group-buy/portal-ui';
@@ -23,10 +23,11 @@ export default function MyOrdersPage() {
   const [error, setError] = useState('');
   const [view, setView] = useState<View>('group');
 
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!member) return;
-    getMyGroupBuys().then(setData).catch(() => setError('Your orders could not be loaded. Try again shortly.'));
-  }, [member]);
+    getMyGroupBuys().then((d) => { setData(d); setError(''); }).catch(() => setError('Your orders could not be loaded.'));
+  }, [member, attempt]);
 
   if (!ready) return <div className="gbp-skel" style={{ height: 320 }} />;
 
@@ -69,7 +70,7 @@ export default function MyOrdersPage() {
         Signed in as {member.email}
       </PageHead>
 
-      {error && <div className="gbp-note bad" style={{ marginBottom: 24 }}><AlertCircle size={16} />{error}</div>}
+      {error && <div className="gbp-note bad" style={{ marginBottom: 24 }}><AlertCircle size={16} />{error} <button type="button" className="link" onClick={() => setAttempt((n) => n + 1)}>Try again</button></div>}
 
       {data && !data.verified && (
         <div className="gbp-note" style={{ marginBottom: 24 }}>
@@ -142,7 +143,7 @@ function OrderCard({ order, defaultOpen }: { order: MyOrder; defaultOpen: boolea
             <b className="num">{order.orderNumber}</b>
             {gb && <span className="label">{gb.label}</span>}
           </span>
-          <span className="small muted">{new Date(order.createdAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })} · {formatPrice(order.total)}</span>
+          <span className="small muted">{new Date(order.createdAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', year: 'numeric' })} · {formatPrice(order.total)}</span>
         </span>
         <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {cancelled ? <span className="gbp-chip bad">Cancelled</span> : <span className={`gbp-chip ${pay.cls}`}>{pay.label}</span>}
@@ -155,15 +156,18 @@ function OrderCard({ order, defaultOpen }: { order: MyOrder; defaultOpen: boolea
         <div className="gbp-panel-body" style={{ display: 'grid', gap: 24, gridTemplateColumns: gb ? 'repeat(auto-fit, minmax(260px, 1fr))' : undefined }}>
           <div>
             <div className="label" style={{ marginBottom: 10 }}>Items</div>
-            {lines.map(({ item }) => {
+            {lines.map((line) => {
+              const { item } = line;
               const kits = item.packSize && item.packSize > 1 ? item.quantity / item.packSize : null;
               return (
                 <div key={item.id} className="gbp-sum-row">
                   <span style={{ minWidth: 0 }}>
                     {kits ? `${kits} kit${kits === 1 ? '' : 's'}` : `${item.quantity} ×`} {item.variant.product.name}{item.variant.size ? ` ${item.variant.size}` : ''}
                     {kits && <span className="tiny muted"> · {item.quantity} vials</span>}
+                    {line.includes.length > 0 && <span className="tiny muted" style={{ display: 'block' }}>incl. {includesText(line.includes)}</span>}
                   </span>
-                  <span className="money">{formatPrice(item.unitPrice * item.quantity)}</span>
+                  {/* With what came included, so the rows add up to the total. */}
+                  <span className="money">{formatPrice(groupedLineTotal(line))}</span>
                 </div>
               );
             })}

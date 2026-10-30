@@ -7,9 +7,9 @@ import { AlertCircle, ArrowRight, Check, Lock, Tag, X } from 'lucide-react';
 import type { GroupBuyDetail } from '@/types';
 import { createOrder, getSettings, http } from '@/lib/api';
 import { getGroupBuy } from '@/lib/group-buy-api';
-import { basketLines, clearBasket, rememberGroupBuyCheckout, unitWord, useBasket } from '@/lib/group-buy';
+import { basketLines, clearBasket, rememberGroupBuyCheckout, unitWord, useBasket, useLivePhase } from '@/lib/group-buy';
 import { MALAYSIAN_STATES } from '@/lib/constants';
-import { isEastMalaysia, resolveShippingFeeSen } from '@/lib/shipping-region';
+import { isEastMalaysia, parseEastMalaysiaMinOrder, resolveShippingFeeSen } from '@/lib/shipping-region';
 import { formatPrice, normalizePhone } from '@/lib/utils';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
 import { rememberPendingPayment } from '@/lib/pending-payment';
@@ -36,7 +36,9 @@ export default function GroupBuyCheckoutPage() {
   const [picked, setMethod] = useState<Method>('BILLPLZ');
   const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
   const [code, setCode] = useState('');
-  const [discount, setDiscount] = useState<{ code: string; discountAmount: number } | null>(null);
+  // Kept with the subtotal it was checked against: a basket changed in another
+  // tab makes the amount stale, so the code has to be applied again.
+  const [applied, setDiscount] = useState<{ code: string; discountAmount: number; subtotal: number } | null>(null);
   const [codeError, setCodeError] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,14 @@ export default function GroupBuyCheckoutPage() {
     getGroupBuy(slug).then(setGb).catch(() => setError('This batch could not be loaded.'));
     getSettings().then(setSettings).catch(() => {});
   }, [slug]);
+  // Back from the payment page, the browser may restore this page as it was
+  // left — with the button still saying "Placing order…".
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) setBusy(false); };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+  const phase = useLivePhase(gb ?? { phase: 'DRAFT', opensAt: '', closesAt: '' });
   // Fill in a signed-in member's name and email once, during render (React's
   // "adjust state when a prop changes" pattern) rather than in an effect.
   if (member && prefilledFor !== member.id) {
@@ -69,8 +79,20 @@ export default function GroupBuyCheckoutPage() {
   const subtotal = lines.reduce((s, l) => s + l.total, 0);
   const east = isEastMalaysia(form.state);
   const shipping = gb?.shippingFee != null ? gb.shippingFee : resolveShippingFeeSen(settings.shipping_fee, settings.east_malaysia_shipping_fee, east);
+  const discount = applied && applied.subtotal === subtotal ? applied : null;
   const total = Math.max(subtotal + shipping - (discount?.discountAmount ?? 0), 0);
-  const invalid = lines.some((l) => l.problem) || (gb?.minOrderAmount != null && subtotal < gb.minOrderAmount);
+  const units = lines.reduce((n, l) => n + l.qty, 0);
+  // The store's East Malaysia minimum applies to batch orders too (the API checks it on the goods subtotal).
+  const eastMin = east ? parseEastMalaysiaMinOrder(settings.east_malaysia_min_order) : 0;
+  const eastShort = eastMin > 0 && subtotal < eastMin ? eastMin - subtotal : 0;
+  // Everything the API would refuse, so the button never sends an order that can only bounce.
+  const blockers = [
+    ...(gb?.minOrderAmount != null && subtotal < gb.minOrderAmount ? [`The minimum order in this batch is ${formatPrice(gb.minOrderAmount)}.`] : []),
+    ...(gb && units > gb.maxUnitsPerOrder ? [`One order can take up to ${gb.maxUnitsPerOrder} units in this batch.`] : []),
+    ...(eastShort ? [`Sabah, Sarawak and Labuan need a minimum order of ${formatPrice(eastMin)} — add ${formatPrice(eastShort)} more.`] : []),
+    ...(gb && phase !== 'LIVE' ? [phase === 'CLOSED' ? 'This batch has closed.' : 'This batch is not open yet.'] : []),
+  ];
+  const invalid = lines.some((l) => l.problem) || blockers.length > 0;
 
   if (done) {
     return (
@@ -110,7 +132,7 @@ export default function GroupBuyCheckoutPage() {
       const r = await http.post<{ code: string; discountAmount: number }>('/api/v1/orders/validate-discount', {
         code: code.trim(), subtotal, groupBuyId: gb.id, email: form.email.trim() || undefined,
       });
-      setDiscount(r.data);
+      setDiscount({ ...r.data, subtotal });
       setCode('');
     } catch (e) {
       setCodeError((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'That code doesn’t work here.');
@@ -278,7 +300,7 @@ export default function GroupBuyCheckoutPage() {
                 {busy ? 'Placing order…' : method === 'WHATSAPP' ? 'Send order on WhatsApp' : `Pay ${formatPrice(total)}`} {!busy && <ArrowRight size={16} className="ir" />}
               </button>
               <p className="tiny muted" style={{ marginTop: 10, display: 'flex', gap: 6 }}><Lock size={13} style={{ flex: 'none', marginTop: 2 }} />Ships with {gb.label} once the batch arrives. For laboratory and research use only.</p>
-              {gb.phase !== 'LIVE' && <p className="gbp-err" style={{ marginTop: 8 }}>{gb.phase === 'CLOSED' ? 'This batch has closed.' : 'This batch is not open yet.'}</p>}
+              {blockers.map((b) => <p key={b} className="gbp-err" style={{ marginTop: 8 }}>{b}</p>)}
             </div>
           </div>
         </aside>

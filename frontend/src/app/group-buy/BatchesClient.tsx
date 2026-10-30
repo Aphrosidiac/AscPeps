@@ -6,7 +6,8 @@ import type { GroupBuySummary } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { useMemberSession } from '@/lib/member-session';
 import { Countdown, PageHead, PhaseChip } from '@/components/group-buy/portal-ui';
-import { rewardOff } from '@/lib/group-buy';
+import { phaseAt, rewardOff } from '@/lib/group-buy';
+import { useNow } from '@/lib/use-now';
 
 const STEPS = [
   { t: 'Join the batch', d: 'Pick from the batch’s product list while it is open.' },
@@ -17,9 +18,12 @@ const STEPS = [
 
 export function BatchesClient({ batches }: { batches: GroupBuySummary[] }) {
   const { member } = useMemberSession();
-  const live = batches.filter((b) => b.phase === 'LIVE');
-  const upcoming = batches.filter((b) => b.phase === 'UPCOMING');
-  const past = batches.filter((b) => b.phase === 'CLOSED');
+  // Moved on by the clock, so a batch whose countdown ends changes section without a reload.
+  const now = useNow();
+  const timed = batches.map((b) => ({ ...b, phase: phaseAt(b, now) }));
+  const live = timed.filter((b) => b.phase === 'LIVE');
+  const upcoming = timed.filter((b) => b.phase === 'UPCOMING');
+  const past = timed.filter((b) => b.phase === 'CLOSED');
 
   return (
     <div>
@@ -80,7 +84,7 @@ function FeaturedBatch({ b }: { b: GroupBuySummary }) {
           <h2 className="h1" style={{ marginTop: 14 }}>{b.title}</h2>
           {b.tagline && <p className="lead" style={{ color: '#d4d4d0', marginTop: 8 }}>{b.tagline}</p>}
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 18 }} className="small">
-            {b.fromPrice != null && <span>From <b className="money">{formatPrice(b.fromPrice)}</b></span>}
+            {b.fromPrice != null && <span>From <b className="money">{formatPrice(b.fromPrice)}</b>/vial</span>}
             <span>{b.itemCount} product{b.itemCount === 1 ? '' : 's'}</span>
             {b.shipEstimate && <span>Ships {b.shipEstimate}</span>}
             {b.joined != null && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Users size={14} /> {b.joined} {b.joinedLabel}</span>}
@@ -93,7 +97,7 @@ function FeaturedBatch({ b }: { b: GroupBuySummary }) {
         <div className="gbp-panel-body" style={{ padding: 32, borderLeft: '1px solid #222', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 12, backgroundImage: b.heroImageUrl ? `linear-gradient(rgba(10,10,10,.72), rgba(10,10,10,.72)), url(${b.heroImageUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
           <div className="label">Closes in</div>
           <Countdown to={b.closesAt} />
-          <div className="small muted">{new Date(b.closesAt).toLocaleString('en-MY', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
+          <div className="small muted">{new Date(b.closesAt).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
         </div>
       </div>
     </section>
@@ -109,9 +113,9 @@ function BatchCard({ b }: { b: GroupBuySummary }) {
         <div className="h2">{b.title}</div>
         <div className="small muted">
           {b.phase === 'UPCOMING'
-            ? `Opens ${new Date(b.opensAt).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
-            : `Closed ${new Date(b.closesAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}`}
-          {b.fromPrice != null ? ` · from ${formatPrice(b.fromPrice)}` : ''}
+            ? `Opens ${new Date(b.opensAt).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
+            : `Closed ${new Date(b.closesAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short' })}`}
+          {b.fromPrice != null ? ` · from ${formatPrice(b.fromPrice)}/vial` : ''}
         </div>
       </div>
     </Link>

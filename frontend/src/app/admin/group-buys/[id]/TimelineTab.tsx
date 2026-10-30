@@ -78,6 +78,12 @@ export function TimelineTab({ gb, token, onSaved, notify, setNotify }: {
         <Card className="h-fit">
           <CardHeader title="Steps" description="Pick the step the batch is at. Steps before it show as done." />
           <CardBody className="space-y-3">
+            {/* The step is set by hand and the window by the clock; say so when they disagree. */}
+            {(gb.phase === 'LIVE' || gb.phase === 'UPCOMING') && at > 0 && (
+              <p className="rounded-[8px] border border-warning/40 bg-warning/[0.06] px-4 py-3 text-[13px] text-text-primary">
+                The batch is still {gb.phase === 'LIVE' ? 'taking orders' : 'waiting to open'}, but buyers will see “{stages[at]?.label}” as its current step.
+              </p>
+            )}
             {stages.map((s, i) => {
               const done = i < at;
               const now = i === at;

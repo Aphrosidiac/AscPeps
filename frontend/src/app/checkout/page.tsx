@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 import { rememberPendingPayment } from '@/lib/pending-payment';
+import { forgetGroupBuyCheckout } from '@/lib/group-buy';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
 import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
 
@@ -359,6 +360,9 @@ export default function CheckoutPage() {
         if (paymentMethod === 'MANUAL') {
           rememberPendingPayment({ url: result.paymentUrl, orderNumber: result.order.orderNumber });
         }
+        // An abandoned Group Buy payment from earlier would otherwise make the
+        // success page treat this store order as the batch one.
+        forgetGroupBuyCheckout();
         redirectTo(result.paymentUrl);
         return;
       }

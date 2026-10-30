@@ -56,7 +56,16 @@ section sits under the hero strip.
 - Checkout: `createOrder` with `groupBuyId` → `resolveGroupBuyLines`
   (utils/group-buy.ts) checks window, items, minimums, maximums, order minimum and
   unit cap, and prices from tiers. Shipping = batch fee, or the store's rules.
-  The store's 50-unit / 100-per-item caps do not apply.
+  The store's 50-unit / 100-per-item caps do not apply; the store's East Malaysia
+  minimum does (checkout warns before the API refuses).
+- The admin refuses a product nobody could buy: a "most per order" below its
+  minimum or first tier, or a minimum over the batch's unit limit (and the limit
+  can't be lowered below an item's minimum). An order's kit line can only be
+  edited by whole kits.
+- The public page moves the phase on by the clock (`useLivePhase`), so a
+  countdown reaching zero opens/closes the batch, banner and home section
+  without a reload. The timeline step is still set by hand (Admin warns when it
+  is past the first step while the batch is open).
 - Sign-up reward: one `DiscountCode` per sign-up — single use, `boundEmail`,
   `scope` GROUP_BUY (+ `groupBuyId`) / STORE / null. The code is **emailed**; it is
   shown on screen only to a signed-in member with a confirmed email.

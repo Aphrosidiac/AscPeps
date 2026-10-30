@@ -8,13 +8,14 @@ import { AlertCircle, ArrowRight, Check, Minus, Plus, Truck, Users } from 'lucid
 import type { GroupBuyDetail, GroupBuyItem } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
-import { basketLines, tierRange, unitDescription, unitWord, useBasket, vialsPerUnit, writeBasket, sortTiers } from '@/lib/group-buy';
+import { basketLines, tierRange, unitDescription, unitWord, useBasket, useLivePhase, vialsPerUnit, writeBasket, sortTiers } from '@/lib/group-buy';
 import { getGroupBuy } from '@/lib/group-buy-api';
 import { useMemberSession } from '@/lib/member-session';
 import { Countdown, PageHead, PhaseChip, SignupPanel, Timeline } from '@/components/group-buy/portal-ui';
 
 export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
   const gb = initial;
+  const phase = useLivePhase(gb);
   const router = useRouter();
   const { member } = useMemberSession();
   const stored = useBasket(gb.slug);
@@ -29,7 +30,7 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
   const problems = chosen.filter((l) => l.problem).map((l) => `${l.item.code}: ${l.problem}`);
   if (gb.minOrderAmount != null && chosen.length && subtotal < gb.minOrderAmount) problems.push(`Minimum order is ${formatPrice(gb.minOrderAmount)} — add ${formatPrice(gb.minOrderAmount - subtotal)} more`);
   if (units > gb.maxUnitsPerOrder) problems.push(`Up to ${gb.maxUnitsPerOrder} units per order`);
-  const live = gb.phase === 'LIVE';
+  const live = phase === 'LIVE';
   const canCheckout = live && chosen.length > 0 && problems.length === 0;
 
   const setQty = (item: GroupBuyItem, next: number) => {
@@ -42,17 +43,17 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
     <div>
       {gb.heroImageUrl && <Image src={gb.heroImageUrl} alt="" width={1200} height={462} sizes="(min-width: 1200px) 1100px, 100vw" style={{ height: 'auto' }} className="gbp-hero-img" />}
       <PageHead eyebrow={`Group Buy · ${gb.label}`} title={gb.title} back={{ href: '/group-buy', label: 'All batches' }}>
-        <PhaseChip phase={gb.phase} stageLabel={gb.stages.find((s) => s.key === gb.stageKey)?.label} />
+        <PhaseChip phase={phase} stageLabel={gb.stages.find((s) => s.key === gb.stageKey)?.label} />
         {gb.tagline && <span>{gb.tagline}</span>}
       </PageHead>
 
       <div className="gbp-figs" style={{ marginBottom: 32 }}>
         <div className="gbp-fig">
-          <div className="label">{gb.phase === 'UPCOMING' ? 'Opens in' : gb.phase === 'LIVE' ? 'Closes in' : 'Closed'}</div>
+          <div className="label">{phase === 'UPCOMING' ? 'Opens in' : phase === 'LIVE' ? 'Closes in' : 'Closed'}</div>
           <div style={{ marginTop: 8 }}>
-            {gb.phase === 'CLOSED'
-              ? <div className="v">{new Date(gb.closesAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}</div>
-              : <Countdown to={gb.phase === 'UPCOMING' ? gb.opensAt : gb.closesAt} />}
+            {phase === 'CLOSED'
+              ? <div className="v">{new Date(gb.closesAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short' })}</div>
+              : <Countdown to={phase === 'UPCOMING' ? gb.opensAt : gb.closesAt} />}
           </div>
         </div>
         <div className="gbp-fig">
@@ -104,7 +105,7 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
             <div className="gbp-panel-head" style={{ borderColor: '#222' }}><span className="h3">Your batch order</span><span className="small muted">{units} unit{units === 1 ? '' : 's'}</span></div>
             <div className="gbp-panel-body">
               {chosen.length === 0 ? (
-                <p className="small muted">{live ? 'Choose quantities to see your price.' : gb.phase === 'UPCOMING' ? 'Orders open when the countdown ends.' : 'This batch has closed.'}</p>
+                <p className="small muted">{live ? 'Choose quantities to see your price.' : phase === 'UPCOMING' ? 'Orders open when the countdown ends.' : 'This batch has closed.'}</p>
               ) : (
                 <>
                   {chosen.map((l) => (
@@ -142,7 +143,7 @@ export function BatchClient({ initial }: { initial: GroupBuyDetail }) {
             </div>
           </div>
 
-          <SignupPanel slug={gb.slug} reward={gb.reward} closed={gb.phase === 'CLOSED'} />
+          <SignupPanel slug={gb.slug} reward={gb.reward} closed={phase === 'CLOSED'} />
         </aside>
       </div>
 
@@ -167,6 +168,9 @@ function ItemRow({ line, onQty, disabled }: { line: ReturnType<typeof basketLine
   const [text, setText] = useState(String(qty));
   const [last, setLast] = useState(qty);
   if (qty !== last) { setLast(qty); setText(String(qty)); }
+  // When the typed number is clamped back to the current quantity (over the
+  // maximum, "007", blank) nothing changes upstream, so put the real number back.
+  const commit = () => { onQty(Number(text) || 0); setText(String(qty)); };
 
   return (
     <div className={`gbp-item ${qty > 0 ? 'on' : ''}`}>
@@ -198,8 +202,8 @@ function ItemRow({ line, onQty, disabled }: { line: ReturnType<typeof basketLine
             value={text}
             disabled={disabled}
             onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ''))}
-            onBlur={() => onQty(Number(text) || 0)}
-            onKeyDown={(e) => { if (e.key === 'Enter') onQty(Number(text) || 0); }}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
           />
           <button type="button" aria-label={`More ${item.code}`} disabled={disabled || (item.maxQty != null && qty >= item.maxQty)} onClick={() => onQty(qty === 0 ? item.minQty : qty + 1)}><Plus size={16} /></button>
         </div>

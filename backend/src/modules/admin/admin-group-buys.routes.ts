@@ -27,9 +27,9 @@ export default async function adminGroupBuyRoutes(fastify: FastifyInstance) {
   fastify.get<IdParams>('/:id/supplier-sheet', async (request) => adminGroupBuySupplierSheet(fastify, request.params.id));
   fastify.get<IdParams>('/:id/signups', async (request) => adminGroupBuySignups(fastify, request.params.id));
   fastify.get<IdParams>('/:id/signups.csv', async (request, reply) => {
-    const csv = await adminGroupBuySignupsCsv(fastify, request.params.id);
+    const { csv, filename } = await adminGroupBuySignupsCsv(fastify, request.params.id);
     reply.header('Content-Type', 'text/csv; charset=utf-8');
-    reply.header('Content-Disposition', `attachment; filename="group-buy-signups.csv"`);
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
     return reply.send('﻿' + csv);
   });
   fastify.post<IdParams>('/:id/signups', async (request) => adminAddSignup(fastify, request.params.id, request.body));

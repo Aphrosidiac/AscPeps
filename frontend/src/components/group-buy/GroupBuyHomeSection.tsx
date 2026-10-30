@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, Users } from 'lucide-react';
 import type { GroupBuyPromo } from '@/types';
 import { formatPrice } from '@/lib/utils';
-import { countdown, rewardHeadline, sortTiers } from '@/lib/group-buy';
+import { countdown, phaseAt, rewardHeadline, sortTiers } from '@/lib/group-buy';
 import { useNow } from '@/lib/use-now';
 
 /**
@@ -14,9 +14,12 @@ import { useNow } from '@/lib/use-now';
  * best tier price against today's store price, and the way in.
  */
 export function GroupBuyHomeSection({ home }: { home: NonNullable<GroupBuyPromo['home']> }) {
-  const upcoming = home.phase === 'UPCOMING';
   const now = useNow();
+  const phase = phaseAt(home, now);
+  const upcoming = phase === 'UPCOMING';
   const left = now === null ? null : countdown(upcoming ? home.opensAt : home.closesAt, now);
+  // Gone the moment the batch closes, not when the next promo fetch lands.
+  if (phase === 'CLOSED') return null;
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

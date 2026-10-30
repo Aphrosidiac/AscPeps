@@ -10,7 +10,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!gb) return { title: 'Group Buy' };
   return {
     title: `${gb.title} (${gb.label})`,
-    description: gb.tagline || `Group Buy ${gb.label}: wholesale tier pricing until ${new Date(gb.closesAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'long' })}.`,
+    description: gb.tagline || `Group Buy ${gb.label}: wholesale tier pricing until ${new Date(gb.closesAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'long' })}.`,
     alternates: { canonical: `https://ascendpeptides.my/group-buy/${gb.slug}` },
     openGraph: gb.heroImageUrl ? { images: [gb.heroImageUrl] } : undefined,
   };

@@ -27,10 +27,11 @@ export async function createSignup(
   const member = input.member ?? null;
   const memberMatches = !!member && member.email.trim().toLowerCase() === email;
 
-  const existing = await fastify.prisma.groupBuySignup.findUnique({
+  const find = () => fastify.prisma.groupBuySignup.findUnique({
     where: { groupBuyId_email: { groupBuyId: gb.id, email } },
     include: { discountCode: true },
   });
+  let existing = await find();
 
   const rewardOn = gb.rewardEnabled && gb.rewardValue > 0;
   // Members-only rewards need a signed-in member signing up with their own address.
@@ -38,19 +39,29 @@ export async function createSignup(
 
   let signup = existing;
   if (!signup) {
-    signup = await fastify.prisma.groupBuySignup.create({
-      data: {
-        groupBuyId: gb.id,
-        email,
-        name: input.name || null,
-        phone: input.phone || null,
-        source: input.source,
-        memberId: memberMatches ? member!.id : null,
-        note: input.note || null,
-      },
-      include: { discountCode: true },
-    });
-  } else {
+    try {
+      signup = await fastify.prisma.groupBuySignup.create({
+        data: {
+          groupBuyId: gb.id,
+          email,
+          name: input.name || null,
+          phone: input.phone || null,
+          source: input.source,
+          memberId: memberMatches ? member!.id : null,
+          note: input.note || null,
+        },
+        include: { discountCode: true },
+      });
+    } catch (err) {
+      // A double-click (or two tabs) joining at the same moment: the other
+      // request won, so this one is a repeat visit.
+      if ((err as { code?: string }).code !== 'P2002') throw err;
+      existing = await find();
+      if (!existing) throw err;
+      signup = existing;
+    }
+  }
+  if (existing) {
     // Joining again fills in what was missing; it never overwrites.
     const patch: Record<string, string> = {};
     if (!signup.name && input.name) patch.name = input.name;
@@ -80,8 +91,12 @@ export async function createSignup(
             boundEmail: email,
           },
         });
-        signup = await fastify.prisma.groupBuySignup.update({ where: { id: signup.id }, data: { discountCodeId: code.id }, include: { discountCode: true } });
-        issued = true;
+        // Linked only if no other request linked one first, so one sign-up
+        // never ends up holding two live codes.
+        const linked = await fastify.prisma.groupBuySignup.updateMany({ where: { id: signup.id, discountCodeId: null }, data: { discountCodeId: code.id } });
+        if (linked.count === 0) await fastify.prisma.discountCode.delete({ where: { id: code.id } });
+        else issued = true;
+        signup = (await find())!;
       } catch (err) {
         if ((err as { code?: string }).code !== 'P2002') throw err;
       }

@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react';
-import type { GroupBuyItem, GroupBuyReward, GroupBuyTier } from '@/types';
+import type { GroupBuyItem, GroupBuyPhase, GroupBuyReward, GroupBuyTier } from '@/types';
+import { useNow } from './use-now';
 
 /**
  * Group Buy pricing on the client — the same rules as backend/src/utils/group-buy.ts,
@@ -178,6 +179,25 @@ export function usePendingGroupBuyCheckout(): { slug: string; orderNumber: strin
     if (pendingSnapshot === undefined) pendingSnapshot = readGroupBuyCheckout();
     return pendingSnapshot;
   }, () => null);
+}
+
+type Timed = { phase: GroupBuyPhase; opensAt: string; closesAt: string };
+
+/** Where a batch is at `now` — the server's phase moved on by the clock (a draft stays a draft). */
+export function phaseAt(b: Timed, now: number | null): GroupBuyPhase {
+  if (b.phase === 'DRAFT' || now === null) return b.phase;
+  if (now < new Date(b.opensAt).getTime()) return 'UPCOMING';
+  if (now >= new Date(b.closesAt).getTime()) return 'CLOSED';
+  return 'LIVE';
+}
+
+/**
+ * The batch's phase, kept current while the page is open: the payload's phase
+ * is from when it was fetched (and cached up to a minute), so a countdown that
+ * reaches zero opens or closes the batch on screen without a reload.
+ */
+export function useLivePhase(b: Timed): GroupBuyPhase {
+  return phaseAt(b, useNow());
 }
 
 /** "3d 4h", "5h 12m", "12m" until a time. */

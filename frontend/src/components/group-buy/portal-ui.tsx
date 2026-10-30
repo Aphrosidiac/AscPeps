@@ -48,7 +48,7 @@ export function Countdown({ to }: { to: string }) {
   );
 }
 
-const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
+const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', year: 'numeric' });
 
 /**
  * The batch timeline: steps before the current one done (ink), the current one

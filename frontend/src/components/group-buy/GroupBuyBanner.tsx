@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { ArrowRight, X } from 'lucide-react';
 import type { GroupBuyPromo } from '@/types';
-import { countdown } from '@/lib/group-buy';
+import { countdown, phaseAt } from '@/lib/group-buy';
 import { useNow } from '@/lib/use-now';
 
 const noSubscribe = () => () => {};
@@ -30,15 +30,17 @@ export function GroupBuyBanner({ banner }: { banner: NonNullable<GroupBuyPromo['
   }, () => false);
   const hidden = closedNow || closedBefore;
   const now = useNow();
-  const c = now === null ? null : countdown(banner.phase === 'UPCOMING' ? banner.opensAt : banner.closesAt, now);
+  const phase = phaseAt(banner, now);
+  const c = now === null ? null : countdown(phase === 'UPCOMING' ? banner.opensAt : banner.closesAt, now);
   const left = !c || c.done ? null : c.d > 0 ? `${c.d}d ${c.h}h` : `${c.h}h ${c.m}m`;
 
-  if (hidden) return null;
+  // Gone the moment the batch closes, not when the next promo fetch lands.
+  if (hidden || phase === 'CLOSED') return null;
   return (
     <div className={`relative ${TONE[banner.tone] ?? TONE.INK}`}>
       <Link href={`/group-buy/${banner.slug}`} className="flex items-center justify-center gap-x-3 gap-y-0.5 flex-wrap px-10 py-2 text-center text-[13px] leading-snug">
         <span className="font-medium">{banner.text}</span>
-        {left && <span className="opacity-80 tabular-nums">{banner.phase === 'UPCOMING' ? 'Opens in' : 'Ends in'} {left}</span>}
+        {left && <span className="opacity-80 tabular-nums">{phase === 'UPCOMING' ? 'Opens in' : 'Ends in'} {left}</span>}
         <span className="inline-flex items-center gap-1 font-semibold underline underline-offset-2">{banner.cta} <ArrowRight className="w-3.5 h-3.5" /></span>
       </Link>
       <button

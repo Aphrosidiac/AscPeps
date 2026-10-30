@@ -41,7 +41,8 @@ export function SignupsTab({ gb, token }: { gb: AdminGroupBuy; token: string }) 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `group-buy-${gb.slug}-signups.csv`;
+    // Same name the API gives the file.
+    a.download = `ascend-group-buy-batch-${String(gb.number).padStart(2, '0')}-signups-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };

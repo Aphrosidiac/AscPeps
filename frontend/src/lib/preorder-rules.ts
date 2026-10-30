@@ -5,8 +5,11 @@
  */
 
 export const PREORDER_DEFAULT_LEAD = '10–14 days';
-/** The most of one size a store order can take (the API's per-item cap). */
-export const STORE_MAX_PER_ITEM = 100;
+/**
+ * The most of one size a store order can take: the API refuses more than 50
+ * units in one store order (and 100 of one item), so 50 is the real ceiling.
+ */
+export const STORE_MAX_PER_ITEM = 50;
 
 export interface PreorderSettings {
   enabled: boolean;

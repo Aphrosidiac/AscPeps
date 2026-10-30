@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
 import {
-  DEFAULT_STAGES, batchLabel, groupBuyPhase, joinedCount, kitPriceProblem, parseStages, type GroupBuyStage,
+  DEFAULT_STAGES, batchLabel, groupBuyPhase, itemMinQty, joinedCount, kitPriceProblem, parseStages, type GroupBuyStage,
 } from '../../utils/group-buy.js';
 import { createSignup } from '../../utils/group-buy-signup.js';
 import { enqueueStageNotices, renderNotice } from '../../utils/group-buy-notices.js';
@@ -250,6 +250,16 @@ export async function adminUpdateGroupBuy(fastify: FastifyInstance, id: string, 
     const items = await fastify.prisma.groupBuyItem.count({ where: { groupBuyId: id, active: true, tiers: { some: {} } } });
     if (items === 0) throw { statusCode: 400, message: 'Add at least one product with a price before publishing.' };
   }
+  if (data.maxUnitsPerOrder !== undefined && data.maxUnitsPerOrder < gb.maxUnitsPerOrder) {
+    const items = await fastify.prisma.groupBuyItem.findMany({
+      where: { groupBuyId: id, active: true },
+      include: { tiers: true, variant: { include: { product: { select: { name: true } } } } },
+    });
+    const blocked = items.find((it) => itemMinQty(it) > data.maxUnitsPerOrder!);
+    if (blocked) {
+      throw { statusCode: 400, message: `${getVariantDisplayName(blocked.variant.product, blocked.variant)} needs at least ${itemMinQty(blocked)} per order — the limit can't go below that.` };
+    }
+  }
   await fastify.prisma.groupBuy.update({ where: { id }, data: patch });
   return adminGetGroupBuy(fastify, id);
 }
@@ -293,8 +303,14 @@ export async function adminSetGroupBuyItems(fastify: FastifyInstance, id: string
       const problem = kitPriceProblem(it.sellUnit, it.packSize, t.price);
       if (problem) throw { statusCode: 400, message: `${name}: ${problem}` };
     }
-    if (it.minQty != null && it.maxQty != null && it.maxQty < it.minQty) {
-      throw { statusCode: 400, message: `${name}: the most per order is below the minimum.` };
+    // The least a customer can order is the item's minimum or its first price,
+    // whichever is higher — a cap below that makes the item unbuyable.
+    const least = itemMinQty({ ...it, minQty: it.minQty ?? null, maxQty: it.maxQty ?? null, minAmount: it.minAmount ?? null });
+    if (it.maxQty != null && it.maxQty < least) {
+      throw { statusCode: 400, message: `${name}: the most per order (${it.maxQty}) is below the least anyone can order (${least}).` };
+    }
+    if (it.active && least > gb.maxUnitsPerOrder) {
+      throw { statusCode: 400, message: `${name}: its minimum of ${least} is over the batch's ${gb.maxUnitsPerOrder}-unit limit per order.` };
     }
   }
 
@@ -510,13 +526,19 @@ function csvCell(v: unknown): string {
 }
 
 export async function adminGroupBuySignupsCsv(fastify: FastifyInstance, id: string) {
+  const gb = await fastify.prisma.groupBuy.findUnique({ where: { id }, select: { number: true } });
+  if (!gb) throw { statusCode: 404, message: 'Group Buy not found' };
   const rows = await adminGroupBuySignups(fastify, id);
   const head = ['Joined', 'Name', 'Email', 'Phone', 'Source', 'Member', 'Reward code', 'Reward used', 'Orders', 'Paid (RM)', 'Note'];
   const lines = rows.map((r) => [
     r.createdAt.toISOString(), r.name, r.email, r.phone, r.source, r.member ? 'yes' : 'no', r.reward?.code, r.reward ? (r.reward.used ? 'yes' : 'no') : '',
     r.orders.map((o) => o.orderNumber).join(' '), (r.paidTotal / 100).toFixed(2), r.note,
   ].map(csvCell).join(','));
-  return [head.join(','), ...lines].join('\n');
+  const day = new Date().toISOString().slice(0, 10);
+  return {
+    csv: [head.join(','), ...lines].join('\n'),
+    filename: `ascend-group-buy-batch-${String(gb.number).padStart(2, '0')}-signups-${day}.csv`,
+  };
 }
 
 const addSignupSchema = z.object({

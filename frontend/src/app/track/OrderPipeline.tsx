@@ -388,7 +388,7 @@ function BatchSection({ order }: { order: TrackedOrder }) {
               <div className="min-w-0">
                 <p className={cn('text-sm leading-5', now || done ? 'font-semibold' : 'text-text-secondary')}>{s.label}</p>
                 <p className="text-xs text-text-muted">
-                  {(done || now) && s.doneAt ? new Date(s.doneAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' }) : s.eta ? `Expected ${s.eta}` : ''}
+                  {(done || now) && s.doneAt ? new Date(s.doneAt).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short' }) : s.eta ? `Expected ${s.eta}` : ''}
                   {now && s.detail ? `${s.doneAt ? ' · ' : ''}${s.detail}` : ''}
                 </p>
                 {s.note && (done || now) && <p className="mt-1.5 border-l-2 border-primary pl-2.5 text-sm text-text-secondary">{s.note}</p>}
