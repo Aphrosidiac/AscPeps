@@ -622,6 +622,8 @@ approve / decline / undo, memory, routines, model settings — are listed in
 |---|---|
 | [payments.md](docs/payments.md) | the methods, Billplz keys and limits, an online order end to end, unpaid orders, refunds, live testing, what to check when payment breaks |
 | [add-ons.md](docs/add-ons.md) | included vs suggested add-ons, who decides what an order includes, how orders show and change, money and reports |
+| [preorder.md](docs/preorder.md) | sold-out sizes on pre-order: switches, how stock and lines record it, where it shows |
+| [group-buy.md](docs/group-buy.md) | Group Buy batches: every admin control, the customer portal, data model, running a batch |
 | [assistant.md](docs/assistant.md) | the harness: data model, a turn step by step, tiers and undo, memory and the trust rule, routines, the model menu, tests |
 | [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
 | [bookkeeping.md](docs/bookkeeping.md) | every figure Ascend Money shows and how it is derived, including the bank |
