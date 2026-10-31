@@ -1953,3 +1953,144 @@ model PaymentProof {
   @@index([status])
   @@map("mpg_payment_proofs")
 }
+
+// ─── Research ────────────────────────────────────────────────────────────────
+// Research summaries at /research: what published studies report about a
+// compound, every finding tied to a cited study. Separate from Insights (a
+// plain-text blog with figures below the body): an article here is markdown
+// with question headings, a contents list built from them, a cited-studies
+// list from a shared source library, and photos placed anywhere in the text,
+// mid-sentence if need be, as `{{image:<id>}}` tokens.
+
+// A person who writes or reviews research articles. An article with no author
+// is written by the organisation ("Ascend MY editorial team"), never by an
+// invented person.
+model ResearchAuthor {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  // "Pharmacist", "Editor" — shown in the byline's JSON-LD as jobTitle.
+  role        String?
+  // "PhD, Pharmacology" — printed after a reviewer's name.
+  credentials String?
+  bio         String?
+  // Profile URLs (LinkedIn, ORCID…) for the Person node's sameAs.
+  sameAs      String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  written  ResearchArticle[] @relation("ResearchArticleAuthor")
+  reviewed ResearchArticle[] @relation("ResearchArticleReviewer")
+
+  @@map("research_authors")
+}
+
+model ResearchArticle {
+  id                String    @id @default(cuid())
+  slug              String    @unique
+  // The draft. Saving writes here only; nothing reaches /research until
+  // Publish copies it into `live` (Teliti's draft → publish model).
+  // The H1: the question or claim as people search it.
+  title             String
+  // Two-sentence answer first; the list row and the meta description fallback.
+  dek               String
+  body              String
+  seoTitle          String
+  seoDescription    String
+  leadImageUrl      String?
+  leadImageAlt      String    @default("")
+  leadImageWidth    Int?
+  leadImageHeight   Int?
+  authorId          String?
+  reviewerId        String?
+  // The date the byline prints; set on first publish unless the editor set one.
+  datePublished     DateTime?
+  // Product (parent) ids: the "Compounds in this piece" cards, in order.
+  relatedProductIds String[]  @default([])
+  // What /research serves: the complete public article as of the last
+  // publish (people, studies and photos included), or null when offline.
+  live              Json?
+  liveAt            DateTime?
+  // Set at the first publish. From then the URL is Google's: renaming
+  // records a 301, deleting needs a 301 or a 410.
+  slugLockedAt      DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  author    ResearchAuthor?    @relation("ResearchArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewer  ResearchAuthor?    @relation("ResearchArticleReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  citations ResearchCitation[]
+  images    ResearchImage[]
+
+  @@index([liveAt])
+  @@map("research_articles")
+}
+
+// A research URL that no longer has its own article: a 301 to `toPath`, or
+// gone (`toPath` null). Written by a rename or a delete of a published article.
+model ResearchRedirect {
+  id        String   @id @default(cuid())
+  fromSlug  String   @unique
+  toPath    String?
+  createdAt DateTime @default(now())
+
+  @@map("research_redirects")
+}
+
+// One study, cited by as many articles as need it. A PMID, DOI or URL is
+// required (enforced by the API): an uncheckable citation is not a citation.
+model ResearchSource {
+  id        String   @id @default(cuid())
+  pmid      String?  @unique
+  doi       String?  @unique
+  url       String?
+  journal   String
+  year      Int
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  citations ResearchCitation[]
+
+  @@map("research_sources")
+}
+
+// A source as one article cites it: its place in the list and what this
+// article says it found.
+model ResearchCitation {
+  id        String @id @default(cuid())
+  articleId String
+  sourceId  String
+  position  Int
+  finding   String
+
+  article ResearchArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  source  ResearchSource  @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@unique([articleId, position])
+  @@unique([articleId, sourceId])
+  @@index([sourceId])
+  @@map("research_citations")
+}
+
+// A photo placed in an article's text. The body refers to it by id, so
+// replacing the file, or editing alt/caption, never touches the text.
+// Width and height are the stored file's, for a layout-stable <img>.
+model ResearchImage {
+  id        String   @id @default(cuid())
+  articleId String
+  url       String
+  width     Int
+  height    Int
+  alt       String   @default("")
+  caption   String?
+  credit    String?
+  creditUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  article ResearchArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@map("research_images")
+}

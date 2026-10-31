@@ -10,6 +10,11 @@ import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput,
   ShadowSummary,
   ShadowOrderRow,
   PaymentAnalytics,
+  ResearchAuthor,
+  ResearchDraft,
+  ResearchImage,
+  ResearchPublishState,
+  ResearchSource,
 } from '@/types';
 
 const api = axios.create({
@@ -226,7 +231,7 @@ export const adminUpdateSettings = (token: string, data: Record<string, string>)
 export const adminUploadImage = (token: string, file: File, onProgress?: (percent: number) => void) => {
   const form = new FormData();
   form.append('file', file);
-  return api.post<{ url: string; filename: string }>('/api/v1/admin/upload/image', form, {
+  return api.post<{ url: string; filename: string; width: number; height: number }>('/api/v1/admin/upload/image', form, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
     onUploadProgress: onProgress
       ? (e) => onProgress(e.total ? Math.round((e.loaded / e.total) * 100) : 0)
@@ -862,3 +867,62 @@ export const adminGetSupplierOptions = (token: string, variantIds: string[]) =>
       params: { variantIds: variantIds.join(',') },
     })
     .then((r) => r.data);
+
+// Research (/research)
+export type ResearchAdminRow = { id: string; slug: string; title: string; path: string; publishState: ResearchPublishState; issues: number; updatedAt: string; liveAt: string | null };
+export type ResearchSourceRow = ResearchSource & { citedIn: { id: string; title: string; liveAt: string | null }[] };
+export type ResearchAuthorRow = ResearchAuthor & { _count: { written: number; reviewed: number } };
+export type ResearchTarget = { value: string; label: string; sub: string; id?: string };
+export type ResearchDraftInput = Partial<Omit<ResearchDraft, 'citations'>> & { citations?: { sourceId: string; finding: string }[] };
+
+export const adminGetResearchList = (token: string) =>
+  api.get<{ data: ResearchAdminRow[] }>('/api/v1/admin/research', auth(token)).then((r) => r.data);
+export const adminGetResearch = (token: string, id: string) =>
+  api.get<ResearchDraft>(`/api/v1/admin/research/${id}`, auth(token)).then((r) => r.data);
+export const adminCreateResearch = (token: string, data: ResearchDraftInput) =>
+  api.post<ResearchDraft>('/api/v1/admin/research', data, auth(token)).then((r) => r.data);
+export const adminUpdateResearch = (token: string, id: string, data: ResearchDraftInput) =>
+  api.patch<ResearchDraft>(`/api/v1/admin/research/${id}`, data, auth(token)).then((r) => r.data);
+export const adminPublishResearch = (token: string, id: string) =>
+  api.post<ResearchDraft>(`/api/v1/admin/research/${id}/publish`, {}, auth(token)).then((r) => r.data);
+export const adminUnpublishResearch = (token: string, id: string) =>
+  api.post<ResearchDraft>(`/api/v1/admin/research/${id}/unpublish`, {}, auth(token)).then((r) => r.data);
+export const adminRenameResearch = (token: string, id: string, slug: string) =>
+  api.post<ResearchDraft>(`/api/v1/admin/research/${id}/rename`, { slug }, auth(token)).then((r) => r.data);
+export const adminDeleteResearch = (token: string, id: string, decision?: { redirectTo: string } | { gone: true }) =>
+  api.delete(`/api/v1/admin/research/${id}`, { ...auth(token), data: decision ?? {} }).then((r) => r.data);
+export const adminGetResearchTargets = (token: string) =>
+  api.get<{ data: ResearchTarget[] }>('/api/v1/admin/research/targets', auth(token)).then((r) => r.data);
+
+export const adminAddResearchImage = (token: string, articleId: string, data: Omit<ResearchImage, 'id'>) =>
+  api.post<ResearchImage>(`/api/v1/admin/research/${articleId}/images`, data, auth(token)).then((r) => r.data);
+export const adminUpdateResearchImage = (token: string, id: string, data: Partial<Omit<ResearchImage, 'id'>>) =>
+  api.patch<ResearchImage>(`/api/v1/admin/research/images/${id}`, data, auth(token)).then((r) => r.data);
+export const adminDeleteResearchImage = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/research/images/${id}`, auth(token)).then((r) => r.data);
+
+export const adminGetResearchSources = (token: string, params?: Record<string, string>) =>
+  api.get<PaginatedResponse<ResearchSourceRow>>('/api/v1/admin/research/sources', { ...auth(token), params }).then((r) => r.data);
+export const adminCreateResearchSource = (token: string, data: Omit<ResearchSource, 'id'>) =>
+  api.post<ResearchSourceRow>('/api/v1/admin/research/sources', data, auth(token)).then((r) => r.data);
+export const adminUpdateResearchSource = (token: string, id: string, data: Omit<ResearchSource, 'id'>) =>
+  api.patch<ResearchSource>(`/api/v1/admin/research/sources/${id}`, data, auth(token)).then((r) => r.data);
+export const adminDeleteResearchSource = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/research/sources/${id}`, auth(token)).then((r) => r.data);
+export const adminLookupPubmed = (token: string, pmid: string) =>
+  api.get<{ pmid: string; doi: string | null; title: string; journal: string; year: number | null }>(`/api/v1/admin/research/sources/pubmed/${encodeURIComponent(pmid)}`, auth(token)).then((r) => r.data);
+
+export const adminGetResearchAuthors = (token: string) =>
+  api.get<{ data: ResearchAuthorRow[] }>('/api/v1/admin/research/authors', auth(token)).then((r) => r.data);
+export const adminCreateResearchAuthor = (token: string, data: Partial<ResearchAuthor>) =>
+  api.post<ResearchAuthor>('/api/v1/admin/research/authors', data, auth(token)).then((r) => r.data);
+export const adminUpdateResearchAuthor = (token: string, id: string, data: Partial<ResearchAuthor>) =>
+  api.patch<ResearchAuthor>(`/api/v1/admin/research/authors/${id}`, data, auth(token)).then((r) => r.data);
+export const adminDeleteResearchAuthor = (token: string, id: string) =>
+  api.delete(`/api/v1/admin/research/authors/${id}`, auth(token)).then((r) => r.data);
+
+/** The API's message for a failed admin call, with any per-field details. */
+export function apiError(e: unknown, fallback = 'Something went wrong'): { message: string; details: { path: string; message: string }[] } {
+  const data = (e as { response?: { data?: { error?: string; details?: { path: string; message: string }[] } } })?.response?.data;
+  return { message: data?.error ?? fallback, details: data?.details ?? [] };
+}

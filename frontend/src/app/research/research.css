@@ -1,0 +1,589 @@
+/*
+ * /research — Teliti Peptides' research section, measured from its source
+ * (AscComp apps/storefront: tokens.css, base.css, PostHub, PostList,
+ * PostPage, Prose, References, Breadcrumbs) and set in Ascend's identity:
+ * Outfit headings, Inter text, Ink/Paper neutrals, Cobalt for links (brand kit:
+ * Cobalt = links, navigation, editorial emphasis).
+ *
+ * Spacing, type steps, column widths and breakpoints are Teliti's, value for
+ * value. Everything is scoped under .rs; the admin's live preview imports this
+ * file too, so the preview is the page.
+ */
+
+.rs {
+  --rs-font-display: var(--font-outfit), system-ui, sans-serif;
+  --rs-font-text: var(--font-inter), system-ui, sans-serif;
+
+  --rs-fs-small: 14px;
+  --rs-fs-body: 16px;
+  --rs-fs-lead: 18px;
+  --rs-fs-h4: 18px;
+  --rs-fs-h3: 20px;
+  --rs-fs-h2: 28px;
+  --rs-fs-h1: 36px;
+  --rs-lh-tight: 1.06;
+  --rs-lh-snug: 1.2;
+  --rs-lh-text: 1.6;
+  --rs-track-display: -0.015em;
+  /* Teliti's 66ch in IBM Plex Sans (whose "0" is 0.6em). In Inter 66ch is ~5% wider, so the
+     same line length is set in em: 634 px of body text, 792 px of lead. */
+  --rs-measure: 39.6em;
+
+  --rs-ink: #0a0a0a;
+  --rs-ink-2: #525252;
+  --rs-line: #e5e5e5;
+  --rs-line-strong: #d4d4d4;
+  --rs-accent: #3155d9;
+  --rs-panel: #f5f5f5;
+  --rs-photo: #f5f5f5;
+
+  --rs-s1: 4px;
+  --rs-s2: 8px;
+  --rs-s3: 12px;
+  --rs-s4: 16px;
+  --rs-s5: 24px;
+  --rs-s6: 32px;
+  --rs-s7: 48px;
+  --rs-s8: 64px;
+  --rs-s9: 96px;
+  --rs-gutter: 16px;
+  --rs-header-h: 64px;
+  --rs-section-gap: var(--rs-s8);
+  --rs-radius: 3px;
+
+  color: var(--rs-ink);
+  font-family: var(--rs-font-text);
+  font-size: var(--rs-fs-body);
+  line-height: var(--rs-lh-text);
+  font-synthesis: none;
+}
+@media (min-width: 760px) {
+  .rs {
+    --rs-gutter: 32px;
+    --rs-fs-h2: 32px;
+    --rs-fs-h1: 40px;
+    --rs-section-gap: var(--rs-s9);
+  }
+}
+@media (min-width: 1200px) {
+  .rs {
+    --rs-gutter: 48px;
+    --rs-fs-lead: 20px;
+    --rs-fs-h3: 22px;
+    --rs-fs-h2: 36px;
+    --rs-fs-h1: 48px;
+    --rs-section-gap: 128px;
+  }
+}
+
+.rs p {
+  margin: 0;
+  text-wrap: pretty;
+}
+.rs h1,
+.rs h2,
+.rs h3,
+.rs h4 {
+  margin: 0;
+  font-family: var(--rs-font-display);
+  font-weight: 400;
+  letter-spacing: var(--rs-track-display);
+  line-height: var(--rs-lh-snug);
+  text-wrap: balance;
+}
+.rs h1 {
+  font-size: var(--rs-fs-h1);
+  line-height: var(--rs-lh-tight);
+  font-weight: 500;
+}
+.rs h2 {
+  font-size: var(--rs-fs-h2);
+  font-weight: 500;
+}
+.rs a {
+  color: inherit;
+  /* Tailwind's preflight removes link underlines; Teliti's links keep theirs. */
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+.rs a:hover {
+  text-decoration-color: var(--rs-accent);
+}
+.rs :focus-visible {
+  outline: 2px solid var(--rs-accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Teliti's footer sits a section gap below the page (Footer.astro margin-top: --section-gap);
+   Ascend's footer has no margin of its own, so the page carries it. */
+.rs-page {
+  padding-bottom: var(--rs-section-gap);
+}
+
+/* Aligned with the site header (max-w-7xl, px-4 sm:px-6 lg:px-8). */
+.rs-wrap {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+@media (min-width: 640px) {
+  .rs-wrap {
+    padding-inline: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .rs-wrap {
+    padding-inline: 2rem;
+  }
+}
+
+.rs-eyebrow {
+  font-size: var(--rs-fs-small);
+  font-weight: 500;
+  color: var(--rs-ink-2);
+}
+
+/* ── breadcrumbs ─────────────────────────────────────────────────────────── */
+.rs-crumbs {
+  contain: inline-size; /* never widens its container; the current page truncates instead */
+}
+.rs-crumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--rs-s2);
+  white-space: nowrap;
+  font-size: var(--rs-fs-small);
+  color: var(--rs-ink-2);
+}
+.rs-crumbs li[aria-current] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rs-crumbs li + li::before {
+  content: '/';
+  margin-right: var(--rs-s2);
+  color: var(--rs-line-strong);
+}
+.rs-crumbs a {
+  text-decoration: none;
+}
+.rs-crumbs a:hover {
+  text-decoration: underline;
+}
+
+/* ── hub: /research ──────────────────────────────────────────────────────── */
+.rs-hub {
+  display: grid;
+  gap: var(--rs-s5);
+  padding-block: var(--rs-s6);
+}
+.rs-hub__head {
+  display: grid;
+  gap: var(--rs-s6);
+  align-items: center;
+  padding-bottom: var(--rs-s5);
+  border-bottom: 1px solid var(--rs-line-strong);
+}
+.rs-hub__text {
+  display: grid;
+  gap: var(--rs-s4);
+}
+.rs-hub__art {
+  display: none;
+}
+@media (min-width: 1000px) {
+  .rs-hub__head {
+    grid-template-columns: 1fr 360px;
+  }
+  .rs-hub__art {
+    display: block;
+  }
+}
+.rs-hub__art img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.rs-hub__intro {
+  max-width: var(--rs-measure);
+  font-size: var(--rs-fs-lead);
+  color: var(--rs-ink-2);
+}
+
+.rs-posts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--rs-s5);
+}
+.rs-posts li {
+  position: relative;
+  display: grid;
+  gap: var(--rs-s2);
+  align-content: start;
+  padding-top: var(--rs-s4);
+  border-top: 1px solid var(--rs-line);
+}
+.rs-posts__kind {
+  font-size: var(--rs-fs-small);
+  color: var(--rs-ink-2);
+}
+.rs .rs-posts__title {
+  font-size: var(--rs-fs-h4);
+  font-weight: 500;
+}
+.rs-posts__title a {
+  color: var(--rs-ink);
+  text-decoration: none;
+}
+/* the whole item is the link's hit area */
+.rs-posts__title a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.rs-posts li:hover .rs-posts__title a {
+  text-decoration: underline;
+  text-decoration-color: var(--rs-accent);
+}
+.rs-posts__dek {
+  color: var(--rs-ink-2);
+  max-width: var(--rs-measure);
+}
+
+/* ── article: /research/[slug] ───────────────────────────────────────────── */
+/* One reading column, centred; on wide screens the contents list sits in the left margin. */
+.rs-post__grid {
+  --read: 680px;
+  display: grid;
+  grid-template-columns: minmax(0, var(--read));
+  justify-content: center;
+  padding-inline: var(--rs-gutter);
+}
+.rs-post__head {
+  display: grid;
+  gap: var(--rs-s4);
+  padding-top: var(--rs-s5);
+  padding-bottom: var(--rs-s6);
+}
+.rs-post__head h1 {
+  margin-top: var(--rs-s3);
+}
+.rs-post__dek {
+  font-size: var(--rs-fs-lead);
+  color: var(--rs-ink-2);
+}
+.rs-post__meta {
+  font-size: var(--rs-fs-small);
+  color: var(--rs-ink-2);
+}
+.rs-post__lead {
+  margin-inline: calc(var(--rs-gutter) * -1);
+}
+.rs-post__lead img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--rs-photo);
+}
+.rs-post__body {
+  padding-top: var(--rs-s6);
+  min-width: 0;
+}
+.rs-post__refs {
+  margin-top: var(--rs-s7);
+  display: grid;
+  gap: var(--rs-s4);
+}
+.rs .rs-post__refs h2 {
+  font-size: var(--rs-fs-h3);
+}
+
+.rs-post__toc {
+  padding-top: var(--rs-s6);
+}
+.rs-toc {
+  padding-block: var(--rs-s3);
+  border-block: 1px solid var(--rs-line);
+}
+.rs-toc__h {
+  font-size: var(--rs-fs-small);
+  font-weight: 500;
+  color: var(--rs-ink-2);
+  cursor: pointer;
+}
+.rs-toc ol {
+  list-style: none;
+  margin: var(--rs-s3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--rs-s2);
+  font-size: var(--rs-fs-small);
+}
+.rs-toc a {
+  display: block;
+  color: var(--rs-ink-2);
+  text-decoration: none;
+  line-height: var(--rs-lh-snug);
+}
+.rs-toc a:hover,
+.rs-toc a[aria-current] {
+  color: var(--rs-ink);
+}
+.rs-toc a[aria-current] {
+  font-weight: 500;
+}
+
+.rs-post__cards {
+  display: grid;
+  gap: var(--rs-s6);
+  margin-top: var(--rs-section-gap);
+  padding-top: var(--rs-s7);
+  border-top: 1px solid var(--rs-line);
+}
+.rs .rs-post__cards-h {
+  font-size: var(--rs-fs-h3);
+}
+/* The cards are Ascend's own product cards: their links keep the card's look, not the article's
+   underlined links. */
+.rs .rs-post__cards a {
+  text-decoration: none;
+}
+
+@media (min-width: 760px) {
+  .rs-post__lead {
+    margin-inline: 0;
+  }
+  .rs-post__lead img {
+    border-radius: var(--rs-radius);
+  }
+}
+@media (min-width: 1100px) {
+  .rs-post--toc {
+    grid-template-columns: minmax(0, 220px) minmax(0, var(--read)) minmax(0, 220px);
+    column-gap: var(--rs-s8);
+  }
+  .rs-post--toc > :not(.rs-post__toc) {
+    grid-column: 2;
+  }
+  .rs-post--toc .rs-post__toc {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    align-self: start;
+    position: sticky;
+    top: calc(var(--rs-header-h) + var(--rs-s6));
+    padding-top: var(--rs-s9);
+  }
+  .rs-post--toc .rs-toc {
+    padding: 0;
+    border: 0;
+  }
+  .rs-post--toc .rs-toc__h {
+    cursor: default;
+    list-style: none;
+  }
+  .rs-post--toc .rs-toc__h::-webkit-details-marker {
+    display: none;
+  }
+}
+
+/* ── prose ───────────────────────────────────────────────────────────────── */
+.rs-prose {
+  max-width: var(--rs-measure);
+  font-size: var(--rs-fs-body);
+  line-height: var(--rs-lh-text);
+}
+.rs-prose > * + * {
+  margin-top: 1em;
+}
+.rs-prose h2 {
+  margin-top: 2.2em;
+  font-size: var(--rs-fs-h3);
+  font-weight: 400;
+  scroll-margin-top: calc(var(--rs-header-h) + var(--rs-s5));
+}
+.rs-prose h3 {
+  margin-top: 1.8em;
+  font-size: var(--rs-fs-h4);
+  font-weight: 500;
+}
+.rs-prose h2 + *,
+.rs-prose h3 + * {
+  margin-top: 0.6em;
+}
+.rs-prose a {
+  color: var(--rs-accent);
+}
+.rs-prose ul,
+.rs-prose ol {
+  margin-bottom: 0;
+  padding-left: 1.2em;
+}
+.rs-prose ul {
+  list-style: disc;
+}
+.rs-prose ol {
+  list-style: decimal;
+}
+.rs-prose li + li {
+  margin-top: 0.35em;
+}
+.rs-prose strong {
+  font-weight: 600;
+}
+.rs-prose blockquote {
+  margin-inline: 0;
+  margin-bottom: 0;
+  padding-left: var(--rs-s5);
+  border-left: 1px solid var(--rs-line-strong);
+  font-family: var(--rs-font-display);
+  font-style: italic;
+  font-size: var(--rs-fs-h3);
+  line-height: var(--rs-lh-snug);
+}
+.rs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--rs-fs-small);
+}
+.rs-prose th,
+.rs-prose td {
+  text-align: left;
+  padding: var(--rs-s2) var(--rs-s3) var(--rs-s2) 0;
+  border-bottom: 1px solid var(--rs-line);
+  vertical-align: top;
+}
+.rs-prose hr {
+  border: 0;
+  border-top: 1px solid var(--rs-line);
+}
+.rs-prose code {
+  font-size: 0.92em;
+}
+/* The answer capsule ("The short answer: …") reads as a callout. */
+.rs-post__body .rs-prose > p:first-child:has(> strong:first-child) {
+  padding: var(--rs-s5);
+  border-left: 3px solid var(--rs-accent);
+  background: var(--rs-panel);
+  border-radius: 0 var(--rs-radius) var(--rs-radius) 0;
+}
+
+/* A photo placed in the text, mid-sentence included: the sentence breaks
+   around it and carries on underneath. The column's full width; never wider
+   than the stored file. */
+.rs-img {
+  display: block;
+  margin-block: var(--rs-s5);
+}
+.rs-img img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--rs-radius);
+  background: var(--rs-photo);
+}
+.rs-img__cap {
+  display: block;
+  margin-top: var(--rs-s2);
+  font-size: var(--rs-fs-small);
+  line-height: 1.45;
+  color: var(--rs-ink-2);
+}
+.rs-img__credit {
+  color: var(--rs-ink-2);
+  opacity: 0.85;
+}
+.rs-img__credit::before {
+  content: 'Credit: ';
+}
+.rs-img__cap .rs-img__credit:not(:first-child) {
+  margin-left: 0.25em;
+}
+
+/* ── cited studies ───────────────────────────────────────────────────────── */
+.rs-refs {
+  margin: 0;
+  padding-left: 1.4em;
+  list-style: decimal;
+  display: grid;
+  gap: var(--rs-s4);
+  max-width: var(--rs-measure);
+}
+.rs-ref__finding {
+  margin-bottom: var(--rs-s1) !important;
+}
+.rs-ref__cite {
+  font-size: var(--rs-fs-small);
+  color: var(--rs-ink-2);
+  overflow-wrap: anywhere;
+}
+.rs-ref__cite cite {
+  font-style: normal;
+  color: var(--rs-ink);
+}
+.rs-ref__journal {
+  font-style: italic;
+}
+
+/* A product card placed in the text: a compact row, not a full card. */
+.rs-prose__card {
+  margin-block: var(--rs-s5);
+  padding: var(--rs-s3);
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+}
+.rs-prose__card:hover {
+  border-color: var(--rs-line-strong);
+}
+.rs .rs-prose__card-link {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--rs-s4);
+  color: var(--rs-ink);
+  text-decoration: none;
+}
+.rs-prose__card img,
+.rs-prose__card-ph {
+  display: block;
+  width: 88px;
+  height: 110px;
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--rs-photo);
+}
+.rs-prose__card-meta {
+  display: grid;
+  gap: var(--rs-s1);
+  padding-right: var(--rs-s3);
+}
+.rs-prose__card-name {
+  font-weight: 500;
+}
+.rs-prose__card-link:hover .rs-prose__card-name {
+  text-decoration: underline;
+  text-decoration-color: var(--rs-accent);
+}
+.rs-prose__card-sub {
+  font-size: var(--rs-fs-small);
+  color: var(--rs-ink-2);
+}
+/* Admin preview only: a token pointing at nothing. */
+.rs-prose__card--missing,
+.rs-img--missing {
+  display: block;
+  padding: var(--rs-s3);
+  border: 1px dashed #dc2626;
+  border-radius: var(--rs-radius);
+  color: #dc2626;
+  font-size: var(--rs-fs-small);
+}

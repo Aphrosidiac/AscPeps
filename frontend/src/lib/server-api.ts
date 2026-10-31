@@ -1,4 +1,4 @@
-import type { Category, PaginatedResponse, Product, Insight, InsightComment } from '@/types';
+import type { Category, PaginatedResponse, Product, Insight, InsightComment, ResearchArticle, ResearchListItem } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
@@ -69,3 +69,23 @@ export const getInsightCommentsServer = (slug: string) =>
     { data: [] },
     ['insights']
   );
+
+export const getResearchListServer = () =>
+  getJson<{ data: ResearchListItem[] }>(`/api/v1/research`, { data: [] }, ['research']);
+
+/** The live article; or where its URL went (a rename or delete leaves a 301 or "gone"); or nothing. */
+export async function getResearchServer(slug: string): Promise<
+  { article: ResearchArticle } | { redirect: string } | { gone: true } | null
+> {
+  try {
+    const res = await fetch(`${API_URL}/api/v1/research/${encodeURIComponent(slug)}`, { next: { revalidate: 3600, tags: ['research'] } });
+    if (res.ok) return { article: (await res.json()) as ResearchArticle };
+    const body = (await res.json().catch(() => null)) as { details?: { path: string; message: string }[] } | null;
+    const moved = body?.details?.[0];
+    if (moved?.path === 'redirect') return { redirect: moved.message };
+    if (moved?.path === 'gone') return { gone: true };
+    return null;
+  } catch {
+    return null;
+  }
+}

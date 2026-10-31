@@ -42,6 +42,8 @@ import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
+import researchRoutes from './modules/research/research.routes.js';
+import adminResearchRoutes from './modules/admin/admin-research.routes.js';
 import adminCommentRoutes from './modules/admin/admin-comments.routes.js';
 import adminDeliveryRoutes from './modules/admin/admin-delivery.routes.js';
 import resendWebhookRoutes from './modules/webhooks/resend-webhook.routes.js';
@@ -199,6 +201,8 @@ await fastify.register(manualPayGatePlugin, {
 });
 await fastify.register(insightRoutes, { prefix: '/api/v1/insights' });
 await fastify.register(adminInsightRoutes, { prefix: '/api/v1/admin/insights' });
+await fastify.register(researchRoutes, { prefix: '/api/v1/research' });
+await fastify.register(adminResearchRoutes, { prefix: '/api/v1/admin/research' });
 await fastify.register(adminCommentRoutes, { prefix: '/api/v1/admin/comments' });
 await fastify.register(adminDeliveryRoutes, { prefix: '/api/v1/admin/delivery' });
 // Public — Resend's servers call this directly (see the route file for why

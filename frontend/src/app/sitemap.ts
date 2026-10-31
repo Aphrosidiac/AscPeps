@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { execSync } from 'child_process';
 import path from 'path';
-import { getProductsServer, getInsightsServer } from '@/lib/server-api';
+import { getProductsServer, getInsightsServer, getResearchListServer } from '@/lib/server-api';
 
 const BASE_URL = 'https://ascendpeptides.my';
 
@@ -42,9 +42,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const [{ data: products }, { data: insights }] = await Promise.all([
+    const [{ data: products }, { data: insights }, { data: research }] = await Promise.all([
       getProductsServer({ limit: 100 }),
       getInsightsServer({ limit: 100 }),
+      getResearchListServer(),
     ]);
 
     const productPages: MetadataRoute.Sitemap = products.map((p) => ({
@@ -61,7 +62,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     }));
 
-    return [...staticPages, ...productPages, ...insightPages];
+    // The hub exists only while something is published (an empty hub would be a thin page),
+    // and its lastmod is its newest article's.
+    const researchPages: MetadataRoute.Sitemap =
+      research.length === 0
+        ? []
+        : [
+            {
+              url: `${BASE_URL}/research`,
+              lastModified: new Date(Math.max(...research.map((r) => new Date(r.dateModified).getTime()))),
+              changeFrequency: 'weekly' as const,
+              priority: 0.7,
+            },
+            ...research.map((r) => ({
+              url: `${BASE_URL}/research/${r.slug}`,
+              lastModified: new Date(r.dateModified),
+              changeFrequency: 'monthly' as const,
+              priority: 0.6,
+            })),
+          ];
+
+    return [...staticPages, ...productPages, ...insightPages, ...researchPages];
   } catch {
     return staticPages;
   }

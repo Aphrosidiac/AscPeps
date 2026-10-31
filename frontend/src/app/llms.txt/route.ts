@@ -1,5 +1,5 @@
 import { formatPrice, formatShortDate } from '@/lib/utils';
-import { getProductsServer, getSettingsServer, getInsightsServer } from '@/lib/server-api';
+import { getProductsServer, getSettingsServer, getInsightsServer, getResearchListServer } from '@/lib/server-api';
 import { hasEastMinimum, eastFeeDiffers } from '@/lib/shipping-region';
 
 const BASE_URL = 'https://ascendpeptides.my';
@@ -42,6 +42,9 @@ export async function GET() {
     return `- [${p.name}](${BASE_URL}/products/${p.slug}): ${price}${cat}`;
   });
 
+  const { data: research } = await getResearchListServer();
+  const researchLines = research.map((r) => `- [${r.title}](${BASE_URL}/research/${r.slug}): ${r.dek}`);
+
   const insightLines = insights.map((i) => {
     const date = i.publishedAt ?? i.createdAt;
     return `- [${i.title}](${BASE_URL}/insights/${i.slug}): ${i.category} — ${formatShortDate(date)}, by ${i.authorName}`;
@@ -54,6 +57,7 @@ export async function GET() {
     '',
     '## Key pages',
     `- [Shop all peptides](${BASE_URL}/products): Full catalog with live MYR pricing and stock`,
+    ...(research.length > 0 ? [`- [Research summaries](${BASE_URL}/research): What the published studies report about each compound, every finding linked to its DOI or PubMed record`] : []),
     `- [Insights](${BASE_URL}/insights): Peptide research commentary and product updates, written by Asywa, Founder & CEO of Ascend MY`,
     `- [Reconstitution dose calculator](${BASE_URL}/calculator): Interactive BAC water / concentration calculator`,
     `- [Peptide guide](${BASE_URL}/guide): Reconstitution, storage and handling`,
@@ -67,6 +71,7 @@ export async function GET() {
     '',
     '## Products',
     ...productLines,
+    ...(researchLines.length > 0 ? ['', '## Research summaries', ...researchLines] : []),
     ...(insightLines.length > 0 ? ['', '## Insights', ...insightLines] : []),
     '',
     '## Key facts',

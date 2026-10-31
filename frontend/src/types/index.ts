@@ -997,3 +997,98 @@ export interface PaymentAnalytics {
   timing: { medianMinutesToPay: number | null; medianMinutesToFirstOpen: number | null };
   failedOrders: PaymentFailedOrderRow[];
 }
+
+// ─── Research (/research) ────────────────────────────────────────────────────
+
+export interface ResearchAuthor {
+  id: string;
+  slug: string;
+  name: string;
+  role: string | null;
+  credentials: string | null;
+  bio: string | null;
+  sameAs: string[];
+}
+
+export interface ResearchSource {
+  id: string;
+  pmid: string | null;
+  doi: string | null;
+  url: string | null;
+  journal: string;
+  year: number;
+  title: string;
+}
+
+export interface ResearchCitation {
+  position: number;
+  finding: string;
+  sourceId: string;
+  source: ResearchSource;
+}
+
+export interface ResearchImage {
+  id: string;
+  url: string;
+  width: number;
+  height: number;
+  alt: string;
+  caption: string | null;
+  credit: string | null;
+  creditUrl: string | null;
+}
+
+export interface ResearchListItem {
+  id: string;
+  slug: string;
+  title: string;
+  dek: string;
+  datePublished: string;
+  dateModified: string;
+  updatedAt: string;
+}
+
+/** The fields an article shows, shared by the live copy and the admin draft. */
+export interface ResearchContent {
+  slug: string;
+  title: string;
+  dek: string;
+  body: string;
+  seoTitle: string;
+  seoDescription: string;
+  leadImageUrl: string | null;
+  leadImageAlt: string;
+  leadImageWidth: number | null;
+  leadImageHeight: number | null;
+  relatedProductIds: string[];
+  author: ResearchAuthor | null;
+  reviewer: ResearchAuthor | null;
+  citations: ResearchCitation[];
+  images: ResearchImage[];
+}
+
+/** What /research/[slug] serves: the copy made at the last publish. */
+export interface ResearchArticle extends ResearchContent {
+  id: string;
+  datePublished: string;
+  dateModified: string;
+  updatedAt: string;
+}
+
+export type ResearchPublishState = 'draft' | 'live' | 'changed' | 'excluded';
+
+/** The admin's draft. */
+export interface ResearchDraft extends ResearchContent {
+  id: string;
+  path: string;
+  authorId: string | null;
+  reviewerId: string | null;
+  datePublished: string | null;
+  liveAt: string | null;
+  slugLockedAt: string | null;
+  publishState: ResearchPublishState;
+  livePath: string | null;
+  issues: { path: string; message: string }[];
+  createdAt: string;
+  updatedAt: string;
+}
