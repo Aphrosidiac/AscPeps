@@ -153,12 +153,16 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     // Re-encode to WebP regardless of source format — smaller files on disk
     // and one consistent format for every stored product image.
     const filename = `${id}.webp`;
+    // The stored file's size, returned so a caller placing the image in text
+    // (research articles) can give its <img> width/height and never shift layout.
+    let width: number;
+    let height: number;
     try {
-      await sharp(tmppath)
+      ({ width, height } = await sharp(tmppath)
         .rotate() // honour EXIF orientation before resizing, or a phone photo lands sideways
         .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
-        .toFile(path.join(uploadsDir, filename));
+        .toFile(path.join(uploadsDir, filename)));
     } catch {
       return reply.status(400).send({ error: 'Failed to process image.' });
     }
@@ -176,6 +180,6 @@ export default async function adminUploadRoutes(fastify: FastifyInstance) {
     await unlink(tmppath).catch(() => {});
 
     const url = `/uploads/products/${filename}`;
-    return { url, filename };
+    return { url, filename, width, height };
   });
 }
