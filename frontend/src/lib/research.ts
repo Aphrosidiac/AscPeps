@@ -12,6 +12,9 @@ export const RESEARCH_HUB = {
   title: 'Peptide Research Summaries With Cited Studies',
   description:
     'Summaries of the published research on the compounds Ascend MY sells, each finding linked to its study on PubMed or by DOI.',
+  // The illustration beside the heading (Teliti's layout: 360 px from 1000 px up). None until Ascend has its
+  // own art; Teliti's may not ship here (its DECISIONS #19), so the heading takes the full width meanwhile.
+  art: null as { src: string; srcSet: string; width: number; height: number } | null,
 };
 
 /** "26 October 2026", in Malaysian time, and the ISO day for <time datetime>. */

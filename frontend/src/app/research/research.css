@@ -198,7 +198,7 @@
   display: none;
 }
 @media (min-width: 1000px) {
-  .rs-hub__head {
+  .rs-hub__head:has(.rs-hub__art) {
     grid-template-columns: 1fr 360px;
   }
   .rs-hub__art {

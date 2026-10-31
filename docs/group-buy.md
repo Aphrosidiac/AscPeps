@@ -6,6 +6,19 @@ runs for the window the team sets; customers order at the batch's tier prices
 everything ships together once the batch closes and the stock arrives. Every
 control lives on the batch, so running the next one is a duplicate and an edit.
 
+## Switch (off on the live site)
+
+Group Buy ships switched off: **pre-orders are live, Group Buy is not**. Both apps
+read one flag, off unless set to `true`:
+
+| App | Flag | Off means |
+|---|---|---|
+| API (`backend/.env`) | `GROUP_BUY_ENABLED` | `/api/v1/group-buys` and `/api/v1/admin/group-buys` are not registered, the notice sweep doesn't run, checkout refuses a `groupBuyId` |
+| Web (`frontend/.env`, read at build time) | `NEXT_PUBLIC_GROUP_BUY_ENABLED` | no header button, `/group-buy/*` and `/admin/group-buys` 404, no Admin menu entry, no banner/popup/home section, account screens don't mention Group Buy ("My orders" becomes "Track an order") |
+
+To launch: set both to `true` (and in local dev to work on it), then deploy so the
+frontend rebuilds. The tables exist either way (migration `20261031120000_preorder_group_buy`).
+
 ## Admin → Sales → Group Buys
 
 | Tab | What it controls |

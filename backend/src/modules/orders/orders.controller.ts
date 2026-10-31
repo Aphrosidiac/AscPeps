@@ -245,6 +245,7 @@ export async function createOrder(
     let groupBuy: GroupBuyForOrder | null = null;
     try {
       if (data.groupBuyId) {
+        if (!env.GROUP_BUY_ENABLED) throw { statusCode: 400, message: 'Group Buy is not open.' };
         ({ groupBuy, lines } = await resolveGroupBuyLines(tx, data.groupBuyId, data.items, now));
         if (data.paymentMethod === 'WHATSAPP' && !groupBuy.allowWhatsapp) {
           throw { statusCode: 400, message: 'Group Buy orders are paid online. Please choose another payment method.' };

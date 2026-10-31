@@ -1,3 +1,4 @@
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 import type { Category, PaginatedResponse, Product, Insight, InsightComment, ResearchArticle, ResearchListItem } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
@@ -91,14 +92,14 @@ export async function getResearchServer(slug: string): Promise<
 }
 
 // Group Buy — short cache: the joined counter and batch phase move in minutes.
-export const getGroupBuysServer = () =>
-  getJsonFresh<import('@/types').GroupBuySummary[]>(`/api/v1/group-buys`, []);
+export const getGroupBuysServer = async () =>
+  GROUP_BUY_ENABLED ? getJsonFresh<import('@/types').GroupBuySummary[]>(`/api/v1/group-buys`, []) : [];
 
-export const getGroupBuyServer = (slug: string) =>
-  getJsonFresh<import('@/types').GroupBuyDetail | null>(`/api/v1/group-buys/${encodeURIComponent(slug)}`, null);
+export const getGroupBuyServer = async (slug: string) =>
+  GROUP_BUY_ENABLED ? getJsonFresh<import('@/types').GroupBuyDetail | null>(`/api/v1/group-buys/${encodeURIComponent(slug)}`, null) : null;
 
-export const getGroupBuyPromoServer = () =>
-  getJsonFresh<import('@/types').GroupBuyPromo>(`/api/v1/group-buys/promo`, { banner: null, popup: null, home: null });
+export const getGroupBuyPromoServer = async (): Promise<import('@/types').GroupBuyPromo> =>
+  GROUP_BUY_ENABLED ? getJsonFresh(`/api/v1/group-buys/promo`, { banner: null, popup: null, home: null }) : { banner: null, popup: null, home: null };
 
 async function getJsonFresh<T>(path: string, fallback: T): Promise<T> {
   try {

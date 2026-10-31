@@ -54,19 +54,21 @@ export default async function ResearchHubPage() {
           </div>
           {/* Decorative (the text beside it carries the meaning): empty alt, set size, and low priority so it
               never competes with the heading that is this page's LCP. */}
-          <picture className="rs-hub__art">
-            <img
-              src="/research-standin/research-960.webp"
-              srcSet="/research-standin/research-480.webp 480w, /research-standin/research-720.webp 720w, /research-standin/research-960.webp 960w"
-              sizes="(min-width: 1000px) 360px, 0px"
-              width={964}
-              height={766}
-              alt=""
-              loading="eager"
-              decoding="async"
-              fetchPriority="low"
-            />
-          </picture>
+          {RESEARCH_HUB.art && (
+            <picture className="rs-hub__art">
+              <img
+                src={RESEARCH_HUB.art.src}
+                srcSet={RESEARCH_HUB.art.srcSet}
+                sizes="(min-width: 1000px) 360px, 0px"
+                width={RESEARCH_HUB.art.width}
+                height={RESEARCH_HUB.art.height}
+                alt=""
+                loading="eager"
+                decoding="async"
+                fetchPriority="low"
+              />
+            </picture>
+          )}
         </div>
         <ul className="rs-posts">
           {articles.map((a) => (

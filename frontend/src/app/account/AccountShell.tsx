@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 
 /**
  * Shared chrome for the /account and /account/verify screens (sign in and
@@ -30,11 +31,23 @@ export function AccountShell({
       {footer && <div className="mt-5 text-sm text-text-muted text-center">{footer}</div>}
 
       <p className="mt-8 text-xs text-text-muted leading-relaxed text-center">
-        Your account follows your{' '}
-        <Link href="/group-buy/orders" className="underline hover:text-text-secondary transition-colors">
-          Group Buy orders
-        </Link>{' '}
-        and lets you comment on Insights. Buying as a guest still works.
+        {GROUP_BUY_ENABLED ? (
+          <>
+            Your account follows your{' '}
+            <Link href="/group-buy/orders" className="underline hover:text-text-secondary transition-colors">
+              Group Buy orders
+            </Link>{' '}
+            and lets you comment on Insights. Buying as a guest still works.
+          </>
+        ) : (
+          <>
+            Your account lets you comment on{' '}
+            <Link href="/insights" className="underline hover:text-text-secondary transition-colors">
+              Insights
+            </Link>
+            . Buying as a guest still works.
+          </>
+        )}
       </p>
     </div>
   );

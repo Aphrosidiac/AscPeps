@@ -147,6 +147,10 @@ const envSchema = z.object({
   // stop commands are the two sudo lines deploy/abby-browser/sudoers allows.
   // Empty BROWSER_START_CMD = the browser is expected to be running already.
   AGENT_BROWSER: z.enum(['on', 'off']).default('off'),
+  // Group Buy is built but not launched: off = its public and admin routes are
+  // not registered, its notice sweep doesn't run and checkout refuses a
+  // groupBuyId. The frontend's NEXT_PUBLIC_GROUP_BUY_ENABLED matches it.
+  GROUP_BUY_ENABLED: envBool(false),
   BROWSER_CDP_URL: z.string().default('http://127.0.0.1:9222'),
   BROWSER_START_CMD: z.string().default(''),
   BROWSER_STOP_CMD: z.string().default(''),

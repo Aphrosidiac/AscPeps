@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { memberVerifyEmail } from '@/lib/api';
 import { AccountShell } from '../AccountShell';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 
 type State = 'working' | 'done' | 'failed';
 
@@ -67,13 +68,15 @@ export function VerifyClient() {
       <div className="text-center py-2">
         <CheckCircle2 className="w-8 h-8 text-success mx-auto mb-3" />
         <p className="text-sm text-text-secondary leading-relaxed">
-          You&apos;re all set. Your Group Buy orders and reward codes now show in your account, and you can comment on Insights.
+          {GROUP_BUY_ENABLED
+            ? 'You’re all set. Your Group Buy orders and reward codes now show in your account, and you can comment on Insights.'
+            : 'You’re all set. You can now comment on Insights.'}
         </p>
         <Link
-          href="/group-buy/orders"
+          href={GROUP_BUY_ENABLED ? '/group-buy/orders' : '/account'}
           className="inline-block mt-5 text-sm text-text-primary underline hover:text-primary transition-colors"
         >
-          See my orders
+          {GROUP_BUY_ENABLED ? 'See my orders' : 'Go to my account'}
         </Link>
       </div>
     </AccountShell>

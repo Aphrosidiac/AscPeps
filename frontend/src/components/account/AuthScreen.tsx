@@ -10,6 +10,7 @@ import { setMemberSession } from '@/lib/member-session';
 import { useNow } from '@/lib/use-now';
 import { signupGroupBuy } from '@/lib/group-buy-api';
 import { countdown, rewardOff } from '@/lib/group-buy';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 import { safeNextPath } from '@/app/account/safe-next';
 import { Field, PasswordField, MIN_PASSWORD, apiError, inputCls } from './fields';
 
@@ -24,12 +25,14 @@ const ROUTES: Record<Where, Record<'signin' | 'signup' | 'forgot', string>> = {
 
 // Everything here is something an account really does today — keep it that
 // way: no promises the system doesn't keep.
-const PERKS = [
-  'Every Group Buy order in one place, with its live batch timeline',
-  'Your name and email filled in at checkout',
-  'Sign-up reward codes shown on screen, not only in your inbox',
-  'Comment on Insights articles',
-];
+const PERKS = GROUP_BUY_ENABLED
+  ? [
+      'Every Group Buy order in one place, with its live batch timeline',
+      'Your name and email filled in at checkout',
+      'Sign-up reward codes shown on screen, not only in your inbox',
+      'Comment on Insights articles',
+    ]
+  : ['Your name and email filled in at checkout', 'Comment on Insights articles'];
 
 function rewardWhere(r: NonNullable<AuthBatch['reward']>) {
   return r.scope === 'GROUP_BUY' ? 'your batch order' : r.scope === 'STORE' ? 'your next store order' : 'your next order';
@@ -133,9 +136,11 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
                   {signup ? 'Create your free account' : 'Welcome back'}
                 </h1>
                 <p className="mt-1.5 hidden text-[15px] leading-relaxed text-[#0A0A0A]/60 sm:block">
-                  {signup
-                    ? 'Follow your Group Buy orders and keep your rewards.'
-                    : 'See your orders, batch timelines and rewards.'}
+                  {!GROUP_BUY_ENABLED
+                    ? 'Your details filled in at checkout, and comments on Insights.'
+                    : signup
+                      ? 'Follow your Group Buy orders and keep your rewards.'
+                      : 'See your orders, batch timelines and rewards.'}
                 </p>
 
                 <form onSubmit={submit} className="mt-5 space-y-2.5">

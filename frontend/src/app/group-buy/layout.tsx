@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { DM_Mono } from 'next/font/google';
+import { notFound } from 'next/navigation';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 import { PortalShell } from './PortalShell';
 import './portal.css';
 
@@ -13,5 +15,6 @@ export const metadata: Metadata = {
 // The Group Buy portal has its own chrome (SiteChrome leaves /group-buy alone),
 // built on FF Ops' client-portal structure in the Ascend palette — portal.css.
 export default function GroupBuyLayout({ children }: { children: React.ReactNode }) {
+  if (!GROUP_BUY_ENABLED) notFound();
   return <PortalShell className={mono.variable}>{children}</PortalShell>;
 }

@@ -2,10 +2,13 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { AuthScreen } from '@/components/account/AuthScreen';
 import { pickAuthBatch } from '@/components/account/auth-batch';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 
 export const metadata: Metadata = {
   title: 'Create an account',
-  description: 'Create a free Ascend MY account to follow your orders, Group Buy batches and rewards.',
+  description: GROUP_BUY_ENABLED
+    ? 'Create a free Ascend MY account to follow your orders, Group Buy batches and rewards.'
+    : 'Create a free Ascend MY account.',
   robots: { index: false, follow: true },
 };
 

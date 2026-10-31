@@ -16,6 +16,7 @@ import {
 } from '@/lib/api';
 import { clearMemberSession, setMemberSession, updateMemberCache, useMemberSession } from '@/lib/member-session';
 import { Field, MIN_PASSWORD, PasswordField, apiError, inputCls } from './fields';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 
 const SIGN_IN: Record<AccountWhere, { signin: string; signup: string }> = {
   store: { signin: '/account/login', signup: '/account/register' },
@@ -96,8 +97,8 @@ function Identity({ member, onSignOut }: { member: Member; onSignOut: () => void
           : <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F59E0B]/15 px-2.5 py-1 text-xs font-medium text-[#FBBF24]"><AlertCircle className="h-3.5 w-3.5" />Email not confirmed</span>}
       </p>
       <div className="mt-6 grid gap-2 border-t border-white/10 pt-5">
-        <Link href="/group-buy/orders" className="group flex h-11 items-center gap-2.5 rounded-xl bg-white/[0.06] px-3.5 text-sm font-medium hover:bg-white/[0.1]">
-          <Package className="h-4 w-4 text-white/60" />My orders
+        <Link href={GROUP_BUY_ENABLED ? '/group-buy/orders' : '/track'} className="group flex h-11 items-center gap-2.5 rounded-xl bg-white/[0.06] px-3.5 text-sm font-medium hover:bg-white/[0.1]">
+          <Package className="h-4 w-4 text-white/60" />{GROUP_BUY_ENABLED ? 'My orders' : 'Track an order'}
           <ArrowRight className="ml-auto h-4 w-4 text-white/40 transition-transform duration-300 group-hover:translate-x-[3px]" />
         </Link>
         <button type="button" onClick={onSignOut} className="flex h-11 items-center gap-2.5 rounded-xl px-3.5 text-sm font-medium text-white/70 hover:bg-white/[0.06] hover:text-white cursor-pointer">

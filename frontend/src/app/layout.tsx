@@ -7,7 +7,7 @@ import { PreorderProvider } from '@/lib/preorder';
 import { parsePreorderSettings } from '@/lib/preorder-rules';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { PostHogPageView } from '@/components/PostHogPageView';
-import { getSettingsServer, getProductsServer, getGroupBuyPromoServer } from '@/lib/server-api';
+import { getSettingsServer, getProductsServer, getGroupBuyPromoServer, getResearchListServer } from '@/lib/server-api';
 import './globals.css';
 
 const inter = Inter({
@@ -110,7 +110,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [settings, catalog, groupBuyPromo] = await Promise.all([getSettingsServer(), getProductsServer({ limit: 100 }), getGroupBuyPromoServer()]);
+  const [settings, catalog, groupBuyPromo, research] = await Promise.all([
+    getSettingsServer(),
+    getProductsServer({ limit: 100 }),
+    getGroupBuyPromoServer(),
+    getResearchListServer(),
+  ]);
   const announcementEnabled = settings.announcement_enabled === 'true' && !!settings.announcement_text;
 
   // Real min-max price range for Organization.priceRange, computed from the
@@ -156,6 +161,7 @@ gtag('config', 'G-4PHY1Z9BHD');`}
               announcementText={settings.announcement_text || ''}
               newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
               groupBuyPromo={groupBuyPromo}
+              researchLive={research.data.length > 0}
               newsletterPopupHeading={settings.newsletter_popup_heading || 'Reconstitution reference, free'}
               newsletterPopupBody={
                 settings.newsletter_popup_body ||

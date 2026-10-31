@@ -13,7 +13,7 @@ studies from a shared library, and a draft → publish model.
 
 | Route | File | Notes |
 |---|---|---|
-| `/research` | `frontend/src/app/research/page.tsx` | Hub: title, intro, illustration, one row per live article. 404 while nothing is live (an empty hub would be a thin page). JSON-LD: CollectionPage + ItemList + BreadcrumbList |
+| `/research` | `frontend/src/app/research/page.tsx` | Hub: title, intro, illustration (`RESEARCH_HUB.art`; none yet, so the heading runs full width), one row per live article. 404 while nothing is live (an empty hub would be a thin page), and the header's Research link only shows once an article is live. JSON-LD: CollectionPage + ItemList + BreadcrumbList |
 | `/research/[slug]` | `frontend/src/app/research/[slug]/page.tsx` | Article. A renamed or deleted URL 308s to where it went (one hop); "gone" answers 404 (the App Router has no 410) |
 
 - The look is Teliti's, measured: spacing, type steps, column widths (680 px reading column, 220 px sticky
@@ -92,4 +92,5 @@ SeoFields, ImageField, MultiPick, ProductCardPicker, MarkdownEditor.
 lead images, live copies with Teliti's dates). **Local only.** Teliti's DECISIONS #19 forbids copied copy
 or photos between the two brands, and the same text on both sites would compete with itself: rewrite
 every article and replace the lead images (they carry Teliti's logo) before anything here goes live. The
-hub illustration in `frontend/public/research-standin/` is Teliti's art, also a stand-in, not committed.
+hub illustration used locally (`frontend/public/research-standin/`) is Teliti's art, not committed;
+`RESEARCH_HUB.art` stays null until Ascend has its own.

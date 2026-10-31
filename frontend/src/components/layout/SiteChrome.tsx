@@ -19,6 +19,8 @@ interface SiteChromeProps {
   newsletterPopupBody: string;
   /** What Group Buy shows on the store right now (Admin → Group Buys → Promotion). */
   groupBuyPromo?: GroupBuyPromo;
+  /** At least one research article is live: the header links to /research. */
+  researchLive?: boolean;
   children: React.ReactNode;
 }
 
@@ -33,6 +35,7 @@ export function SiteChrome({
   newsletterPopupHeading,
   newsletterPopupBody,
   groupBuyPromo,
+  researchLive,
   children,
 }: SiteChromeProps) {
   const pathname = usePathname();
@@ -70,7 +73,7 @@ export function SiteChrome({
         ? <GroupBuyBanner banner={groupBuyPromo.banner} />
         : <AnnouncementBar enabled={announcementEnabled} text={announcementText} />}
       <PendingPaymentBar />
-      <Navbar />
+      <Navbar researchLive={researchLive} />
       <main className="flex-1">{children}</main>
       <Footer />
       <WhatsAppButton raised={isProductDetail} />

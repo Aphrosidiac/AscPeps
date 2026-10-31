@@ -7,10 +7,11 @@ import Image from 'next/image';
 import { ShoppingCart, Menu, X, Search, User, Users, ArrowRight } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
+import { GROUP_BUY_ENABLED } from '@/lib/features';
 
 const EASE = 'cubic-bezier(0.16,1,0.3,1)';
 
-export function Navbar() {
+export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
   const { itemCount } = useCart();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -29,7 +30,7 @@ export function Navbar() {
 
   const links = [
     { href: '/products', label: 'Products' },
-    { href: '/research', label: 'Research' },
+    ...(researchLive ? [{ href: '/research', label: 'Research' }] : []),
     { href: '/insights', label: 'Insights' },
     { href: '/calculator', label: 'Calculator' },
     { href: '/track', label: 'Track Order' },
@@ -138,7 +139,7 @@ export function Navbar() {
             {/* Group Buy is always one tap away, phones included: it never
                 folds into the menu, even with no batch open (the page then
                 says when the next one starts). */}
-            <Link
+            {GROUP_BUY_ENABLED && <Link
               href="/group-buy"
               className="group mr-0.5 sm:mr-2 inline-flex h-9 items-center gap-1 sm:gap-1.5 rounded-full bg-[#22C55E] px-2 sm:px-4 text-xs sm:text-sm font-semibold text-[#0A0A0A] whitespace-nowrap transition-colors hover:bg-[#1eb455]"
             >
@@ -146,7 +147,7 @@ export function Navbar() {
               Group Buy
               <span className="hidden lg:inline rounded-full bg-[#0A0A0A]/10 px-1.5 py-px text-[11px] font-medium">Bulk</span>
               <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 transition-transform duration-300 group-hover:translate-x-[3px]" />
-            </Link>
+            </Link>}
 
             {!searchOpen && (
               <button
