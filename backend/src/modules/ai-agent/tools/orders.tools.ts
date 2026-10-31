@@ -1,3 +1,4 @@
+import { getPreorderSettings } from '../../../utils/preorder.js';
 import type { AgentTool } from '../tool-kit.js';
 import { resolveOrderLines, linesSubtotal, OrderLineError, groupOrderItems, isIncludedItem } from '../../../utils/order-lines.js';
 import { audited, clampLimit, listResult, money, parseDate, rm, summaryOnly, toCents } from '../tool-kit.js';
@@ -221,12 +222,15 @@ async function priceOrderPreview(prisma: any, input: any) {
   // confirmation shows exactly what the order will hold.
   let bundled;
   try {
-    bundled = await resolveOrderLines(prisma, resolved.map((r) => ({ variantId: r.variantId, quantity: r.quantity })));
+    bundled = await resolveOrderLines(prisma, resolved.map((r) => ({ variantId: r.variantId, quantity: r.quantity })), {
+      preorder: await getPreorderSettings(prisma),
+    });
   } catch (err) {
     if (err instanceof OrderLineError) throw new Error(err.message);
     throw err;
   }
-  const lines = bundled.map((l) => ({ variantId: l.variantId, quantity: l.quantity, name: l.name, code: l.code, unitPrice: l.unitPrice }));
+  // preorderQty > 0: that many units are bought beyond stock and ship on the restock.
+  const lines = bundled.map((l) => ({ variantId: l.variantId, quantity: l.quantity, name: l.name, code: l.code, unitPrice: l.unitPrice, ...(l.preorderQty ? { preorderQty: l.preorderQty } : {}) }));
   const autoAdded = bundled.flatMap((l) => l.includes.map((i) => ({ variantId: i.variantId, quantity: i.quantity, name: i.name, code: i.code, unitPrice: i.unitPrice })));
   const subtotal = linesSubtotal(bundled);
 

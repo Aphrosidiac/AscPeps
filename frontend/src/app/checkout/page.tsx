@@ -1,10 +1,11 @@
 'use client';
+import Image from 'next/image';
 
 import { useState, useRef, useEffect } from 'react';
 import { includesSummary, lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag } from 'lucide-react';
+import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
@@ -17,7 +18,9 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 import { rememberPendingPayment } from '@/lib/pending-payment';
+import { forgetGroupBuyCheckout } from '@/lib/group-buy';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
+import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
 
@@ -128,6 +131,7 @@ const redirectTo = (url: string) => {
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clearCart, hydrated } = useCart();
+  const { leadTime: preorderLead } = usePreorder();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<{ orderNumber: string; whatsappUrl?: string } | null>(null);
   const [error, setError] = useState('');
@@ -356,6 +360,9 @@ export default function CheckoutPage() {
         if (paymentMethod === 'MANUAL') {
           rememberPendingPayment({ url: result.paymentUrl, orderNumber: result.order.orderNumber });
         }
+        // An abandoned Group Buy payment from earlier would otherwise make the
+        // success page treat this store order as the batch one.
+        forgetGroupBuyCheckout();
         redirectTo(result.paymentUrl);
         return;
       }
@@ -676,9 +683,9 @@ export default function CheckoutPage() {
             <div className="space-y-3 mb-4">
               {items.map((item) => (
                 <div key={lineIdOf(item)} className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="relative w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                     {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                      <Image src={item.imageUrl} alt={item.name} fill sizes="40px" className="object-cover" />
                     ) : (
                       <span className="w-full text-center text-[7px] leading-tight font-bold text-text-muted px-0.5 line-clamp-2 break-words">{item.code}</span>
                     )}
@@ -686,6 +693,9 @@ export default function CheckoutPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-display font-bold truncate">{item.code}</p>
                     <p className="text-xs text-text-muted truncate">{item.name} &middot; Qty: {item.quantity}</p>
+                    {preorderUnits(item.quantity, item.stock, item.preorder) > 0 && (
+                      <p className="text-xs font-medium text-text-primary">{preorderLabel(item.quantity, item.stock)}</p>
+                    )}
                     {(item.includes ?? []).length > 0 && (
                       <p className="text-xs text-text-muted line-clamp-2">Includes {includesSummary(item)}</p>
                     )}
@@ -694,6 +704,13 @@ export default function CheckoutPage() {
                 </div>
               ))}
             </div>
+
+            {items.some((i) => preorderUnits(i.quantity, i.stock, i.preorder) > 0) && (
+              <div className="flex gap-2 rounded-lg border border-border bg-surface-elevated/60 px-3 py-2.5 mb-4 text-xs text-text-secondary leading-relaxed">
+                <Clock className="w-4 h-4 shrink-0 text-text-primary" aria-hidden="true" />
+                <p><span className="font-semibold text-text-primary">Includes a pre-order.</span> Your order ships together in {preorderLead}, when the restock lands.</p>
+              </div>
+            )}
 
             {/* Discount Code */}
             <div className="border-t border-border pt-4 mb-4">

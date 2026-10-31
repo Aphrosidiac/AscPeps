@@ -16,6 +16,8 @@ import { isEastMalaysia, parseEastMalaysiaMinOrder, eastMalaysiaMinOrderMessage,
 import { parseTracking } from '../../utils/courier.js';
 import { MANUALPAY_GATEWAY, isManualPayEnabled } from '../../plugins/manualpay.js';
 import { resolveManualDiscount, type ManualDiscountInput } from '../../utils/manual-discount.js';
+import { getPreorderSettings } from '../../utils/preorder.js';
+import { resolveGroupBuyLines, GroupBuyOrderError, type GroupBuyForOrder } from '../../utils/group-buy.js';
 
 const createOrderSchema = z.object({
   customerName: z.string().min(1),
@@ -39,10 +41,13 @@ const createOrderSchema = z.object({
   // nothing and a sending domain worth less.
   subscribe: z.boolean().optional(),
   idempotencyKey: z.string().min(8).max(100).optional(),
+  // A Group Buy order: items are priced from the batch's tiers and their
+  // `quantity` is in the batch's sell units (kits or vials). See utils/group-buy.ts.
+  groupBuyId: z.string().optional(),
   items: z.array(
     z.object({
       variantId: z.string(),
-      quantity: z.number().int().min(1).max(100),
+      quantity: z.number().int().min(1).max(10000),
       // Optional INCLUDED add-ons ticked for this line (see utils/order-lines.ts).
       addOnIds: z.array(z.string()).max(20).optional(),
     })
@@ -59,6 +64,11 @@ const createOrderSchema = z.object({
   // Cap total units per order — an unauthenticated checkout (especially
   // WhatsApp, which needs no payment) must not be able to reserve the whole
   // inventory in one request.
+  // A Group Buy batch sets its own cap (maxUnitsPerOrder), checked with the batch.
+  if (data.groupBuyId) return;
+  if (data.items.some((i) => i.quantity > 100)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Up to 100 of one item per order. Please contact us for bulk orders.' });
+  }
   const totalQuantity = data.items.reduce((sum, i) => sum + i.quantity, 0);
   if (totalQuantity > 50) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Order exceeds the maximum of 50 items. Please contact us for bulk orders.' });
@@ -232,13 +242,22 @@ export async function createOrder(
     // per variant across all of them; see utils/order-lines.ts.
     const now = new Date();
     let lines: ResolvedLine[];
+    let groupBuy: GroupBuyForOrder | null = null;
     try {
-      lines = await resolveOrderLines(tx, data.items, {
-        now,
-        warn: (msg, detail) => fastify.log.warn(detail, msg),
-      });
+      if (data.groupBuyId) {
+        ({ groupBuy, lines } = await resolveGroupBuyLines(tx, data.groupBuyId, data.items, now));
+        if (data.paymentMethod === 'WHATSAPP' && !groupBuy.allowWhatsapp) {
+          throw { statusCode: 400, message: 'Group Buy orders are paid online. Please choose another payment method.' };
+        }
+      } else {
+        lines = await resolveOrderLines(tx, data.items, {
+          now,
+          warn: (msg, detail) => fastify.log.warn(detail, msg),
+          preorder: await getPreorderSettings(tx),
+        });
+      }
     } catch (err) {
-      if (err instanceof OrderLineError) throw { statusCode: 400, message: err.message };
+      if (err instanceof OrderLineError || err instanceof GroupBuyOrderError) throw { statusCode: 400, message: err.message };
       throw err;
     }
     const subtotal = linesSubtotal(lines);
@@ -274,14 +293,17 @@ export async function createOrder(
     const shippingSetting = await tx.setting.findUnique({ where: { key: 'shipping_fee' } });
     // No shipping only when every chosen product is noShipping (schema.prisma);
     // what comes included with a line rides along with it.
-    const shippingFee = lines.every((l) => l.noShipping)
-      ? 0
-      : resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
+    // A Group Buy batch may set its own fee (0 = free); null keeps the store's.
+    const shippingFee = groupBuy && groupBuy.shippingFee != null
+      ? groupBuy.shippingFee
+      : lines.every((l) => l.noShipping)
+        ? 0
+        : resolveShippingFeeSen(shippingSetting?.value, eastShippingFeeValue, goingEast);
 
     let discountAmount = 0;
     let discountCodeId: string | undefined;
     if (data.discountCode) {
-      const result = await validateDiscountCode(fastify, data.discountCode, subtotal);
+      const result = await validateDiscountCode(fastify, data.discountCode, subtotal, { groupBuyId: data.groupBuyId, email: data.email });
       discountAmount = result.discountAmount;
       discountCodeId = result.discount.id;
       // Atomically reserve one use so concurrent orders can't push a capped code
@@ -335,17 +357,20 @@ export async function createOrder(
         discountCodeId,
         notes: data.notes,
         idempotencyKey: data.idempotencyKey,
+        // A Group Buy order ships with its batch; it is not a store pre-order.
+        isPreorder: !groupBuy && lines.some((l) => l.preorderQty > 0 || l.includes.some((i) => i.preorderQty > 0)),
+        groupBuyId: groupBuy?.id,
       },
     });
     // Parent lines first, so their includes can point at them.
     for (const line of lines) {
       const parent = await tx.orderItem.create({
-        data: { orderId: order.id, variantId: line.variantId, quantity: line.quantity, unitPrice: line.unitPrice },
+        data: { orderId: order.id, variantId: line.variantId, quantity: line.quantity, unitPrice: line.unitPrice, preorderQty: line.preorderQty, packSize: line.packSize ?? null },
       });
       if (line.includes.length > 0) {
         await tx.orderItem.createMany({
           data: line.includes.map((inc) => ({
-            orderId: order.id, variantId: inc.variantId, quantity: inc.quantity, unitPrice: inc.unitPrice, parentItemId: parent.id,
+            orderId: order.id, variantId: inc.variantId, quantity: inc.quantity, unitPrice: inc.unitPrice, preorderQty: inc.preorderQty, parentItemId: parent.id,
           })),
         });
       }
@@ -363,6 +388,7 @@ export async function createOrder(
     // WHERE clause only matches if enough stock remains, so two simultaneous
     // orders for the last unit can't both succeed. A miss rolls back the tx.
     for (const [variantId, quantity] of stockDemand(lines)) {
+      if (quantity <= 0) continue;
       const dec = await tx.productVariant.updateMany({
         where: { id: variantId, stock: { gte: quantity } },
         data: { stock: { decrement: quantity } },
@@ -424,6 +450,20 @@ export async function createOrder(
       });
     } catch (err) {
       fastify.log.warn({ err, orderId: order.id }, 'checkout newsletter opt-in failed');
+    }
+  }
+
+  // Every Group Buy buyer is on the batch's list (Sign-ups), so the team sees
+  // one list of people per batch. Outside the transaction, like the
+  // newsletter: a failure here must never undo a real order.
+  if (data.groupBuyId && order.email) {
+    try {
+      await fastify.prisma.groupBuySignup.createMany({
+        data: { groupBuyId: data.groupBuyId, email: order.email.trim().toLowerCase(), name: order.customerName, phone: order.phone, source: 'CHECKOUT' },
+        skipDuplicates: true,
+      });
+    } catch (err) {
+      fastify.log.warn({ err, orderId: order.id }, 'group buy sign-up from checkout failed');
     }
   }
 
@@ -609,12 +649,17 @@ export async function lookupOrders(fastify: FastifyInstance, phone: string, orde
       cancelledAt: true,
       // A hand delivery booked in the delivery diary. Driver notes stay out.
       delivery: { select: { scheduledFor: true, durationMinutes: true, status: true, completedAt: true } },
+      isPreorder: true,
+      // A Group Buy order's batch and its timeline (the batch's stages, not the order's).
+      groupBuy: { select: { number: true, title: true, slug: true, shipEstimate: true, stages: true, stageKey: true } },
       items: {
         select: {
           id: true,
           quantity: true,
           unitPrice: true,
           parentItemId: true,
+          preorderQty: true,
+          packSize: true,
           variant: {
             select: { code: true, size: true, imageUrl: true, product: { select: { name: true, addOnOnly: true } } },
           },

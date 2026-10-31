@@ -60,7 +60,10 @@ function paymentLabel(o: { paymentMethod: string; paymentGateway: string | null 
 export async function orderNoticeText(fastify: FastifyInstance, orderId: string, moment: OrderMoment): Promise<string | null> {
   const o = await fastify.prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: { orderBy: { createdAt: 'asc' }, include: { variant: { include: { product: { select: { name: true, addOnOnly: true } } } } } } },
+    include: {
+      items: { orderBy: { createdAt: 'asc' }, include: { variant: { include: { product: { select: { name: true, addOnOnly: true } } } } } },
+      groupBuy: { select: { number: true } },
+    },
   });
   if (!o) return null;
 
@@ -72,7 +75,7 @@ export async function orderNoticeText(fastify: FastifyInstance, orderId: string,
   const grouped = groupOrderItems(o.items);
   const items = [
     ...grouped.lines.flatMap((line) => [
-      `• ${line.item.quantity}× ${getVariantDisplayName(line.item.variant.product, line.item.variant)} — ${rm(groupedLineTotal(line))}`,
+      `• ${line.item.packSize ? `${line.item.quantity / line.item.packSize} kit${line.item.quantity === line.item.packSize ? '' : 's'} (${line.item.quantity} vials)` : `${line.item.quantity}×`} ${getVariantDisplayName(line.item.variant.product, line.item.variant)} — ${rm(groupedLineTotal(line))}${!o.groupBuy && line.item.preorderQty > 0 ? ` · _pre-order ${line.item.preorderQty}_` : ''}`,
       ...(line.includes.length ? [`   _incl. ${includesText(line.includes)}_`] : []),
     ]),
     ...(grouped.looseIncludes.length ? [`   _incl. ${includesText(grouped.looseIncludes)}_`] : []),
@@ -80,9 +83,15 @@ export async function orderNoticeText(fastify: FastifyInstance, orderId: string,
   const money = [`Subtotal ${rm(o.subtotal)}`, `Shipping ${o.shippingFee ? rm(o.shippingFee) : 'free'}`];
   if (o.discountAmount > 0) money.push(`Discount −${rm(o.discountAmount)}`);
 
+  // Said up front: this order does not ship from the shelf today.
+  const kind = o.groupBuy
+    ? [`🤝 *GROUP BUY · BATCH ${String(o.groupBuy.number).padStart(2, '0')}* — ships with the batch`]
+    : o.isPreorder ? ['⏳ *PRE-ORDER* — part of this ships on restock'] : [];
+
   return [
     head,
     `*${o.orderNumber}* · *${rm(o.total)}*`,
+    ...kind,
     '',
     `👤 ${o.customerName}`,
     `📞 ${o.phone}`,

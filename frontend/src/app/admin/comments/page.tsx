@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Eye, EyeOff, Trash2, Ban, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,20 +30,21 @@ export default function AdminCommentsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
 
-  const load = () => {
+  // Only sets state in promise callbacks; a filter change shows the spinner
+  // from its click handler.
+  const load = useCallback(() => {
     if (!token) return;
     const params: Record<string, string> = { limit: '100' };
     if (filter === 'visible') params.hidden = 'false';
     if (filter === 'hidden') params.hidden = 'true';
 
-    setLoading(true);
     adminListComments(token, params)
       .then((r) => setComments(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [token, filter]);
 
-  useEffect(() => { load(); }, [token, filter]);
+  useEffect(() => { load(); }, [load]);
 
   const handleToggleHidden = async (comment: AdminComment) => {
     if (!token) return;
@@ -80,7 +81,7 @@ export default function AdminCommentsPage() {
         {FILTERS.map((f) => (
           <button
             key={f.value}
-            onClick={() => setFilter(f.value)}
+            onClick={() => { if (f.value !== filter) { setLoading(true); setFilter(f.value); } }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
               filter === f.value
                 ? 'bg-primary text-white'

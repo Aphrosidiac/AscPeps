@@ -128,6 +128,10 @@ export interface EmailOrderItem {
   parentItemId?: string | null;
   quantity: number;
   unitPrice: number;
+  /** Units bought beyond stock (utils/preorder.ts). */
+  preorderQty?: number;
+  /** Group Buy kit lines: vials per kit. */
+  packSize?: number | null;
   variant: { size: string | null; imageUrl?: string | null; product: { name: string; addOnOnly?: boolean } };
 }
 
@@ -153,6 +157,10 @@ export interface EmailOrder {
   paymentStatus?: string;
   discountCode?: { code: string } | null;
   items: EmailOrderItem[];
+  isPreorder?: boolean;
+  /** The store's pre-order lead time ("10–14 days"), attached by the sender. */
+  preorderLead?: string;
+  groupBuy?: { number: number; title: string; shipEstimate: string | null } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,11 +309,17 @@ export function renderOrderSummary(order: EmailOrder): string {
       const included = includes.length
         ? `<br><span class="muted" style="font-size:12px;color:${MUTED};">Includes ${escapeHtml(includesText(includes))}</span>`
         : '';
+      const qty = item.packSize && item.packSize > 1
+        ? `${item.quantity / item.packSize} kit${item.quantity / item.packSize === 1 ? '' : 's'} &middot; ${item.quantity} vials`
+        : `Qty ${item.quantity}`;
+      const pre = !order.groupBuy && item.preorderQty && item.preorderQty > 0
+        ? `<br><span style="font-size:12px;font-weight:600;color:${INK};">Pre-order${item.preorderQty < item.quantity ? ` &middot; ${item.preorderQty} of ${item.quantity}` : ''}</span>`
+        : '';
       return `
             <tr>
               <td width="68" valign="top" class="border-b" style="width:68px;padding:14px 12px 14px 0;border-bottom:1px solid ${BORDER};">${renderThumb(item)}</td>
               <td valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;color:${INK};">
-                <span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span><br><span class="muted" style="font-size:12px;color:${MUTED};">${size}Qty ${item.quantity}</span>${included}
+                <span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span><br><span class="muted" style="font-size:12px;color:${MUTED};">${size}${qty}</span>${pre}${included}
               </td>
               <td align="right" valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;font-weight:600;color:${INK};white-space:nowrap;">${formatRM(groupedLineTotal({ item, includes }))}</td>
             </tr>`;
@@ -321,7 +335,7 @@ export function renderOrderSummary(order: EmailOrder): string {
     ? `Discount (${escapeHtml(order.discountCode.code)})`
     : 'Discount';
 
-  return `
+  return `${renderShipNotice(order)}
           <p class="eyebrow muted" style="margin:0 0 0;padding-bottom:12px;border-bottom:2px solid ${INK};font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${MUTED};">YOUR ITEMS</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${itemRows}
           </table>
@@ -335,6 +349,33 @@ export function renderOrderSummary(order: EmailOrder): string {
             ${escapeHtml(order.address)}<br>
             ${escapeHtml(order.city)}, ${escapeHtml(order.state)} ${escapeHtml(order.postcode)}
           </p>`;
+}
+
+/**
+ * A boxed line above the items when the order does not ship straight away: a
+ * pre-order (ships on restock) or a Group Buy order (ships with its batch).
+ */
+export function renderShipNotice(order: EmailOrder): string {
+  let title: string;
+  let text: string;
+  if (order.groupBuy) {
+    title = `GROUP BUY &middot; BATCH ${String(order.groupBuy.number).padStart(2, '0')}`;
+    text = `This order ships with the batch once it closes and the stock arrives${order.groupBuy.shipEstimate ? ` (estimated: ${escapeHtml(order.groupBuy.shipEstimate)})` : ''}. We'll email you at every step.`;
+  } else if (order.isPreorder) {
+    title = 'PRE-ORDER';
+    text = `Part of this order is on pre-order and ships in ${escapeHtml(order.preorderLead || '10–14 days')}, together with the rest of your items.`;
+  } else {
+    return '';
+  }
+  return `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;">
+            <tr>
+              <td style="padding:14px 16px;border:1px solid ${INK};border-radius:10px;">
+                <p class="ink" style="margin:0 0 4px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${INK};">${title}</p>
+                <p class="body-text" style="margin:0;font-family:${FONT};font-size:13px;line-height:1.6;color:${BODY};">${text}</p>
+              </td>
+            </tr>
+          </table>`;
 }
 
 /** Bulletproof button: table + solid-bg <td> + anchor, not a styled <a> alone —

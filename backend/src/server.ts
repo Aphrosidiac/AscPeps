@@ -39,6 +39,9 @@ import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
 import subscriberRoutes from './modules/subscribers/subscribers.routes.js';
 import adminSubscriberRoutes from './modules/admin/admin-subscribers.routes.js';
 import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
+import adminGroupBuyRoutes from './modules/admin/admin-group-buys.routes.js';
+import groupBuyRoutes from './modules/group-buys/group-buys.routes.js';
+import { processGroupBuyNotices } from './utils/group-buy-notices.js';
 import paymentRoutes from './modules/payments/payments.routes.js';
 import insightRoutes from './modules/insights/insights.routes.js';
 import adminInsightRoutes from './modules/admin/admin-insights.routes.js';
@@ -182,6 +185,8 @@ await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' });
 await fastify.register(adminSubscriberRoutes, { prefix: '/api/v1/admin/subscribers' });
 await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
+await fastify.register(adminGroupBuyRoutes, { prefix: '/api/v1/admin/group-buys' });
+await fastify.register(groupBuyRoutes, { prefix: '/api/v1/group-buys' });
 await fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
 // ManualPayGate: the hosted proof-of-payment checkout. Public reads + the
 // customer upload live under /api/v1/pay; everything under /api/v1/pay/admin
@@ -291,6 +296,9 @@ try {
   const emailTimer = setInterval(() => {
     processEmailOutbox(fastify).catch((err) =>
       fastify.log.error({ err }, 'email outbox sweep failed')
+    );
+    processGroupBuyNotices(fastify).catch((err) =>
+      fastify.log.error({ err }, 'group buy notice sweep failed')
     );
   }, EMAIL_INTERVAL_MS);
   emailTimer.unref();

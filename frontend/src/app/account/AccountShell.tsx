@@ -2,7 +2,8 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 /**
- * Shared chrome for the four /account screens. Deliberately plain — these sit
+ * Shared chrome for the /account and /account/verify screens (sign in and
+ * create account use components/account/AuthScreen). Deliberately plain — these sit
  * inside the normal storefront layout (navbar + footer), unlike the admin
  * login's full-bleed dark hero.
  */
@@ -29,11 +30,11 @@ export function AccountShell({
       {footer && <div className="mt-5 text-sm text-text-muted text-center">{footer}</div>}
 
       <p className="mt-8 text-xs text-text-muted leading-relaxed text-center">
-        An Ascend MY account is only used to post comments on{' '}
-        <Link href="/insights" className="underline hover:text-text-secondary transition-colors">
-          Insights
-        </Link>
-        . Orders are placed without an account, as before.
+        Your account follows your{' '}
+        <Link href="/group-buy/orders" className="underline hover:text-text-secondary transition-colors">
+          Group Buy orders
+        </Link>{' '}
+        and lets you comment on Insights. Buying as a guest still works.
       </p>
     </div>
   );

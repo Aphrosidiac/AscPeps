@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { Member } from '@/types';
 import { memberMe } from './api';
 
@@ -18,13 +18,29 @@ const MEMBER_KEY = 'ascend-member';
 // signing in would not update the composer on the page you signed in from.
 const CHANGE_EVENT = 'ascend-member-change';
 
+// Storage can throw (site data blocked); these run during render, so a throw
+// would take the whole page down. No storage reads as signed out.
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function getMemberToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return read(TOKEN_KEY);
 }
 
 export function setMemberSession(token: string, member: Member): void {
   localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(MEMBER_KEY, JSON.stringify(member));
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+/** Replaces the cached member after an account change, keeping the token. */
+export function updateMemberCache(member: Member): void {
   localStorage.setItem(MEMBER_KEY, JSON.stringify(member));
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
@@ -35,9 +51,7 @@ export function clearMemberSession(): void {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-function readStoredMember(): Member | null {
-  if (typeof window === 'undefined') return null;
-  const raw = localStorage.getItem(MEMBER_KEY);
+function parseMember(raw: string | null): Member | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as Member;
@@ -45,6 +59,16 @@ function readStoredMember(): Member | null {
     return null;
   }
 }
+
+function subscribe(onChange: () => void) {
+  window.addEventListener(CHANGE_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(CHANGE_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+const noSubscribe = () => () => {};
 
 export interface MemberSession {
   member: Member | null;
@@ -57,29 +81,13 @@ export interface MemberSession {
 }
 
 export function useMemberSession(): MemberSession {
-  const [member, setMember] = useState<Member | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-
-  const sync = useCallback(() => {
-    setToken(getMemberToken());
-    setMember(readStoredMember());
-  }, []);
-
-  useEffect(() => {
-    // Deferred to an effect rather than useState's initialiser: localStorage
-    // does not exist during the server render, and reading it inline would
-    // produce a hydration mismatch.
-    sync();
-    setReady(true);
-
-    window.addEventListener(CHANGE_EVENT, sync);
-    window.addEventListener('storage', sync);
-    return () => {
-      window.removeEventListener(CHANGE_EVENT, sync);
-      window.removeEventListener('storage', sync);
-    };
-  }, [sync]);
+  // Read through useSyncExternalStore: the server snapshot (null, not ready)
+  // is what hydration renders, so there's no mismatch with localStorage, and
+  // sign-in/out in this tab or another re-renders every reader.
+  const token = useSyncExternalStore(subscribe, getMemberToken, () => null);
+  const memberRaw = useSyncExternalStore(subscribe, () => read(MEMBER_KEY), () => null);
+  const member = useMemo(() => parseMember(memberRaw), [memberRaw]);
+  const ready = useSyncExternalStore(noSubscribe, () => true, () => false);
 
   // Re-fetch the member against the API once per mount. The cached copy can be
   // stale in the way that matters most — someone who confirmed their email in
@@ -93,7 +101,7 @@ export function useMemberSession(): MemberSession {
       .then((fresh) => {
         if (cancelled) return;
         localStorage.setItem(MEMBER_KEY, JSON.stringify(fresh));
-        setMember(fresh);
+        window.dispatchEvent(new Event(CHANGE_EVENT));
       })
       .catch((err) => {
         // Only an auth failure means the session is dead; a network blip or a

@@ -124,13 +124,9 @@ export default function AdminSubscribersPage() {
     load();
   }, [load]);
 
-  // Keep the drawer's copy of the row in sync whenever the list reloads
-  // (e.g. after a retry), instead of it going stale the moment an action fires.
-  useEffect(() => {
-    if (!flowTarget) return;
-    const fresh = subscribers.find((s) => s.id === flowTarget.id);
-    if (fresh) setFlowTarget(fresh);
-  }, [subscribers, flowTarget]);
+  // The drawer shows the list's latest copy of its row (e.g. after a retry),
+  // instead of the copy it was opened with going stale.
+  const flowRow = flowTarget ? subscribers.find((s) => s.id === flowTarget.id) ?? flowTarget : null;
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -432,14 +428,14 @@ export default function AdminSubscribersPage() {
         </>
       )}
 
-      {flowTarget && (
+      {flowRow && (
         <SubscriberFlowDrawer
-          subscriber={flowTarget}
+          subscriber={flowRow}
           welcomeOn={stats?.welcomeEnabled ?? false}
           token={token}
           onClose={() => setFlowTarget(null)}
-          onRetry={() => token && act(adminRetryWelcomeEmail(token, flowTarget.id))}
-          onUnsubscribe={() => token && act(adminUnsubscribeSubscriber(token, flowTarget.id))}
+          onRetry={() => token && act(adminRetryWelcomeEmail(token, flowRow.id))}
+          onUnsubscribe={() => token && act(adminUnsubscribeSubscriber(token, flowRow.id))}
         />
       )}
 

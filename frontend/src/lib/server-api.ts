@@ -89,3 +89,23 @@ export async function getResearchServer(slug: string): Promise<
     return null;
   }
 }
+
+// Group Buy — short cache: the joined counter and batch phase move in minutes.
+export const getGroupBuysServer = () =>
+  getJsonFresh<import('@/types').GroupBuySummary[]>(`/api/v1/group-buys`, []);
+
+export const getGroupBuyServer = (slug: string) =>
+  getJsonFresh<import('@/types').GroupBuyDetail | null>(`/api/v1/group-buys/${encodeURIComponent(slug)}`, null);
+
+export const getGroupBuyPromoServer = () =>
+  getJsonFresh<import('@/types').GroupBuyPromo>(`/api/v1/group-buys/promo`, { banner: null, popup: null, home: null });
+
+async function getJsonFresh<T>(path: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: 60, tags: ['group-buys'] } });
+    if (!res.ok) return fallback;
+    return (await res.json()) as T;
+  } catch {
+    return fallback;
+  }
+}

@@ -73,6 +73,8 @@ export const createOrder = (data: {
   items: { variantId: string; quantity: number }[];
   discountCode?: string;
   idempotencyKey?: string;
+  /** A Group Buy order: items are priced from this batch, quantity in its sell units. */
+  groupBuyId?: string;
 }) => api.post<{ order: Order; whatsappUrl?: string; paymentUrl?: string }>('/api/v1/orders', data).then((r) => r.data);
 
 // Both are required: the phone is the ownership proof for the guessable order number.
@@ -720,6 +722,31 @@ export const memberResendVerification = (email: string) =>
     .post<{ success: boolean; message: string }>('/api/v1/members/resend-verification', { email })
     .then((r) => r.data);
 
+// Account settings. `where` picks which chrome the emailed link opens in
+// (/account/… or /group-buy/…).
+export type AccountWhere = 'store' | 'group-buy';
+
+export const memberUpdateProfile = (token: string, data: { displayName: string }) =>
+  api.patch<Member>('/api/v1/members/me', data, auth(token)).then((r) => r.data);
+
+export const memberChangePassword = (token: string, data: { currentPassword: string; newPassword: string }) =>
+  api.post<{ token: string; member: Member }>('/api/v1/members/me/password', data, auth(token)).then((r) => r.data);
+
+export const memberRequestEmailChange = (token: string, data: { newEmail: string; password: string; where: AccountWhere }) =>
+  api.post<Member>('/api/v1/members/me/email', data, auth(token)).then((r) => r.data);
+
+export const memberCancelEmailChange = (token: string) =>
+  api.delete<Member>('/api/v1/members/me/email', auth(token)).then((r) => r.data);
+
+export const memberConfirmEmailChange = (token: string) =>
+  api.post<{ success: boolean; email: string }>('/api/v1/members/confirm-email', { token }).then((r) => r.data);
+
+export const memberForgotPassword = (email: string, where: AccountWhere) =>
+  api.post<{ success: boolean; message: string }>('/api/v1/members/forgot-password', { email, where }).then((r) => r.data);
+
+export const memberResetPassword = (token: string, password: string) =>
+  api.post<{ token: string; member: Member }>('/api/v1/members/reset-password', { token, password }).then((r) => r.data);
+
 export const getInsightComments = (slug: string) =>
   api.get<{ data: InsightComment[] }>(`/api/v1/insights/${encodeURIComponent(slug)}/comments`).then((r) => r.data);
 
@@ -926,3 +953,7 @@ export function apiError(e: unknown, fallback = 'Something went wrong'): { messa
   const data = (e as { response?: { data?: { error?: string; details?: { path: string; message: string }[] } } })?.response?.data;
   return { message: data?.error ?? fallback, details: data?.details ?? [] };
 }
+
+// The shared client, for feature modules that keep their own calls
+// (lib/group-buy-api.ts) — same base URL, timeout and 401 handling.
+export { api as http };

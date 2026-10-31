@@ -1,5 +1,5 @@
 import { HomeClient } from './HomeClient';
-import { getProductsServer, getCategoriesServer, getSettingsServer, getProductServer, getInsightServer } from '@/lib/server-api';
+import { getProductsServer, getCategoriesServer, getSettingsServer, getProductServer, getInsightServer, getGroupBuyPromoServer } from '@/lib/server-api';
 
 // Kept as a constant rather than a settings field — swapping which specific
 // article backs the "backed by published research" trust badge is a content
@@ -8,10 +8,11 @@ import { getProductsServer, getCategoriesServer, getSettingsServer, getProductSe
 const HARDSELL_RESEARCH_SLUG = 'what-the-phase-2-retatrutide-trial-actually-measured';
 
 export default async function HomePage() {
-  const [featuredRes, categories, settings] = await Promise.all([
+  const [featuredRes, categories, settings, groupBuyPromo] = await Promise.all([
     getProductsServer({ featured: true, limit: 8 }),
     getCategoriesServer(),
     getSettingsServer(),
+    getGroupBuyPromoServer(),
   ]);
 
   const products =
@@ -43,6 +44,7 @@ export default async function HomePage() {
       hardsellSlide2Product={hardsellSlide2Product}
       hardsellSlide2Headline={settings.hardsell_slide2_headline || ''}
       hardsellSlide2Subheadline={settings.hardsell_slide2_subheadline || ''}
+      groupBuyHome={groupBuyPromo.home}
     />
   );
 }

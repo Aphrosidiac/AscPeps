@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -820,8 +821,8 @@ function ProductPicker({
 function ProductThumb({ product }: { product?: Product }) {
   const src = product?.images?.[0]?.url ?? product?.variants?.find((v) => v.imageUrl)?.imageUrl;
   return (
-    <span className="w-9 h-9 shrink-0 rounded-md bg-surface-elevated overflow-hidden">
-      {src && <img src={src} alt="" className="w-full h-full object-cover" />}
+    <span className="relative w-9 h-9 shrink-0 rounded-md bg-surface-elevated overflow-hidden">
+      {src && <Image src={src} alt="" fill sizes="36px" unoptimized className="object-cover" />}
     </span>
   );
 }

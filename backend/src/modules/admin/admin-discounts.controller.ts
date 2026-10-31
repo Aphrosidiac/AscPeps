@@ -91,10 +91,28 @@ export async function adminDeleteDiscount(fastify: FastifyInstance, id: string) 
   return fastify.prisma.discountCode.delete({ where: { id } });
 }
 
-export async function validateDiscountCode(fastify: FastifyInstance, code: string, subtotal: number) {
+// Where the code is being used. Group Buy codes (scope GROUP_BUY, optionally
+// one batch) and sign-up rewards (boundEmail) are checked against it; a plain
+// code ignores it.
+export interface DiscountContext {
+  groupBuyId?: string | null;
+  email?: string | null;
+}
+
+export async function validateDiscountCode(fastify: FastifyInstance, code: string, subtotal: number, ctx: DiscountContext = {}) {
   const discount = await fastify.prisma.discountCode.findUnique({ where: { code: code.toUpperCase().trim() } });
 
   if (!discount) throw { statusCode: 404, message: 'Invalid discount code' };
+  if (discount.scope === 'GROUP_BUY' && !ctx.groupBuyId) throw { statusCode: 400, message: 'This code is for Group Buy orders only' };
+  if (discount.scope === 'GROUP_BUY' && discount.groupBuyId && ctx.groupBuyId !== discount.groupBuyId) {
+    throw { statusCode: 400, message: 'This code is for a different Group Buy batch' };
+  }
+  if (discount.scope === 'STORE' && ctx.groupBuyId) throw { statusCode: 400, message: 'This code cannot be used on Group Buy orders' };
+  if (discount.boundEmail) {
+    const email = ctx.email?.trim().toLowerCase();
+    if (!email) throw { statusCode: 400, message: 'Enter the email address this code was sent to' };
+    if (email !== discount.boundEmail.toLowerCase()) throw { statusCode: 400, message: 'This code belongs to a different email address' };
+  }
   if (!discount.isActive) throw { statusCode: 400, message: 'This discount code is no longer active' };
   if (discount.expiresAt && discount.expiresAt < new Date()) throw { statusCode: 400, message: 'This discount code has expired' };
   if (discount.maxUses && discount.usedCount >= discount.maxUses) throw { statusCode: 400, message: 'This discount code has reached its usage limit' };

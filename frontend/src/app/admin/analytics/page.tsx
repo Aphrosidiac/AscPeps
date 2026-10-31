@@ -178,10 +178,10 @@ export default function AdminAnalyticsPage() {
   const [series, setSeries] = useState<SeriesKey>('revenue');
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
 
-  const load = useCallback(() => {
+  // Only sets state in promise callbacks; the retry button and the period
+  // switch put the skeleton up from their click handlers.
+  const fetchData = useCallback(() => {
     if (!token) return;
-    setLoading(true);
-    setError(false);
     adminGetAnalytics(token, days)
       .then((res: AnalyticsData) => {
         setData(res);
@@ -192,10 +192,11 @@ export default function AdminAnalyticsPage() {
         setLoading(false);
       });
   }, [token, days]);
+  const load = () => { setLoading(true); setError(false); fetchData(); };
 
   useEffect(() => {
-    load();
-  }, [load]);
+    fetchData();
+  }, [fetchData]);
 
   if (error) {
     return (
@@ -347,7 +348,7 @@ export default function AdminAnalyticsPage() {
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.days}
-                onClick={() => setDays(opt.days)}
+                onClick={() => { if (opt.days !== days) { setLoading(true); setDays(opt.days); } }}
                 className={cn(
                   'px-4 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer',
                   days === opt.days

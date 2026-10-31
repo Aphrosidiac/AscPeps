@@ -19,6 +19,9 @@ export interface ProductVariant {
   stock: number;
   imageUrl: string | null;
   active: boolean;
+  // May be bought when sold out (only while the store's pre-order switch is
+  // on). Missing on old API responses, which means yes.
+  preorder?: boolean;
   updatedAt: string;
 }
 
@@ -130,6 +133,9 @@ export interface CartItem {
   noShipping?: boolean;
   // What comes included with each unit of this line.
   includes?: CartInclude[];
+  // The size may be bought beyond `stock` (pre-order). Units past stock ship
+  // on the restock; the server works out the real split at checkout.
+  preorder?: boolean;
 }
 
 export interface OrderItem {
@@ -148,6 +154,10 @@ export interface OrderItem {
   // hand. Admin responses only.
   supplierId?: string | null;
   supplier?: { id: string; name: string; active: boolean } | null;
+  // Units bought beyond stock (pre-order), or every unit of a Group Buy line.
+  preorderQty?: number;
+  // Group Buy kit lines: vials per kit; quantity stays in vials.
+  packSize?: number | null;
   variant: {
     code: string;
     size: string | null;
@@ -233,6 +243,11 @@ export interface Order {
   paymentFailureChannel: string | null;
   /** Placed by the team to test checkout; left out of Admin → Payments. */
   isTest?: boolean;
+  // Part of it ships on restock (utils/preorder.ts on the API).
+  isPreorder?: boolean;
+  // Placed in a Group Buy batch.
+  groupBuyId?: string | null;
+  groupBuy?: GroupBuyRef | null;
   // The payment trail, on the admin single-order response only.
   paymentAttempts?: PaymentAttempt[];
   paymentEvents?: PaymentEvent[];
@@ -377,6 +392,8 @@ export interface Member {
   email: string;
   displayName: string;
   emailVerified: boolean;
+  // A requested email change waiting for its confirmation link to be clicked.
+  pendingEmail?: string | null;
 }
 
 // The moderation-queue view of a comment: carries the hidden flag, the article
@@ -948,13 +965,43 @@ export interface PaymentClient {
   device: PaymentDevice;
 }
 
+/** A payment event's payload. Each event type records its own bits (see
+ *  backend payment-trail), so it stays open; the fields the admin reads are
+ *  typed here. */
+export interface PaymentEventData {
+  source?: string;
+  method?: string;
+  total?: number;
+  client?: PaymentClient;
+  billId?: string;
+  emailSent?: boolean;
+  status?: number | string;
+  answer?: unknown;
+  message?: string;
+  src?: string;
+  params?: Record<string, string | undefined>;
+  fields?: Record<string, string | undefined>;
+  signatureValid?: boolean;
+  attempts?: { completed?: number; failed?: number; pending?: number; opened?: number };
+  trigger?: string;
+  paid?: boolean;
+  verdict?: string;
+  state?: string;
+  via?: string;
+  gatewayFee?: number;
+  reason?: string;
+  channel?: string;
+  billClosed?: string;
+  [key: string]: unknown;
+}
+
 /** Something that happened to an order's payment (backend PaymentEvent). */
 export interface PaymentEvent {
   id: string;
   type: PaymentEventType;
   gateway: string | null;
   at: string;
-  data: Record<string, any>;
+  data: PaymentEventData;
 }
 
 export interface PaymentFailedOrderRow {
@@ -1091,4 +1138,124 @@ export interface ResearchDraft extends ResearchContent {
   issues: { path: string; message: string }[];
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Group Buy ──────────────────────────────────────────────────────────────
+
+export interface GroupBuyStage {
+  key: string;
+  label: string;
+  detail?: string | null;
+  eta?: string | null;
+  doneAt?: string | null;
+  note?: string | null;
+}
+
+/** The batch as an order carries it. */
+export interface GroupBuyRef {
+  id?: string;
+  number: number;
+  title: string;
+  slug: string;
+  label?: string;
+  shipEstimate?: string | null;
+  stages?: GroupBuyStage[] | unknown;
+  stageKey?: string;
+  closesAt?: string;
+}
+
+export type GroupBuyPhase = 'DRAFT' | 'UPCOMING' | 'LIVE' | 'CLOSED';
+
+export interface GroupBuyTier { minQty: number; price: number }
+
+export interface GroupBuyReward {
+  headline: string | null;
+  type: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  value: number;
+  scope: 'GROUP_BUY' | 'STORE' | 'ANY';
+  minOrder: number | null;
+  validDays: number | null;
+  membersOnly: boolean;
+}
+
+export interface GroupBuyItem {
+  id: string;
+  variantId: string;
+  name: string;
+  productName: string;
+  productSlug: string;
+  size: string | null;
+  code: string;
+  imageUrl: string | null;
+  sellUnit: 'VIAL' | 'KIT';
+  packSize: number;
+  unitLabel: string | null;
+  minQty: number;
+  maxQty: number | null;
+  minAmount: number | null;
+  note: string | null;
+  tiers: GroupBuyTier[];
+  storePrice: number;
+}
+
+export interface GroupBuySummary {
+  id: string;
+  number: number;
+  label: string;
+  slug: string;
+  title: string;
+  tagline: string | null;
+  heroImageUrl: string | null;
+  phase: GroupBuyPhase;
+  opensAt: string;
+  closesAt: string;
+  shipEstimate: string | null;
+  itemCount: number;
+  fromPrice: number | null;
+  joined: number | null;
+  joinedLabel: string;
+  reward: GroupBuyReward | null;
+  stageKey: string;
+  stageLabel: string | null;
+}
+
+export interface GroupBuyDetail {
+  id: string;
+  number: number;
+  label: string;
+  slug: string;
+  title: string;
+  tagline: string | null;
+  description: string | null;
+  heroImageUrl: string | null;
+  phase: GroupBuyPhase;
+  opensAt: string;
+  closesAt: string;
+  shipEstimate: string | null;
+  minOrderAmount: number | null;
+  maxUnitsPerOrder: number;
+  shippingFee: number | null;
+  storeShippingFee: number;
+  allowWhatsapp: boolean;
+  joined: number | null;
+  joinedLabel: string;
+  reward: GroupBuyReward | null;
+  stages: GroupBuyStage[];
+  stageKey: string;
+  items: GroupBuyItem[];
+}
+
+export interface GroupBuyPromo {
+  banner: { slug: string; label: string; phase: GroupBuyPhase; closesAt: string; opensAt: string; text: string; cta: string; tone: 'INK' | 'GREEN' | 'COBALT' } | null;
+  popup: {
+    slug: string; label: string; phase: GroupBuyPhase; closesAt: string; opensAt: string; key: string;
+    title: string; body: string | null; imageUrl: string | null; cta: string; delaySec: number;
+    frequency: 'ONCE' | 'DAILY' | 'SESSION' | 'EVERY'; pages: 'ALL' | 'HOME' | 'PRODUCTS'; reward: GroupBuyReward | null;
+  } | null;
+  home: {
+    id: string; slug: string; label: string; phase: GroupBuyPhase; closesAt: string; opensAt: string;
+    title: string; body: string | null; imageUrl: string | null; cta: string; shipEstimate: string | null;
+    joined: number | null; joinedLabel: string; reward: GroupBuyReward | null; itemCount: number;
+    items: { name: string; imageUrl: string | null; sellUnit: 'VIAL' | 'KIT'; packSize: number; unitLabel: string | null; tiers: GroupBuyTier[]; storePrice: number }[];
+  } | null;
 }

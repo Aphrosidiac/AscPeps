@@ -15,6 +15,9 @@ const lookupQuerySchema = z.object({
 const validateDiscountSchema = z.object({
   code: z.string().min(1),
   subtotal: z.number().int().min(0),
+  groupBuyId: z.string().optional(),
+  // Sign-up reward codes are tied to one address; without it the check says so.
+  email: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
 });
 
 export default async function orderRoutes(fastify: FastifyInstance) {
@@ -62,8 +65,8 @@ export default async function orderRoutes(fastify: FastifyInstance) {
     '/validate-discount',
     { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } },
     async (request) => {
-      const { code, subtotal } = validateDiscountSchema.parse(request.body);
-      const { discount, discountAmount } = await validateDiscountCode(fastify, code, subtotal);
+      const { code, subtotal, groupBuyId, email } = validateDiscountSchema.parse(request.body);
+      const { discount, discountAmount } = await validateDiscountCode(fastify, code, subtotal, { groupBuyId, email });
       return {
         code: discount.code,
         discountType: discount.discountType,

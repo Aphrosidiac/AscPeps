@@ -75,9 +75,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     };
   }, [loading, ready, token, pathname, router, logout]);
 
-  useEffect(() => {
+  // Any navigation closes the phone drawer — adjusted during render rather
+  // than in an effect.
+  const [drawerPath, setDrawerPath] = useState(pathname);
+  if (drawerPath !== pathname) {
+    setDrawerPath(pathname);
     setSidebarOpen(false);
-  }, [pathname]);
+  }
 
   if (pathname === '/admin/login') return <>{children}</>;
   if (!ready) return <div className="flex items-center justify-center min-h-screen"><p className="text-text-muted">Loading...</p></div>;

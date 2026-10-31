@@ -1,4 +1,5 @@
 import type { CartInclude, CartItem } from '@/types';
+import { STORE_MAX_PER_ITEM } from '@/lib/preorder-rules';
 
 /** A line's identity: the product size plus what it includes. */
 export function lineKey(variantId: string, includes: CartInclude[] = []): string {
@@ -15,13 +16,16 @@ export function lineUnitPrice(item: CartItem): number {
 }
 
 /**
- * The most of this line the cart allows: the product's own stock, and for a
+ * The most of this line the cart allows: the product's own stock (or the
+ * per-item cap when it can be pre-ordered), and for a
  * PRICED include, how many units its stock covers. A free include that runs
  * short never limits the line — the server ships what is left of it.
  */
 export function lineMaxQuantity(item: CartItem): number | undefined {
   const limits: number[] = [];
-  if (item.stock != null) limits.push(item.stock);
+  // A pre-orderable size is not held to its stock, only to the per-item cap.
+  if (item.preorder) limits.push(STORE_MAX_PER_ITEM);
+  else if (item.stock != null) limits.push(item.stock);
   for (const inc of item.includes ?? []) {
     if (inc.price > 0 && inc.stock != null && inc.perUnit > 0) limits.push(Math.floor(inc.stock / inc.perUnit));
   }

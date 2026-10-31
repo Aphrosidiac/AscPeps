@@ -1,3 +1,4 @@
+import { canPreorder, parsePreorderSettings } from '@/lib/preorder-rules';
 import type { Metadata } from 'next';
 import { ProductGroupJsonLd, BreadcrumbJsonLd } from '@/components/JsonLd';
 import { getProductServer, getSettingsServer } from '@/lib/server-api';
@@ -80,7 +81,6 @@ export default async function ProductLayout({ params, children }: Props) {
   const { slug } = await params;
   const [product, settings] = await Promise.all([getProductServer(slug), getSettingsServer()]);
   const variant = product ? getDefaultVariant(product) : null;
-  const fullName = product && variant ? getVariantDisplayName(product, variant) : product?.name ?? '';
 
   return (
     <>
@@ -104,6 +104,7 @@ export default async function ProductLayout({ params, children }: Props) {
               saleEndsAt: v.saleEndsAt,
               imageUrl: v.imageUrl,
               inStock: v.stock > 0,
+              preorder: v.stock <= 0 && canPreorder(parsePreorderSettings(settings), v),
             }))}
           />
           <BreadcrumbJsonLd

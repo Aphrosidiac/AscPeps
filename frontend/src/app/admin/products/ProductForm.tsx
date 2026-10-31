@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -31,6 +32,8 @@ interface VariantFormData {
   stock: string;
   imageUrl: string;
   active: boolean;
+  // Can be bought when sold out (pre-order). Defaults on.
+  preorder: boolean;
 }
 
 interface UploadState {
@@ -67,7 +70,7 @@ const DEFAULT_COA = 'https://verify.janoshik.com/tests/155584-Blind_GLP_C5AGHBRF
 function newVariant(): VariantFormData {
   return {
     key: crypto.randomUUID(),
-    code: '', size: '', price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '', stock: '0', imageUrl: '', active: true,
+    code: '', size: '', price: '', salePrice: '', saleStartsAt: '', saleEndsAt: '', stock: '0', imageUrl: '', active: true, preorder: true,
   };
 }
 
@@ -99,8 +102,8 @@ function GalleryEditor({
         <div className="flex flex-wrap gap-3">
           {images.map((url, i) => (
             <div key={`${url}-${i}`} className="relative w-24 group">
-              <div className="w-24 h-24 rounded-lg border border-border overflow-hidden bg-surface">
-                <img src={url} alt="" className="w-full h-full object-cover" />
+              <div className="relative w-24 h-24 rounded-lg border border-border overflow-hidden bg-surface">
+                <Image src={url} alt="" fill sizes="96px" unoptimized className="object-cover" />
               </div>
               <div className="mt-1 flex items-center justify-between gap-1">
                 <button
@@ -248,7 +251,7 @@ function VariantCard({
             } ${uploading ? 'cursor-wait' : 'cursor-pointer'}`}
           >
             {variant.imageUrl ? (
-              <img src={variant.imageUrl} alt="" className="w-full h-full object-cover" />
+              <Image src={variant.imageUrl} alt="" fill sizes="64px" unoptimized className="object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <ImageIcon className="w-5 h-5 text-text-muted" />
@@ -322,10 +325,16 @@ function VariantCard({
             <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${saleOpen ? 'rotate-180' : ''}`} />
             Sale pricing {variant.salePrice ? '(active)' : '(optional)'}
           </button>
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <input type="checkbox" checked={variant.active} onChange={(e) => onChange('active', e.target.checked)} className="rounded" />
-            Active
-          </label>
+          <span className="flex items-center gap-4">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" title="When sold out, customers can still buy it and it ships on the restock (Store settings → Shipping sets the lead time).">
+              <input type="checkbox" checked={variant.preorder} onChange={(e) => onChange('preorder', e.target.checked)} className="rounded" />
+              Pre-order when sold out
+            </label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" checked={variant.active} onChange={(e) => onChange('active', e.target.checked)} className="rounded" />
+              Active
+            </label>
+          </span>
         </div>
 
         <div className={`grid transition-all duration-300 ease-out ${saleOpen ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
@@ -411,6 +420,7 @@ export function ProductForm({ productId }: { productId?: string }) {
             stock: String(v.stock),
             imageUrl: v.imageUrl || '',
             active: v.active,
+            preorder: v.preorder !== false,
           })),
           images: (found.images ?? []).map((img) => img.url),
         });
@@ -476,7 +486,8 @@ export function ProductForm({ productId }: { productId?: string }) {
       }
     }
     setUploadStatus((s) => {
-      const { [GALLERY_UPLOAD_KEY]: _removed, ...rest } = s;
+      const rest = { ...s };
+      delete rest[GALLERY_UPLOAD_KEY];
       return rest;
     });
   };
@@ -492,7 +503,8 @@ export function ProductForm({ productId }: { productId?: string }) {
       setUploadStatus((s) => ({ ...s, [key]: { status: 'success', progress: 100 } }));
       setTimeout(() => {
         setUploadStatus((s) => {
-          const { [key]: _removed, ...rest } = s;
+          const rest = { ...s };
+          delete rest[key];
           return rest;
         });
       }, 1500);
@@ -548,6 +560,7 @@ export function ProductForm({ productId }: { productId?: string }) {
         stock: parseInt(v.stock) || 0,
         imageUrl: v.imageUrl || null,
         active: v.active,
+        preorder: v.preorder,
       });
     }
 

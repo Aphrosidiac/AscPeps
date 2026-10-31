@@ -7,6 +7,7 @@ import { generateReceiptPdf } from './receipt-pdf.js';
 import { renderOrderConfirmation } from '../emails/order-confirmation.js';
 import { renderPaymentReceipt } from '../emails/payment-receipt.js';
 import { renderAbandonedCheckout } from '../emails/abandoned-checkout.js';
+import { parsePreorderSettings } from './preorder.js';
 
 const BATCH_SIZE = 10;
 // Retry backoff by attempt count; after the last slot the row goes FAILED
@@ -42,6 +43,7 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
     include: {
       items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true, addOnOnly: true } } } } }, orderBy: { createdAt: 'asc' } },
       discountCode: { select: { code: true, discountType: true, discountValue: true } },
+      groupBuy: { select: { number: true, title: true, shipEstimate: true } },
     },
   });
 
@@ -79,6 +81,7 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
     // copy — one read, passed through to whichever template renders.
     const settingsRows = await fastify.prisma.setting.findMany();
     const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+    Object.assign(order, { preorderLead: parsePreorderSettings(settings).leadTime });
 
     if (row.type === 'PAYMENT_RECEIPT') {
       ({ subject, html } = renderPaymentReceipt(order, order.updatedAt, settings));

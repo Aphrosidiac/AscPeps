@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -301,7 +302,7 @@ export function InsightForm({ insightId }: { insightId?: string }) {
               <div className="flex items-start gap-4">
                 <label className="relative w-24 h-24 rounded-lg border border-border bg-surface-elevated overflow-hidden shrink-0 group cursor-pointer">
                   {form.coverImageUrl ? (
-                    <img src={form.coverImageUrl} alt="" className="w-full h-full object-cover" />
+                    <Image src={form.coverImageUrl} alt="" fill sizes="96px" unoptimized className="object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <ImageIcon className="w-5 h-5 text-text-muted" />

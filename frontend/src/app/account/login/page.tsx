@@ -1,21 +1,19 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { LoginClient } from './LoginClient';
+import { AuthScreen } from '@/components/account/AuthScreen';
+import { pickAuthBatch } from '@/components/account/auth-batch';
 
 export const metadata: Metadata = {
-  title: 'Sign in | Ascend MY',
-  description: 'Sign in to your Ascend MY account to comment on Insights articles.',
-  // Account screens carry no content worth indexing and would only dilute the
-  // catalog's crawl budget.
+  title: 'Sign in',
+  description: 'Sign in to your Ascend MY account to follow your orders and Group Buy batches.',
   robots: { index: false, follow: true },
 };
 
-export default function AccountLoginPage() {
-  // useSearchParams() (for ?next=) opts a client component out of static
-  // prerendering unless it sits behind a Suspense boundary.
+export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const batch = await pickAuthBatch((await searchParams).next);
   return (
     <Suspense>
-      <LoginClient />
+      <AuthScreen mode="signin" where="store" batch={batch} />
     </Suspense>
   );
 }

@@ -127,6 +127,10 @@ model ProductVariant {
   // back to the real name, because falling back puts the real name on the one
   // document whose entire purpose is not to carry it.
   shadowSkuId  String?
+  // May this size be bought when it is sold out? Only matters while the
+  // store-wide `preorder_enabled` setting is on; off for a size that will not
+  // come back. Units bought beyond stock are a pre-order (OrderItem.preorderQty).
+  preorder     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -137,6 +141,7 @@ model ProductVariant {
   // SKUs with it. Unlinking is exactly this — the variant survives, unmapped.
   shadowSku         ShadowSku?     @relation(fields: [shadowSkuId], references: [id], onDelete: SetNull)
   supplierCosts     SupplierCost[]
+  groupBuyItems     GroupBuyItem[]
 
   @@index([productId])
   @@index([active])
@@ -269,6 +274,13 @@ model Order {
   // of test orders is enough to swing a conversion rate measured on a few
   // dozen real ones. Ticked by hand on the order page.
   isTest                Boolean       @default(false)
+  // At least one line was bought beyond stock and ships when the restock
+  // lands (the store's pre-order lead time, 10–14 days by default). Set once
+  // at creation from the lines' preorderQty, and kept in step by item edits.
+  isPreorder            Boolean       @default(false)
+  // Placed in a Group Buy batch: priced from the batch's tiers, takes nothing
+  // from store stock, ships with the batch. Null for every store order.
+  groupBuyId            String?
   // Operational tick-box: the profit for this order has actually been paid out
   // to the people in its split. Deliberately manual and separate from whether a
   // split has been RECORDED (order_profit_shares rows) or whether the order is
@@ -288,19 +300,22 @@ model Order {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  items        OrderItem[]
-  delivery     DeliveryBooking?
-  discountCode DiscountCode?      @relation(fields: [discountCodeId], references: [id])
-  emails       EmailOutbox[]
-  profitShares OrderProfitShare[]
-  extraCosts   OrderExtraCost[]
-  reminders    AgentReminder[]
-  documents    DocumentLink[]
-  payoutRun    PayoutRun?         @relation(fields: [payoutRunId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  delivery        DeliveryBooking?
+  discountCode    DiscountCode?      @relation(fields: [discountCodeId], references: [id])
+  emails          EmailOutbox[]
+  profitShares    OrderProfitShare[]
+  extraCosts      OrderExtraCost[]
+  reminders       AgentReminder[]
+  documents       DocumentLink[]
+  payoutRun       PayoutRun?         @relation(fields: [payoutRunId], references: [id], onDelete: SetNull)
   paymentAttempts PaymentAttempt[]
   paymentEvents   PaymentEvent[]
+  groupBuy        GroupBuy?          @relation(fields: [groupBuyId], references: [id], onDelete: SetNull)
+  groupBuyNotices GroupBuyNotice[]
 
   @@index([phone])
+  @@index([groupBuyId])
   @@index([payoutRunId])
   @@index([status])
   @@index([orderNumber])
@@ -311,13 +326,13 @@ model Order {
 }
 
 model OrderItem {
-  id        String   @id @default(cuid())
-  orderId   String
+  id           String   @id @default(cuid())
+  orderId      String
   // Prisma-level rename only (was `productId`) — the physical column is
   // untouched via @map, so existing rows need no data migration at all.
-  variantId String   @map("productId")
-  quantity  Int
-  unitPrice Int
+  variantId    String   @map("productId")
+  quantity     Int
+  unitPrice    Int
   // What this line actually cost us, per unit, in cents — entered by an admin
   // on the order detail page's Profit Sharing tab. Line cost is unitCost ×
   // quantity. Nullable rather than defaulted to 0 so "nobody has priced this
@@ -328,13 +343,13 @@ model OrderItem {
   // *this* purchase, and it must not move when a supplier price changes later.
   // A default cost per variant is a reasonable thing to add above this one day,
   // but it would be a prefill for this field, never a replacement.
-  unitCost  Int?
+  unitCost     Int?
   // Whose price the unit cost above was taken from, when it was picked off the
   // supplier price list rather than typed. Traceability only: the cost is
   // copied onto unitCost at the moment of choosing and stays put when the
   // list changes later, for the same reason unitCost itself lives here.
   // Null means keyed in by hand (or never priced).
-  supplierId String?
+  supplierId   String?
   // Set on an item that came INCLUDED with another line — a syringe, swab or
   // vial bundled under the peptide it was configured on (ProductAddOn whose
   // add-on product is addOnOnly). Its quantity is the add-on's per-unit
@@ -342,7 +357,16 @@ model OrderItem {
   // chose for itself, and on orders placed before bundles existed (2026-10-20),
   // which order-lines.ts groups by the addOnOnly flag instead.
   parentItemId String?
-  createdAt DateTime @default(now())
+  // Units of `quantity` that did NOT come out of stock when the order was
+  // placed: a pre-order of a sold-out size, or every unit of a Group Buy line
+  // (bought from the supplier after the batch closes). Releasing an order
+  // gives back quantity − preorderQty, never more than it took.
+  preorderQty  Int      @default(0)
+  // Group Buy lines sold by the kit: vials per kit. quantity and unitPrice
+  // stay per vial so costing, supplier prices and stock read as usual; this is
+  // only how the line is shown ("3 kits · 30 vials"). Null = sold by the vial.
+  packSize     Int?
+  createdAt    DateTime @default(now())
 
   order    Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variant  ProductVariant @relation(fields: [variantId], references: [id])
@@ -387,22 +411,22 @@ model OrderExtraCost {
 // (see below), which is what makes lifetime per-person totals possible. Still
 // absent: per-item rather than per-order splits.
 model OrderProfitShare {
-  id            String  @id @default(cuid())
-  orderId       String
+  id               String  @id @default(cuid())
+  orderId          String
   // The person this share belongs to. Nullable only so the column could be
   // added to existing rows before the backfill ran — every row written since
   // has one, and the API resolves/creates a Partner from `name` on save.
-  partnerId     String?
+  partnerId        String?
   // The display label as it was typed on the order. Kept alongside partnerId
   // as a frozen historical record: renaming a Partner must not silently rewrite
   // what an old order says it agreed to.
-  name          String
+  name             String
   // Basis points, not whole percent — 5000 = 50%. An even three-way split is
   // the immediate reason (3333/3333/3334), and it matches the codebase's
   // existing "money and rates are integers, never floats" convention.
   //
   // This governs PROFIT only. Capital is not a percentage — see below.
-  shareBps      Int
+  shareBps         Int
   // How much of this order's COSTS this person paid for, in cents.
   //
   // An order's costs have to come out of somebody's pocket before the customer
@@ -423,7 +447,7 @@ model OrderProfitShare {
   // started was moved into one ADVANCE per person (scripts/cutover-ascend-
   // bank.ts) and `capitalFundingId` points at it — from then on the advance is
   // the debt, and this figure is history.
-  capitalAmount Int     @default(0)
+  capitalAmount    Int     @default(0)
   capitalFundingId String?
 
   createdAt DateTime @default(now())
@@ -565,14 +589,23 @@ model DiscountCode {
   usedCount      Int          @default(0)
   isActive       Boolean      @default(true)
   expiresAt      DateTime?
+  // Where the code may be used: null = anywhere, STORE = store checkout only,
+  // GROUP_BUY = Group Buy checkout only (groupBuyId narrows it to one batch).
+  scope          String?
+  groupBuyId     String?
+  // A Group Buy sign-up reward is that person's alone: checkout refuses it
+  // for any other email address.
+  boundEmail     String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  orders     Order[]
+  orders         Order[]
+  groupBuy       GroupBuy?       @relation(fields: [groupBuyId], references: [id], onDelete: SetNull)
+  groupBuySignup GroupBuySignup?
   // Set only on the single-use codes minted for newsletter welcome emails, so
   // an admin deleting a subscriber can't orphan a code that a real order may
   // already reference (the relation is optional in both directions).
-  subscriber Subscriber?
+  subscriber     Subscriber?
 
   @@map("discount_codes")
 }
@@ -698,6 +731,20 @@ model Member {
   verifyTokenHash      String?
   verifyTokenExpiresAt DateTime?
 
+  // A requested address change waits here until the link sent to the new
+  // inbox is clicked; `email` stays the old one until then. Hashed for the
+  // same reason as the verify token.
+  pendingEmail         String?
+  emailChangeTokenHash String?
+  emailChangeExpiresAt DateTime?
+
+  // Forgot-password link (hash only, short-lived).
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+  // Member tokens issued before this are refused (see authenticateMember), so
+  // a password change or reset signs out every other device.
+  passwordChangedAt DateTime?
+
   // Moderation of last resort. Banned members keep their rows (so their past
   // comments stay attributable) but can neither sign in nor post.
   banned Boolean @default(false)
@@ -705,9 +752,12 @@ model Member {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  comments InsightComment[]
+  comments        InsightComment[]
+  groupBuySignups GroupBuySignup[]
 
   @@index([verifyTokenHash])
+  @@index([emailChangeTokenHash])
+  @@index([resetTokenHash])
   @@map("members")
 }
 
@@ -765,12 +815,12 @@ enum PartnerKind {
 }
 
 model Partner {
-  id     String  @id @default(cuid())
-  name   String  @unique
+  id     String      @id @default(cuid())
+  name   String      @unique
   kind   PartnerKind @default(PERSON)
   // Deactivated rather than deleted — a former partner still has history, and
   // inactive partners drop out of the pickers for new records.
-  active Boolean @default(true)
+  active Boolean     @default(true)
   notes  String?
 
   createdAt DateTime @default(now())
@@ -779,7 +829,7 @@ model Partner {
   profitShares OrderProfitShare[]
   funding      PartnerFunding[]
   payouts      ProfitPayout[]
-  expensesPaid CompanyExpense[]   @relation("ExpensePaidBy")
+  expensesPaid CompanyExpense[]       @relation("ExpensePaidBy")
   splitRules   ProfitSplitRuleShare[]
 
   @@index([active])
@@ -857,9 +907,9 @@ model PartnerFunding {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  partner    Partner            @relation(fields: [partnerId], references: [id])
-  expense    CompanyExpense?    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  repayments PartnerRepayment[]
+  partner       Partner            @relation(fields: [partnerId], references: [id])
+  expense       CompanyExpense?    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  repayments    PartnerRepayment[]
   // Order splits whose fronted capital this advance took over at the cutover.
   capitalShares OrderProfitShare[]
 
@@ -1159,13 +1209,13 @@ model AgentThread {
   // Dashboard threads: the admin who opened it. Null for the other kinds.
   createdBy String?
 
-  model        String?
-  inputTokens  Int     @default(0)
+  model           String?
+  inputTokens     Int     @default(0)
   // The part of inputTokens the provider served from its prefix cache.
-  cacheReadTokens Int  @default(0)
-  outputTokens Int     @default(0)
-  costUsd      Float   @default(0)
-  turns        Int     @default(0)
+  cacheReadTokens Int     @default(0)
+  outputTokens    Int     @default(0)
+  costUsd         Float   @default(0)
+  turns           Int     @default(0)
 
   lastMessageAt DateTime @default(now())
   createdAt     DateTime @default(now())
@@ -1207,7 +1257,7 @@ model AgentThread {
 // keeping is filed into the document store, which copies the bytes — so a
 // purge never takes a filed document with it.
 model AgentMedia {
-  id         String       @id @default(cuid())
+  id         String    @id @default(cuid())
   threadId   String?
   // 'in' — an operator sent it; 'out' — the assistant sent or produced it.
   direction  String
@@ -1230,12 +1280,12 @@ model AgentMedia {
   // Why it could not be read, when it could not.
   error      String?
   // OpenRouter spend on reading it (vision / OCR). Zero for local parsing.
-  costUsd    Float        @default(0)
+  costUsd    Float     @default(0)
   // What produced an outbound file: "document:<id>", "receipt:ASC…",
   // "product-image:<id>", "report", "forward:<mediaId>". For the audit.
   source     String?
   purgedAt   DateTime?
-  createdAt  DateTime     @default(now())
+  createdAt  DateTime  @default(now())
 
   thread AgentThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
 
@@ -1591,9 +1641,9 @@ model Campaign {
 
   // Hero. `headline` falls back to the subject when empty; `subhead` is the
   // muted second clause, `badge` the status chip above both.
-  headline String?
-  subhead  String?
-  badge    String?
+  headline   String?
+  subhead    String?
+  badge      String?
   // Products to feature, in display order: the first is the large spotlight,
   // the rest a two-up grid. Ids only — name, price, photo and stock are read
   // at send time, so an email never quotes a price or stock level that has
@@ -1607,10 +1657,10 @@ model Campaign {
   // order still on its way (not yet delivered or cancelled); anyone who has
   // ever bought one of these products. Then specific people, by address.
   excludeOrderedWithinDays Int?
-  excludeOpenOrders        Boolean  @default(false)
-  excludeBoughtProductIds  String[] @default([])
-  excludeEmails            String[] @default([])
-  status   CampaignStatus   @default(DRAFT)
+  excludeOpenOrders        Boolean        @default(false)
+  excludeBoughtProductIds  String[]       @default([])
+  excludeEmails            String[]       @default([])
+  status                   CampaignStatus @default(DRAFT)
 
   // Frozen at send time, not computed on read: the audience keeps moving
   // (people subscribe, people leave), so a live count would silently rewrite
@@ -2093,4 +2143,200 @@ model ResearchImage {
 
   @@index([articleId])
   @@map("research_images")
+}
+
+// ─── Group Buy ──────────────────────────────────────────────────────────────
+//
+// A batch runs for a window the team sets, sells a list of products at its own
+// wholesale tiers (by the customer's own quantity), and ships together once it
+// closes and the stock arrives. Every control the team needs to run one — the
+// promotion (banner, popup, home section), the "people joined" counter, the
+// sign-up reward and the customer timeline — lives on the batch so running the
+// next one never needs a code change. Orders are ordinary orders tagged with
+// groupBuyId, so the books, profit sharing and Abby see them as usual.
+// See docs/group-buy.md.
+
+model GroupBuy {
+  id           String   @id @default(cuid())
+  // Shown as "Batch 03". Unique, assigned at creation as max + 1.
+  number       Int      @unique
+  slug         String   @unique
+  title        String
+  tagline      String?
+  // Markdown, shown on the batch page under the header.
+  description  String?
+  heroImageUrl String?
+  // DRAFT batches are invisible to customers whatever their dates say.
+  published    Boolean  @default(false)
+  opensAt      DateTime
+  closesAt     DateTime
+  // Free text the customer sees for when the batch ships ("Early December").
+  shipEstimate String?
+
+  // Order rules for the whole order (per-item rules live on GroupBuyItem).
+  minOrderAmount   Int? // sen, goods before discount
+  maxUnitsPerOrder Int     @default(500)
+  // null = the store's shipping fee; 0 = free; anything else = this fee (sen).
+  shippingFee      Int?
+  // Online payment is always offered; this also offers the WhatsApp order.
+  allowWhatsapp    Boolean @default(false)
+
+  // "People joined" counter. OFF by default. REAL = buyers + sign-ups,
+  // BOOST = REAL + joinedBoost, FIXED = joinedFixed regardless.
+  joinedMode  String @default("OFF")
+  joinedBoost Int    @default(0)
+  joinedFixed Int    @default(0)
+  joinedLabel String @default("people have joined this batch")
+
+  // Banner across the top of the storefront.
+  bannerEnabled  Boolean   @default(false)
+  bannerText     String?
+  bannerCta      String?
+  bannerStartsAt DateTime?
+  bannerEndsAt   DateTime?
+  bannerTone     String    @default("INK") // INK | GREEN | COBALT
+
+  // Popup on the storefront.
+  popupEnabled   Boolean   @default(false)
+  popupTitle     String?
+  popupBody      String?
+  popupImageUrl  String?
+  popupCta       String?
+  popupStartsAt  DateTime?
+  popupEndsAt    DateTime?
+  popupDelaySec  Int       @default(4)
+  // ONCE (per browser), DAILY, SESSION, EVERY (every page view)
+  popupFrequency String    @default("DAILY")
+  // ALL | HOME | PRODUCTS (product list and pages)
+  popupPages     String    @default("ALL")
+
+  // Section on the home page.
+  homeEnabled  Boolean @default(false)
+  homeTitle    String?
+  homeBody     String?
+  homeImageUrl String?
+  homeCta      String?
+
+  // Sign-up reward: everyone who joins the batch's list gets their own code.
+  rewardEnabled     Boolean @default(false)
+  rewardType        String  @default("PERCENTAGE") // PERCENTAGE | FIXED_AMOUNT (as DiscountType)
+  rewardValue       Int     @default(0) // % or sen
+  // GROUP_BUY = this batch only, STORE = store checkout only, ANY = both
+  rewardScope       String  @default("GROUP_BUY")
+  rewardMinOrder    Int? // sen
+  rewardValidDays   Int? // null = no expiry
+  rewardMembersOnly Boolean @default(false)
+  // Shown in the sign-up box: "Join the list and get 10% off your first order".
+  rewardHeadline    String?
+
+  // The customer timeline: [{ key, label, detail, eta, doneAt, note }] in
+  // order. The batch's current position is `stageKey`; stages before it are
+  // done. Edited on the admin Timeline tab.
+  stages            Json
+  stageKey          String  @default("open")
+  // Email every buyer when the stage moves on.
+  notifyStageEmails Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     GroupBuyItem[]
+  signups   GroupBuySignup[]
+  orders    Order[]
+  discounts DiscountCode[]
+  notices   GroupBuyNotice[]
+
+  @@index([published, opensAt, closesAt])
+  @@map("group_buys")
+}
+
+model GroupBuyItem {
+  id         String  @id @default(cuid())
+  groupBuyId String
+  variantId  String
+  sortOrder  Int     @default(0)
+  // VIAL or KIT. A kit is packSize vials; tiers, minimums and the price are
+  // per sell unit.
+  sellUnit   String  @default("VIAL")
+  packSize   Int     @default(10)
+  // Optional label override ("Kit of 10 vials").
+  unitLabel  String?
+  minQty     Int?
+  maxQty     Int?
+  minAmount  Int? // sen for this line
+  note       String?
+  active     Boolean @default(true)
+
+  groupBuy GroupBuy       @relation(fields: [groupBuyId], references: [id], onDelete: Cascade)
+  variant  ProductVariant @relation(fields: [variantId], references: [id])
+  tiers    GroupBuyTier[]
+
+  @@unique([groupBuyId, variantId])
+  @@index([groupBuyId])
+  @@map("group_buy_items")
+}
+
+// "From minQty sell units, each costs price." The lowest tier's minQty is the
+// starting price; the customer's quantity picks the highest tier it reaches.
+model GroupBuyTier {
+  id     String @id @default(cuid())
+  itemId String
+  minQty Int
+  price  Int // sen per sell unit
+
+  item GroupBuyItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, minQty])
+  @@map("group_buy_tiers")
+}
+
+// Someone who joined a batch's list — from the batch page, the popup, the home
+// section, or by buying. One row per email per batch.
+model GroupBuySignup {
+  id             String   @id @default(cuid())
+  groupBuyId     String
+  email          String
+  name           String?
+  phone          String?
+  memberId       String?
+  source         String   @default("PAGE") // PAGE | POPUP | HOME | CHECKOUT | ADMIN
+  discountCodeId String?  @unique
+  note           String?
+  createdAt      DateTime @default(now())
+
+  groupBuy     GroupBuy      @relation(fields: [groupBuyId], references: [id], onDelete: Cascade)
+  member       Member?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  discountCode DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
+
+  @@unique([groupBuyId, email])
+  @@index([memberId])
+  @@map("group_buy_signups")
+}
+
+// Emails the batch sends outside the order outbox: the sign-up welcome (with
+// the reward code) and one update per buyer per stage. The unique key is what
+// makes "once" true when a stage is saved twice.
+model GroupBuyNotice {
+  id            String    @id @default(cuid())
+  groupBuyId    String
+  orderId       String?
+  signupId      String?
+  kind          String // SIGNUP | STAGE
+  stageKey      String?
+  toEmail       String
+  // One key per (what, who): "signup:<id>", "stage:<key>:<orderId>".
+  dedupeKey     String    @unique
+  status        String    @default("PENDING") // PENDING | SENT | FAILED | SKIPPED
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  groupBuy GroupBuy @relation(fields: [groupBuyId], references: [id], onDelete: Cascade)
+  order    Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([groupBuyId])
+  @@map("group_buy_notices")
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
@@ -39,8 +39,8 @@ const TABS: { id: TabId; label: string; blurb: string; keys: string[] }[] = [
   {
     id: 'shipping',
     label: 'Shipping',
-    blurb: 'What delivery costs, and the East Malaysia rules.',
-    keys: ['shipping_fee', 'east_malaysia_shipping_fee', 'east_malaysia_min_order'],
+    blurb: 'What delivery costs, the East Malaysia rules and pre-orders.',
+    keys: ['shipping_fee', 'east_malaysia_shipping_fee', 'east_malaysia_min_order', 'preorder_enabled', 'preorder_lead_time'],
   },
   {
     id: 'business',
@@ -61,6 +61,18 @@ const TABS: { id: TabId; label: string; blurb: string; keys: string[] }[] = [
 
 const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
+// selectTab uses replaceState, which fires no hashchange — so it announces
+// the change itself and the tab reads straight from the URL either way.
+const TAB_EVENT = 'ascend-settings-tab';
+function subscribeHash(onChange: () => void) {
+  window.addEventListener('hashchange', onChange);
+  window.addEventListener(TAB_EVENT, onChange);
+  return () => {
+    window.removeEventListener('hashchange', onChange);
+    window.removeEventListener(TAB_EVENT, onChange);
+  };
+}
+
 function tabFromHash(): TabId {
   if (typeof window === 'undefined') return 'storefront';
   const h = window.location.hash.replace(/^#/, '');
@@ -76,20 +88,13 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<TabId>('storefront');
-
-  useEffect(() => {
-    setTab(tabFromHash());
-    const onHash = () => setTab(tabFromHash());
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  const tab = useSyncExternalStore(subscribeHash, tabFromHash, (): TabId => 'storefront');
 
   const selectTab = (id: TabId) => {
-    setTab(id);
     // replaceState, not location.hash: no scroll jump and no history entry
     // per click, but the URL still deep-links and survives a reload.
     window.history.replaceState(null, '', `#${id}`);
+    window.dispatchEvent(new Event(TAB_EVENT));
   };
 
   useEffect(() => {
@@ -332,6 +337,22 @@ export default function AdminSettingsPage() {
                     <Affixed prefix="RM">
                       <input id="east_malaysia_min_order" type="number" min="0" step="0.01" value={get('east_malaysia_min_order')} onChange={setText('east_malaysia_min_order')} placeholder="0.00" />
                     </Affixed>
+                  </Field>
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader title="Pre-orders" description="A sold-out size can still be bought. Units past stock ship when the restock lands; the rest of the order waits for them." />
+                <CardBody className="space-y-5">
+                  {/* Absent means on — only an explicit 'false' turns it off (utils/preorder.ts). */}
+                  <Toggle
+                    checked={settings.preorder_enabled !== 'false'}
+                    onChange={setBool('preorder_enabled')}
+                    label="Allow pre-orders on sold-out sizes"
+                    description="A size can opt out on its product page (Pre-order when sold out)."
+                  />
+                  <Field label="Ships in" htmlFor="preorder_lead_time" help="Shown on the product page, cart, checkout, emails and tracking." className="max-w-xs">
+                    <TextInput id="preorder_lead_time" value={get('preorder_lead_time')} onChange={setText('preorder_lead_time')} placeholder="10–14 days" />
                   </Field>
                 </CardBody>
               </Card>

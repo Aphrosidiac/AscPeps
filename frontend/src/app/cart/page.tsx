@@ -1,16 +1,20 @@
 'use client';
+import Image from 'next/image';
 
 import Link from 'next/link';
 import { lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
-import { Trash2, ShoppingCart } from 'lucide-react';
+import { Trash2, ShoppingCart, Clock } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Animate, Stagger } from '@/components/ui/Animate';
+import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, total, itemCount } = useCart();
+  const { leadTime } = usePreorder();
+  const anyPreorder = items.some((i) => preorderUnits(i.quantity, i.stock, i.preorder) > 0);
 
   if (items.length === 0) {
     return (
@@ -36,9 +40,9 @@ export default function CartPage() {
           {items.map((item) => (
             <div key={lineIdOf(item)} className="bg-surface rounded-xl border border-border p-4">
               <div className="flex items-center gap-3">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="relative w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                   {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                    <Image src={item.imageUrl} alt={item.name} fill sizes="64px" className="object-cover" />
                   ) : (
                     <span className="w-full text-center text-[9px] sm:text-[10px] leading-tight font-bold text-text-muted px-1 line-clamp-2 break-words">{item.code}</span>
                   )}
@@ -48,6 +52,12 @@ export default function CartPage() {
                   <h3 className="font-display font-bold text-sm sm:text-base truncate">{item.code}</h3>
                   <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
                   <p className="text-sm text-text-secondary">{formatPrice(lineUnitPrice(item))}</p>
+                  {preorderUnits(item.quantity, item.stock, item.preorder) > 0 && (
+                    <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-text-primary">
+                      <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                      {preorderLabel(item.quantity, item.stock)} · ships in {leadTime}
+                    </p>
+                  )}
                 </div>
 
                 <button aria-label={`Remove ${item.code}`} onClick={() => { removeItem(lineIdOf(item)); posthog.capture('remove_from_cart', { variant_id: item.variantId, product_code: item.code, quantity: item.quantity }); }} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
@@ -111,6 +121,11 @@ export default function CartPage() {
               <span>{formatPrice(total)}</span>
             </div>
           </div>
+          {anyPreorder && (
+            <p className="mb-4 text-xs text-text-secondary leading-relaxed">
+              Your order includes a pre-order, so it ships together in {leadTime}, when the restock lands.
+            </p>
+          )}
           <Link href="/checkout" className="block" onClick={() => posthog.capture('checkout_started', { item_count: itemCount, total_cents: total })}>
             <Button className="w-full" size="lg">Proceed to Checkout</Button>
           </Link>

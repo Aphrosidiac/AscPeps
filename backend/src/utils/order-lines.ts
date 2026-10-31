@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { getEffectivePrice } from './product-pricing.js';
 import { getVariantDisplayName } from './product-addons.js';
+import { canPreorder, type PreorderSettings } from './preorder.js';
 
 /**
  * Two kinds of add-on, told apart by the add-on's own product:
@@ -26,6 +27,8 @@ export interface OrderLineInput {
 export interface ResolvedInclude {
   variantId: string;
   quantity: number;
+  /** Units of `quantity` bought beyond stock (a pre-order). */
+  preorderQty: number;
   unitPrice: number;
   name: string;
   code: string;
@@ -34,11 +37,15 @@ export interface ResolvedInclude {
 export interface ResolvedLine {
   variantId: string;
   quantity: number;
+  /** Units of `quantity` bought beyond stock (a pre-order). See utils/preorder.ts. */
+  preorderQty: number;
   unitPrice: number;
   name: string;
   code: string;
   noShipping: boolean;
   includes: ResolvedInclude[];
+  /** Group Buy kit lines: vials per kit (display only). */
+  packSize?: number | null;
 }
 
 type Db = Pick<PrismaClient, 'productVariant' | 'productAddOn'>;
@@ -62,11 +69,19 @@ export class OrderLineError extends Error {
  * Throws OrderLineError for an inactive product or not enough stock. A FREE
  * included add-on that is short ships what is left (logged via `warn`) rather
  * than blocking the product it comes with; a priced one is held to its stock.
+ *
+ * With `preorder` given, a size that allows it is never short: what stock
+ * covers is taken, the rest becomes the line's preorderQty and ships on the
+ * restock (utils/preorder.ts).
  */
 export async function resolveOrderLines(
   db: Db,
   input: OrderLineInput[],
-  opts: { now?: Date; warn?: (msg: string, data: Record<string, unknown>) => void } = {}
+  opts: {
+    now?: Date;
+    warn?: (msg: string, data: Record<string, unknown>) => void;
+    preorder?: PreorderSettings;
+  } = {}
 ): Promise<ResolvedLine[]> {
   const now = opts.now ?? new Date();
   const ids = [...new Set(input.map((i) => i.variantId))];
@@ -139,6 +154,7 @@ export async function resolveOrderLines(
       .map((r) => ({
         variantId: r.addOnId,
         quantity: r.quantity * line.quantity,
+        preorderQty: 0,
         unitPrice: getEffectivePrice(r.addOn, now),
         name: getVariantDisplayName(r.addOn.product, r.addOn),
         code: r.addOn.code,
@@ -146,6 +162,7 @@ export async function resolveOrderLines(
     return {
       variantId: line.variantId,
       quantity: line.quantity,
+      preorderQty: 0,
       unitPrice: getEffectivePrice(v, now),
       name: getVariantDisplayName(v.product, v),
       code: v.code,
@@ -158,19 +175,23 @@ export async function resolveOrderLines(
   // customer chose, or a priced include, must be fully in stock. A free
   // include that is short is cut back to what is left, earliest lines first.
   const stockIds = [...new Set(resolved.flatMap((l) => [l.variantId, ...l.includes.map((i) => i.variantId)]))];
-  const stockRows = await db.productVariant.findMany({ where: { id: { in: stockIds } }, select: { id: true, stock: true } });
+  const stockRows = await db.productVariant.findMany({ where: { id: { in: stockIds } }, select: { id: true, stock: true, preorder: true } });
   const left = new Map(stockRows.map((r) => [r.id, r.stock]));
-  for (const line of resolved) {
-    const have = left.get(line.variantId) ?? 0;
-    if (have < line.quantity) throw new OrderLineError(`Insufficient stock for ${line.name}`);
-    left.set(line.variantId, have - line.quantity);
-  }
+  const preorderable = new Set(stockRows.filter((r) => opts.preorder && canPreorder(opts.preorder, r)).map((r) => r.id));
+  // Take what stock covers; a pre-orderable size turns the shortfall into a
+  // pre-order instead of refusing the order.
+  const take = (row: { variantId: string; quantity: number; preorderQty: number; name: string }) => {
+    const have = Math.max(left.get(row.variantId) ?? 0, 0);
+    if (have < row.quantity) {
+      if (!preorderable.has(row.variantId)) throw new OrderLineError(`Insufficient stock for ${row.name}`);
+      row.preorderQty = row.quantity - have;
+    }
+    left.set(row.variantId, have - (row.quantity - row.preorderQty));
+  };
+  for (const line of resolved) take(line);
   for (const line of resolved) {
     for (const inc of line.includes) {
-      if (inc.unitPrice === 0) continue;
-      const have = left.get(inc.variantId) ?? 0;
-      if (have < inc.quantity) throw new OrderLineError(`Insufficient stock for ${inc.name}`);
-      left.set(inc.variantId, have - inc.quantity);
+      if (inc.unitPrice !== 0) take(inc);
     }
   }
   for (const line of resolved) {
@@ -196,13 +217,13 @@ export function linesSubtotal(lines: ResolvedLine[]): number {
   );
 }
 
-/** Units of each variant the lines take out of stock. */
+/** Units of each variant the lines take out of stock (pre-ordered units take none). */
 export function stockDemand(lines: ResolvedLine[]): Map<string, number> {
   const demand = new Map<string, number>();
   const add = (id: string, q: number) => demand.set(id, (demand.get(id) ?? 0) + q);
   for (const l of lines) {
-    add(l.variantId, l.quantity);
-    for (const i of l.includes) add(i.variantId, i.quantity);
+    add(l.variantId, l.quantity - l.preorderQty);
+    for (const i of l.includes) add(i.variantId, i.quantity - i.preorderQty);
   }
   return demand;
 }

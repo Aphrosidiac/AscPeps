@@ -11,6 +11,9 @@ const PUBLIC_KEYS = [
   // online_payment_enabled — turning FPX off must not turn Bitcoin off too,
   // and vice versa.
   'crypto_payment_enabled',
+  // Pre-order: whether a sold-out size can still be bought, and the lead time
+  // the storefront quotes for it (utils/preorder.ts).
+  'preorder_enabled', 'preorder_lead_time',
   // Hosted manual checkout (DuitNow QR / bank transfer + proof upload) — its
   // own flag, next to the other two, so the three can be mixed freely.
   'manual_payment_enabled',

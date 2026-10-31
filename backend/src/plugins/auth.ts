@@ -54,13 +54,19 @@ export default fp(async (fastify: FastifyInstance) => {
 
     const member = await fastify.prisma.member.findUnique({
       where: { id: request.user.id },
-      select: { id: true, email: true, displayName: true, emailVerified: true, banned: true },
+      select: { id: true, email: true, displayName: true, emailVerified: true, banned: true, passwordChangedAt: true },
     });
     if (!member || member.banned) {
       return reply.status(401).send({ error: 'Unauthorized' });
     }
+    // Issued before the last password change or reset: that device was signed
+    // out by it. Whole seconds, because that is all `iat` carries.
+    const { passwordChangedAt, ...rest } = member;
+    if (passwordChangedAt && (request.user.iat ?? 0) < Math.floor(passwordChangedAt.getTime() / 1000)) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
 
-    request.member = member;
+    request.member = rest;
   });
 
   // Chained after authenticateMember on anything that writes. 403 rather than
@@ -90,6 +96,6 @@ declare module '@fastify/jwt' {
     // `kind` is optional to keep pre-existing admin tokens type-compatible;
     // see the undefined-means-admin note above.
     payload: { id: string; email: string; kind?: 'admin' | 'member' };
-    user: { id: string; email: string; kind?: 'admin' | 'member' };
+    user: { id: string; email: string; kind?: 'admin' | 'member'; iat?: number };
   }
 }

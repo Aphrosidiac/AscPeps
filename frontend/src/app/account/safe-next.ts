@@ -10,12 +10,12 @@ const DEFAULT_NEXT = '/insights';
  * note the second check, which rejects the protocol-relative "//evil.example"
  * form that browsers resolve as an absolute URL despite starting with "/".
  */
-export function safeNextPath(value: string | null | undefined): string {
-  if (!value) return DEFAULT_NEXT;
-  if (!value.startsWith('/')) return DEFAULT_NEXT;
-  if (value.startsWith('//')) return DEFAULT_NEXT;
+export function safeNextPath(value: string | null | undefined, fallback = DEFAULT_NEXT): string {
+  if (!value) return fallback;
+  if (!value.startsWith('/')) return fallback;
+  if (value.startsWith('//')) return fallback;
   // Backslashes are normalised to forward slashes by some browsers, so "/\evil"
   // is another way to write a protocol-relative URL.
-  if (value.startsWith('/\\')) return DEFAULT_NEXT;
+  if (value.startsWith('/\\')) return fallback;
   return value;
 }

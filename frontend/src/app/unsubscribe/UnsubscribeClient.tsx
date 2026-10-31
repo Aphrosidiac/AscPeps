@@ -16,13 +16,11 @@ import { unsubscribeNewsletter } from '@/lib/api';
  */
 export function UnsubscribeClient() {
   const token = useSearchParams().get('token') ?? '';
-  const [state, setState] = useState<'working' | 'done' | 'error'>('working');
+  // No token, nothing to send: the link is broken from the start.
+  const [state, setState] = useState<'working' | 'done' | 'error'>(token ? 'working' : 'error');
 
   useEffect(() => {
-    if (!token) {
-      setState('error');
-      return;
-    }
+    if (!token) return;
     let cancelled = false;
     unsubscribeNewsletter(token)
       .then(() => !cancelled && setState('done'))
