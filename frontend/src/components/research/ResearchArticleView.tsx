@@ -6,6 +6,7 @@ import { headings, renderResearchBody, type EmbedProduct } from '@/lib/research-
 import { researchDate, sourceLinks } from '@/lib/research';
 import { formatPrice, getDefaultVariant } from '@/lib/utils';
 import type { Product, ResearchContent } from '@/types';
+import { researchFont } from '@/lib/research-font';
 
 // The article as readers see it. Rendered on the server for /research/[slug]
 // and, unchanged, as the admin editor's live preview.
@@ -75,7 +76,7 @@ export function ResearchArticleView({ article: a, catalog = [], preview = false 
   ];
 
   return (
-    <article className="rs rs-page">
+    <article className={`rs rs-page ${researchFont.variable}`}>
       <div className={`rs-post__grid${toc.length >= 3 ? ' rs-post--toc' : ''}`}>
         <header className="rs-post__head">
           <ResearchCrumbs items={crumbs} />

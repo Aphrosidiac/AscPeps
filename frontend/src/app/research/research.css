@@ -1,9 +1,10 @@
 /*
  * /research — Teliti Peptides' research section, measured from its source
  * (AscComp apps/storefront: tokens.css, base.css, PostHub, PostList,
- * PostPage, Prose, References, Breadcrumbs) and set in Ascend's identity:
- * Outfit headings, Inter text, Ink/Paper neutrals, Cobalt for links (brand kit:
- * Cobalt = links, navigation, editorial emphasis).
+ * PostPage, Prose, References, Breadcrumbs), in Teliti's type and colours
+ * (IBM Plex Sans, Paper, Ink, Graphite, Rule) with Ascend's Cobalt for links
+ * (brand kit: Cobalt = links, navigation, editorial emphasis) and Ascend's own
+ * line art. Fakhrul chose Teliti's look for this section (2026-11-01).
  *
  * Spacing, type steps, column widths and breakpoints are Teliti's, value for
  * value. Everything is scoped under .rs; the admin's live preview imports this
@@ -11,8 +12,8 @@
  */
 
 .rs {
-  --rs-font-display: var(--font-outfit), system-ui, sans-serif;
-  --rs-font-text: var(--font-inter), system-ui, sans-serif;
+  --rs-font-display: var(--font-plex), system-ui, sans-serif;
+  --rs-font-text: var(--font-plex), system-ui, sans-serif;
 
   --rs-fs-small: 14px;
   --rs-fs-body: 16px;
@@ -25,17 +26,16 @@
   --rs-lh-snug: 1.2;
   --rs-lh-text: 1.6;
   --rs-track-display: -0.015em;
-  /* Teliti's 66ch in IBM Plex Sans (whose "0" is 0.6em). In Inter 66ch is ~5% wider, so the
-     same line length is set in em: 634 px of body text, 792 px of lead. */
-  --rs-measure: 39.6em;
+  --rs-measure: 66ch;
 
-  --rs-ink: #0a0a0a;
-  --rs-ink-2: #525252;
-  --rs-line: #e5e5e5;
-  --rs-line-strong: #d4d4d4;
-  --rs-accent: #3155d9;
-  --rs-panel: #f5f5f5;
-  --rs-photo: #f5f5f5;
+  --rs-bg: #f2f0e9; /* Paper */
+  --rs-ink: #16181b; /* Ink */
+  --rs-ink-2: #4a4d52; /* Graphite */
+  --rs-line: #d6d2c5; /* Rule */
+  --rs-line-strong: #b5b0a2;
+  --rs-accent: #3155d9; /* Ascend Cobalt */
+  --rs-panel: #e8e5db; /* Paper Deep */
+  --rs-photo: #e8e5db;
 
   --rs-s1: 4px;
   --rs-s2: 8px;
@@ -120,6 +120,7 @@
    Ascend's footer has no margin of its own, so the page carries it. */
 .rs-page {
   padding-bottom: var(--rs-section-gap);
+  background: var(--rs-bg);
 }
 
 /* Aligned with the site header (max-w-7xl, px-4 sm:px-6 lg:px-8). */
@@ -238,6 +239,8 @@
 .rs .rs-posts__title {
   font-size: var(--rs-fs-h4);
   font-weight: 500;
+  /* Teliti's titles are short; a long one wraps at the summary's measure instead of running the width. */
+  max-width: var(--rs-measure);
 }
 .rs-posts__title a {
   color: var(--rs-ink);
@@ -438,7 +441,7 @@
   margin-top: 0.35em;
 }
 .rs-prose strong {
-  font-weight: 600;
+  font-weight: 500;
 }
 .rs-prose blockquote {
   margin-inline: 0;

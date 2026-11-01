@@ -18,13 +18,18 @@ site.
 
 | Route | File | Notes |
 |---|---|---|
-| `/research` | `frontend/src/app/research/page.tsx` | Hub: title, intro, illustration (`RESEARCH_HUB.art`; none yet, so the heading runs full width), one row per live article. 404 while nothing is live (an empty hub would be a thin page), and the header's Research link only shows once an article is live. JSON-LD: CollectionPage + ItemList + BreadcrumbList |
+| `/research` | `frontend/src/app/research/page.tsx` | Hub: title, intro, illustration (`RESEARCH_HUB.art`), one row per live article. 404 while nothing is live (an empty hub would be a thin page), and the header's Research link only shows once an article is live. JSON-LD: CollectionPage + ItemList + BreadcrumbList |
 | `/research/[slug]` | `frontend/src/app/research/[slug]/page.tsx` | Article. A renamed or deleted URL 308s to where it went (one hop); "gone" answers 404 (the App Router has no 410) |
 
 - The look is Teliti's, measured: spacing, type steps, column widths (680 px reading column, 220 px sticky
   contents list at ≥ 1100 px) and breakpoints (760 / 1000 / 1100 / 1200) are its values
-  (`frontend/src/app/research/research.css`), set in Ascend's identity: Outfit/Inter, Ink/Paper, Cobalt
-  links. The hub lines up with Ascend's header instead of Teliti's wider wrap (24 px).
+  (`frontend/src/app/research/research.css`), and so are its type and colours: IBM Plex Sans 400/500
+  (`lib/research-font.ts`, self-hosted by next/font), Paper, Ink, Graphite and Rule. Links are Ascend Cobalt.
+  The hub lines up with Ascend's header instead of Teliti's wider wrap (24 px).
+- The hub illustration is Ascend's own line drawing (Ink, one Cobalt detail), made with
+  `frontend/scripts/research-art.mjs` (OpenRouter `openai/gpt-5.4-image-2`, ~$0.16 an image). Teliti's art,
+  copy and photos may not appear here (Teliti DECISIONS #19), so the hub's H1, title and intro are Ascend's
+  own words too.
 - `ResearchArticleView` renders the article; the admin preview uses the same renderer.
 - `lib/research-markdown.ts` is the one body renderer (server page and admin preview): escape-first
   markdown allowlist, `##` headings get Teliti's ids, `{{product:<id>}}` on its own line is a product card
@@ -96,6 +101,5 @@ SeoFields, ImageField, MultiPick, ProductCardPicker, MarkdownEditor.
 `backend/scripts/import-teliti-research.ts` imports Teliti's English research posts (sources, citations,
 lead images, live copies with Teliti's dates). **Local only.** Teliti's DECISIONS #19 forbids copied copy
 or photos between the two brands, and the same text on both sites would compete with itself: rewrite
-every article and replace the lead images (they carry Teliti's logo) before anything here goes live. The
-hub illustration used locally (`frontend/public/research-standin/`) is Teliti's art, not committed;
-`RESEARCH_HUB.art` stays null until Ascend has its own.
+every article and replace the lead images (they carry Teliti's logo) before anything here goes live. Teliti's
+hub art in `frontend/public/research-standin/` is local only and never committed.

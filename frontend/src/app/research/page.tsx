@@ -5,6 +5,7 @@ import { JsonLd } from '@/components/JsonLd';
 import { ResearchCrumbs } from '@/components/research/ResearchArticleView';
 import { getResearchListServer } from '@/lib/server-api';
 import { RESEARCH_HUB, SITE, breadcrumbNode } from '@/lib/research';
+import { researchFont } from '@/lib/research-font';
 
 export const metadata: Metadata = {
   title: { absolute: RESEARCH_HUB.title },
@@ -24,7 +25,7 @@ export default async function ResearchHubPage() {
   ];
 
   return (
-    <div className="rs rs-page">
+    <div className={`rs rs-page ${researchFont.variable}`}>
       <JsonLd
         data={{
           '@context': 'https://schema.org',
