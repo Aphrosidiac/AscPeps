@@ -30,9 +30,8 @@ const PERKS = GROUP_BUY_ENABLED
       'Every Group Buy order in one place, with its live batch timeline',
       'Your name and email filled in at checkout',
       'Sign-up reward codes shown on screen, not only in your inbox',
-      'Comment on Insights articles',
     ]
-  : ['Your name and email filled in at checkout', 'Comment on Insights articles'];
+  : ['Your name and email filled in at checkout'];
 
 function rewardWhere(r: NonNullable<AuthBatch['reward']>) {
   return r.scope === 'GROUP_BUY' ? 'your batch order' : r.scope === 'STORE' ? 'your next store order' : 'your next order';
@@ -137,7 +136,7 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
                 </h1>
                 <p className="mt-1.5 hidden text-[15px] leading-relaxed text-[#0A0A0A]/60 sm:block">
                   {!GROUP_BUY_ENABLED
-                    ? 'Your details filled in at checkout, and comments on Insights.'
+                    ? 'Your name and email filled in at checkout.'
                     : signup
                       ? 'Follow your Group Buy orders and keep your rewards.'
                       : 'See your orders, batch timelines and rewards.'}

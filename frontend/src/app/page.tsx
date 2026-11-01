@@ -1,5 +1,5 @@
 import { HomeClient } from './HomeClient';
-import { getProductsServer, getCategoriesServer, getSettingsServer, getProductServer, getInsightServer, getGroupBuyPromoServer } from '@/lib/server-api';
+import { getProductsServer, getCategoriesServer, getSettingsServer, getProductServer, getResearchServer, getGroupBuyPromoServer } from '@/lib/server-api';
 
 // Kept as a constant rather than a settings field — swapping which specific
 // article backs the "backed by published research" trust badge is a content
@@ -28,7 +28,8 @@ export default async function HomePage() {
 
   const [hardsellProduct, hardsellResearchArticle, hardsellSlide2Product] = await Promise.all([
     hardsellEnabled ? getProductServer(hardsellSlug) : Promise.resolve(null),
-    hardsellEnabled ? getInsightServer(HARDSELL_RESEARCH_SLUG) : Promise.resolve(null),
+    // The research article behind the slide's "Backed by Published Research" link, while it is live.
+    hardsellEnabled ? getResearchServer(HARDSELL_RESEARCH_SLUG).then((r) => (r && 'article' in r ? r.article : null)) : Promise.resolve(null),
     slide2Enabled ? getProductServer(slide2Slug) : Promise.resolve(null),
   ]);
 

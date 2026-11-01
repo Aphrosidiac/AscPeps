@@ -165,7 +165,7 @@ function NameCard({ member, token }: { member: Member; token: string }) {
   return (
     <Card
       title="Your name"
-      sub="Shown on your Insights comments and filled in for you at checkout."
+      sub="Filled in for you at checkout."
       onSubmit={submit}
       footer={<><StatusLine status={status} hint="2 to 40 characters." /><Save label="Save" busy={busy} disabled={trimmed.length < 2 || trimmed === member.displayName} /></>}
     >

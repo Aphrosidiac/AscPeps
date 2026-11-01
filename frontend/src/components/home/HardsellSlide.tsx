@@ -4,11 +4,11 @@ import { ArrowRight, ShieldCheck, FileText, Check, Gift, BadgeCheck, MapPin } fr
 import { Animate } from '@/components/ui/Animate';
 import { Button } from '@/components/ui/Button';
 import { formatPrice, getDefaultVariant, getEffectivePrice, isSaleActive } from '@/lib/utils';
-import type { Product, Insight } from '@/types';
+import type { Product, ResearchArticle } from '@/types';
 
 export interface HardsellSlideProps {
   product: Product;
-  researchArticle: Insight | null;
+  researchArticle: Pick<ResearchArticle, 'slug'> | null;
   // Owner-authored copy — this component never invents marketing claims
   // of its own. Falls back to a plain, compliant default (product name)
   // if left unset.
@@ -134,7 +134,7 @@ export function HardsellSlide({ product, researchArticle, headline, subheadline 
                 )}
                 {researchArticle && (
                   <Link
-                    href={`/insights/${researchArticle.slug}`}
+                    href={`/research/${researchArticle.slug}`}
                     className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-white transition-colors"
                   >
                     <FileText className="w-4 h-4" /> Backed by Published Research

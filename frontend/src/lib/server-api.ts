@@ -1,5 +1,5 @@
 import { GROUP_BUY_ENABLED } from '@/lib/features';
-import type { Category, PaginatedResponse, Product, Insight, InsightComment, ResearchArticle, ResearchListItem } from '@/types';
+import type { Category, PaginatedResponse, Product, ResearchArticle, ResearchListItem } from '@/types';
 
 // Server-side data fetching for SSR/metadata. The browser talks to the API via the
 // nginx-proxied relative /api path, so NEXT_PUBLIC_API_URL is empty in prod — server
@@ -44,32 +44,6 @@ export const getProductsServer = (params?: {
     { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } }
   );
 };
-
-export const getInsightsServer = (params?: { category?: string; limit?: number }) => {
-  const query: Record<string, string> = { limit: String(params?.limit ?? 100) };
-  if (params?.category) query.category = params.category;
-
-  return getJson<PaginatedResponse<Insight>>(
-    `/api/v1/insights?${new URLSearchParams(query).toString()}`,
-    { data: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } },
-    ['insights']
-  );
-};
-
-export const getInsightServer = (slug: string) =>
-  getJson<Insight | null>(`/api/v1/insights/${encodeURIComponent(slug)}`, null, ['insights']);
-
-// Fetched server-side (rather than in the browser after hydration) so the
-// comments are in the HTML crawlers receive — reader discussion is exactly the
-// long-tail content this section exists to accumulate. Shares the 'insights'
-// tag, so posting a comment revalidates the article page it lives on; see the
-// notifyRevalidate call in the backend's comments controller.
-export const getInsightCommentsServer = (slug: string) =>
-  getJson<{ data: InsightComment[] }>(
-    `/api/v1/insights/${encodeURIComponent(slug)}/comments`,
-    { data: [] },
-    ['insights']
-  );
 
 export const getResearchListServer = () =>
   getJson<{ data: ResearchListItem[] }>(`/api/v1/research`, { data: [] }, ['research']);

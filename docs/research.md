@@ -5,9 +5,14 @@ study with its DOI and PubMed links. Ported from Teliti Peptides (`~/Desktop/dev
 section from its Astro pages, the admin from its Vue admin, component by component. One addition Teliti
 doesn't have: photos placed anywhere in an article's text, mid-sentence included.
 
-Research is its own section, not part of Insights. Insights is a plain-text blog with figures under the
-body; a research article is markdown with question headings, a contents list built from them, cited
-studies from a shared library, and a draft → publish model.
+Research replaced Insights on 2026-11-01. Every Insights article was moved here with its slug
+(`backend/scripts/migrate-insights-to-research.ts`: plain text → markdown headings and lists, its
+citation → a library study, figures → photos at the end of the text, author → Writers & reviewers;
+published stays published, drafts stay drafts). `/insights` and `/insights/<slug>` 308 to `/research`
+and `/research/<slug>` (`frontend/next.config.ts`), and the admin's Insights and Comments pages
+redirect to Admin → Research. Comments went with Insights: research articles have none, so accounts no
+longer mention them. The Insights tables and API are still in the database and backend, unused by the
+site.
 
 ## Storefront
 

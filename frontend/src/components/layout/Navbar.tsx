@@ -31,7 +31,6 @@ export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
   const links = [
     { href: '/products', label: 'Products' },
     ...(researchLive ? [{ href: '/research', label: 'Research' }] : []),
-    { href: '/insights', label: 'Insights' },
     { href: '/calculator', label: 'Calculator' },
     { href: '/track', label: 'Track Order' },
     { href: '/about', label: 'About' },
@@ -159,7 +158,7 @@ export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
               </button>
             )}
 
-            {/* Accounts exist only for commenting on Insights, so this stays a
+            {/* Accounts are a convenience (details filled in at checkout), so this stays a
                 quiet icon rather than a "Sign in" call to action competing
                 with the cart. */}
             {/* On phones it moves into the menu to leave room for Group Buy. */}

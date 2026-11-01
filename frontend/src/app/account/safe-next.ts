@@ -1,4 +1,4 @@
-const DEFAULT_NEXT = '/insights';
+const DEFAULT_NEXT = '/account';
 
 /**
  * Constrains the `?next=` post-sign-in redirect to a path on this site.

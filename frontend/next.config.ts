@@ -63,6 +63,15 @@ const nextConfig: NextConfig = {
       // admin path is free to change again without browsers caching a 308.
       { source: "/admin/finance", destination: "/admin/money", permanent: false },
       { source: "/admin/finance/:path*", destination: "/admin/money/:path*", permanent: false },
+      // Research replaced Insights (2026-11-01). Every Insights article moved to
+      // Research with its slug (backend/scripts/migrate-insights-to-research.ts),
+      // so each old URL has its own new one; the ?category= filters had no
+      // equivalent and land on the hub.
+      { source: "/insights", destination: "/research", permanent: true },
+      { source: "/insights/:slug", destination: "/research/:slug", permanent: true },
+      { source: "/admin/insights", destination: "/admin/research", permanent: false },
+      { source: "/admin/insights/:path*", destination: "/admin/research", permanent: false },
+      { source: "/admin/comments", destination: "/admin/research", permanent: false },
     ];
   },
 };

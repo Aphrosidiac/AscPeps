@@ -86,11 +86,9 @@ export const NAV: Entry[] = [
     label: 'Content',
     icon: Newspaper,
     items: [
-      { href: '/admin/insights', label: 'Insights' },
       { href: '/admin/research', label: 'Research' },
       { href: '/admin/research-sources', label: 'Research sources' },
       { href: '/admin/research-people', label: 'Writers & reviewers' },
-      { href: '/admin/comments', label: 'Comments' },
     ],
   },
   {

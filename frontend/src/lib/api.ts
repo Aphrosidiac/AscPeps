@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { TrackedOrder } from './order-pipeline';
-import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Insight, InsightComment, AdminComment, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document, MoneyOverview, BankLedger, BankCheck, SplitRule, ShareOutQueue,
+import type { Category, Product, Order, OrderProfitShare, OrderProfitShareInput, OrderItemCostInput, OrderExtraCostInput, PaginatedResponse, Member, AdminEmailsResponse, FinanceOverview, PartnerDetail, Partner, CompanyExpense, Document, MoneyOverview, BankLedger, BankCheck, SplitRule, ShareOutQueue,
   ShadowSku,
   Supplier,
   SupplierOption,
@@ -261,22 +261,6 @@ export const adminDeleteDiscount = (token: string, id: string) =>
 // Validate discount (public)
 export const validateDiscount = (code: string, subtotal: number) =>
   api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number }>('/api/v1/orders/validate-discount', { code, subtotal }).then((r) => r.data);
-
-// Insights
-export const adminGetInsights = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<Insight>>('/api/v1/admin/insights', { headers: { Authorization: `Bearer ${token}` }, params }).then((r) => r.data);
-
-export const adminGetInsight = (token: string, id: string) =>
-  api.get<Insight>(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
-
-export const adminCreateInsight = (token: string, data: Record<string, unknown>) =>
-  api.post('/api/v1/admin/insights', data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
-
-export const adminUpdateInsight = (token: string, id: string, data: Record<string, unknown>) =>
-  api.patch(`/api/v1/admin/insights/${id}`, data, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
-
-export const adminDeleteInsight = (token: string, id: string) =>
-  api.delete(`/api/v1/admin/insights/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
 /* ------------------------------------------------------------------ Finance */
 
@@ -746,31 +730,6 @@ export const memberForgotPassword = (email: string, where: AccountWhere) =>
 
 export const memberResetPassword = (token: string, password: string) =>
   api.post<{ token: string; member: Member }>('/api/v1/members/reset-password', { token, password }).then((r) => r.data);
-
-export const getInsightComments = (slug: string) =>
-  api.get<{ data: InsightComment[] }>(`/api/v1/insights/${encodeURIComponent(slug)}/comments`).then((r) => r.data);
-
-export const postInsightComment = (token: string, slug: string, body: string) =>
-  api
-    .post<InsightComment>(`/api/v1/insights/${encodeURIComponent(slug)}/comments`, { body }, auth(token))
-    .then((r) => r.data);
-
-export const deleteInsightComment = (token: string, id: string) =>
-  api.delete(`/api/v1/insights/comments/${id}`, auth(token)).then((r) => r.data);
-
-// ---- Admin comment moderation ----
-
-export const adminListComments = (token: string, params?: Record<string, string>) =>
-  api.get<PaginatedResponse<AdminComment>>('/api/v1/admin/comments', { ...auth(token), params }).then((r) => r.data);
-
-export const adminSetCommentHidden = (token: string, id: string, hidden: boolean) =>
-  api.patch(`/api/v1/admin/comments/${id}`, { hidden }, auth(token)).then((r) => r.data);
-
-export const adminDeleteComment = (token: string, id: string) =>
-  api.delete(`/api/v1/admin/comments/${id}`, auth(token)).then((r) => r.data);
-
-export const adminSetMemberBanned = (token: string, memberId: string, banned: boolean) =>
-  api.patch(`/api/v1/admin/comments/members/${memberId}`, { banned }, auth(token)).then((r) => r.data);
 
 // --- Shadow SKUs -----------------------------------------------------------
 

@@ -13,14 +13,14 @@ import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { BannerStrip } from '@/components/ui/BannerStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import { getCategoryIcon } from '@/lib/category-icons';
-import type { Product, Category, Insight } from '@/types';
+import type { Product, Category, ResearchArticle } from '@/types';
 
 interface HomeClientProps {
   products: Product[];
   categories: Category[];
   freeShipping: boolean;
   hardsellProduct: Product | null;
-  hardsellResearchArticle: Insight | null;
+  hardsellResearchArticle: Pick<ResearchArticle, 'slug'> | null;
   hardsellHeadline: string;
   hardsellSubheadline: string;
   hardsellSlide2Product: Product | null;
@@ -160,7 +160,7 @@ export function HomeClient({
           },
           hardsellSlide2Product && {
             product: hardsellSlide2Product,
-            // No real Insights article for this product yet — pass null
+            // No research article for this product yet — pass null
             // rather than reuse slide 1's (unrelated) research link.
             researchArticle: null,
             headline: hardsellSlide2Headline,

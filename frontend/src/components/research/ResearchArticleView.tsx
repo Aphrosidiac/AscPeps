@@ -124,7 +124,7 @@ export function ResearchArticleView({ article: a, catalog = [], preview = false 
               <ol className="rs-refs">
                 {a.citations.map((c) => (
                   <li key={c.position} id={`study-${c.position}`}>
-                    <p className="rs-ref__finding">{c.finding}</p>
+                    {c.finding && <p className="rs-ref__finding">{c.finding}</p>}
                     <p className="rs-ref__cite">
                       <cite>{c.source.title}</cite>. <span className="rs-ref__journal">{c.source.journal}</span>, {c.source.year}.{' '}
                       {sourceLinks(c.source).map((l, i) => (

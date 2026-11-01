@@ -69,8 +69,8 @@ export function VerifyClient() {
         <CheckCircle2 className="w-8 h-8 text-success mx-auto mb-3" />
         <p className="text-sm text-text-secondary leading-relaxed">
           {GROUP_BUY_ENABLED
-            ? 'You’re all set. Your Group Buy orders and reward codes now show in your account, and you can comment on Insights.'
-            : 'You’re all set. You can now comment on Insights.'}
+            ? 'You’re all set. Your Group Buy orders and reward codes now show in your account.'
+            : 'You’re all set.'}
         </p>
         <Link
           href={GROUP_BUY_ENABLED ? '/group-buy/orders' : '/account'}

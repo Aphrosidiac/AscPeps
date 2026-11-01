@@ -37,16 +37,10 @@ export function AccountShell({
             <Link href="/group-buy/orders" className="underline hover:text-text-secondary transition-colors">
               Group Buy orders
             </Link>{' '}
-            and lets you comment on Insights. Buying as a guest still works.
+            and fills in your details at checkout. Buying as a guest still works.
           </>
         ) : (
-          <>
-            Your account lets you comment on{' '}
-            <Link href="/insights" className="underline hover:text-text-secondary transition-colors">
-              Insights
-            </Link>
-            . Buying as a guest still works.
-          </>
+          <>Your account fills in your details at checkout. Buying as a guest still works.</>
         )}
       </p>
     </div>
