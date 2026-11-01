@@ -2,7 +2,8 @@
  * /research — Teliti Peptides' research section, measured from its source
  * (AscComp apps/storefront: tokens.css, base.css, PostHub, PostList,
  * PostPage, Prose, References, Breadcrumbs), in Teliti's type and colours
- * (IBM Plex Sans, Paper, Ink, Graphite, Rule) with Ascend's Cobalt for links
+ * (IBM Plex Sans, Ink, Graphite, Rule) on the site's own white background
+ * (Fakhrul turned Teliti's Paper down, 2026-11-01), with Ascend's Cobalt for links
  * (brand kit: Cobalt = links, navigation, editorial emphasis) and Ascend's own
  * line art. Fakhrul chose Teliti's look for this section (2026-11-01).
  *
@@ -28,7 +29,6 @@
   --rs-track-display: -0.015em;
   --rs-measure: 66ch;
 
-  --rs-bg: #f2f0e9; /* Paper */
   --rs-ink: #16181b; /* Ink */
   --rs-ink-2: #4a4d52; /* Graphite */
   --rs-line: #d6d2c5; /* Rule */
@@ -120,7 +120,6 @@
    Ascend's footer has no margin of its own, so the page carries it. */
 .rs-page {
   padding-bottom: var(--rs-section-gap);
-  background: var(--rs-bg);
 }
 
 /* Aligned with the site header (max-w-7xl, px-4 sm:px-6 lg:px-8). */

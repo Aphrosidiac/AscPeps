@@ -24,7 +24,7 @@ site.
 - The look is Teliti's, measured: spacing, type steps, column widths (680 px reading column, 220 px sticky
   contents list at ≥ 1100 px) and breakpoints (760 / 1000 / 1100 / 1200) are its values
   (`frontend/src/app/research/research.css`), and so are its type and colours: IBM Plex Sans 400/500
-  (`lib/research-font.ts`, self-hosted by next/font), Paper, Ink, Graphite and Rule. Links are Ascend Cobalt.
+  (`lib/research-font.ts`, self-hosted by next/font), Ink, Graphite and Rule, on the site's white. Links are Ascend Cobalt.
   The hub lines up with Ascend's header instead of Teliti's wider wrap (24 px).
 - The hub illustration is Ascend's own line drawing (Ink, one Cobalt detail), made with
   `frontend/scripts/research-art.mjs` (OpenRouter `openai/gpt-5.4-image-2`, ~$0.16 an image). Teliti's art,
