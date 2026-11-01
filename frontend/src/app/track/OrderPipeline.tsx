@@ -6,13 +6,13 @@ import { groupOrderItems, groupedLineTotal, includesText } from '@/lib/order-lin
 import Link from 'next/link';
 import {
   Check, X, Receipt, CreditCard, Package, Truck, Home,
-  Copy, ExternalLink, ChevronDown, FileText, MessageCircle, Clock,
+  Copy, ExternalLink, ChevronDown, FileText, MessageCircle, Clock, Hourglass,
 } from 'lucide-react';
 import { usePreorder } from '@/lib/preorder';
 import type { GroupBuyStage } from '@/types';
 import { cn, formatPrice } from '@/lib/utils';
 import {
-  orderSteps, orderHeadline, shortDate, shortTime,
+  orderSteps, orderHeadline, awaitsRestock, shortDate, shortTime,
   type TrackedOrder, type Step, type Tone,
 } from '@/lib/order-pipeline';
 
@@ -22,14 +22,16 @@ const STEP_ICON = {
   placed: Receipt,
   paid: CreditCard,
   packing: Package,
+  restock: Hourglass,
   shipped: Truck,
   delivered: Home,
   cancelled: X,
 } as const;
 
 export function OrderPipeline({ order, phone }: { order: TrackedOrder; phone: string }) {
+  const { leadTime } = usePreorder();
   const steps = orderSteps(order);
-  const headline = orderHeadline(order);
+  const headline = orderHeadline(order, leadTime);
   const shipped = order.status === 'SHIPPED' || order.status === 'DELIVERED';
   const helpUrl = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`Hi, about my order ${order.orderNumber}`)}`;
 
@@ -53,7 +55,8 @@ export function OrderPipeline({ order, phone }: { order: TrackedOrder; phone: st
       </div>
 
       {order.groupBuy && order.status !== 'CANCELLED' && <BatchSection order={order} />}
-      {!order.groupBuy && order.isPreorder && !shipped && order.status !== 'CANCELLED' && <PreorderNote />}
+      {/* Once paid, the headline and the "Pre-order" step say this already. */}
+      {awaitsRestock(order) && order.paymentStatus === 'UNPAID' && order.status !== 'CANCELLED' && <PreorderNote leadTime={leadTime} />}
 
       {shipped && order.tracking && (
         // While it is in transit the headline already carries "Track parcel".
@@ -402,8 +405,7 @@ function BatchSection({ order }: { order: TrackedOrder }) {
   );
 }
 
-function PreorderNote() {
-  const { leadTime } = usePreorder();
+function PreorderNote({ leadTime }: { leadTime: string }) {
   return (
     <div className="mx-5 sm:mx-7 mb-6 flex gap-2.5 rounded-xl border border-border bg-surface-elevated/60 px-4 py-3 text-sm">
       <Clock className="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" aria-hidden />

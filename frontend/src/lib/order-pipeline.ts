@@ -42,7 +42,7 @@ export interface TrackedOrder
   groupBuy?: GroupBuyRef | null;
 }
 
-export type StepKey = 'placed' | 'paid' | 'packing' | 'shipped' | 'delivered';
+export type StepKey = 'placed' | 'paid' | 'packing' | 'restock' | 'shipped' | 'delivered';
 export type StepState = 'done' | 'current' | 'upcoming' | 'stopped';
 
 export interface Step {
@@ -61,6 +61,15 @@ const STEPS: { key: StepKey; active: string; done: string }[] = [
   { key: 'shipped', active: 'On the way', done: 'Shipped' },
   { key: 'delivered', active: 'Delivered', done: 'Delivered' },
 ];
+
+// A pre-order waits for the restock where a store order is packed: nothing is
+// packed until the stock lands, so "Packing" would be a promise we can't keep.
+// A Group Buy order has its own batch timeline and keeps the plain steps.
+const PREORDER_STEP = { key: 'restock' as const, active: 'Pre-order', done: 'Restocked' };
+
+export const awaitsRestock = (o: TrackedOrder) => !!o.isPreorder && !o.groupBuy;
+
+const stepsFor = (o: TrackedOrder) => (awaitsRestock(o) ? STEPS.map((s) => (s.key === 'packing' ? PREORDER_STEP : s)) : STEPS);
 
 const isPaid = (o: TrackedOrder) => o.paymentStatus === 'PAID' || o.paymentStatus === 'REFUNDED';
 const handDelivered = (o: TrackedOrder) => o.delivery?.status === 'COMPLETED';
@@ -88,6 +97,7 @@ function stampFor(o: TrackedOrder, key: StepKey): string | null {
     case 'paid':
       return o.paidAt;
     case 'packing':
+    case 'restock':
       // Online payments confirm in the same moment they are paid.
       return o.confirmedAt ?? o.paidAt;
     case 'shipped':
@@ -103,20 +113,20 @@ export function orderSteps(o: TrackedOrder): Step[] {
     // are left off: a greyed "Delivered" on a cancelled order reads as a promise.
     const upTo = isPaid(o) ? 2 : 1;
     return [
-      ...STEPS.slice(0, upTo).map((s) => ({ key: s.key, label: s.done, state: 'done' as const, at: stampFor(o, s.key) })),
+      ...stepsFor(o).slice(0, upTo).map((s) => ({ key: s.key, label: s.done, state: 'done' as const, at: stampFor(o, s.key) })),
       { key: 'cancelled', label: 'Cancelled', state: 'stopped', at: o.cancelledAt },
     ];
   }
   const now = reached(o);
-  return STEPS.map((s, i) => ({
+  return stepsFor(o).map((s, i) => ({
     key: s.key,
     label: i < now ? s.done : s.active,
     state: i < now ? 'done' : i === now ? 'current' : 'upcoming',
-    // Packing is the one step whose stamp is when it STARTED. Under "Packing"
-    // that reads right ("since 9 Aug"); under "Packed" it would claim the
-    // parcel was ready at the moment it was paid for, so it is dropped — the
-    // Shipped time beside it says when it actually left.
-    at: i > now || (s.key === 'packing' && i < now) ? null : stampFor(o, s.key),
+    // Packing (or the pre-order wait) is the one step whose stamp is when it
+    // STARTED. Under "Packing" that reads right ("since 9 Aug"); under "Packed"
+    // it would claim the parcel was ready at the moment it was paid for, so it
+    // is dropped — the Shipped time beside it says when it actually left.
+    at: i > now || ((s.key === 'packing' || s.key === 'restock') && i < now) ? null : stampFor(o, s.key),
   }));
 }
 
@@ -135,8 +145,11 @@ const ETA: Record<TrackedOrder['region'], string> = {
   east: '3–7 business days',
 };
 
-/** The one sentence a customer came to this page for. */
-export function orderHeadline(o: TrackedOrder): Headline {
+/**
+ * The one sentence a customer came to this page for. `preorderLead` is the
+ * store's pre-order lead time ("10–14 days"), from settings.
+ */
+export function orderHeadline(o: TrackedOrder, preorderLead: string): Headline {
   if (o.status === 'CANCELLED') {
     if (o.paymentStatus === 'REFUNDED') {
       return { title: 'Cancelled and refunded', detail: `We've returned ${rm(o.refundedAmount || o.total)} to you.`, tone: 'stopped' };
@@ -162,6 +175,9 @@ export function orderHeadline(o: TrackedOrder): Headline {
     case 2:
       if (o.delivery?.status === 'SCHEDULED') {
         return { title: 'Delivery booked', detail: `We’re bringing it to you ${slot(o.delivery)}.`, tone: 'progress' };
+      }
+      if (awaitsRestock(o)) {
+        return { title: 'Pre-order confirmed', detail: `Payment confirmed. Your order is waiting for the restock, due in ${preorderLead}. We pack and ship everything together once it lands, in plain, discreet packaging.`, tone: 'progress' };
       }
       return { title: 'Being packed', detail: 'Payment confirmed. Orders leave us within 1–2 business days, in plain, discreet packaging.', tone: 'progress' };
     case 3:
