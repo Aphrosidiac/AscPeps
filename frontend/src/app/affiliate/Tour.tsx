@@ -86,16 +86,24 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
     const r = el.getBoundingClientRect();
     if (r.top < 120 || r.bottom > window.innerHeight - 40) el.scrollIntoView({ block: 'center' });
     const measure = () => setBox({ target, rect: el.getBoundingClientRect() });
-    const frame = requestAnimationFrame(measure);
+    // A timer, not an animation frame: it still runs in a background tab.
+    const frame = setTimeout(measure, 0);
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
     return () => {
-      cancelAnimationFrame(frame);
+      clearTimeout(frame);
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
   }, [on, i, stop.target]);
-  const rect = box && box.target === stop.target ? box.rect : null;
+  const measured = box && box.target === stop.target ? box.rect : null;
+  // A target taller than the room left for the card (the balance panel on a
+  // phone): light its top part and keep the card clear below it.
+  const room = typeof window === 'undefined' ? 0 : window.innerHeight - 210 - (PAD + 12) - 16;
+  const rect =
+    measured && measured.bottom > room && measured.top < room - 80 && measured.top - (PAD + 12) - 210 <= 16 && measured.width > window.innerWidth - 120
+      ? new DOMRect(measured.left, measured.top, measured.width, room - measured.top)
+      : measured;
 
   useEffect(() => {
     if (!on) return;
@@ -131,7 +139,8 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
     else if (rect.left - GAP - W > 16) cardStyle = { top: sideTop, left: rect.left - GAP - W, width: W };
     else cardStyle = { bottom: 16, left: centred, width: W };
   } else {
-    cardStyle = { top: '50%', left: '50%', width: Math.min(420, window.innerWidth - 32), transform: 'translate(-50%, -50%)' };
+    // Centred by layout (the wrapper below), not by a transform the card's fade-in would override.
+    cardStyle = { width: Math.min(420, window.innerWidth - 32) };
   }
 
   return (
@@ -153,33 +162,35 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
         <div aria-hidden className="fixed inset-0" style={{ background: 'rgb(10 10 10 / 0.6)' }} />
       )}
 
-      <div key={i} className="aff-tour-card pop fixed p-5" style={cardStyle}>
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-[12px] font-medium fg-3 tnum">
-            {i === 0 ? 'Quick tour' : `${i} of ${stops.length - 1}`}
-          </p>
-          <button type="button" onClick={finish} aria-label="Skip the tour" className="-mr-1 -mt-1 rounded-full p-1 fg-3 hover:fg">
-            <X className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
-        <h2 id="tour-title" className="st-h fg mt-1">{stop.title}</h2>
-        <p className="mt-1.5 text-[14px] leading-[21px] fg-2">{stop.body}</p>
-        <div className="mt-5 flex items-center gap-2">
-          {i > 0 ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setI(i - 1)}>
-              <ArrowLeft className="h-4 w-4" aria-hidden /> Back
+      <div className={rect ? 'contents' : 'fixed inset-0 flex items-center justify-center p-4'}>
+        <div key={i} className={`aff-tour-card pop p-5 ${rect ? 'fixed' : 'relative'}`} style={cardStyle}>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[12px] font-medium fg-3 tnum">
+              {i === 0 ? 'Quick tour' : `${i} of ${stops.length - 1}`}
+            </p>
+            <button type="button" onClick={finish} aria-label="Skip the tour" className="-mr-1 -mt-1 rounded-full p-1 fg-3 hover:fg">
+              <X className="h-4 w-4" aria-hidden />
             </button>
-          ) : (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={finish}>Skip</button>
-          )}
-          <div className="flex flex-1 justify-center gap-1" aria-hidden>
-            {stops.slice(1).map((_, n) => (
-              <span key={n} className="h-1.5 w-1.5 rounded-full" style={{ background: n + 1 <= i ? 'var(--st-solid)' : 'var(--st-hair)' }} />
-            ))}
           </div>
-          <button ref={nextRef} type="button" className="btn btn-ink btn-sm" onClick={() => (last ? finish() : setI(i + 1))}>
-            {i === 0 ? 'Show me' : last ? 'Done' : 'Next'} {last ? null : <ArrowRight className="h-4 w-4" aria-hidden />}
-          </button>
+          <h2 id="tour-title" className="st-h fg mt-1">{stop.title}</h2>
+          <p className="mt-1.5 text-[14px] leading-[21px] fg-2">{stop.body}</p>
+          <div className="mt-5 flex items-center gap-2">
+            {i > 0 ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setI(i - 1)}>
+                <ArrowLeft className="h-4 w-4" aria-hidden /> Back
+              </button>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={finish}>Skip</button>
+            )}
+            <div className="flex flex-1 justify-center gap-1" aria-hidden>
+              {stops.slice(1).map((_, n) => (
+                <span key={n} className="h-1.5 w-1.5 rounded-full" style={{ background: n + 1 <= i ? 'var(--st-solid)' : 'var(--st-hair)' }} />
+              ))}
+            </div>
+            <button ref={nextRef} type="button" className="btn btn-ink btn-sm" onClick={() => (last ? finish() : setI(i + 1))}>
+              {i === 0 ? 'Show me' : last ? 'Done' : 'Next'} {last ? null : <ArrowRight className="h-4 w-4" aria-hidden />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

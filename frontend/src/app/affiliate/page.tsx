@@ -60,19 +60,20 @@ export default function AffiliateOverview() {
           <div className="mt-6">
             <PayoutButton />
           </div>
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <div className="tint tint-mint">
+          {/* Three across on every screen: compact on a phone rather than a tall stack. */}
+          <div className="mt-6 grid grid-cols-3 gap-2 sm:mt-8 sm:gap-3">
+            <div className="tint tint-mint !p-3 sm:!p-5">
               <p className="st-label fg-2">Earned</p>
-              <p className="st-fig mt-1 fg">{rm(b.earned - b.reversed)}</p>
+              <p className="st-fig mt-1 whitespace-nowrap fg !text-[16px] !leading-[22px] sm:!text-[24px] sm:!leading-[30px]">{rm(b.earned - b.reversed)}</p>
             </div>
-            <div className="tint tint-butter">
+            <div className="tint tint-butter !p-3 sm:!p-5">
               <p className="st-label fg-2">Awaiting payment</p>
-              <p className="st-fig mt-1 fg">{rm(b.awaitingPayment)}</p>
+              <p className="st-fig mt-1 whitespace-nowrap fg !text-[16px] !leading-[22px] sm:!text-[24px] sm:!leading-[30px]">{rm(b.awaitingPayment)}</p>
               <p className="mt-1 text-[12px] fg-2">{b.awaitingPaymentOrders} {b.awaitingPaymentOrders === 1 ? 'order' : 'orders'}</p>
             </div>
-            <div className="tint tint-sky">
+            <div className="tint tint-sky !p-3 sm:!p-5">
               <p className="st-label fg-2">Paid to you</p>
-              <p className="st-fig mt-1 fg">{rm(b.paidOut)}</p>
+              <p className="st-fig mt-1 whitespace-nowrap fg !text-[16px] !leading-[22px] sm:!text-[24px] sm:!leading-[30px]">{rm(b.paidOut)}</p>
             </div>
           </div>
         </section>
@@ -115,10 +116,18 @@ export default function AffiliateOverview() {
               <li key={o.id} className="flex items-center justify-between gap-4 border-t py-3.5 first:border-t-0" style={{ borderColor: 'var(--st-hair)' }}>
                 <div className="min-w-0">
                   <p className="text-[14px] font-medium fg tnum">{o.orderNumber}</p>
-                  <p className="text-[12px] fg-3">{when(o.placedAt)}</p>
+                  {/* On a phone the status sits under the number; on a computer it has its own column. */}
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] fg-3">
+                    {when(o.placedAt)}
+                    <span className="sm:hidden">
+                      <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>
+                    </span>
+                  </p>
                 </div>
-                <span className={`pill ${STATE_TONE[o.state]} hidden sm:inline-flex`}>{STATE_LABEL[o.state]}</span>
-                <p className="w-28 text-right text-[14px] font-medium fg tnum">{rm(o.commission)}</p>
+                <span className="hidden sm:block">
+                  <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>
+                </span>
+                <p className="shrink-0 whitespace-nowrap text-right text-[14px] font-medium fg tnum sm:w-28">{rm(o.commission)}</p>
               </li>
             ))}
           </ul>

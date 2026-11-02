@@ -37,7 +37,31 @@ export default function AffiliateOrders() {
         ) : shown.rows.length === 0 ? (
           <p className="p-2 text-[14px] fg-2">No orders yet. Share your code and they&apos;ll show up here.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* A phone: one card an order, everything the table shows. */}
+          <ul className="sm:hidden">
+            {shown.rows.map((o) => (
+              <li key={o.id} className="border-t px-2 py-3.5 first:border-t-0" style={{ borderColor: 'var(--st-hair)' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-medium fg tnum">{o.orderNumber}</p>
+                    <p className="text-[12px] fg-3">{when(o.placedAt)}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="whitespace-nowrap text-[15px] font-semibold fg tnum" style={o.state === 'AWAITING_PAYMENT' ? { color: 'var(--st-fg-3)' } : undefined}>
+                      {rm(o.commission)}
+                    </p>
+                    <p className="text-[12px] fg-3">{o.rate}</p>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>
+                  <span className="whitespace-nowrap text-[12px] fg-3 tnum">on {rm(o.goods)} goods</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="tbl">
               <thead>
                 <tr>
@@ -71,6 +95,7 @@ export default function AffiliateOrders() {
               </tbody>
             </table>
           </div>
+          </>
         )}
         {shown && shown.pages > 1 ? (
           <div className="mt-4 flex items-center justify-between gap-2">

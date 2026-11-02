@@ -144,7 +144,7 @@ export default function AffiliateProducts() {
               </button>
             ))}
             <input
-              className="input tnum !h-9 !w-[96px] !px-4 text-center !text-[13px]"
+              className="input tnum !h-9 min-w-[96px] flex-1 !w-auto !px-4 text-center !text-[13px] sm:flex-none sm:!w-[96px]"
               inputMode="numeric"
               placeholder="Other"
               aria-label="Another number of sales"
@@ -178,7 +178,54 @@ export default function AffiliateProducts() {
         ) : rows.length === 0 ? (
           <p className="p-2 text-[14px] fg-2">Nothing matches &quot;{query}&quot;.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* A phone: a card a size — the numbers side by side, the "× N" big, the link to hand. */}
+          <ul className="sm:hidden">
+            {rows.map((r) => (
+              <li key={r.key} className="border-t px-1 py-4 first:border-t-0" style={{ borderColor: 'var(--st-hair)' }}>
+                <div className="flex items-center gap-3">
+                  <Thumb src={r.image} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-medium leading-[20px] fg">
+                      {r.name}
+                      {r.size ? <span className="fg-2"> · {r.size}</span> : null}
+                    </p>
+                    <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] fg-3">
+                      <span className="tnum">{r.code}</span>
+                      {r.stock === 'in' ? null : (
+                        <span className={`pill ${r.stock === 'preorder' ? 'pill-info' : 'pill-bad'} !py-0`}>
+                          {r.stock === 'preorder' ? 'Pre-order' : 'Out of stock'}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 rounded-[14px] px-3 py-2.5 text-[12px]" style={{ background: 'var(--st-field)' }}>
+                  <div>
+                    <p className="fg-3">Price</p>
+                    <p className="mt-0.5 text-[13px] font-medium fg tnum">{rm(r.price)}</p>
+                    {r.was ? <p className="line-through fg-3 tnum">{rm(r.was)}</p> : null}
+                  </div>
+                  <div>
+                    <p className="fg-3">They pay</p>
+                    <p className="mt-0.5 text-[13px] font-medium fg tnum">{rm(pays(r.price))}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="fg-3">You earn each</p>
+                    <p className="mt-0.5 text-[13px] font-medium fg tnum">{rm(earns(r.price, 1))}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] fg-3">You earn × {qty}</p>
+                    <p className="text-[18px] font-semibold leading-[24px] fg tnum">{rm(earns(r.price, qty))}</p>
+                  </div>
+                  <CopyButton text={link(r.slug)} label="Copy link" />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="tbl">
               <thead>
                 <tr>
@@ -237,6 +284,7 @@ export default function AffiliateProducts() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
       <p className="mt-4 px-2 text-[12px] leading-[17px] fg-3">

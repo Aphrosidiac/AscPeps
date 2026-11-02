@@ -59,7 +59,7 @@ export default function AdminAffiliatesPage() {
         icon={Handshake}
         subtitle="People who share a code for commission"
         actions={
-          <a href={AFFILIATE_URL} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary underline underline-offset-4">
+          <a href={AFFILIATE_URL} target="_blank" rel="noreferrer" className="inline-block py-2 text-sm font-medium text-primary underline underline-offset-4">
             Open the affiliate site
           </a>
         }
@@ -164,7 +164,40 @@ function AffiliatesTab({ token, onCounts }: { token: string; onCounts: (approve:
           {status || search ? 'Nobody matches.' : 'No affiliates yet. Switch the programme on in Settings and they can apply on the affiliate site.'}
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        {/* A phone: one card each, with everything the table has. */}
+        <ul className="divide-y divide-border md:hidden">
+          {rows.map((a) => (
+            <li key={a.id} className="px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link href={`/admin/affiliates/${a.id}`} className="font-medium text-text-primary hover:underline">{a.fullName}</Link>
+                  <p className="truncate text-[12px] text-text-secondary">{a.email}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={cn('font-medium tabular-nums', a.balance < 0 && 'text-danger')}>{signed(a.balance)}</p>
+                  {a.requested ? <p className="text-[12px] text-amber-700">{formatPrice(a.requested)} asked</p> : null}
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-secondary">
+                <span className="font-medium tracking-wide text-text-primary">{a.code}</span>
+                <StatusBadge status={a.status} />
+                <span>{a.commission}</span>
+              </div>
+              <p className="mt-1.5 text-[12px] text-text-secondary tabular-nums">
+                {a.paidOrders} paid · {formatPrice(a.sales)} sales · {formatPrice(a.earned)} earned
+              </p>
+              <div className="mt-3">
+                {a.status === 'APPLIED' ? (
+                  <Button size="sm" onClick={() => setApproving(a)}>Approve</Button>
+                ) : (
+                  <Link href={`/admin/affiliates/${a.id}`} className="-ml-2 inline-block px-2 py-1.5 text-[13px] font-medium text-primary">Open affiliate</Link>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[12px] font-medium text-text-secondary">
@@ -209,6 +242,7 @@ function AffiliatesTab({ token, onCounts }: { token: string; onCounts: (approve:
             </tbody>
           </table>
         </div>
+        </>
       )}
       {approving ? (
         <ConfirmDialog
@@ -286,30 +320,29 @@ function PayoutsTab({ token, onCounts }: { token: string; onCounts: (n: number) 
             ? 'Transfer from Ascend\'s bank, then mark it paid. Each is payable once its hold has passed, so refunds land first.'
             : 'History.'
         }
-        actions={
-          <div className="flex gap-1.5">
-            {(['REQUESTED', 'PAID', 'CANCELLED'] as PayoutStatus[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  if (s === status) return;
-                  // Never show waiting rows (and their Mark paid) under Paid.
-                  setRows(null);
-                  setError('');
-                  setStatus(s);
-                }}
-                className={cn(
-                  'h-8 rounded-full px-3 text-[13px] font-medium cursor-pointer',
-                  status === s ? 'bg-text-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
-                )}
-              >
-                {s === 'REQUESTED' ? 'Waiting' : s === 'PAID' ? 'Paid' : 'Cancelled'}
-              </button>
-            ))}
-          </div>
-        }
       />
+      {/* The filters get their own row: beside the title they squeeze it on a phone. */}
+      <div className="flex flex-wrap gap-1.5 border-b border-border px-6 py-3">
+        {(['REQUESTED', 'PAID', 'CANCELLED'] as PayoutStatus[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => {
+              if (s === status) return;
+              // Never show waiting rows (and their Mark paid) under Paid.
+              setRows(null);
+              setError('');
+              setStatus(s);
+            }}
+            className={cn(
+              'h-8 rounded-full px-3 text-[13px] font-medium cursor-pointer',
+              status === s ? 'bg-text-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+            )}
+          >
+            {s === 'REQUESTED' ? 'Waiting' : s === 'PAID' ? 'Paid' : 'Cancelled'}
+          </button>
+        ))}
+      </div>
       {notice ? <p className="border-b border-border bg-amber-50 px-6 py-2.5 text-[13px] text-amber-800">{notice}</p> : null}
       {error ? (
         <p className="px-6 py-10 text-center text-sm text-danger">{error}</p>
@@ -460,29 +493,28 @@ function ChangesTab({ token, onCounts }: { token: string; onCounts: (n: number) 
             ? 'Affiliates can only change their details by asking. Nothing moves until you approve; sending again replaces their last request.'
             : 'History.'
         }
-        actions={
-          <div className="flex flex-wrap gap-1.5">
-            {CHANGE_FILTERS.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => {
-                  if (f.key === status) return;
-                  setRows(null);
-                  setError('');
-                  setStatus(f.key);
-                }}
-                className={cn(
-                  'h-8 rounded-full px-3 text-[13px] font-medium cursor-pointer',
-                  status === f.key ? 'bg-text-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        }
       />
+      {/* The filters get their own row: beside the title they squeeze it on a phone. */}
+      <div className="flex flex-wrap gap-1.5 border-b border-border px-6 py-3">
+        {CHANGE_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => {
+              if (f.key === status) return;
+              setRows(null);
+              setError('');
+              setStatus(f.key);
+            }}
+            className={cn(
+              'h-8 rounded-full px-3 text-[13px] font-medium cursor-pointer',
+              status === f.key ? 'bg-text-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       {notice ? <p className="border-b border-border bg-amber-50 px-6 py-2.5 text-[13px] text-amber-800">{notice}</p> : null}
       {error ? (
         <p className="px-6 py-10 text-center text-sm text-danger">{error}</p>

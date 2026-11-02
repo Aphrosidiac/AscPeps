@@ -80,9 +80,10 @@ export default function AdminAffiliatePage() {
       />
       {notice ? <p className="mb-4 rounded-lg bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800">{notice}</p> : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* minmax(0, …) on a phone too, so a wide table can't stretch the page past the screen. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
             <Tile label="Balance" value={signed(b.balance)} tone={b.balance < 0 ? 'bad' : undefined} />
             <Tile label="Earned" value={formatPrice(b.earned)} hint={b.reversed ? `${formatPrice(b.reversed)} taken back` : undefined} />
             <Tile label="Paid out" value={formatPrice(b.paidOut)} />
@@ -136,23 +137,25 @@ export default function AdminAffiliatePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-[12px] font-medium text-text-secondary">
-                      <th className="px-6 py-2.5">Order</th>
+                      <th className="px-3 py-2.5 sm:px-6">Order</th>
                       <th className="px-3 py-2.5">Status</th>
-                      <th className="px-3 py-2.5 text-right">Goods</th>
-                      <th className="px-6 py-2.5 text-right">Commission</th>
+                      <th className="hidden px-3 py-2.5 text-right sm:table-cell">Goods</th>
+                      <th className="px-3 py-2.5 text-right sm:px-6">Commission</th>
                     </tr>
                   </thead>
                   <tbody>
                     {d.orders.map((o) => (
                       <tr key={o.id} className="border-b border-border last:border-0">
-                        <td className="px-6 py-3">
+                        <td className="px-3 py-3 sm:px-6">
                           <Link href={`/admin/orders/${o.id}`} className="font-medium text-text-primary hover:underline">{o.orderNumber}</Link>
                           <p className="text-[12px] text-text-secondary">{myt(o.placedAt)}</p>
                         </td>
                         <td className="px-3 py-3"><StateBadge state={o.state} /></td>
-                        <td className="px-3 py-3 text-right tabular-nums">{formatPrice(o.goods)}</td>
-                        <td className={cn('px-6 py-3 text-right tabular-nums', o.state === 'AWAITING_PAYMENT' && 'text-text-muted')}>
+                        <td className="hidden px-3 py-3 text-right tabular-nums sm:table-cell">{formatPrice(o.goods)}</td>
+                        <td className={cn('px-3 py-3 text-right tabular-nums sm:px-6', o.state === 'AWAITING_PAYMENT' && 'text-text-muted')}>
                           {formatPrice(o.commission)} <span className="text-[12px] text-text-muted">{o.rate}</span>
+                          {/* Goods have their own column from sm up. */}
+                          <span className="block text-[12px] text-text-muted sm:hidden">on {formatPrice(o.goods)}</span>
                         </td>
                       </tr>
                     ))}

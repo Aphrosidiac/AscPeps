@@ -364,7 +364,7 @@ function Earning() {
               step={1_000}
               value={goods}
               onChange={(e) => setGoods(Number(e.target.value))}
-              className="mt-3 w-full"
+              className="mt-2 h-8 w-full cursor-pointer"
               style={{ accentColor: 'var(--st-ok)' }}
               aria-label="Order value"
             />
@@ -523,7 +523,7 @@ function Refunds() {
         commission covers it first. An example:
       </p>
       <Screen caption="How it looks on your Payouts page, with the balance after each change.">
-        <ul className="grid gap-2">
+        <ul className="grid gap-4 sm:gap-2">
           {rows.map((r) => (
             <li key={r.what} className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_100px_200px]">
               <span className="text-[14px] fg">{r.what}</span>
@@ -658,12 +658,13 @@ function Faq() {
       </H>
       <div className="grid gap-2">
         {qs.map(([q, a]) => (
-          <details key={q} className="group rounded-[18px] px-5 py-4" style={{ background: 'var(--st-field)' }}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-medium fg">
+          <details key={q} className="group rounded-[18px] px-5" style={{ background: 'var(--st-field)' }}>
+            {/* The whole row opens it, not just the line of text. */}
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-medium fg">
               {q}
               <span aria-hidden className="text-[18px] leading-none fg-3 transition-transform duration-[120ms] group-open:rotate-45">+</span>
             </summary>
-            <p className="mt-2 text-[14px] leading-[21px] fg-2">{a}</p>
+            <p className="pb-4 text-[14px] leading-[21px] fg-2">{a}</p>
           </details>
         ))}
       </div>

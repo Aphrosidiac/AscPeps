@@ -56,7 +56,7 @@ export default function AffiliatePayouts() {
                       <p className="text-[12px] leading-[17px] fg-3">You asked for {rm(p.amount)}; a refund since then came off it.</p>
                     ) : null}
                   </div>
-                  <p className="text-[15px] font-medium fg tnum">{rm(p.paidAmount ?? p.amount)}</p>
+                  <p className="shrink-0 whitespace-nowrap text-[15px] font-medium fg tnum">{rm(p.paidAmount ?? p.amount)}</p>
                 </li>
               ))}
             </ul>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { ArrowRight, Check, Copy, Landmark, Link2, Pause, Play } from 'lucide-react';
 import { getProducts } from '@/lib/api';
@@ -133,7 +133,7 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
 
   return (
     <section
-      className="aff-show relative isolate flex min-h-[540px] flex-col overflow-hidden rounded-[28px] p-6 text-white sm:p-10 lg:h-full lg:min-h-0"
+      className="aff-show relative isolate flex flex-col overflow-hidden rounded-[28px] p-6 text-white sm:p-10 lg:h-full"
       aria-roledescription="carousel"
       aria-label="Why join Ascend Affiliate"
       onMouseEnter={() => setHeld(true)}
@@ -151,7 +151,7 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
               onClick={() => go(i)}
               aria-label={`Slide ${i + 1} of ${slides.length}: ${s.title}`}
               aria-current={i === current ? 'true' : undefined}
-              className="group h-6 flex-1 cursor-pointer py-2.5"
+              className="group h-8 flex-1 cursor-pointer py-3.5"
             >
               <span className="block h-1 overflow-hidden rounded-full bg-white/15">
                 <span
@@ -175,11 +175,14 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
       </div>
 
       {/* The slides, stacked; the current one dissolves in. */}
-      <div className="aff-show-stage relative mt-8 min-h-0 flex-1">
+      {/* Slides share one grid cell: on a phone the panel is as tall as the tallest
+          slide (graphics at full size, page scrolls); on a computer it fills the
+          window's height and FitBox scales a graphic down when it must. */}
+      <div className="aff-show-stage relative mt-8 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         {slides.map((s, i) => (
           <div
             key={s.key}
-            className={`aff-show-slide absolute inset-0 flex flex-col ${i === current ? 'is-on' : ''}`}
+            className={`aff-show-slide col-start-1 row-start-1 flex min-h-0 flex-col ${i === current ? 'is-on' : ''}`}
             aria-hidden={i !== current}
             role="group"
             aria-roledescription="slide"
@@ -206,11 +209,22 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
  * Sits a slide's graphic at the bottom of the space left for it, and scales
  * it down — only ever down — when the window is too short to show it whole.
  */
+const WIDE = '(min-width: 1024px)';
+const subscribeWide = (cb: () => void) => {
+  const m = window.matchMedia(WIDE);
+  m.addEventListener('change', cb);
+  return () => m.removeEventListener('change', cb);
+};
+
 export function FitBox({ children }: { children: React.ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  // Only a computer's one-screen layout needs fitting; a phone scrolls, and
+  // shrinking a graphic there would shrink its words below readable.
+  const fits = useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches, () => false);
   useEffect(() => {
+    if (!fits) return;
     const o = outer.current;
     const i = inner.current;
     if (!o || !i) return;
@@ -223,7 +237,8 @@ export function FitBox({ children }: { children: React.ReactNode }) {
     ro.observe(o);
     ro.observe(i);
     return () => ro.disconnect();
-  }, []);
+  }, [fits]);
+  if (!fits) return <div className="flex h-full w-full items-end">{children}</div>;
   return (
     <div ref={outer} className="relative h-full w-full overflow-hidden">
       <div
@@ -331,9 +346,9 @@ function ProductTiles({ products, earn }: { products: Pick[]; earn: (s: number) 
             {p.image ? <Image src={p.image} alt="" fill sizes="(max-width: 640px) 30vw, 160px" className="object-contain p-3" /> : null}
           </div>
           <div className="p-3">
-            <p className="truncate text-[13px] font-medium">{p.name}</p>
+            <p className="line-clamp-2 min-h-[32px] text-[13px] font-medium leading-[16px]">{p.name}</p>
             <p className="text-[12px] text-white/50">{rm(p.price)}</p>
-            <p className="mt-2 text-[13px] font-semibold tabular-nums text-[#22c55e]">+{rm(earn(p.price))}</p>
+            <p className="mt-2 whitespace-nowrap text-[13px] font-semibold tabular-nums text-[#22c55e]">+{rm(earn(p.price))}</p>
           </div>
         </div>
       ))}
@@ -343,7 +358,7 @@ function ProductTiles({ products, earn }: { products: Pick[]; earn: (s: number) 
 
 function LinkVisual() {
   return (
-    <div className="grid w-full items-end gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
+    <div className="grid w-full grid-cols-[minmax(0,1fr)] items-end gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
       <div className="rounded-[22px] bg-white/[0.04] p-5 ring-1 ring-white/10">
         <p className="text-[12px] text-white/55">Your link</p>
         <div className="mt-2 flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-[#0a0a0a]">

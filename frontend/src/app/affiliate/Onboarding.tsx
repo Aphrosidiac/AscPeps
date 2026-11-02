@@ -421,7 +421,7 @@ function Preview(p: {
       title: 'Your code. Your link.',
       sub: `Your people get ${p.d}% off; you earn ${p.rate} of what they pay.`,
       visual: (
-        <div className="grid w-full items-end gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
+        <div className="grid w-full grid-cols-[minmax(0,1fr)] items-end gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
           <div className="rounded-[22px] bg-white/[0.04] p-5 ring-1 ring-white/10">
             <p className="text-[12px] text-white/55">Your code</p>
             <p className="st-display mt-1 truncate text-[40px] font-semibold leading-none tracking-[0.06em]">{p.code}</p>
@@ -476,10 +476,11 @@ function Preview(p: {
   };
   const order: StepId[] = ['email', 'you', 'code', 'payouts', 'review'];
   return (
-    <section className="aff-show relative isolate flex min-h-[400px] flex-col overflow-hidden rounded-[28px] p-6 text-white sm:p-10 lg:h-full lg:min-h-0" aria-hidden>
-      <div className="aff-show-stage relative min-h-0 flex-1">
+    <section className="aff-show relative isolate flex flex-col overflow-hidden rounded-[28px] p-6 text-white sm:p-10 lg:h-full" aria-hidden>
+      {/* One grid cell for every step (see AuthShowcase): full size on a phone, fitted on a computer. */}
+      <div className="aff-show-stage relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         {order.map((id) => (
-          <div key={id} className={`aff-show-slide absolute inset-0 flex flex-col ${id === p.step ? 'is-on' : ''}`} {...(id !== p.step ? { inert: true } : {})}>
+          <div key={id} className={`aff-show-slide col-start-1 row-start-1 flex min-h-0 flex-col ${id === p.step ? 'is-on' : ''}`} {...(id !== p.step ? { inert: true } : {})}>
             <h2 className="aff-show-in aff-show-title st-display max-w-[540px] font-semibold tracking-[-0.02em]">{slides[id].title}</h2>
             <p className="aff-show-in aff-show-d1 aff-show-sub mt-4 max-w-[460px] text-white/65">{slides[id].sub}</p>
             <div className="aff-show-in aff-show-d2 aff-show-visual mt-8 min-h-0 flex-1">
@@ -550,7 +551,7 @@ export function WaitingScreen({ data, onChanged }: { data: MyAffiliate; onChange
 
   return (
     <div className="aff-auth grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(400px,500px)]">
-      <section className="aff-show relative isolate flex min-h-[460px] flex-col overflow-hidden rounded-[28px] p-6 text-white sm:p-10 lg:h-full lg:min-h-0">
+      <section className="aff-show relative isolate flex flex-col overflow-hidden rounded-[28px] p-6 text-white sm:p-10 lg:h-full">
         <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white/80">
           <Clock className="h-3.5 w-3.5" aria-hidden /> Waiting for approval
         </span>

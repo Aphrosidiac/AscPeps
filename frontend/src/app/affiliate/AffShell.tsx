@@ -98,7 +98,7 @@ function Logo() {
       <span className="chip-ink h-[52px] w-[52px] rounded-[16px]" style={{ boxShadow: 'var(--st-shadow)' }}>
         <Image src="/images/pill-icon.png" alt="" width={26} height={26} className="aff-logo" />
       </span>
-      <span className="hidden leading-tight sm:block">
+      <span className="block leading-tight">
         <span className="st-display block text-[15px] font-semibold fg">Ascend</span>
         <span className="block text-[12px] fg-3">Affiliate</span>
       </span>
@@ -243,6 +243,12 @@ export function AffShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
           <div className="flex items-center justify-end gap-2 lg:col-start-3">
+            {/* Signed out on a phone the form is below the showcase: one tap to it. */}
+            {ready && !member ? (
+              <span className="lg:hidden">
+                <a href="#aff-signin" className="btn btn-ink btn-sm">Sign in</a>
+              </span>
+            ) : null}
             <ThemeSwitch />
             {member && token ? <AccountMenu name={affiliate?.fullName || member.displayName} email={member.email} onSignOut={signOut} /> : null}
           </div>
@@ -334,7 +340,7 @@ function AuthPanel() {
   const join = () => {
     setMode('signup');
     setError('');
-    const card = document.getElementById(`${uid}-card`);
+    const card = document.getElementById('aff-signin');
     card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     setTimeout(() => card?.querySelector<HTMLInputElement>('input')?.focus(), 350);
   };
@@ -351,7 +357,7 @@ function AuthPanel() {
     <div className="aff-auth grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(380px,460px)]">
       <AuthShowcase programme={programme} onJoin={join} />
 
-      <section id={`${uid}-card`} className="aff-auth-card panel flex min-h-0 flex-col justify-center overflow-y-auto p-6 sm:p-10" aria-labelledby={`${uid}-h`}>
+      <section id="aff-signin" className="aff-auth-card panel flex min-h-0 flex-col justify-center overflow-y-auto p-6 sm:p-10" aria-labelledby={`${uid}-h`}>
         {/* Sign in or join: one switch, the same form. */}
         <div className="flex rounded-full p-1" style={{ background: 'var(--st-field)' }} role="group" aria-label="Sign in or create an account">
           {(['signin', 'signup'] as const).map((m) => (
@@ -397,7 +403,7 @@ function AuthPanel() {
             {busy ? 'One moment…' : mode === 'signin' ? 'Sign in' : 'Create my account'}
           </button>
           {mode === 'signin' ? (
-            <a className="justify-self-center text-[13px] fg-3 underline-offset-4 hover:underline" href={`${store}/account/forgot-password`}>
+            <a className="justify-self-center py-2 text-[13px] fg-3 underline-offset-4 hover:underline" href={`${store}/account/forgot-password`}>
               Forgot password?
             </a>
           ) : null}
