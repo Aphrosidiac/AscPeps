@@ -61,8 +61,8 @@ const siti = await prisma.member.create({ data: { email: 'demo-applicant@example
 // Signed up, never joined: walks the onboarding (Onboarding.tsx).
 await prisma.member.create({ data: { email: 'demo-newcomer@example.test', passwordHash: hash, displayName: 'Nur Aisyah', emailVerified: true } });
 
-const a = await joinProgramme(fastify, { id: amir.id, email: amir.email }, { fullName: 'Amir Hakim', phone: '0123456789', channel: 'instagram.com/amir.lifts', code: 'AMIR5', acceptTerms: true });
-await joinProgramme(fastify, { id: siti.id, email: siti.email }, { fullName: 'Siti Aminah', phone: '0198765432', channel: 'TikTok @siti.fit', code: 'SITI5', acceptTerms: true });
+const a = await joinProgramme(fastify, { id: amir.id, email: amir.email }, { fullName: 'Amir Hakim', phone: '0123456789', channel: 'instagram.com/amir.lifts', code: 'AH87123', acceptTerms: true });
+await joinProgramme(fastify, { id: siti.id, email: siti.email }, { fullName: 'Siti Aminah', phone: '0198765432', channel: 'TikTok @siti.fit', code: 'SA52904', acceptTerms: true });
 const id = (a.affiliate as unknown as { id: string }).id;
 await adminUpdateAffiliate(fastify, id, { status: 'ACTIVE' }, 'seed');
 await prisma.affiliate.update({ where: { id }, data: { bankName: 'Maybank', bankAccountName: 'AMIR HAKIM', bankAccountNumber: '164012345678' } });
@@ -82,12 +82,12 @@ const buyers = [
 for (const [i, [name, phone, qty, state]] of buyers.entries()) {
   const r: any = await createOrder(fastify, {
     customerName: name, phone, email: `${phone}@example.test`, address: '1 Jalan Demo', city: 'Shah Alam', state: 'Selangor', postcode: '40000',
-    paymentMethod: 'WHATSAPP', discountCode: 'AMIR5', items: [{ variantId: variants[i % variants.length].id, quantity: qty }],
+    paymentMethod: 'WHATSAPP', discountCode: 'AH87123', items: [{ variantId: variants[i % variants.length].id, quantity: qty }],
   });
   const o = r.order ?? r;
   if (state !== 'unpaid') await adminUpdateOrder(fastify, o.id, { paymentStatus: 'PAID' }, 'seed');
   if (state === 'part') await adminUpdateOrder(fastify, o.id, { refundedAmount: Math.round(o.total / 3) }, 'seed');
 }
 await syncAffiliateOrders(prisma);
-console.log('demo ready: AMIR5 (active, 4 orders), SITI5 (waiting for approval)');
+console.log('demo ready: AH87123 (active, 4 orders), SA52904 (waiting for approval)');
 await prisma.$disconnect();

@@ -3,7 +3,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
 /**
- * An affiliate's share link (ascendpeptides.my/?ref=AMIR5) remembers the code
+ * An affiliate's share link (ascendpeptides.my/?ref=AH87123) remembers the code
  * for 30 days in this browser, and checkout offers it in one tap. It is only
  * an offer: nothing is applied until the customer presses it, and the server
  * still checks the code like any other.

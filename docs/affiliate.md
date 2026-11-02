@@ -207,7 +207,7 @@ each next to the order mails.
 ## The store
 
 - **Share link** `ascendpeptides.my/?ref=CODE`: `RefCapture` (in
-  `SiteChrome`) keeps the code 30 days; checkout offers it — "Code AMIR5
+  `SiteChrome`) keeps the code 30 days; checkout offers it — "Code AH87123
   from your link. Apply it" — and never applies it unasked.
 - **Popups** (`components/popups`): sign-up bonus ("10% off your first
   order", hidden for signed-in members) and affiliate invitation. With the
@@ -278,7 +278,7 @@ npm run test:affiliate        # 61 checks: the sum, budget, checkout, paid, hold
                               # refund after payout (negative), test-mark, paused payouts, stale Mark paid,
                               # aliases, sign-up bonus, Abby's write tools, every affiliate email
                               # (rendered, and sent at the right step), order mails queued on a code order
-npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders), SITI5 (to approve),
+npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AH87123 (active, 4 orders), SA52904 (to approve),
                                          # demo-newcomer (signed up, not joined: walks the onboarding)
 ```
 
