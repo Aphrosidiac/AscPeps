@@ -51,6 +51,12 @@ export function clearMemberSession(): void {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
+/** The signed-in member as last saved, read straight away (checkout's email). */
+export function getCachedMember(): Member | null {
+  if (typeof window === 'undefined') return null;
+  return parseMember(read(MEMBER_KEY));
+}
+
 function parseMember(raw: string | null): Member | null {
   if (!raw) return null;
   try {

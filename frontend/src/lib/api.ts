@@ -702,7 +702,7 @@ export const memberMe = (token: string) =>
 
 export const memberVerifyEmail = (token: string) =>
   api
-    .get<{ success: boolean }>('/api/v1/members/verify', { params: { token } })
+    .get<{ success: boolean; signupBonus?: { code: string; percent: number } | null }>('/api/v1/members/verify', { params: { token } })
     .then((r) => r.data);
 
 export const memberResendVerification = (email: string) =>

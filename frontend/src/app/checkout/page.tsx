@@ -20,6 +20,7 @@ import { forgetGroupBuyCheckout } from '@/lib/group-buy';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
 import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
 import { forgetRefCode, useRefCode } from '@/lib/ref-code';
+import { getCachedMember, useMemberSession } from '@/lib/member-session';
 
 const FIELD_ORDER = ['email', 'customerName', 'address', 'postcode', 'city', 'state', 'phone'] as const;
 
@@ -238,16 +239,21 @@ export default function CheckoutPage() {
     discountValue: number;
     discountAmount: number;
   } | null>(null);
-  const [form, setForm] = useState({
+  // Signed in: their email filled in (a sign-up code only works with it).
+  const [form, setForm] = useState(() => ({
     customerName: '',
     phone: '',
-    email: '',
+    email: getCachedMember()?.email ?? '',
     address: '',
     city: '',
     state: '',
     postcode: '',
     notes: '',
-  });
+  }));
+  // Signed in with an unused first-order code: offered like the share-link
+  // code, never applied unasked.
+  const { member } = useMemberSession();
+  const memberCode = member?.signupBonus && !member.signupBonus.used ? member.signupBonus : null;
   // Optional bits Shopify keeps folded away until asked for.
   const [address2, setAddress2] = useState('');
   const [showAddress2, setShowAddress2] = useState(false);
@@ -640,6 +646,14 @@ export default function CheckoutPage() {
               </button>
             </div>
             {discountError && <p className="mt-1.5 text-[13px] text-danger">{discountError}</p>}
+            {memberCode && !discountCode.trim() && !discountError ? (
+              <p className="mt-2 text-[13px] text-text-secondary">
+                Your first-order code <span className="font-semibold text-text-primary">{memberCode.code}</span> · {memberCode.percent}% off.{' '}
+                <button type="button" className="font-semibold text-text-primary underline underline-offset-2 cursor-pointer" disabled={discountLoading} onClick={() => handleApplyDiscount(memberCode.code)}>
+                  Apply it
+                </button>
+              </p>
+            ) : null}
             {/* The code from an affiliate's share link (lib/ref-code.ts): offered, never applied unasked. */}
             {refCode && !discountCode.trim() && !discountError ? (
               <p className="mt-2 text-[13px] text-text-secondary">

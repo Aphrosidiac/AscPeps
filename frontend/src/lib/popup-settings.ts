@@ -45,7 +45,8 @@ export interface PopupText {
 export const TEXT_DEFAULTS: Record<'signup' | 'affiliate', PopupText> = {
   signup: {
     heading: '{bonus}% off your first order',
-    body: "Create a free Ascend MY account and we'll give you a one-time code for your first order. Track your orders and check out faster too.",
+    // Only what an account really gives: the code (emailed once they confirm).
+    body: "Create a free Ascend MY account and confirm your email: we'll send you a one-time {bonus}% code for your first order.",
     cta: 'Create my account',
     note: 'Your code appears once you confirm your email.',
   },

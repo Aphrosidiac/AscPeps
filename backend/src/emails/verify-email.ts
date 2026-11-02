@@ -1,4 +1,4 @@
-import { renderLayout, renderButton, escapeHtml, FONT, BODY, MUTED } from './layout.js';
+import { renderLayout, renderButton, escapeHtml, FONT, INK, BODY, MUTED } from './layout.js';
 
 const SUBJECT = 'Confirm your email — Ascend Peptides';
 
@@ -12,13 +12,15 @@ const SUBJECT = 'Confirm your email — Ascend Peptides';
 export function renderVerifyEmail(
   displayName: string,
   verifyUrl: string,
-  settings: Record<string, string>
+  settings: Record<string, string>,
+  /** The sign-up bonus this confirmation unlocks, when there is one for them. */
+  bonusPct: number | null = null
 ): { subject: string; html: string } {
   const name = escapeHtml(displayName);
 
   const body = `
           <p class="body-text" style="margin:0 0 24px;font-family:${FONT};font-size:14px;line-height:1.65;color:${BODY};">
-            Confirm this address to finish setting up your Ascend MY account. Once confirmed you'll be able to comment on Insights articles.
+            Confirm this address to finish setting up your Ascend MY account.${bonusPct ? ` Confirming also unlocks your <strong class="ink" style="color:${INK};">${bonusPct}% first-order code</strong> — we'll email it to you straight away.` : ''} Once confirmed you'll be able to comment on Insights articles.
           </p>
 ${renderButton('CONFIRM EMAIL', verifyUrl)}
           <p class="muted" style="margin:26px 0 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">

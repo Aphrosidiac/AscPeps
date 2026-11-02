@@ -124,7 +124,7 @@ export async function validateDiscountCode(fastify: FastifyInstance, code: strin
   if (discount.scope === 'STORE' && ctx.groupBuyId) throw { statusCode: 400, message: 'This code cannot be used on Group Buy orders' };
   if (discount.boundEmail) {
     const email = ctx.email?.trim().toLowerCase();
-    if (!email) throw { statusCode: 400, message: 'Enter the email address this code was sent to' };
+    if (!email) throw { statusCode: 400, message: 'This code belongs to one email address: enter it above, then apply the code' };
     if (email !== discount.boundEmail.toLowerCase()) throw { statusCode: 400, message: 'This code belongs to a different email address' };
   }
   if (!discount.isActive) throw { statusCode: 400, message: 'This discount code is no longer active' };

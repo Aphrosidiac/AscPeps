@@ -24,6 +24,7 @@ import { renderPaymentReceipt } from '../src/emails/payment-receipt.js';
 import { renderAbandonedCheckout } from '../src/emails/abandoned-checkout.js';
 import { renderWelcome } from '../src/emails/welcome.js';
 import { renderVerifyEmail } from '../src/emails/verify-email.js';
+import { renderSignupBonusEmail } from '../src/emails/account.js';
 import { renderCampaign } from '../src/emails/campaign.js';
 import { renderAffiliateEmail, affiliateMailSamples } from '../src/emails/affiliate.js';
 
@@ -123,6 +124,8 @@ async function main() {
     ['welcome', renderWelcome(discount, 'https://example.test/unsub', settings)],
     ['welcome-no-discount', renderWelcome(null, 'https://example.test/unsub', settings)],
     ['verify-email', renderVerifyEmail('Fakhrul', 'https://example.test/verify', settings)],
+    ['verify-email-bonus', renderVerifyEmail('Fakhrul', 'https://example.test/verify', settings, 10)],
+    ['signup-bonus', renderSignupBonusEmail('Fakhrul', 'WELCOME-9D5C7D', 10, 'https://example.test/products', settings)],
     [
       'campaign',
       renderCampaign(

@@ -3,7 +3,8 @@
 import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Check, KeyRound, Loader2, Mail, MailCheck, User } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Gift, KeyRound, Loader2, Mail, MailCheck, User } from 'lucide-react';
+import { useStoreSettings } from '@/lib/store-settings';
 import type { GroupBuySummary } from '@/types';
 import { memberForgotPassword, memberLogin, memberRegister, memberResendVerification, memberResetPassword } from '@/lib/api';
 import { setMemberSession } from '@/lib/member-session';
@@ -123,7 +124,7 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
             {mode === 'forgot' || mode === 'reset' ? (
               <Recover mode={mode} where={where} next={next} signinHref={routes.signin + q} forgotHref={routes.forgot + q} />
             ) : done ? (
-              <Done done={done} next={next} batch={batch} signinHref={routes.signin + q} />
+              <Done done={done} next={next} batch={batch} signinHref={routes.signin + q} where={where} />
             ) : (
               <>
                 <div role="tablist" className="grid grid-cols-2 rounded-full bg-[#0A0A0A]/[0.06] p-1 text-sm font-medium">
@@ -267,7 +268,10 @@ function BatchPitch({ batch }: { batch: AuthBatch }) {
   );
 }
 
-function Done({ done, next, batch, signinHref }: { done: { name: string; email: string; joined: boolean; inbox: boolean }; next: string; batch: AuthBatch | null; signinHref: string }) {
+function Done({ done, next, batch, signinHref, where }: { done: { name: string; email: string; joined: boolean; inbox: boolean }; next: string; batch: AuthBatch | null; signinHref: string; where: Where }) {
+  const settings = useStoreSettings();
+  // The store's sign-up bonus, while it is on (Group Buy has its own rewards).
+  const bonusPct = where === 'store' && settings?.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null;
   if (done.inbox) {
     // Register can't say whether the address was taken (see the API), so this
     // is worded to be true either way.
@@ -291,6 +295,9 @@ function Done({ done, next, batch, signinHref }: { done: { name: string; email: 
           <li className="flex gap-2.5"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" /><span>You&apos;re on the <b className="font-semibold text-[#0A0A0A]">{batch.label}</b> list{batch.reward ? <> — your {rewardOff(batch.reward)} code is on its way to {done.email}</> : null}.</span></li>
         )}
         <li className="flex gap-2.5"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#0A0A0A]/50" /><span><b className="font-semibold text-[#0A0A0A]">Confirm your email</b> with the link we sent to {done.email}. Orders you placed as a guest with it show up once it&apos;s confirmed.</span></li>
+        {bonusPct && (
+          <li className="flex gap-2.5"><Gift className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" /><span>Confirming it unlocks your <b className="font-semibold text-[#0A0A0A]">{bonusPct}% first-order code</b> (one per person). We email it to you and show it on your account.</span></li>
+        )}
       </ul>
       <Link href={next} className="group mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#22C55E] text-[15px] font-semibold text-[#0A0A0A] hover:bg-[#1eb455]">
         {toBatch ? `Continue to ${batch.label}` : next.startsWith('/group-buy') ? 'Continue to Group Buy' : 'Continue'}

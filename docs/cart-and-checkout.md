@@ -144,7 +144,7 @@ a grey panel running down the right edge; on a phone, the order folds into a
 
 | Section | Fields |
 |---|---|
-| Contact | Email — optional for WhatsApp, required for online, bank transfer and Bitcoin (the label or the hint under it says why); the restock-email tick once there is an address |
+| Contact | Email — optional for WhatsApp, required for online, bank transfer and Bitcoin (the label or the hint under it says why); **filled in for a signed-in member**; the restock-email tick once there is an address |
 | Delivery | Full name, Address, **+ Add apartment, unit or floor** (folded until asked for), Postcode, City, State, Phone with a fixed **+60**, **+ Add a note to your order** |
 | Payment | One bordered list of radio rows — Bank transfer (when switched on), WhatsApp, Online payment (greyed with the reason when off), Bitcoin ("Soon" until live). The chosen row opens what happens next |
 
@@ -154,7 +154,8 @@ At the bottom: **‹ Back to cart** and **Place order** — **Continue to
 payment** for the methods that go to a payment page.
 
 **Your order panel**: each line with a thumbnail and quantity badge, **Edit
-cart**, the discount box (and the share-link code offer), Subtotal, Discount,
+cart**, the discount box (with two offers, never applied unasked: a signed-in
+member's unused first-order code, and the share-link code), Subtotal, Discount,
 Shipping (by the chosen state), Total in MYR.
 
 **What changed in what is sent** (`createOrder`):

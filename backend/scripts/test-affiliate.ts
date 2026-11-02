@@ -39,6 +39,8 @@ import { adminSetOrderTest, adminUpdateOrder } from '../src/modules/admin/admin-
 import { adminCancelPayout, adminUpdateAffiliate, joinProgramme, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
 import { affiliateMailSamples, renderAffiliateEmail } from '../src/emails/affiliate.js';
 import { affiliateLine } from '../src/emails/payment-receipt.js';
+import { renderVerifyEmail } from '../src/emails/verify-email.js';
+import { renderSignupBonusEmail } from '../src/emails/account.js';
 import { mintSignupBonus } from '../src/modules/members/members.controller.js';
 import { adminDecideChange, changeState, requestChange, withdrawChange } from '../src/modules/affiliates/affiliate-changes.js';
 
@@ -111,6 +113,15 @@ function part1() {
     if (!line.includes('7% off') || !line.includes('earn 4.5%') || !line.includes('Become an affiliate')) throw new Error(line);
   });
 
+  check('sign-up code: the confirmation email says what confirming unlocks, only when it does', () => {
+    if (!renderVerifyEmail('Nadia', 'https://x.test/v', {}, 10).html.includes('10% first-order code')) throw new Error('no mention with a bonus');
+    if (renderVerifyEmail('Nadia', 'https://x.test/v', {}, null).html.includes('first-order code')) throw new Error('mentioned without one');
+  });
+  check('sign-up code: its own email carries the code and the percent', () => {
+    const { subject, html } = renderSignupBonusEmail('Nadia', 'WELCOME-ABC123', 10, 'https://x.test/products', {});
+    if (!subject.includes('10%') || !html.includes('WELCOME-ABC123') || !html.includes('10% OFF YOUR FIRST ORDER')) throw new Error(subject);
+  });
+
   console.log('\n— commission, budget, cost');
 
   check('5% of the goods after discount, shipping left out', () => eq(commissionTarget(base), 950));
@@ -160,9 +171,11 @@ async function part2() {
   // sending: that log is what the email checks read.
   const mails: { kind: string; to: string; subject: string }[] = [];
   const mailErrors: unknown[] = [];
+  const codeMails: string[] = [];
   const quiet = {
     info: (o: any, msg?: string) => { if (msg?.includes('affiliate email')) mails.push({ kind: o.kind, to: o.to, subject: o.subject }); },
-    warn: () => {},
+    // Account mails log here while email is off ("Email disabled — sign-up code X for …").
+    warn: (msg: any) => { if (typeof msg === 'string' && msg.includes('sign-up code')) codeMails.push(msg); },
     error: (o: any, msg?: string) => { if (msg?.includes('affiliate email')) mailErrors.push(o?.err ?? o); },
     debug: () => {},
   };
@@ -510,6 +523,8 @@ async function part2() {
       const c = await mintSignupBonus(fastify, m2.id);
       if (c) codeIds.push(c.id);
       eq([c?.discountValue, c?.maxUses, c?.boundEmail], [10, 1, m2.email]);
+      // …and it goes out by email straight away (logged here: email is off).
+      eq(codeMails.filter((x) => x.includes(c!.code) && x.includes(m2.email)).length, 1, 'code email:');
       eq(await mintSignupBonus(fastify, m2.id), null, 'second time:');
       await refused(() => validateDiscountCode(fastify, c!.code, 10_000, { email: 'someone-else@example.test' }), /different email/);
       // The same inbox again, as an alias: no second code.

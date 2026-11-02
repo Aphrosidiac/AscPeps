@@ -364,10 +364,28 @@ sets all of it (see [Settings](#settings-every-switch-and-number)).
 
 ## Sign-up bonus
 
-Minted when the account's email is **confirmed** (a made-up address never
-gets one), once per inbox (an alias of an address that already had one gets
-none), single use, bound to that email, shown on the account card until
-used. Off by default.
+A one-time first-order code for a new account (`signup_bonus_enabled`,
+`signup_bonus_pct`; off by default). Promised by the sign-up popup and the
+header's "Sign in · 10% off" pill.
+
+- **Minted when the email is confirmed** (a made-up address never gets one),
+  once per inbox (an alias of an address that already had one gets none),
+  single use, `scope = STORE`, bound to that email (`members.ts →
+  mintSignupBonus`).
+- **The customer is told at every step**: the confirmation email says what
+  confirming unlocks (only when this inbox would get it); the "You're in"
+  screen after sign-up says so too; the confirmed page shows the code with a
+  Copy button; an email with the code goes out the moment it is minted
+  (`renderSignupBonusEmail`, behind the usual email switch); the account card
+  shows it until used.
+- **At checkout**, signed in, their email is filled in and the code is offered
+  ("Your first-order code … · Apply it"), never applied unasked. Without the
+  email the error says to enter it.
+- **Using it** takes the one use; a cancelled or failed order gives it back.
+- **Changing the account's email** moves an unused code to the new address.
+
+The sign-up popup's wording promises only the code — not order tracking or
+faster checkout, which a store account doesn't give.
 
 ## Admin
 

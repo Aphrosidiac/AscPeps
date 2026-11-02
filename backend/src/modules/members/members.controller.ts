@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { env } from '../../config/env.js';
 import { isEmailEnabled, sendEmail } from '../../utils/email.js';
 import { renderVerifyEmail } from '../../emails/verify-email.js';
-import { renderConfirmNewEmail, renderEmailChangedNotice, renderResetPasswordEmail } from '../../emails/account.js';
+import { renderConfirmNewEmail, renderEmailChangedNotice, renderResetPasswordEmail, renderSignupBonusEmail } from '../../emails/account.js';
 import { getAffiliateSettings, mailbox } from '../../utils/affiliate.js';
 
 const registerSchema = z.object({
@@ -71,7 +71,8 @@ async function issueVerification(
   const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
 
   const verifyUrl = `${env.FRONTEND_URL}/account/verify?token=${token}`;
-  const { subject, html } = renderVerifyEmail(member.displayName, verifyUrl, settings);
+  // Says what confirming unlocks — only when this inbox would really get it.
+  const { subject, html } = renderVerifyEmail(member.displayName, verifyUrl, settings, await signupBonusFor(fastify, member.email));
 
   try {
     await sendEmail({ to: member.email, subject, html });
@@ -161,39 +162,56 @@ export async function getMe(fastify: FastifyInstance, memberId: string) {
 }
 
 /** A single-use code for this account's email, once per account. */
-export async function mintSignupBonus(fastify: FastifyInstance, memberId: string) {
+/**
+ * The sign-up bonus this address would get on confirming: the percent while
+ * the bonus is on and its inbox has never had one (me+2@gmail.com and
+ * m.e@gmail.com are me@gmail.com again), else null.
+ */
+async function signupBonusFor(fastify: FastifyInstance, email: string): Promise<number | null> {
   const settings = await getAffiliateSettings(fastify.prisma);
   if (!settings.signupBonusEnabled) return null;
-  const member = await fastify.prisma.member.findUnique({ where: { id: memberId }, select: { email: true, signupBonusCodeId: true, emailVerified: true } });
-  if (!member || member.signupBonusCodeId || !member.emailVerified) return null;
-  // One per inbox: me+2@gmail.com and m.e@gmail.com are me@gmail.com again.
-  const inbox = mailbox(member.email);
+  const inbox = mailbox(email);
   const minted = await fastify.prisma.member.findMany({ where: { signupBonusCodeId: { not: null } }, select: { email: true } });
-  if (minted.some((m) => mailbox(m.email) === inbox)) return null;
+  return minted.some((m) => mailbox(m.email) === inbox) ? null : settings.signupBonusPct;
+}
+
+export async function mintSignupBonus(fastify: FastifyInstance, memberId: string) {
+  const member = await fastify.prisma.member.findUnique({ where: { id: memberId }, select: { email: true, displayName: true, signupBonusCodeId: true, emailVerified: true } });
+  if (!member || member.signupBonusCodeId || !member.emailVerified) return null;
+  const pct = await signupBonusFor(fastify, member.email);
+  if (pct === null) return null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = `WELCOME-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    let created;
     try {
-      return await fastify.prisma.$transaction(async (tx) => {
-        const created = await tx.discountCode.create({
+      created = await fastify.prisma.$transaction(async (tx) => {
+        const row = await tx.discountCode.create({
           data: {
             code,
             description: `Sign-up bonus · ${member.email}`,
             discountType: 'PERCENTAGE',
-            discountValue: settings.signupBonusPct,
+            discountValue: pct,
             maxUses: 1,
             scope: 'STORE',
             boundEmail: member.email,
           },
         });
         // Conditional so two confirmations racing mint one code.
-        const { count } = await tx.member.updateMany({ where: { id: memberId, signupBonusCodeId: null }, data: { signupBonusCodeId: created.id } });
+        const { count } = await tx.member.updateMany({ where: { id: memberId, signupBonusCodeId: null }, data: { signupBonusCodeId: row.id } });
         if (count === 0) throw new Error('already minted');
-        return created;
+        return row;
       });
     } catch (err) {
       if ((err as Error).message === 'already minted') return null;
       if ((err as { code?: string }).code !== 'P2002') throw err;
+      continue;
     }
+    // The popup promised it: send it now rather than leave it on a page they
+    // may never open. Logged instead while email is off; never undoes the mint.
+    await mailMember(fastify, member.email, `sign-up code ${created.code}`, null, (settings) =>
+      renderSignupBonusEmail(member.displayName, created.code, pct, `${env.FRONTEND_URL}/products`, settings)
+    );
+    return created;
   }
   return null;
 }
@@ -220,9 +238,14 @@ export async function verifyEmail(fastify: FastifyInstance, token: string) {
   });
   // The one-time sign-up bonus, when it is on. Minted on confirmation rather
   // than sign-up, so a made-up address never gets one.
-  await mintSignupBonus(fastify, member.id).catch((err) => fastify.log.warn({ err, memberId: member.id }, 'sign-up bonus not minted'));
+  const bonus = await mintSignupBonus(fastify, member.id).catch((err) => {
+    fastify.log.warn({ err, memberId: member.id }, 'sign-up bonus not minted');
+    return null;
+  });
 
-  return { success: true };
+  // The confirmed page shows the code there and then. Only whoever holds this
+  // single-use link (sent to the inbox it belongs to) ever sees it.
+  return { success: true, signupBonus: bonus ? { code: bonus.code, percent: bonus.discountValue } : null };
 }
 
 export async function resendVerification(fastify: FastifyInstance, body: unknown) {
@@ -383,6 +406,15 @@ export async function confirmEmailChange(fastify: FastifyInstance, body: unknown
   const taken = await fastify.prisma.member.findUnique({ where: { email: newEmail }, select: { id: true } });
   if (taken && taken.id !== member.id) {
     throw { statusCode: 409, message: 'Another account now uses that email.' };
+  }
+
+  // An unused sign-up code is tied to the address: it moves with it, or it
+  // could never be used again.
+  if (member.signupBonusCodeId) {
+    await fastify.prisma.discountCode.updateMany({
+      where: { id: member.signupBonusCodeId, usedCount: 0 },
+      data: { boundEmail: newEmail, description: `Sign-up bonus · ${newEmail}` },
+    });
   }
 
   await fastify.prisma.member.update({

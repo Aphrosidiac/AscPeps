@@ -1,4 +1,4 @@
-import { renderLayout, renderButton, escapeHtml, FONT, BODY, MUTED } from './layout.js';
+import { renderLayout, renderButton, escapeHtml, FONT, MONO, INK, BODY, MUTED } from './layout.js';
 
 /**
  * Account-security mails: forgot password, confirm a new address, and the
@@ -78,6 +78,43 @@ ${footnote("Didn't make this change? Contact us right away so we can secure your
       hero: { headline: `Hi ${escapeHtml(displayName)},`, subhead: 'your email changed.' },
       body,
       preheader: `Your account now uses ${newEmail}.`,
+      settings,
+      trust: false,
+    }),
+  };
+}
+
+/**
+ * The sign-up bonus, sent the moment the email is confirmed and the code is
+ * minted: the popup promised it, so it should not wait for them to find their
+ * account page. Same dashed box as the welcome code.
+ */
+export function renderSignupBonusEmail(
+  displayName: string,
+  code: string,
+  percent: number,
+  shopUrl: string,
+  settings: Record<string, string>
+): { subject: string; html: string } {
+  const body = `${paragraph(`Your email is confirmed, so here is the one-time code we promised. Use it at checkout on your first order.`)}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;">
+            <tr>
+              <td align="center" class="code-box" style="padding:22px 16px;border:1px dashed ${INK};border-radius:10px;">
+                <p class="muted" style="margin:0 0 8px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${MUTED};">${percent}% OFF YOUR FIRST ORDER</p>
+                <p class="ink" style="margin:0;font-family:${MONO};font-size:26px;font-weight:700;letter-spacing:3px;color:${INK};">${escapeHtml(code)}</p>
+                <p class="muted" style="margin:10px 0 0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">One use, at checkout with this email address.</p>
+              </td>
+            </tr>
+          </table>
+${renderButton('START SHOPPING', shopUrl)}
+${footnote('Signed in at checkout, the code is offered to you there — no need to copy it. It also shows on your account page until it is used.')}`;
+
+  return {
+    subject: `Your ${percent}% first-order code — Ascend MY`,
+    html: renderLayout({
+      hero: { headline: `Hi ${escapeHtml(displayName)},`, subhead: `${percent}% off your first order.` },
+      body,
+      preheader: `${code} — ${percent}% off your first order.`,
       settings,
       trust: false,
     }),
