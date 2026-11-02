@@ -8,11 +8,16 @@ import { ShoppingCart, Menu, X, Search, User, Users, ArrowRight } from 'lucide-r
 import { useCart } from '@/lib/cart';
 import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { GROUP_BUY_ENABLED } from '@/lib/features';
+import { useMemberSession } from '@/lib/member-session';
+import { useStoreSettings } from '@/lib/store-settings';
 
 const EASE = 'cubic-bezier(0.16,1,0.3,1)';
 
 export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
   const { itemCount, openCart } = useCart();
+  const { member, ready } = useMemberSession();
+  const settings = useStoreSettings();
+  const signupBonus = settings?.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null;
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   // menuOpen is the logical on/off state. menuClosing keeps the overlay in
@@ -158,17 +163,39 @@ export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
               </button>
             )}
 
-            {/* Accounts are a convenience (details filled in at checkout), so this stays a
-                quiet icon rather than a "Sign in" call to action competing
-                with the cart. */}
-            {/* On phones it moves into the menu to leave room for Group Buy. */}
-            <Link
-              href="/account"
-              className="hidden md:block p-3 hover:bg-surface-elevated rounded-lg transition-colors"
-              aria-label="Your account"
-            >
-              <User className="w-5 h-5" />
-            </Link>
+            {/* The account, made worth pressing (Fakhrul, 2026-11-03): signed out
+                a "Sign in" pill — with the first-order discount on it while the
+                sign-up bonus is on — and signed in their initial, like the
+                account page. Both go to /account, which signed out shows what an
+                account gives and the way in. A plain icon until the session is read, so the
+                first paint matches the server's. On phones it moves into the
+                menu to leave room for Group Buy. */}
+            {!ready ? (
+              <Link href="/account" className="hidden md:block p-3 hover:bg-surface-elevated rounded-lg transition-colors" aria-label="Your account">
+                <User className="w-5 h-5" />
+              </Link>
+            ) : member ? (
+              <Link
+                href="/account"
+                aria-label={`Your account, ${member.displayName}`}
+                className="hidden md:grid place-items-center mx-1.5 h-9 w-9 rounded-full bg-success font-display text-[15px] font-bold text-primary ring-offset-2 ring-offset-surface transition-shadow hover:ring-2 hover:ring-success/60"
+              >
+                {member.displayName.slice(0, 1).toUpperCase()}
+              </Link>
+            ) : (
+              <Link
+                href="/account"
+                className="hidden md:inline-flex mx-1 h-10 items-center gap-2 rounded-full border border-border-hover bg-surface pl-3.5 pr-4 text-sm font-semibold text-text-primary transition-colors hover:border-primary hover:bg-surface-elevated"
+              >
+                <User className="h-4 w-4" aria-hidden="true" />
+                Sign in
+                {signupBonus && (
+                  <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-[color-mix(in_srgb,var(--color-success)_50%,#0A0A0A)]">
+                    {signupBonus}% off
+                  </span>
+                )}
+              </Link>
+            )}
 
             {/* Opens the slide-in cart; still a link to /cart for a new tab, or
                 if scripts fail. On /cart itself it just goes there. */}
@@ -240,7 +267,7 @@ export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
             </div>
 
             <nav className="flex-1 flex flex-col justify-center px-8 sm:px-12 overflow-y-auto">
-              {[...links, { href: '/account', label: 'Account' }].map((link, i) => (
+              {[...links, { href: '/account', label: ready && !member ? 'Sign in' : 'Account' }].map((link, i) => (
                 <Link
                   key={link.href}
                   href={link.href}

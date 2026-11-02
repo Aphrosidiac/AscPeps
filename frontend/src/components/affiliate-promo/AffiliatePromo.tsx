@@ -5,6 +5,7 @@ import { ArrowRight, ArrowUpRight } from 'lucide-react';
 import { AffiliateEarnings } from '@/components/popups/AffiliateEarnings';
 import { AFFILIATE_URL } from '@/lib/affiliate-url';
 import { getMyAffiliate } from '@/lib/affiliate-api';
+import { getMemberToken } from '@/lib/member-session';
 import type { AffiliateOffer } from '@/lib/affiliate-offer';
 
 /*
@@ -74,13 +75,15 @@ export function AffiliateOrderCard() {
 }
 
 /**
- * Account page, under their details. Someone already in gets their code and a
- * way to their dashboard instead of an invitation to join.
+ * Account page, beside their details — and signed out too. Someone already in
+ * gets their code and a way to their dashboard instead of an invitation.
  */
 export function AffiliateAccountCard() {
   const o = useAffiliateOffer();
   const [mine, setMine] = useState<{ code: string; status: string } | null>(null);
   useEffect(() => {
+    // Signed out there is nothing to look up: the invitation shows.
+    if (!getMemberToken()) return;
     let alive = true;
     getMyAffiliate()
       .then((r) => { if (alive && r.affiliate) setMine({ code: r.affiliate.code, status: r.affiliate.status }); })

@@ -10,7 +10,7 @@ import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import posthog from 'posthog-js';
-import { getSettings } from '@/lib/api';
+import { useStoreSettings } from '@/lib/store-settings';
 import { useCart } from '@/lib/cart';
 import { lineIdOf, lineMaxQuantity, lineUnitPrice } from '@/lib/cart-lines';
 import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
@@ -18,23 +18,6 @@ import { useRefCode } from '@/lib/ref-code';
 import { parseEastMalaysiaMinOrder, resolveShippingFeeSen } from '@/lib/shipping-region';
 import { cn, formatPrice } from '@/lib/utils';
 import type { CartItem } from '@/types';
-
-// ── Store settings (shipping fees), fetched once per visit ────────────────
-
-let settingsOnce: Promise<Record<string, string>> | null = null;
-
-function useStoreSettings(): Record<string, string> | null {
-  const [settings, setSettings] = useState<Record<string, string> | null>(null);
-  useEffect(() => {
-    let alive = true;
-    settingsOnce ??= getSettings().catch(() => ({}));
-    settingsOnce.then((s) => alive && setSettings(s));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return settings;
-}
 
 // ── One line ──────────────────────────────────────────────────────────────
 

@@ -340,7 +340,7 @@ discount, the commission, payouts to their bank, free to join.
 | **Affiliate popup** | The invitation with the earnings graphic; takes turns with the newsletter and sign-up popups (below) | `components/popups` |
 | **Homepage band** | After Featured Products (the page sells first): "Share Ascend. Earn 5% of every order.", the pitch, **Become an affiliate** + **How it works** (the Guide), the earnings graphic | `AffiliateBand` |
 | **Order success page** | "Liked your order? Share Ascend." with the graphic — only once a payment is confirmed, not for Group Buy or a bank transfer still being checked | `AffiliateOrderCard` |
-| **Account page** | Under their details (store account only): an invitation, or for an existing affiliate their code and **Open Ascend Affiliate** | `AffiliateAccountCard` |
+| **Account page** | Beside their details, and on the signed-out page too (store account only): an invitation, or for an existing affiliate their code and **Open Ascend Affiliate**. Signed out, "Ascend Affiliate on the same account" is also one of the account's listed perks | `AffiliateAccountCard`, `AccountSettings` |
 | **Footer** | "Affiliate programme" under Shop | `Footer` |
 | **Payment receipt email** | One line under the receipt | `emails/payment-receipt.ts` |
 

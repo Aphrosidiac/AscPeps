@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { AlertCircle, ArrowRight, Check, Loader2, LogOut, Mail, MailCheck, Package, User } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, Handshake, Loader2, LogOut, Mail, MailCheck, MessageSquare, Package, ShoppingBag, Tag, User } from 'lucide-react';
 import type { Member } from '@/types';
 import {
   memberCancelEmailChange,
@@ -17,7 +17,8 @@ import {
 import { clearMemberSession, setMemberSession, updateMemberCache, useMemberSession } from '@/lib/member-session';
 import { Field, MIN_PASSWORD, PasswordField, apiError, inputCls } from './fields';
 import { GROUP_BUY_ENABLED } from '@/lib/features';
-import { AffiliateAccountCard } from '@/components/affiliate-promo/AffiliatePromo';
+import { AffiliateAccountCard, useAffiliateOffer } from '@/components/affiliate-promo/AffiliatePromo';
+import { useStoreSettings } from '@/lib/store-settings';
 
 const SIGN_IN: Record<AccountWhere, { signin: string; signup: string }> = {
   store: { signin: '/account/login', signup: '/account/register' },
@@ -54,17 +55,7 @@ export function AccountSettings({ where }: { where: AccountWhere }) {
   }
 
   if (!member || !token) {
-    const q = `?next=${encodeURIComponent(pathname)}`;
-    return (
-      <div className="max-w-xl rounded-[10px] border border-[#0A0A0A]/10 bg-white p-6 sm:p-8">
-        <h2 className="font-display text-xl font-bold text-[#0A0A0A]">Sign in to manage your account.</h2>
-        <p className="mt-2 text-[15px] leading-relaxed text-[#0A0A0A]/60">Change your name, email or password once you&apos;re signed in.</p>
-        <div className="mt-6 flex flex-wrap gap-2.5">
-          <Link href={SIGN_IN[where].signin + q} className="inline-flex h-11 items-center rounded-full bg-[#0A0A0A] px-5 text-sm font-semibold text-white hover:bg-[#262626]">Sign in</Link>
-          <Link href={SIGN_IN[where].signup + q} className="inline-flex h-11 items-center rounded-full border border-[#0A0A0A]/20 px-5 text-sm font-semibold text-[#0A0A0A] hover:border-[#0A0A0A]">Create an account</Link>
-        </div>
-      </div>
-    );
+    return <SignedOut where={where} next={pathname} />;
   }
 
   return (
@@ -79,6 +70,106 @@ export function AccountSettings({ where }: { where: AccountWhere }) {
         <EmailCard key={`e-${member.id}`} member={member} token={token} where={where} />
         <PasswordCard key={`p-${member.id}`} member={member} token={token} where={where} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Signed out: what an account is for, said truthfully, and the two ways in —
+ * laid out like the signed-in page (details left, dark panel right) so the
+ * page doesn't jump when they sign in. Ordering never needs an account, and
+ * the panel says so with the way to track an order. Only perks that exist
+ * right now are listed: the first-order code while the sign-up bonus is on,
+ * the affiliate programme while it is open.
+ */
+function SignedOut({ where, next }: { where: AccountWhere; next: string }) {
+  const settings = useStoreSettings();
+  const offer = useAffiliateOffer();
+  const q = `?next=${encodeURIComponent(next)}`;
+  const bonus = settings?.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null;
+  const perks: { icon: React.ComponentType<{ className?: string }>; title: string; text: string }[] = [
+    ...(bonus ? [{ icon: Tag, title: `${bonus}% off your first order`, text: 'A one-time code, yours once you confirm your email.' }] : []),
+    ...(GROUP_BUY_ENABLED ? [{ icon: Package, title: 'Your Group Buy orders', text: 'Follow every batch you joined in one place.' }] : []),
+    { icon: MessageSquare, title: 'Join the research discussion', text: 'Comment on our research articles.' },
+    ...(where === 'store' && offer ? [{ icon: Handshake, title: 'Ascend Affiliate on the same account', text: `Share your own code and earn ${offer.commission} of every paid order.` }] : []),
+  ];
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8">
+
+      <div className="rounded-[10px] border border-[#0A0A0A]/10 bg-white p-6 sm:p-8">
+        <h2 className="font-display text-2xl font-bold text-[#0A0A0A]">Sign in to your account</h2>
+        <p className="mt-1.5 text-[15px] leading-relaxed text-[#0A0A0A]/60">Or create one. It&apos;s free, and here&apos;s what it gives you:</p>
+
+        <ul className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-2">
+          {perks.map(({ icon: Icon, title, text }) => (
+            <li key={title} className="flex gap-3.5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#0A0A0A]/[0.05]">
+                <Icon className="h-[18px] w-[18px] text-[#0A0A0A]" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold text-[#0A0A0A]">{title}</span>
+                <span className="mt-0.5 block text-sm leading-relaxed text-[#0A0A0A]/60">{text}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {/* The way in, as the loudest thing on the page: two big tiles at
+            equal weight — new customers (with the first-order code while the
+            bonus is on) and returning ones. Inside the white card, not a band
+            bled to its edges: that split the card in two and fought the dark
+            panel beside it. */}
+        <div className="mt-8 border-t border-[#0A0A0A]/10 pt-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Link
+              href={SIGN_IN[where].signup + q}
+              className="group flex min-h-[76px] items-center justify-between gap-3 rounded-2xl bg-[#22C55E] px-5 py-4 text-[#0A0A0A] transition-[filter] hover:brightness-105"
+            >
+              <span className="min-w-0">
+                <span className="block font-display text-[17px] font-bold">Create an account</span>
+                <span className="mt-0.5 block text-[13px] font-medium text-[#0A0A0A]/70">
+                  {bonus && where === 'store' ? `New here? ${bonus}% off your first order` : 'New here? It\'s free'}
+                </span>
+              </span>
+              <ArrowRight className="h-5 w-5 shrink-0 transition-transform duration-300 group-hover:translate-x-[3px]" aria-hidden="true" />
+            </Link>
+            <Link
+              href={SIGN_IN[where].signin + q}
+              className="group flex min-h-[76px] items-center justify-between gap-3 rounded-2xl bg-[#0A0A0A] px-5 py-4 text-white transition-colors hover:bg-[#262626]"
+            >
+              <span className="min-w-0">
+                <span className="block font-display text-[17px] font-bold">Sign in</span>
+                <span className="mt-0.5 block text-[13px] font-medium text-white/60">Welcome back</span>
+              </span>
+              <ArrowRight className="h-5 w-5 shrink-0 transition-transform duration-300 group-hover:translate-x-[3px]" aria-hidden="true" />
+            </Link>
+          </div>
+          {where === 'store' && (
+            <p className="mt-4 text-center text-sm sm:text-right">
+              <Link href="/account/forgot-password" className="text-[#0A0A0A]/60 underline underline-offset-4 hover:text-[#0A0A0A]">Forgot your password?</Link>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* On a phone the way in comes first; the guest panel after it. */}
+      <aside className="lg:sticky lg:top-[88px]">
+        <div className="overflow-hidden rounded-[10px] bg-[#0A0A0A] p-6 text-white">
+          <p className="font-display text-lg font-semibold">No account needed to order.</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-white/60">Check out as a guest, and track any order with its number and your phone.</p>
+          <div className="mt-5 grid gap-2 border-t border-white/10 pt-5">
+            <Link href="/track" className="group flex h-11 items-center gap-2.5 rounded-xl bg-white/[0.06] px-3.5 text-sm font-medium hover:bg-white/[0.1]">
+              <Package className="h-4 w-4 text-white/60" />Track an order
+              <ArrowRight className="ml-auto h-4 w-4 text-white/40 transition-transform duration-300 group-hover:translate-x-[3px]" />
+            </Link>
+            <Link href="/products" className="group flex h-11 items-center gap-2.5 rounded-xl px-3.5 text-sm font-medium text-white/70 hover:bg-white/[0.06] hover:text-white">
+              <ShoppingBag className="h-4 w-4" />Shop the store
+              <ArrowRight className="ml-auto h-4 w-4 text-white/40 transition-transform duration-300 group-hover:translate-x-[3px]" />
+            </Link>
+          </div>
+        </div>
+        {where === 'store' && <AffiliateAccountCard />}
+      </aside>
     </div>
   );
 }
