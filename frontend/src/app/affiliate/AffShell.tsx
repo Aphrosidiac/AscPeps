@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { BookOpen, LogOut, Moon, Store, Sun } from 'lucide-react';
+import { BookOpen, Check, LogOut, Moon, Store, Sun } from 'lucide-react';
 import { useMemberSession, setMemberSession } from '@/lib/member-session';
 import { memberLogin, memberRegister, memberResendVerification } from '@/lib/api';
 import {
@@ -18,6 +18,7 @@ import {
   type Programme,
 } from '@/lib/affiliate-api';
 import { AffContext, Field, Notice, Tabs, useAffHref, useStoreOrigin } from './aff-ui';
+import { AuthShowcase } from './AuthShowcase';
 
 const TABS = [
   { href: '/', label: 'Overview' },
@@ -223,7 +224,7 @@ export function AffShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto max-w-[1180px] px-4 pb-16 sm:px-6">
-      <header className="sticky top-0 z-30 -mx-4 mb-6 px-4 pt-4 pb-3 sm:-mx-6 sm:mb-8 sm:px-6 sm:pt-6" style={{ background: 'var(--st-canvas)' }}>
+      <header className="aff-head sticky top-0 z-30 -mx-4 mb-6 px-4 pt-4 pb-3 sm:-mx-6 sm:mb-8 sm:px-6 sm:pt-6" style={{ background: 'var(--st-canvas)' }}>
         {/* Equal side columns, so the tabs sit dead centre whatever is on either side. */}
         <div className="grid grid-cols-[1fr_auto] items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
           <Logo />
@@ -311,32 +312,50 @@ function AuthPanel() {
     }
   };
 
-  return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
-      <section className="panel p-6 sm:p-10">
-        <h1 className="st-title fg">Share Ascend.<br />Earn on every order.</h1>
-        <p className="mt-4 max-w-[520px] text-[15px] leading-[23px] fg-2">
-          Get your own code. The people you share it with get {programme ? `${programme.customerDiscountPct}%` : 'a discount'} off at
-          ascendpeptides.my, and you earn {programme ? programme.commission : 'a commission'} of every order they pay for — paid to your bank.
-        </p>
-        <ol className="mt-8 grid gap-3 sm:grid-cols-3">
-          {[
-            ['tint-lilac', '1', 'Sign in', 'Use your Ascend MY store account, or make one.'],
-            ['tint-sky', '2', 'Pick your code', 'Something short your people will remember.'],
-            ['tint-mint', '3', 'Share and earn', 'Ask for a payout whenever you have a balance.'],
-          ].map(([tint, n, h, t]) => (
-            <li key={n} className={`tint ${tint}`}>
-              <p className="text-[16px] font-medium fg">{h}</p>
-              <p className="mt-1 text-[13px] leading-[18px] fg-2">{t}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+  // "Create my account" on the showcase: switch the form and bring it into view.
+  const join = () => {
+    setMode('signup');
+    setError('');
+    const card = document.getElementById(`${uid}-card`);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => card?.querySelector<HTMLInputElement>('input')?.focus(), 350);
+  };
+  const d = programme?.customerDiscountPct;
+  const facts = [
+    'Free to join',
+    d != null && programme ? `${d}% off for your people, ${programme.commission} for you` : 'A discount for your people, commission for you',
+    'Paid to your bank — no minimum',
+  ];
 
-      <section className="panel p-6 sm:p-8" aria-labelledby={`${uid}-h`}>
-        <h2 id={`${uid}-h`} className="st-h fg">{mode === 'signin' ? 'Sign in' : 'Create your account'}</h2>
-        <p className="st-sub mt-1">{mode === 'signin' ? 'The same account you use on the store.' : 'One account for the store and Ascend Affiliate.'}</p>
-        <form onSubmit={submit} className="mt-6 grid gap-4" noValidate>
+  return (
+    // On a computer the whole screen fits the window: showcase and card fill
+    // the height left under the header, however short a 16:9 window is.
+    <div className="aff-auth grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(380px,460px)]">
+      <AuthShowcase programme={programme} onJoin={join} />
+
+      <section id={`${uid}-card`} className="aff-auth-card panel flex min-h-0 flex-col justify-center overflow-y-auto p-6 sm:p-10" aria-labelledby={`${uid}-h`}>
+        {/* Sign in or join: one switch, the same form. */}
+        <div className="flex rounded-full p-1" style={{ background: 'var(--st-field)' }} role="group" aria-label="Sign in or create an account">
+          {(['signin', 'signup'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={mode === m}
+              onClick={() => (setMode(m), setError(''))}
+              className="h-10 flex-1 cursor-pointer rounded-full text-[14px] font-medium transition-colors duration-[120ms]"
+              style={mode === m ? { background: 'var(--st-panel)', color: 'var(--st-fg)', boxShadow: 'var(--st-shadow)' } : { color: 'var(--st-fg-3)' }}
+            >
+              {m === 'signin' ? 'Sign in' : 'Create account'}
+            </button>
+          ))}
+        </div>
+
+        <h1 id={`${uid}-h`} className="aff-auth-h st-title fg mt-8 !text-[32px] !leading-[38px]">{mode === 'signin' ? 'Welcome back' : 'Start earning'}</h1>
+        <p className="mt-2 text-[15px] leading-[22px] fg-2">
+          {mode === 'signin' ? 'Sign in with your Ascend MY store account.' : 'One free account for the store and Ascend Affiliate.'}
+        </p>
+
+        <form onSubmit={submit} className="aff-auth-form mt-7 grid gap-4" noValidate>
           {mode === 'signup' ? (
             <Field label="Your name">
               <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
@@ -356,20 +375,26 @@ function AuthPanel() {
             />
           </Field>
           {error ? <Notice tone="bad">{error}</Notice> : null}
-          <button type="submit" className="btn btn-ink mt-2 w-full" disabled={busy || !email || !password || (mode === 'signup' && !name.trim())}>
-            {busy ? 'One moment…' : mode === 'signin' ? 'Sign in' : 'Create account'}
-          </button>
-        </form>
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-[13px]">
-          <button type="button" className="fg-2 underline-offset-4 hover:underline" onClick={() => (setMode(mode === 'signin' ? 'signup' : 'signin'), setError(''))}>
-            {mode === 'signin' ? 'New here? Create an account' : 'Have an account? Sign in'}
+          <button type="submit" className="btn btn-ink mt-2 h-12 w-full text-[15px]" disabled={busy || !email || !password || (mode === 'signup' && !name.trim())}>
+            {busy ? 'One moment…' : mode === 'signin' ? 'Sign in' : 'Create my account'}
           </button>
           {mode === 'signin' ? (
-            <a className="fg-3 underline-offset-4 hover:underline" href={`${store}/account/forgot-password`}>
+            <a className="justify-self-center text-[13px] fg-3 underline-offset-4 hover:underline" href={`${store}/account/forgot-password`}>
               Forgot password?
             </a>
           ) : null}
-        </div>
+        </form>
+
+        <ul className="aff-auth-facts mt-8 grid gap-2.5 border-t pt-6" style={{ borderColor: 'var(--st-hair)' }}>
+          {facts.map((f) => (
+            <li key={f} className="flex items-center gap-3 text-[14px] fg-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--st-ok-soft)', color: 'var(--st-ok)' }}>
+                <Check className="h-3 w-3" aria-hidden strokeWidth={3} />
+              </span>
+              {f}
+            </li>
+          ))}
+        </ul>
       </section>
     </div>
   );

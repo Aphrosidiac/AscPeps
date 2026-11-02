@@ -211,6 +211,31 @@
   transition: transform 320ms cubic-bezier(0.34, 1.36, 0.64, 1), width 320ms cubic-bezier(0.34, 1.36, 0.64, 1);
 }
 
+/* ── Fitting short windows (a 16:9 laptop with the browser's bars is often
+   under 650px tall): the header gives up some height, and the signed-out
+   screen fills exactly what is left. Whole-pixel steps, never fluid type. ── */
+@media (min-width: 1024px) {
+  /* Header 120px above, 24px of page below (the usual 64px bottom padding gives way). */
+  .aff .aff-auth { height: calc(100dvh - 144px); min-height: 440px; }
+  .aff div:has(> .aff-auth) { padding-bottom: 24px; }
+}
+@media (max-height: 820px) {
+  .aff .aff-head { padding-top: 12px; margin-bottom: 16px; }
+  .aff .aff-auth-card { padding: 28px 32px; }
+  .aff .aff-auth-h { margin-top: 20px; font-size: 28px !important; line-height: 34px !important; }
+  .aff .aff-auth-form { margin-top: 16px; gap: 12px; }
+  .aff .aff-auth-form .input { height: 44px; }
+  .aff .aff-auth-facts { margin-top: 18px; padding-top: 14px; gap: 6px; }
+}
+@media (min-width: 1024px) and (max-height: 820px) {
+  /* Header 92px, 16px below. */
+  .aff .aff-auth { height: calc(100dvh - 108px); }
+  .aff div:has(> .aff-auth) { padding-bottom: 16px; }
+}
+@media (max-height: 700px) {
+  .aff .aff-auth-facts { display: none; }
+}
+
 /* ── Table ── */
 .aff .tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .aff .tbl th { text-align: left; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--st-fg-3); padding: 0 12px 10px; }
