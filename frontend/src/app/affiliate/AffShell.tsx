@@ -62,8 +62,8 @@ function ThemeSwitch() {
     <div role="radiogroup" aria-label="Theme" className="relative flex rounded-full p-1.5" style={{ background: 'var(--st-panel)', boxShadow: 'var(--st-shadow)' }}>
       <span
         aria-hidden
-        className="absolute left-1.5 top-1.5 h-9 w-9 rounded-full"
-        style={{ background: 'var(--st-solid)', transform: `translateX(${idx * 40}px)`, transition: pressed ? 'transform 320ms cubic-bezier(.3,1.3,.5,1)' : undefined }}
+        className="absolute left-1.5 top-1.5 h-10 w-10 rounded-full"
+        style={{ background: 'var(--st-solid)', transform: `translateX(${idx * 44}px)`, transition: pressed ? 'transform 320ms cubic-bezier(.3,1.3,.5,1)' : undefined }}
       />
       {(['light', 'dark'] as const).map((t) => {
         const Icon = t === 'light' ? Sun : Moon;
@@ -86,7 +86,7 @@ function ThemeSwitch() {
             }}
             aria-label={`${t === 'light' ? 'Light' : 'Dark'} theme`}
             onClick={() => (setPressed(true), setTheme(t))}
-            className="relative z-10 flex h-9 w-9 items-center justify-center rounded-full"
+            className="relative z-10 flex h-10 w-10 items-center justify-center rounded-full"
             style={{ color: on ? 'var(--st-on-solid)' : 'var(--st-fg-3)', marginLeft: t === 'dark' ? 4 : 0 }}
           >
             <Icon className="h-[17px] w-[17px]" strokeWidth={1.8} aria-hidden />
@@ -143,7 +143,7 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
         aria-label={`Account: ${name}`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[14px] font-semibold"
+        className="flex h-[52px] w-[52px] items-center justify-center rounded-[16px] text-[14px] font-semibold"
         style={{ background: 'var(--st-solid)', color: 'var(--st-on-solid)' }}
       >
         {initials}
@@ -219,20 +219,21 @@ export function AffShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-[1180px] px-4 pb-16 sm:px-6">
       <header className="sticky top-0 z-30 -mx-4 mb-6 px-4 pt-4 pb-3 sm:-mx-6 sm:mb-8 sm:px-6 sm:pt-6" style={{ background: 'linear-gradient(var(--st-canvas) 70%, transparent)' }}>
-        <div className="flex items-center justify-between gap-3">
+        {/* Equal side columns, so the tabs sit dead centre whatever is on either side. */}
+        <div className="grid grid-cols-[1fr_auto] items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
           <Logo />
           {showTabs ? (
-            <div className="hidden min-w-0 md:block">
+            <div className="hidden min-w-0 lg:block">
               <Tabs items={TABS} />
             </div>
           ) : null}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2 lg:col-start-3">
             <ThemeSwitch />
             {member && token ? <AccountMenu name={affiliate?.fullName || member.displayName} email={member.email} onSignOut={signOut} /> : null}
           </div>
         </div>
         {showTabs ? (
-          <div className="mt-3 md:hidden">
+          <div className="mt-3 lg:hidden">
             <Tabs items={TABS} />
           </div>
         ) : null}
@@ -463,7 +464,7 @@ function JoinPanel({ member, programme, onJoined }: { member: { displayName: str
           </div>
           <div className="sm:col-span-2">
             <Field label="Where will you share it? (optional)" help="Your Instagram or TikTok, a group, a gym — anything that helps us approve you.">
-              <input className="input" value={channel} onChange={(e) => setChannel(e.target.value)} />
+              <input className="input" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="e.g. @yourname on Instagram, a WhatsApp group, your gym" />
             </Field>
           </div>
           <div className="sm:col-span-2">

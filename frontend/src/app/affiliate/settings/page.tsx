@@ -91,7 +91,7 @@ export default function AffiliateSettings() {
               <input className="input" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
             </Field>
             <Field label="Where you share your code">
-              <input className="input" value={channel} onChange={(e) => setChannel(e.target.value)} />
+              <input className="input" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="e.g. @yourname on Instagram, a WhatsApp group, your gym" />
             </Field>
             <Field label="Your code" help="Live codes stay as they are — every link you shared uses it. Message us if it really has to change.">
               <input className="input uppercase tracking-[0.06em]" value={a.code} disabled />

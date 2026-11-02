@@ -31,6 +31,16 @@ export default function AffiliateOverview() {
               ? 'Your code is paused — it does nothing at checkout until we switch it back on.'
               : `Your code gives ${a.customerDiscountPct}% off · you earn ${a.commission}`
         }
+        actions={
+          <a
+            href={store}
+            className="btn bg-[var(--st-panel)] fg hover:bg-[var(--st-field)]"
+            style={{ boxShadow: 'var(--st-shadow)' }}
+          >
+            Back to Store
+            <ArrowUpRight className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden />
+          </a>
+        }
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">

@@ -197,7 +197,7 @@
 }
 .aff .tabs-wrap::-webkit-scrollbar { display: none; }
 .aff .tab {
-  position: relative; z-index: 1; display: flex; align-items: center; height: 44px; padding: 0 24px;
+  position: relative; z-index: 1; display: flex; align-items: center; height: 40px; padding: 0 24px;
   border-radius: 9999px; font-size: 14px; font-weight: 500; color: var(--st-fg-3);
   transition: color 200ms var(--st-ease);
 }
