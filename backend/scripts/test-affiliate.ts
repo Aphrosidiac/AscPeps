@@ -36,7 +36,8 @@ import { computeBank, loadBankInput } from '../src/utils/bank.js';
 import { adminUpdateDiscount, validateDiscountCode } from '../src/modules/admin/admin-discounts.controller.js';
 import { createOrder } from '../src/modules/orders/orders.controller.js';
 import { adminSetOrderTest, adminUpdateOrder } from '../src/modules/admin/admin-orders.controller.js';
-import { adminUpdateAffiliate, joinProgramme, listAffiliateOrders } from '../src/modules/affiliates/affiliates.controller.js';
+import { adminCancelPayout, adminUpdateAffiliate, joinProgramme, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
+import { affiliateMailSamples, renderAffiliateEmail } from '../src/emails/affiliate.js';
 import { mintSignupBonus } from '../src/modules/members/members.controller.js';
 import { adminDecideChange, changeState, requestChange, withdrawChange } from '../src/modules/affiliates/affiliate-changes.js';
 
@@ -86,7 +87,24 @@ const base: CommissionableOrder = {
 };
 
 function part1() {
-  console.log('— commission, budget, cost');
+  console.log('— affiliate emails render');
+  const ctx = { name: 'Amir', code: 'AH87123', rate: '5%', customerDiscountPct: 5, portalUrl: 'https://affiliate.example.test', shareUrl: 'https://shop.example.test/?ref=AH87123' };
+  for (const [name, mail] of affiliateMailSamples()) {
+    check(`${name}: subject, greeting, no holes`, () => {
+      const { subject, html } = renderAffiliateEmail(mail, ctx, {});
+      if (!subject || !html.includes('Hi Amir,')) throw new Error('no subject or greeting');
+      const text = html.replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ');
+      for (const hole of ['undefined', 'NaN', '[object', 'null']) if (text.includes(hole)) throw new Error(`"${hole}" in the text`);
+      if (mail.kind !== 'rejected' && !html.includes('https://affiliate.example.test')) throw new Error('no link to the portal');
+      if (['approved', 'paused', 'reactivated', 'applied'].includes(mail.kind) && !html.includes('AH87123')) throw new Error('no code');
+    });
+  }
+  check('the team\'s reason is escaped', () => {
+    const { html } = renderAffiliateEmail({ kind: 'changeRejected', fields: ['Name'], reason: '<script>x</script>' }, ctx, {});
+    if (html.includes('<script>x')) throw new Error('raw HTML in the reason');
+  });
+
+  console.log('\n— commission, budget, cost');
 
   check('5% of the goods after discount, shipping left out', () => eq(commissionTarget(base), 950));
   check('nothing before payment', () => eq(commissionTarget({ ...base, paymentStatus: 'UNPAID' }), 0));
@@ -131,7 +149,16 @@ async function part2() {
   }
   console.log('\n— database (local): checkout → paid → payout → refund');
   const prisma = new PrismaClient({ adapter: new PrismaPg(env.DATABASE_URL) });
-  const quiet = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+  // Email is off here (no Resend key), so mailAffiliate logs instead of
+  // sending: that log is what the email checks read.
+  const mails: { kind: string; to: string; subject: string }[] = [];
+  const mailErrors: unknown[] = [];
+  const quiet = {
+    info: (o: any, msg?: string) => { if (msg?.includes('affiliate email')) mails.push({ kind: o.kind, to: o.to, subject: o.subject }); },
+    warn: () => {},
+    error: (o: any, msg?: string) => { if (msg?.includes('affiliate email')) mailErrors.push(o?.err ?? o); },
+    debug: () => {},
+  };
   const fastify = { prisma, log: quiet } as unknown as FastifyInstance;
   const stamp = Date.now().toString(36);
 
@@ -413,6 +440,51 @@ async function part2() {
       const row = await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } });
       eq([r.status, row.status, row.reference, row.paidBy], ['PAID', 'PAID', 'ABBY1', 'Abby for Test']);
       await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '3');
+    });
+
+    await check('affiliate emails: one at each step, to their account email', async () => {
+      // Asking for a payout and the team cancelling it, through the same
+      // calls the portal and the admin make.
+      await adjustBalance(prisma, affiliateId, 500, 'test credit', 'test');
+      const { payout } = await requestMyPayout(fastify, member.id);
+      await adminCancelPayout(fastify, payout.id, { reason: 'Wrong account name' });
+      await adjustBalance(prisma, affiliateId, -500, 'test credit back', 'test');
+      eq(mails.map((m) => m.kind), ['applied', 'approved', 'paused', 'reactivated', 'changeApproved', 'changeRejected', 'payoutPaid', 'payoutRequested', 'payoutCancelled']);
+      eq([...new Set(mails.map((m) => m.to))], [member.email]);
+      eq(mailErrors.length, 0, 'errors:');
+    });
+
+    await check('a rejected application gets one email', async () => {
+      const m = await prisma.member.create({ data: { email: `aff-rej-${stamp}@example.test`, passwordHash: 'x', displayName: 'Rej', emailVerified: true } });
+      memberIds.push(m.id);
+      const r = await joinProgramme(fastify, { id: m.id, email: m.email }, { fullName: 'Rej Test', phone: '0137009876', code: `RJ${stamp}`.slice(0, 12), acceptTerms: true });
+      const id = (r.affiliate as any).id;
+      const dc = await prisma.discountCode.findUniqueOrThrow({ where: { code: r.affiliate.code } });
+      codeIds.push(dc.id);
+      const before = mails.length;
+      await adminUpdateAffiliate(fastify, id, { status: 'REJECTED' }, 'test');
+      eq(mails.slice(before).map((x) => [x.kind, x.to]), [['rejected', m.email]]);
+      await prisma.affiliate.delete({ where: { id } });
+    });
+
+    await check('order emails still queue for an order with an affiliate code', async () => {
+      // Sending switched on for a moment, with a key that cannot send: the
+      // outbox rows are what matters, and the worker is not running here.
+      const savedKey = process.env.RESEND_API_KEY;
+      const savedSwitch = await prisma.setting.findUnique({ where: { key: 'emails_enabled' } });
+      process.env.RESEND_API_KEY = 're_test_not_a_real_key';
+      await setSetting('emails_enabled', 'true');
+      try {
+        const o = await buy('mail', { discountCode: code });
+        await adminUpdateOrder(fastify, o.id, { paymentStatus: 'PAID' }, 'test');
+        const rows = await prisma.emailOutbox.findMany({ where: { orderId: o.id }, orderBy: { createdAt: 'asc' } });
+        eq(rows.map((r) => [r.type, r.toEmail]), [['ORDER_CONFIRMATION', `buyer-mail-${stamp}@example.test`], ['PAYMENT_RECEIPT', `buyer-mail-${stamp}@example.test`]]);
+      } finally {
+        if (savedKey === undefined) delete process.env.RESEND_API_KEY;
+        else process.env.RESEND_API_KEY = savedKey;
+        if (savedSwitch) await setSetting('emails_enabled', savedSwitch.value);
+        else await prisma.setting.deleteMany({ where: { key: 'emails_enabled' } });
+      }
     });
 
     await check('programme off: codes stop working', async () => {

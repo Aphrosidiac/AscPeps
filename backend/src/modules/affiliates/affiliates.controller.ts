@@ -20,6 +20,7 @@ import {
 } from '../../utils/affiliate.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { notifyAffiliateTeam } from '../../utils/affiliate-notify.js';
+import { mailAffiliate } from '../../utils/affiliate-mail.js';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { notifyRevalidate } from '../../utils/revalidate.js';
 import { changeState } from './affiliate-changes.js';
@@ -185,6 +186,7 @@ export async function joinProgramme(fastify: FastifyInstance, member: { id: stri
     fastify,
     `🤝 *New affiliate application*\n${data.fullName} · ${phone}\n${member.email}\nCode ${check.code}${data.channel ? `\nShares on: ${data.channel}` : ''}${bank.bankName ? `\nBank: ${bank.bankName} ····${bank.bankAccountNumber!.slice(-4)} (${bank.bankAccountName})` : '\nNo bank details yet'}\n\nApprove in Admin → Affiliates.`
   );
+  await mailAffiliate(fastify, affiliate.id, { kind: 'applied', hasBank: Boolean(bank.bankName) });
   return { affiliate: shapeAffiliate(affiliate) };
 }
 
@@ -325,6 +327,13 @@ export async function requestMyPayout(fastify: FastifyInstance, memberId: string
     fastify,
     `💸 *Affiliate payout requested*\n${a.fullName} (${a.discountCode.code}) · RM ${(payout.amount / 100).toFixed(2)}\nTo ${payout.bankName} ····${payout.bankAccountNumber.slice(-4)} (${payout.bankAccountName}), full number in Admin\nPayable from ${payout.availableAt.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}\n\nMark it paid in Admin → Affiliates → Payouts once the transfer is done.`
   );
+  await mailAffiliate(fastify, affiliateId, {
+    kind: 'payoutRequested',
+    amount: payout.amount,
+    bankName: payout.bankName,
+    last4: payout.bankAccountNumber.slice(-4),
+    availableAt: payout.availableAt,
+  });
   return { payout };
 }
 
@@ -460,6 +469,12 @@ export async function adminUpdateAffiliate(fastify: FastifyInstance, id: string,
     const status = (patch.status as string | undefined) ?? a.status;
     await tx.discountCode.update({ where: { id: a.discountCodeId }, data: { isActive: status === 'ACTIVE' } });
   });
+  // Tell them where they stand. Going live the first time is "approved",
+  // after that it is "live again"; a rejection reads as one only before they
+  // were ever in.
+  if (patch.status === 'ACTIVE') await mailAffiliate(fastify, id, { kind: a.approvedAt ? 'reactivated' : 'approved' });
+  else if (patch.status === 'PAUSED' && a.status === 'ACTIVE') await mailAffiliate(fastify, id, { kind: 'paused' });
+  else if (patch.status === 'REJECTED' && a.status === 'APPLIED') await mailAffiliate(fastify, id, { kind: 'rejected' });
   return adminGetAffiliate(fastify, id);
 }
 
@@ -500,12 +515,23 @@ export async function adminMarkPayoutPaid(fastify: FastifyInstance, id: string, 
     .object({ reference: z.string().trim().max(120).nullable().optional(), paidAt: z.coerce.date().optional(), expectedAmount: z.number().int().min(0).optional() })
     .parse(body ?? {});
   if (paidAt && paidAt.getTime() > Date.now() + 60 * 60_000) throw { statusCode: 400, message: 'The transfer date cannot be in the future.' };
-  return markPayoutPaid(fastify.prisma, id, { by: actor, reference: reference ?? null, paidAt, expected: expectedAmount }).catch(fail);
+  const result = await markPayoutPaid(fastify.prisma, id, { by: actor, reference: reference ?? null, paidAt, expected: expectedAmount }).catch(fail);
+  const p = await fastify.prisma.affiliatePayout.findUniqueOrThrow({ where: { id } });
+  await mailAffiliate(
+    fastify,
+    p.affiliateId,
+    result.status === 'PAID'
+      ? { kind: 'payoutPaid', amount: result.paidAmount, asked: p.amount, bankName: p.bankName, last4: p.bankAccountNumber.slice(-4), reference: p.reference, paidAt: p.paidAt ?? new Date() }
+      : { kind: 'payoutCancelled', amount: p.amount, reason: result.note ?? 'Cancelled by the team.' }
+  );
+  return result;
 }
 
 export async function adminCancelPayout(fastify: FastifyInstance, id: string, body: unknown) {
   const { reason } = z.object({ reason: z.string().trim().min(2).max(300) }).parse(body);
   await cancelPayout(fastify.prisma, id, reason).catch(fail);
+  const p = await fastify.prisma.affiliatePayout.findUniqueOrThrow({ where: { id }, select: { affiliateId: true, amount: true } });
+  await mailAffiliate(fastify, p.affiliateId, { kind: 'payoutCancelled', amount: p.amount, reason });
   return { ok: true };
 }
 

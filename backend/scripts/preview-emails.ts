@@ -25,6 +25,7 @@ import { renderAbandonedCheckout } from '../src/emails/abandoned-checkout.js';
 import { renderWelcome } from '../src/emails/welcome.js';
 import { renderVerifyEmail } from '../src/emails/verify-email.js';
 import { renderCampaign } from '../src/emails/campaign.js';
+import { renderAffiliateEmail, affiliateMailSamples } from '../src/emails/affiliate.js';
 
 // Same driver adapter the app uses (src/plugins/prisma.ts) — Prisma 7 has no
 // implicit datasource, so a bare `new PrismaClient()` throws here.
@@ -126,16 +127,31 @@ async function main() {
       'campaign',
       renderCampaign(
         {
+          name: 'Retatrutide restock',
           subject: 'Retatrutide is back in stock',
           preheader: null,
           body: 'The RT10 and RT20 vials landed this morning, both from the same batch as the COA published last week.\n\nStock is limited to what came in — we are not taking backorders on this one.',
           ctaLabel: 'View the batch',
           ctaUrl: 'https://example.test/products/retatrutide',
         },
-        'https://example.test/unsub',
-        settings
+        { unsubscribeUrl: 'https://example.test/unsub', settings }
       ),
     ],
+    ...affiliateMailSamples().map(([name, mail]): [string, { subject: string; html: string }] => [
+      `affiliate-${name}`,
+      renderAffiliateEmail(
+        mail,
+        {
+          name: 'Amir',
+          code: 'AH87123',
+          rate: '5%',
+          customerDiscountPct: 5,
+          portalUrl: 'https://affiliate.ascendpeptides.my',
+          shareUrl: 'https://ascendpeptides.my/?ref=AH87123',
+        },
+        settings
+      ),
+    ]),
   ];
 
   const index: string[] = [];

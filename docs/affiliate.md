@@ -180,6 +180,30 @@ one section, and saving is **Request change** (`modules/affiliates/affiliate-cha
   only changes through the team.
 - The team can still edit an affiliate directly on their admin page.
 
+## Emails to the affiliate
+
+The team hears about things on WhatsApp; the affiliate hears by email, at
+their account email. Templates are `backend/src/emails/affiliate.ts`, sent by
+`utils/affiliate-mail.ts` straight away (no outbox: there is no order), behind
+the same switch as every other mail (`emails_enabled` + a Resend key). While
+it is off they are only logged (`Email disabled — affiliate email not sent`).
+A failed send is logged and never undoes what it reports.
+
+| When | Email |
+|---|---|
+| They apply | application received (code saved; nudge to add a bank if they skipped it) |
+| The team sets them Active the first time | approved: the code, the share link, the dashboard |
+| Rejected while still an application | not approved (no reason given) |
+| Active → Paused / Paused → Active | code paused (balance kept, payout waits) / live again |
+| They ask for a payout | request receipt: amount, bank ····last4, payable from (MY time) |
+| Marked paid (admin or Abby) | paid: amount, bank ····last4, date, reference; says so when refunds made it less than asked |
+| Cancelled by the team, or by refunds at Mark paid | cancelled, with the reason |
+| A change of details approved / rejected | updated (and that payouts go to the new account) / not made, with the reason |
+
+Links go to `AFFILIATE_URL` (backend env), else the subdomain, else
+`FRONTEND_URL/affiliate` locally. `scripts/preview-emails.ts` renders one of
+each next to the order mails.
+
 ## The store
 
 - **Share link** `ascendpeptides.my/?ref=CODE`: `RefCapture` (in
@@ -250,9 +274,10 @@ Admin (`/api/v1/admin/affiliates`): `GET /`, `GET /:id`, `PATCH /:id`,
 
 ```bash
 cd backend
-npm run test:affiliate        # 45 checks: the sum, budget, checkout, paid, hold, payout,
+npm run test:affiliate        # 61 checks: the sum, budget, checkout, paid, hold, payout,
                               # refund after payout (negative), test-mark, paused payouts, stale Mark paid,
-                              # aliases, sign-up bonus, Abby's write tools
+                              # aliases, sign-up bonus, Abby's write tools, every affiliate email
+                              # (rendered, and sent at the right step), order mails queued on a code order
 npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders), SITI5 (to approve),
                                          # demo-newcomer (signed up, not joined: walks the onboarding)
 ```
@@ -262,7 +287,8 @@ npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders),
 1. `prisma migrate deploy` — `20261102120000_ascend_affiliate` and
    `20261103120000_affiliate_change_requests` are additive (new tables, three
    nullable/defaulted order columns, one member column).
-2. Backend: tsup build, restart `ascend-api` (check no agent thread is
+2. Backend: optionally `AFFILIATE_URL=https://affiliate.ascendpeptides.my`
+   in the API's env (that is already the default off localhost). tsup build, restart `ascend-api` (check no agent thread is
    running first).
 3. DNS: `affiliate` A record → ascend-vps, proxied (Rikaidrawings Cloudflare
    account, zone ascendpeptides.my).

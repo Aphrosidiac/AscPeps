@@ -30,6 +30,9 @@ const envSchema = z.object({
   // bypassing nginx. Falls back to FRONTEND_URL for local dev, where the
   // frontend dev server IS already reachable directly (no nginx in front).
   FRONTEND_INTERNAL_URL: z.string().optional(),
+  // Ascend Affiliate's own host, for links in the affiliate emails. Defaults to
+  // the subdomain, or the /affiliate pages on FRONTEND_URL when that is local.
+  AFFILIATE_URL: z.string().optional(),
   // Origin the EMAIL templates point their images at. Defaults to the live
   // site, which is the only correct answer for real mail: a client rendering
   // an email has no origin to resolve a relative path against, so every asset

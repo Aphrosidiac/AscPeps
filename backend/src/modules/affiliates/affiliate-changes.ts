@@ -16,6 +16,7 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { normalizePhone } from '../../utils/phone.js';
 import { notifyAffiliateTeam } from '../../utils/affiliate-notify.js';
+import { mailAffiliate } from '../../utils/affiliate-mail.js';
 
 export const DETAIL_FIELDS = ['fullName', 'phone', 'channel', 'bankName', 'bankAccountName', 'bankAccountNumber'] as const;
 export type DetailField = (typeof DETAIL_FIELDS)[number];
@@ -190,7 +191,7 @@ const decideSchema = z.discriminatedUnion('decision', [
  */
 export async function adminDecideChange(fastify: FastifyInstance, id: string, body: unknown, actor: string) {
   const d = decideSchema.parse(body);
-  await fastify.prisma.$transaction(async (tx) => {
+  const decided = await fastify.prisma.$transaction(async (tx) => {
     const r = await tx.affiliateChangeRequest.findUnique({ where: { id }, select: { affiliateId: true, status: true, changes: true } });
     if (!r) throw { statusCode: 404, message: 'Change request not found.' };
     await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${r.affiliateId} FOR UPDATE`;
@@ -203,7 +204,8 @@ export async function adminDecideChange(fastify: FastifyInstance, id: string, bo
         : { status: 'REJECTED', decidedAt: new Date(), decidedBy: actor, rejectReason: d.reason },
     });
     if (!count) throw { statusCode: 409, message: r.status === 'PENDING' ? 'They changed it again just now — reload to see the latest.' : `This request is already ${r.status.toLowerCase()}.` };
-    if (d.decision === 'reject') return;
+    const fields = DETAIL_FIELDS.filter((k) => k in (r.changes as object)).map((k) => LABEL[k]);
+    if (d.decision === 'reject') return { affiliateId: r.affiliateId, fields };
 
     const changes = r.changes as Partial<Details>;
     // Checked when sent (desired()): name and WhatsApp are never null here.
@@ -214,6 +216,12 @@ export async function adminDecideChange(fastify: FastifyInstance, id: string, bo
         data: { bankName: updated.bankName!, bankAccountName: updated.bankAccountName!, bankAccountNumber: updated.bankAccountNumber! },
       });
     }
+    return { affiliateId: r.affiliateId, fields };
   });
+  await mailAffiliate(
+    fastify,
+    decided.affiliateId,
+    d.decision === 'approve' ? { kind: 'changeApproved', fields: decided.fields } : { kind: 'changeRejected', fields: decided.fields, reason: d.reason }
+  );
   return { ok: true };
 }
