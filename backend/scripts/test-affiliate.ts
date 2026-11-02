@@ -333,6 +333,16 @@ async function part2() {
       await adjustBalance(prisma, affiliateId, -700, 'test credit back', 'test');
     });
 
+    await check('joining with half the bank details is refused', async () => {
+      const m = await prisma.member.create({ data: { email: `aff-bank-${stamp}@example.test`, passwordHash: 'x', displayName: 'Bank Test', emailVerified: true } });
+      memberIds.push(m.id);
+      await refused(
+        () => joinProgramme(fastify, { id: m.id, email: m.email }, { fullName: 'Bank Test', phone: '0137001234', code: `BT${stamp}`.slice(0, 12), bankName: 'Maybank', acceptTerms: true }),
+        /Fill in the bank/
+      );
+      eq(await prisma.affiliate.count({ where: { memberId: m.id } }), 0);
+    });
+
     await check('suggested codes are initials and digits, not a name', async () => {
       const codes = await Promise.all(['Amir Hakim', 'siti nur aminah', 'Ravi', "Nur'aisyah bt. Ali", ''].map((n) => suggestCode(prisma, n)));
       for (const c of codes) if (!/^[A-Z]{2}\d{4,6}$/.test(c)) throw new Error(`bad shape: ${c}`);

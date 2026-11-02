@@ -219,6 +219,11 @@ function AffiliatesTab({ token, onCounts }: { token: string; onCounts: (approve:
               <span className="block">Code <span className="font-semibold text-text-primary">{approving.code}</span> starts working at checkout now, at {approving.commission} commission.</span>
               {approving.channel ? <span className="mt-2 block">Shares on: {approving.channel}</span> : null}
               <span className="mt-2 block">{approving.phone} · {approving.email}</span>
+              <span className="mt-2 block">
+                {approving.bankName
+                  ? `Bank: ${approving.bankName} ${approving.bankAccountNumber} (${approving.bankAccountName}) — approved with the application.`
+                  : 'No bank details yet — they add them later, as a change for you to approve.'}
+              </span>
             </>
           }
           confirmLabel="Approve"

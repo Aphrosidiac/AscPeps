@@ -32,7 +32,7 @@ await set(AFFILIATE_SETTING_KEYS.enabled, 'true');
 await set(AFFILIATE_SETTING_KEYS.signupBonusEnabled, 'true');
 
 // Clear a previous demo.
-for (const email of ['demo-affiliate@example.test', 'demo-applicant@example.test']) {
+for (const email of ['demo-affiliate@example.test', 'demo-applicant@example.test', 'demo-newcomer@example.test']) {
   const m = await prisma.member.findUnique({ where: { email }, include: { affiliate: true } });
   if (!m) continue;
   if (m.affiliate) {
@@ -42,6 +42,7 @@ for (const email of ['demo-affiliate@example.test', 'demo-applicant@example.test
     for (const i of items) if (i.quantity - i.preorderQty > 0) await prisma.productVariant.update({ where: { id: i.variantId }, data: { stock: { increment: i.quantity - i.preorderQty } } });
     await prisma.affiliateEntry.deleteMany({ where: { affiliateId: m.affiliate.id } });
     await prisma.affiliatePayout.deleteMany({ where: { affiliateId: m.affiliate.id } });
+    await prisma.affiliateChangeRequest.deleteMany({ where: { affiliateId: m.affiliate.id } });
     await prisma.$executeRawUnsafe(`DELETE FROM email_outbox WHERE "orderId" = ANY($1)`, ids);
     await prisma.$executeRawUnsafe(`DELETE FROM payment_events WHERE "orderId" = ANY($1)`, ids);
     await prisma.$executeRawUnsafe(`DELETE FROM order_profit_shares WHERE "orderId" = ANY($1)`, ids);
@@ -57,6 +58,8 @@ for (const email of ['demo-affiliate@example.test', 'demo-applicant@example.test
 const hash = await bcrypt.hash(PASSWORD, 10);
 const amir = await prisma.member.create({ data: { email: 'demo-affiliate@example.test', passwordHash: hash, displayName: 'Amir Hakim', emailVerified: true } });
 const siti = await prisma.member.create({ data: { email: 'demo-applicant@example.test', passwordHash: hash, displayName: 'Siti Aminah', emailVerified: true } });
+// Signed up, never joined: walks the onboarding (Onboarding.tsx).
+await prisma.member.create({ data: { email: 'demo-newcomer@example.test', passwordHash: hash, displayName: 'Nur Aisyah', emailVerified: true } });
 
 const a = await joinProgramme(fastify, { id: amir.id, email: amir.email }, { fullName: 'Amir Hakim', phone: '0123456789', channel: 'instagram.com/amir.lifts', code: 'AMIR5', acceptTerms: true });
 await joinProgramme(fastify, { id: siti.id, email: siti.email }, { fullName: 'Siti Aminah', phone: '0198765432', channel: 'TikTok @siti.fit', code: 'SITI5', acceptTerms: true });

@@ -121,6 +121,18 @@ const joinSchema = z.object({
   phone: z.string().trim().min(8).max(20),
   channel: z.string().trim().max(200).optional().nullable(),
   code: z.string().trim().min(1).max(30),
+  // Optional at join (onboarding's payout step can be skipped). Sent with the
+  // application, so the team approves them with it; later changes go through
+  // a change request (affiliate-changes.ts).
+  bankName: z.string().trim().max(80).optional().nullable(),
+  bankAccountName: z.string().trim().max(80).optional().nullable(),
+  bankAccountNumber: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/[ -]/g, ''))
+    .refine((v) => v === '' || /^\d{6,24}$/.test(v), 'Account number: numbers only, as on your statement.')
+    .optional()
+    .nullable(),
   acceptTerms: z.literal(true),
 });
 
@@ -139,6 +151,9 @@ export async function joinProgramme(fastify: FastifyInstance, member: { id: stri
   }
   const check = await checkCode(fastify, data.code);
   if (!check.available) throw { statusCode: 400, message: check.reason ?? 'That code is not available.' };
+  const bank = { bankName: data.bankName?.trim() || null, bankAccountName: data.bankAccountName?.trim() || null, bankAccountNumber: data.bankAccountNumber || null };
+  const filled = Object.values(bank).filter(Boolean).length;
+  if (filled > 0 && filled < 3) throw { statusCode: 400, message: 'Fill in the bank, the account holder name and the account number — or skip it for now.' };
 
   const affiliate = await fastify.prisma.$transaction(async (tx) => {
     const code = await tx.discountCode.create({
@@ -161,13 +176,14 @@ export async function joinProgramme(fastify: FastifyInstance, member: { id: stri
         fullName: data.fullName,
         phone,
         channel: data.channel || null,
+        ...bank,
       },
       select: AFFILIATE_PUBLIC,
     });
   });
   void notifyAffiliateTeam(
     fastify,
-    `🤝 *New affiliate application*\n${data.fullName} · ${phone}\n${member.email}\nCode ${check.code}${data.channel ? `\nShares on: ${data.channel}` : ''}\n\nApprove in Admin → Affiliates.`
+    `🤝 *New affiliate application*\n${data.fullName} · ${phone}\n${member.email}\nCode ${check.code}${data.channel ? `\nShares on: ${data.channel}` : ''}${bank.bankName ? `\nBank: ${bank.bankName} ····${bank.bankAccountNumber!.slice(-4)} (${bank.bankAccountName})` : '\nNo bank details yet'}\n\nApprove in Admin → Affiliates.`
   );
   return { affiliate: shapeAffiliate(affiliate) };
 }

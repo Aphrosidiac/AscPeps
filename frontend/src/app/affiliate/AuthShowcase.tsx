@@ -198,35 +198,6 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
         ))}
       </div>
 
-      <style>{`
-        /* Type steps with the window's height, in whole pixels. */
-        .aff-show-title { font-size: 34px; line-height: 40px; }
-        .aff-show-sub { font-size: 15px; line-height: 23px; }
-        @media (min-width: 640px) { .aff-show-title { font-size: 44px; line-height: 50px; } }
-        @media (min-width: 1024px) and (max-height: 820px) {
-          .aff-show { padding: 28px 32px; }
-          .aff-show-stage { margin-top: 20px; }
-          .aff-show-title { font-size: 34px; line-height: 40px; }
-          .aff-show-sub { margin-top: 10px; font-size: 14px; line-height: 21px; }
-          .aff-show-visual { margin-top: 20px; }
-        }
-        @media (min-width: 1024px) and (max-height: 680px) {
-          .aff-show-title { font-size: 30px; line-height: 36px; }
-        }
-        .aff-show { background: radial-gradient(120% 80% at 100% 0%, rgb(34 197 94 / 0.16), transparent 55%), #0a0a0a; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06); }
-        .aff-show-slide { opacity: 0; filter: blur(10px); transform: scale(1.015); pointer-events: none; transition: opacity 650ms cubic-bezier(0.16, 1, 0.3, 1), filter 650ms cubic-bezier(0.16, 1, 0.3, 1), transform 650ms cubic-bezier(0.16, 1, 0.3, 1); }
-        .aff-show-slide.is-on { opacity: 1; filter: blur(0); transform: none; pointer-events: auto; }
-        .aff-show-slide .aff-show-in { opacity: 0; transform: translateY(8px); transition: opacity 600ms ease-out, transform 600ms cubic-bezier(0.16, 1, 0.3, 1); }
-        .aff-show-slide.is-on .aff-show-in { opacity: 1; transform: none; }
-        .aff-show-slide.is-on .aff-show-d1 { transition-delay: 90ms; }
-        .aff-show-slide.is-on .aff-show-d2 { transition-delay: 180ms; }
-        .aff-show-fill { width: 0; animation: aff-show-fill ${DWELL_MS}ms linear forwards; }
-        @keyframes aff-show-fill { to { width: 100%; } }
-        @media (prefers-reduced-motion: reduce) {
-          .aff-show-slide, .aff-show-slide .aff-show-in { transition: none; filter: none; transform: none; }
-          .aff-show-fill { animation: none; width: 100%; }
-        }
-      `}</style>
     </section>
   );
 }
@@ -235,7 +206,7 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
  * Sits a slide's graphic at the bottom of the space left for it, and scales
  * it down — only ever down — when the window is too short to show it whole.
  */
-function FitBox({ children }: { children: React.ReactNode }) {
+export function FitBox({ children }: { children: React.ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);

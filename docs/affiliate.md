@@ -31,6 +31,10 @@ A store account (`members`) that applied. One `affiliates` row each:
 | `PAUSED` | stopped by the team | does nothing; balance kept, payouts wait (Mark paid is refused until they are active again, or the request is cancelled) |
 | `REJECTED` | not approved | never goes live |
 
+Bank details given while joining go in with the application (`joinProgramme`,
+all three or none), so the team approves them with it — the Approve dialog
+shows them. Skipped, they're added later in Settings as a change request.
+
 Joining needs a **confirmed email** (a payout goes to a real person), a
 Malaysian mobile number and a code (4–16 letters/numbers). The one suggested
 is their initials and four random digits — Amir Hakim → AH4827 — so nobody's
@@ -123,9 +127,10 @@ Locally: `http://affiliate.localhost:3399`.
 
 | Page | What it shows |
 |---|---|
-| Signed out | the offer and how it works; sign in or create the store account |
-| Join | name, WhatsApp, code (live availability check), where they share, the rules |
-| Waiting | their reserved code, changeable until approved |
+| Signed out | a six-slide showcase (live discount/rate/hold, real products) beside sign in / create account, fitted to one screen |
+| Join (onboarding) | a step-by-step wizard (`Onboarding.tsx`): confirm email (only if needed; "I've confirmed it" re-checks) → about you → code (suggested, shuffle, live availability) → payouts (bank, or skip for now) → review + agree. A dark panel beside it previews what each step makes, live |
+| Waiting | in the queue: sent → reviewed → live → sharing; their code (changeable until approved), WhatsApp and bank; the Guide is open to read meanwhile |
+| First visit after approval | a spotlight tour (`Tour.tsx`) over Overview: balance, code, each tab, the Guide — once per affiliate per browser; **Take the tour** in the account menu (`/?tour=1`) replays it |
 | Overview | balance and **Ask for a payout**; earned / waiting for payment / paid; their code and share link (copy buttons); latest orders |
 | Products | every size the code works on (the store's own list and sale prices): price, what the customer pays with the code, what one sale earns and what N sales earn (1, 5, 10, 25, 50 or any number), and a copy link to each product's page with the code |
 | Orders | order number, date, status, goods, commission — **never who bought** |
@@ -245,10 +250,11 @@ Admin (`/api/v1/admin/affiliates`): `GET /`, `GET /:id`, `PATCH /:id`,
 
 ```bash
 cd backend
-npm run test:affiliate        # 43 checks: the sum, budget, checkout, paid, hold, payout,
+npm run test:affiliate        # 45 checks: the sum, budget, checkout, paid, hold, payout,
                               # refund after payout (negative), test-mark, paused payouts, stale Mark paid,
                               # aliases, sign-up bonus, Abby's write tools
-npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders) + SITI5 (to approve)
+npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders), SITI5 (to approve),
+                                         # demo-newcomer (signed up, not joined: walks the onboarding)
 ```
 
 ## Deploying it (when Fakhrul says)

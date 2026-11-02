@@ -230,6 +230,7 @@ export function Tabs({ items }: { items: { href: string; label: string }[] }) {
             }}
             aria-current={i.href === current ? 'page' : undefined}
             data-unmeasured={!box ? '' : undefined}
+            data-tour={`tab:${i.href}`}
             onClick={(e) => {
               if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) setPressed({ href: i.href, on: path });
             }}

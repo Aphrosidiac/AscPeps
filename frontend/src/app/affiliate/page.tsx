@@ -33,7 +33,7 @@ export default function AffiliateOverview() {
         }
         actions={
           <>
-            <Link href={href('/guide')} className="btn bg-[var(--st-panel)] fg hover:bg-[var(--st-field)]" style={{ boxShadow: 'var(--st-shadow)' }}>
+            <Link href={href('/guide')} className="btn bg-[var(--st-panel)] fg hover:bg-[var(--st-field)]" style={{ boxShadow: 'var(--st-shadow)' }} data-tour="guide">
               <BookOpen className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden />
               Guide
             </Link>
@@ -51,7 +51,7 @@ export default function AffiliateOverview() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         {/* Balance and the one action that matters. */}
-        <section className="panel p-6 sm:p-8" aria-labelledby="bal-h">
+        <section className="panel p-6 sm:p-8" aria-labelledby="bal-h" data-tour="balance">
           <p id="bal-h" className="st-label">Your balance</p>
           <p className="st-big mt-2 fg" style={b.balance < 0 ? { color: 'var(--st-bad)' } : undefined}>{rm(b.balance)}</p>
           {b.balance < 0 ? (
@@ -78,7 +78,7 @@ export default function AffiliateOverview() {
         </section>
 
         {/* The code: what they actually share. */}
-        <section className="panel flex flex-col p-6 sm:p-8" aria-labelledby="code-h">
+        <section className="panel flex flex-col p-6 sm:p-8" aria-labelledby="code-h" data-tour="code">
           <p id="code-h" className="st-label">Your code</p>
           <p className="st-display mt-2 text-[34px] leading-10 font-semibold tracking-[0.04em] fg">{a.code}</p>
           <p className="mt-1 text-[13px] leading-[19px] fg-2">{a.customerDiscountPct}% off for anyone who uses it at checkout.</p>

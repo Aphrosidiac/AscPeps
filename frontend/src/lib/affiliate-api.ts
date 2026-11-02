@@ -142,7 +142,16 @@ export const checkAffiliateCode = (code: string) =>
   http.get<{ code: string; available: boolean; reason: string | null }>('/api/v1/affiliate/code', { ...memberAuth(), params: { code } }).then((r) => r.data);
 export const suggestAffiliateCode = (name: string) =>
   http.get<{ code: string }>('/api/v1/affiliate/code', { ...memberAuth(), params: { name } }).then((r) => r.data);
-export const joinAffiliate = (data: { fullName: string; phone: string; channel?: string; code: string; acceptTerms: true }) =>
+export const joinAffiliate = (data: {
+  fullName: string;
+  phone: string;
+  channel?: string;
+  code: string;
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  acceptTerms: true;
+}) =>
   http.post<{ affiliate: Affiliate }>('/api/v1/affiliate/join', data, memberAuth()).then((r) => r.data);
 /** Sends the details as they should be; replaces a request still waiting. */
 export const requestAffiliateChange = (data: Details) => http.post<MyAffiliate>('/api/v1/affiliate/me/change', data, memberAuth()).then((r) => r.data);

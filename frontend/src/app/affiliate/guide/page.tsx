@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import {
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   Ban,
@@ -53,6 +54,9 @@ const readHash = (): SectionId => {
 };
 
 export default function AffiliateGuide() {
+  const { data } = useAff();
+  const href = useAffHref();
+  const waiting = data.affiliate?.status === 'APPLIED';
   const section = useSyncExternalStore(subscribeHash, readHash, () => 'start' as SectionId);
   const go = (id: SectionId) => {
     // The hash is the state: back/forward and a shared link land on the same section.
@@ -82,7 +86,18 @@ export default function AffiliateGuide() {
 
   return (
     <>
-      <PageHead title="Guide" sub="Everything about being an Ascend affiliate, one topic at a time" />
+      <PageHead
+        title="Guide"
+        sub="Everything about being an Ascend affiliate, one topic at a time"
+        // Waiting for approval there are no tabs: the way back is here.
+        actions={
+          waiting ? (
+            <Link href={href('/')} className="btn btn-soft btn-sm">
+              <ArrowLeft className="h-4 w-4" aria-hidden /> Back to your application
+            </Link>
+          ) : null
+        }
+      />
       <div className="grid items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
         <nav
           ref={nav}

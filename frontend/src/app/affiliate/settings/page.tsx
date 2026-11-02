@@ -11,6 +11,7 @@ import {
   type Details,
 } from '@/lib/affiliate-api';
 import { Field, GuideLink, Notice, PageHead, useAff } from '../aff-ui';
+import { BANKS } from '../banks';
 
 /**
  * The affiliate's details, locked. Edit a section, and saving sends a change
@@ -20,12 +21,6 @@ import { Field, GuideLink, Notice, PageHead, useAff } from '../aff-ui';
  * replaces it, so the team only sees the latest.
  */
 
-// Malaysian banks people actually get paid into; "Other" takes a typed name.
-const BANKS = [
-  'Maybank', 'CIMB Bank', 'Public Bank', 'RHB Bank', 'Hong Leong Bank', 'AmBank', 'Bank Islam', 'Bank Rakyat', 'BSN',
-  'Affin Bank', 'Alliance Bank', 'OCBC Bank', 'UOB', 'HSBC', 'Standard Chartered', 'Bank Muamalat', 'Agrobank',
-  'GXBank', 'AEON Bank', 'Boost Bank', 'Touch ’n Go eWallet (GO+)',
-];
 
 type Section = 'bank' | 'about';
 const SECTION_FIELDS: Record<Section, DetailField[]> = {

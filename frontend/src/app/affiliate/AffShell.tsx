@@ -3,22 +3,14 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { BookOpen, Check, LogOut, Moon, Store, Sun } from 'lucide-react';
+import { BookOpen, Check, Compass, LogOut, Moon, Store, Sun } from 'lucide-react';
 import { useMemberSession, setMemberSession } from '@/lib/member-session';
-import { memberLogin, memberRegister, memberResendVerification } from '@/lib/api';
-import {
-  apiError,
-  checkAffiliateCode,
-  getMyAffiliate,
-  getProgramme,
-  joinAffiliate,
-  suggestAffiliateCode,
-  updateMyAffiliate,
-  type MyAffiliate,
-  type Programme,
-} from '@/lib/affiliate-api';
-import { AffContext, Field, Notice, Tabs, useAffHref, useStoreOrigin } from './aff-ui';
+import { memberLogin, memberRegister } from '@/lib/api';
+import { apiError, getMyAffiliate, getProgramme, type MyAffiliate, type Programme } from '@/lib/affiliate-api';
+import { AffContext, Field, Notice, Tabs, useAffHref, usePortalPath, useStoreOrigin } from './aff-ui';
 import { AuthShowcase } from './AuthShowcase';
+import { JoinWizard, WaitingScreen } from './Onboarding';
+import { Tour } from './Tour';
 
 const TABS = [
   { href: '/', label: 'Overview' },
@@ -160,6 +152,16 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
           <Link href={href('/guide')} onClick={() => setOpen(false)} className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]">
             <BookOpen className="h-4 w-4" aria-hidden /> Guide
           </Link>
+          <Link
+            href={href('/?tour=1')}
+            onClick={() => {
+              setOpen(false);
+              window.dispatchEvent(new Event('ascend-aff-tour'));
+            }}
+            className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]"
+          >
+            <Compass className="h-4 w-4" aria-hidden /> Take the tour
+          </Link>
           <a href={store} className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]">
             <Store className="h-4 w-4" aria-hidden /> Go to the store
           </a>
@@ -211,14 +213,21 @@ export function AffShell({ children }: { children: React.ReactNode }) {
 
   const affiliate = token ? data?.affiliate : null;
   const showTabs = !!affiliate && (affiliate.status === 'ACTIVE' || affiliate.status === 'PAUSED');
+  const portalPath = usePortalPath();
 
   let body: React.ReactNode;
   if (!ready) body = <Skeleton />;
   else if (!member || !token) body = <AuthPanel />;
   else if (failed) body = <Retry onRetry={reload} />;
   else if (!data) body = <Skeleton />;
-  else if (!data.affiliate) body = <JoinPanel member={member} programme={data.programme} onJoined={reload} />;
-  else if (data.affiliate.status === 'APPLIED') body = <WaitingPanel data={data} onChanged={reload} />;
+  else if (!data.affiliate)
+    body = data.programme.enabled ? (
+      <JoinWizard member={member} programme={data.programme} onJoined={reload} />
+    ) : (
+      <ClosedPanel text="The affiliate programme isn't open right now. Please check back soon." />
+    );
+  // Waiting for approval: the Guide is open to read meanwhile, the rest waits.
+  else if (data.affiliate.status === 'APPLIED' && portalPath !== '/guide') body = <WaitingScreen data={data} onChanged={reload} />;
   else if (data.affiliate.status === 'REJECTED') body = <ClosedPanel text="Your application wasn't approved. If you think that's a mistake, message us on WhatsApp." />;
   else body = <AffContext.Provider value={{ member, data, reload }}>{children}</AffContext.Provider>;
 
@@ -245,6 +254,15 @@ export function AffShell({ children }: { children: React.ReactNode }) {
         ) : null}
       </header>
       {body}
+      {affiliate && showTabs && data ? (
+        <Tour
+          affiliateId={affiliate.id}
+          firstName={affiliate.fullName.split(' ')[0]}
+          discountPct={affiliate.customerDiscountPct}
+          commission={affiliate.commission}
+          path={portalPath}
+        />
+      ) : null}
     </div>
   );
 }
@@ -395,193 +413,6 @@ function AuthPanel() {
             </li>
           ))}
         </ul>
-      </section>
-    </div>
-  );
-}
-
-/* ── Signed in, not an affiliate yet ── */
-
-const TERMS = [
-  'Commission is earned on the goods (after the discount, not shipping) once an order is paid.',
-  'If an order is refunded or cancelled, its commission is taken back — even after it was paid out.',
-  'You can ask for a payout any time you have a balance; it is paid after a short hold so refunds land first.',
-  'Your own orders never earn commission.',
-  'Share honestly: no medical claims, no spam, no posting the code on coupon sites. We may pause a code that breaks this.',
-];
-
-function JoinPanel({ member, programme, onJoined }: { member: { displayName: string; email: string; emailVerified: boolean }; programme: Programme; onJoined: () => Promise<void> }) {
-  const [fullName, setFullName] = useState(member.displayName);
-  const [phone, setPhone] = useState('');
-  const [channel, setChannel] = useState('');
-  const [code, setCode] = useState('');
-  const [codeState, setCodeState] = useState<{ code: string; ok: boolean; reason: string | null } | null>(null);
-  const [agree, setAgree] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [resent, setResent] = useState<boolean | 'failed'>(false);
-  const suggested = useRef(false);
-
-  // One suggestion from their name, until they type their own.
-  useEffect(() => {
-    if (suggested.current || code) return;
-    suggested.current = true;
-    suggestAffiliateCode(member.displayName).then((r) => setCode((c) => c || r.code), () => {});
-  }, [member.displayName, code]);
-
-  useEffect(() => {
-    const c = code.trim();
-    if (c.length < 4) return;
-    const t = setTimeout(() => {
-      checkAffiliateCode(c).then((r) => setCodeState({ code: r.code, ok: r.available, reason: r.reason }), () => {});
-    }, 300);
-    return () => clearTimeout(t);
-  }, [code]);
-
-  if (!programme.enabled) return <ClosedPanel text="The affiliate programme isn't open right now. Please check back soon." />;
-
-  const normalised = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const codeError = normalised.length > 0 && normalised.length < 4 ? 'At least 4 letters or numbers.' : codeState && codeState.code === normalised && !codeState.ok ? codeState.reason : null;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      await joinAffiliate({ fullName: fullName.trim(), phone: phone.trim(), channel: channel.trim() || undefined, code: normalised, acceptTerms: true });
-      await onJoined();
-    } catch (err) {
-      setError(apiError(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
-      <section className="panel p-6 sm:p-8">
-        <h1 className="st-title fg">Join Ascend Affiliate</h1>
-        <p className="mt-2 text-[14px] leading-5 fg-2">
-          Your code gives {programme.customerDiscountPct}% off. You earn {programme.commission} of every paid order made with it.
-        </p>
-
-        {!member.emailVerified ? (
-          <div className="mt-6">
-            <Notice tone="warn">
-              Confirm your email first — we sent a link to <strong>{member.email}</strong>.{' '}
-              {resent === true ? (
-                'Sent again.'
-              ) : (
-                <button type="button" className="underline underline-offset-2" onClick={() => memberResendVerification(member.email).then(() => setResent(true), () => setResent('failed'))}>
-                  {resent === 'failed' ? "Couldn't send it. Try again" : 'Send it again'}
-                </button>
-              )}
-            </Notice>
-          </div>
-        ) : null}
-
-        <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2" noValidate>
-          <Field label="Full name" help="As on your bank account — payouts go to it.">
-            <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" />
-          </Field>
-          <Field label="WhatsApp number">
-            <input className="input" type="tel" inputMode="tel" placeholder="012 345 6789" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
-          </Field>
-          <div className="sm:col-span-2">
-            <Field label="Your code" error={codeError} help={codeState?.ok && codeState.code === normalised ? 'Available.' : 'We suggested one from your initials. Keep it, or use 4 to 16 letters and numbers of your own.'}>
-              <input className="input uppercase tracking-[0.06em]" value={code} maxLength={20} onChange={(e) => setCode(e.target.value)} aria-invalid={!!codeError} />
-            </Field>
-          </div>
-          <div className="sm:col-span-2">
-            <Field label="Where will you share it? (optional)" help="Your Instagram or TikTok, a group, a gym — anything that helps us approve you.">
-              <input className="input" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="e.g. @yourname on Instagram, a WhatsApp group, your gym" />
-            </Field>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="flex cursor-pointer items-start gap-3 rounded-[18px] p-3" style={{ background: 'var(--st-field)' }}>
-              <input type="checkbox" className="mt-1 h-4 w-4 accent-[var(--st-solid)]" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-              <span className="text-[13px] leading-[19px] fg-2">I agree to how Ascend Affiliate works (below).</span>
-            </label>
-          </div>
-          {error ? (
-            <div className="sm:col-span-2">
-              <Notice tone="bad">{error}</Notice>
-            </div>
-          ) : null}
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              className="btn btn-ink w-full sm:w-auto"
-              disabled={busy || !agree || !member.emailVerified || fullName.trim().length < 2 || phone.trim().length < 8 || normalised.length < 4 || !!codeError}
-            >
-              {busy ? 'Sending…' : 'Apply'}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <aside className="panel p-6 sm:p-8">
-        <h2 className="st-h fg">How it works</h2>
-        <ul className="mt-4 grid gap-3">
-          {TERMS.map((t) => (
-            <li key={t} className="flex gap-3 text-[13px] leading-[19px] fg-2">
-              <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: 'var(--st-s-purple)' }} />
-              {t}
-            </li>
-          ))}
-        </ul>
-      </aside>
-    </div>
-  );
-}
-
-/* ── Applied, waiting for the team ── */
-
-function WaitingPanel({ data, onChanged }: { data: MyAffiliate; onChanged: () => Promise<void> }) {
-  const a = data.affiliate!;
-  const [code, setCode] = useState(a.code);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
-  const changed = code.toUpperCase().replace(/[^A-Z0-9]/g, '') !== a.code;
-
-  const save = async () => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await updateMyAffiliate({ code });
-      await onChanged();
-      setMsg({ tone: 'ok', text: 'Code changed.' });
-    } catch (err) {
-      setMsg({ tone: 'bad', text: apiError(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="mx-auto grid max-w-[640px] gap-5">
-      <section className="panel p-6 sm:p-8">
-        <span className="pill pill-warn">Waiting for approval</span>
-        <h1 className="st-title fg mt-4">Thanks, {a.fullName.split(' ')[0]}.</h1>
-        <p className="mt-2 text-[14px] leading-[21px] fg-2">
-          We&apos;ll look at your application soon. Your code is held for you and starts working the moment you&apos;re approved — you&apos;ll see your
-          dashboard here.
-        </p>
-        <div className="tint tint-lilac mt-6">
-          <p className="st-label">Your code</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input className="input max-w-[260px] uppercase tracking-[0.06em]" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Your code" />
-            <button type="button" className="btn btn-ink btn-sm" disabled={!changed || busy} onClick={save}>
-              {busy ? 'Saving…' : 'Change'}
-            </button>
-          </div>
-          <p className="mt-2 text-[12px] fg-2">You can change it until you&apos;re approved.</p>
-        </div>
-        {msg ? (
-          <div className="mt-4">
-            <Notice tone={msg.tone}>{msg.text}</Notice>
-          </div>
-        ) : null}
       </section>
     </div>
   );
