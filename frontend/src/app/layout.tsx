@@ -167,6 +167,7 @@ gtag('config', 'G-4PHY1Z9BHD');`}
                   ? {
                       discountPct: Number(settings.affiliate_customer_discount_pct || 5),
                       commission: `${Number(settings.affiliate_default_rate_bps || 500) / 100}%`,
+                      rateBps: Number(settings.affiliate_default_rate_bps || 500),
                     }
                   : null
               }

@@ -44,9 +44,11 @@ export interface PromoPopupProps {
   note?: string;
   /** Extra reason to stay quiet (e.g. already signed in). Read when the trigger fires. */
   skip?: () => boolean;
+  /** Shown between the text and the button (the affiliate popup's worked example). */
+  extra?: React.ReactNode;
 }
 
-export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, skip }: PromoPopupProps) {
+export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, skip, extra }: PromoPopupProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -168,6 +170,7 @@ export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, s
           {heading}
         </h2>
         <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">{body}</p>
+        {extra}
         {external ? (
           <a data-cta href={href} className={ctaClass} onClick={() => close('clicked')}>
             {ctaLabel}

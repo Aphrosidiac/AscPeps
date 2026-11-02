@@ -11,6 +11,7 @@ import { NewsletterPopup, newsletterDone } from '@/components/newsletter/Newslet
 import { GroupBuyBanner } from '@/components/group-buy/GroupBuyBanner';
 import { GroupBuyPopup } from '@/components/group-buy/GroupBuyPopup';
 import { PromoPopup, promoDismissed } from '@/components/popups/PromoPopup';
+import { AffiliateEarnings } from '@/components/popups/AffiliateEarnings';
 import { usePopupTurn, type PopupKind } from '@/components/popups/popup-turn';
 import { getMemberToken } from '@/lib/member-session';
 import { AFFILIATE_URL } from '@/lib/affiliate-url';
@@ -28,7 +29,7 @@ interface SiteChromeProps {
   /** At least one research article is live: the header links to /research. */
   researchLive?: boolean;
   /** Ascend Affiliate is open: the "become an affiliate" popup may show. */
-  affiliate?: { discountPct: number; commission: string } | null;
+  affiliate?: { discountPct: number; commission: string; rateBps: number } | null;
   /** The one-time sign-up bonus is on: the "create an account" popup may show. */
   signupBonusPct?: number | null;
   children: React.ReactNode;
@@ -144,6 +145,7 @@ export function SiteChrome({
           ctaLabel="Become an affiliate"
           href={AFFILIATE_URL}
           note="Free to join. Paid to your bank account."
+          extra={<AffiliateEarnings discountPct={affiliate.discountPct} rateBps={affiliate.rateBps} />}
         />
       ) : null}
     </>
