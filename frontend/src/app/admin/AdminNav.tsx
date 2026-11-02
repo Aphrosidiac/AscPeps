@@ -80,6 +80,7 @@ export const NAV: Entry[] = [
       { href: '/admin/subscribers', label: 'Subscribers' },
       { href: '/admin/discounts', label: 'Discounts' },
       { href: '/admin/affiliates', label: 'Affiliates' },
+      { href: '/admin/popups', label: 'Popups' },
     ],
   },
   {

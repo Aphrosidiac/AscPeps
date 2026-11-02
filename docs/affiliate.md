@@ -182,8 +182,16 @@ one section, and saving is **Request change** (`modules/affiliates/affiliate-cha
   order", hidden for signed-in members) and affiliate invitation. With the
   newsletter they take turns, one per visit (`popup-turn.ts`); a live Group
   Buy popup outranks all. Same manners as the newsletter popup: never on
-  checkout/cart/account, exit-intent on desktop, 15 s or half a page on a
-  phone, a dismissal holds 30 days.
+  checkout/cart/account, exit-intent on desktop after a few seconds, a set
+  time or scroll point on a phone, a dismissal holds a set number of days.
+- **Admin → Marketing → Popups** sets all three popups (newsletter, sign-up,
+  affiliate): on/off, the desktop wait, the phone delay and scroll point, the
+  days a closed one stays hidden, and the sign-up and affiliate wording
+  (`{discount}`, `{commission}`, `{bonus}` fill in the live numbers), plus the
+  affiliate earnings card. Plain store settings `popup_<kind>_<field>`
+  (`frontend/src/lib/popup-settings.ts` holds the defaults, which are the
+  old fixed behaviour; the API bounds the timings). The programme and bonus
+  switches still decide first.
 - **Sign-up bonus**: minted when the account's email is **confirmed** (a
   made-up address never gets one), once per inbox (an alias of an address
   that already had one gets none), single use, bound to that email, shown on

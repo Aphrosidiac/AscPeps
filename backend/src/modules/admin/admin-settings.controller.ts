@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getActiveGateway } from '../../utils/payment-gateway.js';
 import { notifyRevalidate } from '../../utils/revalidate.js';
+import { POPUP_TRIGGER_BOUNDS } from '../../utils/popup-settings.js';
 import { checkoutConfigSchema } from 'manualpaygate/core';
 import { MANUALPAY_CONFIG_KEY, MANUALPAY_ENABLED_KEY, loadManualPayConfig } from '../../plugins/manualpay.js';
 
@@ -61,6 +62,8 @@ const NUMERIC_SETTINGS = new Set([
 // nonsense, so the bound is enforced here rather than trusted from the form.
 const BOUNDED_SETTINGS: Record<string, { min: number; max: number }> = {
   welcome_discount_percent: { min: 0, max: 100 },
+  // The store popups' timings (utils/popup-settings.ts): seconds, percent, days.
+  ...POPUP_TRIGGER_BOUNDS,
 };
 
 export async function updateSettings(fastify: FastifyInstance, body: unknown) {

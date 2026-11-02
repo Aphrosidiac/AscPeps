@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { adminGetSettings, adminUpdateSettings } from '@/lib/api';
@@ -22,12 +23,11 @@ const TABS: { id: TabId; label: string; blurb: string; keys: string[] }[] = [
   {
     id: 'storefront',
     label: 'Storefront',
-    blurb: 'Announcement bar, homepage promo and the newsletter popup.',
+    blurb: 'Announcement bar and homepage promo. Popups are in Marketing → Popups.',
     keys: [
       'announcement_enabled', 'announcement_text',
       'hardsell_enabled', 'hardsell_product_slug', 'hardsell_headline', 'hardsell_subheadline',
       'hardsell_slide2_enabled', 'hardsell_slide2_product_slug', 'hardsell_slide2_headline', 'hardsell_slide2_subheadline',
-      'newsletter_popup_enabled', 'newsletter_popup_heading', 'newsletter_popup_body',
     ],
   },
   {
@@ -238,20 +238,10 @@ export default function AdminSettingsPage() {
 
               <Card>
                 <CardHeader
-                  title="Newsletter popup"
-                  description="Exit intent on desktop, half-page scroll or 15 seconds on mobile. Never on cart, checkout or order pages, never twice a session, and silent for 30 days after it’s closed."
+                  title="Popups"
+                  description="The newsletter, sign-up and affiliate popups — when they appear and what they say — live in Marketing → Popups."
+                  actions={<Link href="/admin/popups" className="text-sm font-medium text-primary underline underline-offset-4">Open Popups</Link>}
                 />
-                <CardBody className="space-y-5">
-                  <Toggle checked={on('newsletter_popup_enabled')} onChange={setBool('newsletter_popup_enabled')} label="Show the signup popup" />
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Heading" htmlFor="newsletter_popup_heading">
-                      <TextInput id="newsletter_popup_heading" value={get('newsletter_popup_heading')} onChange={setText('newsletter_popup_heading')} placeholder="Reconstitution reference, free" />
-                    </Field>
-                    <Field label="Body" htmlFor="newsletter_popup_body" help="The discount isn’t mentioned here on purpose — it arrives in the welcome email, so the storefront never trains people to wait for a code.">
-                      <TextInput id="newsletter_popup_body" value={get('newsletter_popup_body')} onChange={setText('newsletter_popup_body')} placeholder="Dosing calculator, storage guide, and batch COAs." />
-                    </Field>
-                  </div>
-                </CardBody>
               </Card>
             </>
           )}

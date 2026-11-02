@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { POPUP_SETTING_KEYS } from '../../utils/popup-settings.js';
 
 const PUBLIC_KEYS = [
   'business_name', 'business_tagline', 'shipping_fee', 'whatsapp_number',
@@ -30,6 +31,9 @@ const PUBLIC_KEYS = [
   // nothing.
   'affiliate_enabled', 'affiliate_customer_discount_pct', 'affiliate_default_rate_bps',
   'signup_bonus_enabled', 'signup_bonus_pct',
+  // The three store popups' timings, hide period and words (Admin → Marketing
+  // → Popups; frontend/src/lib/popup-settings.ts reads them).
+  ...POPUP_SETTING_KEYS,
 ];
 
 export default async function publicSettingsRoutes(fastify: FastifyInstance) {

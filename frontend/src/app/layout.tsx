@@ -8,6 +8,7 @@ import { parsePreorderSettings } from '@/lib/preorder-rules';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { PostHogPageView } from '@/components/PostHogPageView';
 import { getSettingsServer, getProductsServer, getGroupBuyPromoServer, getResearchListServer } from '@/lib/server-api';
+import { popupConfig } from '@/lib/popup-settings';
 import './globals.css';
 
 const inter = Inter({
@@ -162,6 +163,11 @@ gtag('config', 'G-4PHY1Z9BHD');`}
               newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
               groupBuyPromo={groupBuyPromo}
               researchLive={research.data.length > 0}
+              popups={{
+                newsletter: popupConfig(settings, 'newsletter'),
+                signup: popupConfig(settings, 'signup'),
+                affiliate: popupConfig(settings, 'affiliate'),
+              }}
               affiliate={
                 settings.affiliate_enabled === 'true'
                   ? {

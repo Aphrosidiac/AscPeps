@@ -5,16 +5,21 @@ import { usePathname } from 'next/navigation';
 import posthog from 'posthog-js';
 import { X } from 'lucide-react';
 import { NewsletterForm, SUBSCRIBED_KEY } from './NewsletterForm';
+import { TRIGGER_DEFAULTS, type PopupTriggers } from '@/lib/popup-settings';
 
 const DISMISSED_KEY = 'ascend-newsletter-dismissed-at';
 const SHOWN_THIS_SESSION_KEY = 'ascend-newsletter-shown';
 
-// A dismissal is remembered for a month, in localStorage rather than
+// When it opens and how long a closed one stays away are the team's to set
+// (Admin → Marketing → Popups, lib/popup-settings.ts); the defaults are the
+// reasoning below.
+//
+// A dismissal is remembered (a month by default) in localStorage rather than
 // sessionStorage. sessionStorage is the common shortcut here and it is wrong:
 // it forgets on tab close, so the same person gets asked again tomorrow, and
 // again the day after. That is what turns a popup into the thing people
 // install blockers for.
-const DISMISS_FOR_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Routes where a signup prompt is never worth the interruption. Checkout and
 // cart are the obvious ones — trading a live purchase for an email address is
@@ -27,41 +32,40 @@ const EXCLUDED_PREFIXES = ['/checkout', '/cart', '/account', '/admin', '/unsubsc
 // Matches Tailwind's md breakpoint.
 const MOBILE_MAX_WIDTH = 768;
 
-// Desktop: ignore a mouseleave in the first few seconds. A cursor flicking to
-// a bookmark bar the moment the page loads is not an exit intent, and firing
-// then is indistinguishable from an on-load popup — which is precisely what
-// Google's intrusive-interstitial rule targets.
-const DESKTOP_MIN_DWELL_MS = 5000;
-
-// Mobile: whichever comes first. Both are well past the "delayed until the
-// content has been seen" line, so neither carries interstitial risk.
-const MOBILE_DWELL_MS = 15000;
-const MOBILE_SCROLL_FRACTION = 0.5;
+// Desktop: ignore a mouseleave in the first few seconds (5 by default). A
+// cursor flicking to a bookmark bar the moment the page loads is not an exit
+// intent, and firing then is indistinguishable from an on-load popup — which
+// is precisely what Google's intrusive-interstitial rule targets.
+//
+// Mobile: whichever comes first, 15 seconds or half the page by default. Both
+// are well past the "delayed until the content has been seen" line, so
+// neither carries interstitial risk.
 
 interface NewsletterPopupProps {
   enabled: boolean;
   heading: string;
   body: string;
+  triggers?: PopupTriggers;
 }
 
-/** Subscribed, or dismissed in the last month: the popup turn passes it by (popups/popup-turn.ts). */
-export function newsletterDone(): boolean {
+/** Subscribed, or dismissed within the hide period: the popup turn passes it by (popups/popup-turn.ts). */
+export function newsletterDone(hideDays = TRIGGER_DEFAULTS.hideDays): boolean {
   try {
     if (localStorage.getItem(SUBSCRIBED_KEY)) return true;
     const dismissedAt = Number(localStorage.getItem(DISMISSED_KEY));
-    return !!dismissedAt && Date.now() - dismissedAt < DISMISS_FOR_MS;
+    return !!dismissedAt && Date.now() - dismissedAt < hideDays * DAY_MS;
   } catch {
     return true;
   }
 }
 
-function suppressed(pathname: string | null): boolean {
+function suppressed(pathname: string | null, hideDays: number): boolean {
   if (pathname && EXCLUDED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true;
   try {
     if (localStorage.getItem(SUBSCRIBED_KEY)) return true;
     if (sessionStorage.getItem(SHOWN_THIS_SESSION_KEY)) return true;
     const dismissedAt = Number(localStorage.getItem(DISMISSED_KEY));
-    if (dismissedAt && Date.now() - dismissedAt < DISMISS_FOR_MS) return true;
+    if (dismissedAt && Date.now() - dismissedAt < hideDays * DAY_MS) return true;
   } catch {
     // Storage blocked. Without it we cannot tell whether this person has
     // already been asked, and asking someone twice is worse than not asking —
@@ -71,7 +75,8 @@ function suppressed(pathname: string | null): boolean {
   return false;
 }
 
-export function NewsletterPopup({ enabled, heading, body }: NewsletterPopupProps) {
+export function NewsletterPopup({ enabled, heading, body, triggers = TRIGGER_DEFAULTS }: NewsletterPopupProps) {
+  const { desktopDelayS, mobileDelayS, mobileScrollPct, hideDays } = triggers;
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -79,7 +84,7 @@ export function NewsletterPopup({ enabled, heading, body }: NewsletterPopupProps
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   const show = useCallback(() => {
-    if (suppressed(pathname)) return;
+    if (suppressed(pathname, hideDays)) return;
     try {
       sessionStorage.setItem(SHOWN_THIS_SESSION_KEY, '1');
     } catch {
@@ -88,7 +93,7 @@ export function NewsletterPopup({ enabled, heading, body }: NewsletterPopupProps
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
     setOpen(true);
     posthog.capture('newsletter_popup_shown', { path: pathname });
-  }, [pathname]);
+  }, [pathname, hideDays]);
 
   const close = useCallback(
     (reason: 'dismissed' | 'subscribed') => {
@@ -109,20 +114,20 @@ export function NewsletterPopup({ enabled, heading, body }: NewsletterPopupProps
   // Trigger wiring. Re-runs on navigation so the exclusion list is re-checked
   // when someone moves from a product page into checkout.
   useEffect(() => {
-    if (!enabled || open || suppressed(pathname)) return;
+    if (!enabled || open || suppressed(pathname, hideDays)) return;
 
     const isMobile = window.innerWidth < MOBILE_MAX_WIDTH;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     if (isMobile) {
-      timers.push(setTimeout(show, MOBILE_DWELL_MS));
+      timers.push(setTimeout(show, mobileDelayS * 1000));
 
       const onScroll = () => {
         const scrollable = document.documentElement.scrollHeight - window.innerHeight;
         // A page too short to scroll would divide by ~0 and fire instantly;
         // on those the dwell timer above is the only trigger.
         if (scrollable <= 0) return;
-        if (window.scrollY / scrollable >= MOBILE_SCROLL_FRACTION) show();
+        if (window.scrollY / scrollable >= mobileScrollPct / 100) show();
       };
       window.addEventListener('scroll', onScroll, { passive: true });
       return () => {
@@ -132,7 +137,7 @@ export function NewsletterPopup({ enabled, heading, body }: NewsletterPopupProps
     }
 
     let armed = false;
-    timers.push(setTimeout(() => { armed = true; }, DESKTOP_MIN_DWELL_MS));
+    timers.push(setTimeout(() => { armed = true; }, desktopDelayS * 1000));
 
     const onMouseOut = (event: MouseEvent) => {
       // relatedTarget is null when the cursor leaves the viewport entirely
@@ -148,7 +153,7 @@ export function NewsletterPopup({ enabled, heading, body }: NewsletterPopupProps
       timers.forEach(clearTimeout);
       document.removeEventListener('mouseout', onMouseOut);
     };
-  }, [enabled, open, pathname, show]);
+  }, [enabled, open, pathname, show, hideDays, desktopDelayS, mobileDelayS, mobileScrollPct]);
 
   // Esc to close, and a focus trap while open. Both are what separate a
   // dialog from a div that happens to sit on top of the page.

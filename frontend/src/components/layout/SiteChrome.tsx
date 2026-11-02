@@ -13,6 +13,7 @@ import { GroupBuyPopup } from '@/components/group-buy/GroupBuyPopup';
 import { PromoPopup, promoDismissed } from '@/components/popups/PromoPopup';
 import { AffiliateEarnings } from '@/components/popups/AffiliateEarnings';
 import { usePopupTurn, type PopupKind } from '@/components/popups/popup-turn';
+import { fill, type PopupConfig } from '@/lib/popup-settings';
 import { getMemberToken } from '@/lib/member-session';
 import { AFFILIATE_URL } from '@/lib/affiliate-url';
 import { RefCapture } from '@/lib/ref-code';
@@ -32,14 +33,14 @@ interface SiteChromeProps {
   affiliate?: { discountPct: number; commission: string; rateBps: number } | null;
   /** The one-time sign-up bonus is on: the "create an account" popup may show. */
   signupBonusPct?: number | null;
+  /** Each popup's timings, hide period, words and own on/off (Admin → Marketing → Popups). */
+  popups: Record<PopupKind, PopupConfig>;
   children: React.ReactNode;
 }
 
 const noop = () => () => {};
 const onAffiliateHost = () => window.location.hostname.startsWith('affiliate.');
 const signedIn = () => !!getMemberToken();
-const popupEligible = (k: PopupKind) =>
-  k === 'newsletter' ? !newsletterDone() : k === 'signup' ? !signedIn() && !promoDismissed('signup') : !promoDismissed('affiliate');
 
 // The admin panel (/admin/*) has its own sidebar/nav chrome and isn't part
 // of the customer-facing storefront — it must never be wrapped in the
@@ -55,6 +56,7 @@ export function SiteChrome({
   researchLive,
   affiliate,
   signupBonusPct,
+  popups,
   children,
 }: SiteChromeProps) {
   const pathname = usePathname();
@@ -78,8 +80,16 @@ export function SiteChrome({
   // One store popup per visit, taking turns (components/popups/popup-turn.ts).
   const kinds: PopupKind[] = [];
   if (newsletterPopupEnabled) kinds.push('newsletter');
-  if (signupBonusPct) kinds.push('signup');
-  if (affiliate) kinds.push('affiliate');
+  if (signupBonusPct && popups.signup.shown) kinds.push('signup');
+  if (affiliate && popups.affiliate.shown) kinds.push('affiliate');
+  // The turn passes over a popup that couldn't show now (closed recently, or
+  // the sign-up offer to someone signed in), each by its own hide period.
+  const popupEligible = (k: PopupKind) =>
+    k === 'newsletter'
+      ? !newsletterDone(popups.newsletter.triggers.hideDays)
+      : k === 'signup'
+        ? !signedIn() && !promoDismissed('signup', popups.signup.triggers.hideDays)
+        : !promoDismissed('affiliate', popups.affiliate.triggers.hideDays);
   const turn = usePopupTurn(groupBuyPromo?.popup || bare || isAdmin || isPayPage || isAffiliate ? [] : kinds, popupEligible);
   // Only the product detail page has the mobile sticky Add to Cart bar the
   // WhatsApp button needs to clear — see WhatsAppButton's `raised` prop.
@@ -123,29 +133,32 @@ export function SiteChrome({
         enabled={newsletterPopupEnabled && !groupBuyPromo?.popup && turn === 'newsletter'}
         heading={newsletterPopupHeading}
         body={newsletterPopupBody}
+        triggers={popups.newsletter.triggers}
       />
-      {signupBonusPct ? (
+      {signupBonusPct && popups.signup.text ? (
         <PromoPopup
           id="signup"
           enabled={turn === 'signup'}
-          heading={`${signupBonusPct}% off your first order`}
-          body="Create a free Ascend MY account and we'll give you a one-time code for your first order. Track your orders and check out faster too."
-          ctaLabel="Create my account"
+          heading={fill(popups.signup.text.heading, { bonus: signupBonusPct })}
+          body={fill(popups.signup.text.body, { bonus: signupBonusPct })}
+          ctaLabel={fill(popups.signup.text.cta, { bonus: signupBonusPct })}
           href="/account/register"
-          note="Your code appears once you confirm your email."
+          note={fill(popups.signup.text.note, { bonus: signupBonusPct })}
           skip={signedIn}
+          triggers={popups.signup.triggers}
         />
       ) : null}
-      {affiliate ? (
+      {affiliate && popups.affiliate.text ? (
         <PromoPopup
           id="affiliate"
           enabled={turn === 'affiliate'}
-          heading="Share Ascend, earn on every order"
-          body={`Become an Ascend affiliate: your own code gives your people ${affiliate.discountPct}% off, and you earn ${affiliate.commission} of every paid order made with it.`}
-          ctaLabel="Become an affiliate"
+          heading={fill(popups.affiliate.text.heading, { discount: affiliate.discountPct, commission: affiliate.commission })}
+          body={fill(popups.affiliate.text.body, { discount: affiliate.discountPct, commission: affiliate.commission })}
+          ctaLabel={fill(popups.affiliate.text.cta, { discount: affiliate.discountPct, commission: affiliate.commission })}
           href={AFFILIATE_URL}
-          note="Free to join. Paid to your bank account."
-          extra={<AffiliateEarnings discountPct={affiliate.discountPct} rateBps={affiliate.rateBps} />}
+          note={fill(popups.affiliate.text.note, { discount: affiliate.discountPct, commission: affiliate.commission })}
+          extra={popups.affiliate.card ? <AffiliateEarnings discountPct={affiliate.discountPct} rateBps={affiliate.rateBps} /> : null}
+          triggers={popups.affiliate.triggers}
         />
       ) : null}
     </>

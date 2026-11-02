@@ -5,28 +5,30 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import posthog from 'posthog-js';
 import { X } from 'lucide-react';
+import { TRIGGER_DEFAULTS, type PopupTriggers } from '@/lib/popup-settings';
 
 /**
  * A store popup that sends the visitor somewhere (create an account, join the
  * affiliate programme) rather than collecting an email in place. Same manners
  * as the newsletter popup (components/newsletter/NewsletterPopup.tsx): never on
  * checkout, cart or account pages; on desktop only on an upward exit after a
- * few seconds, on a phone after 15 s or half a page; a dismissal holds for a
- * month; a bottom sheet on phones with the page still visible above it.
+ * few seconds, on a phone after a while or part-way down the page; a
+ * dismissal holds for a set number of days (all of it set in Admin →
+ * Marketing → Popups); a bottom sheet on phones with the page still visible
+ * above it.
  */
 
-const DISMISS_FOR_MS = 30 * 24 * 60 * 60 * 1000;
+// Timings and the hide period come from Admin → Marketing → Popups
+// (lib/popup-settings.ts); these defaults are the newsletter popup's.
+const DAY_MS = 24 * 60 * 60 * 1000;
 const EXCLUDED_PREFIXES = ['/checkout', '/cart', '/account', '/admin', '/unsubscribe', '/track', '/receipt', '/pay', '/affiliate', '/group-buy'];
 const MOBILE_MAX_WIDTH = 768;
-const DESKTOP_MIN_DWELL_MS = 5000;
-const MOBILE_DWELL_MS = 15000;
-const MOBILE_SCROLL_FRACTION = 0.5;
 
-/** Dismissed in the last month: the popup turn passes it by (popup-turn.ts). */
-export function promoDismissed(id: string): boolean {
+/** Dismissed within its hide period: the popup turn passes it by (popup-turn.ts). */
+export function promoDismissed(id: string, hideDays = TRIGGER_DEFAULTS.hideDays): boolean {
   try {
     const at = Number(localStorage.getItem(`ascend-${id}-popup-dismissed-at`));
-    return !!at && Date.now() - at < DISMISS_FOR_MS;
+    return !!at && Date.now() - at < hideDays * DAY_MS;
   } catch {
     return true;
   }
@@ -46,9 +48,11 @@ export interface PromoPopupProps {
   skip?: () => boolean;
   /** Shown between the text and the button (the affiliate popup's worked example). */
   extra?: React.ReactNode;
+  triggers?: PopupTriggers;
 }
 
-export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, skip, extra }: PromoPopupProps) {
+export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, skip, extra, triggers = TRIGGER_DEFAULTS }: PromoPopupProps) {
+  const { desktopDelayS, mobileDelayS, mobileScrollPct, hideDays } = triggers;
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -59,12 +63,12 @@ export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, s
     if (pathname && EXCLUDED_PREFIXES.some((p) => pathname.startsWith(p))) return true;
     try {
       const at = Number(localStorage.getItem(dismissedKey));
-      if (at && Date.now() - at < DISMISS_FOR_MS) return true;
+      if (at && Date.now() - at < hideDays * DAY_MS) return true;
     } catch {
       return true;
     }
     return skip?.() ?? false;
-  }, [pathname, dismissedKey, skip]);
+  }, [pathname, dismissedKey, skip, hideDays]);
 
   const show = useCallback(() => {
     if (suppressed()) return;
@@ -92,10 +96,10 @@ export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, s
     if (!enabled || open || suppressed()) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
     if (window.innerWidth < MOBILE_MAX_WIDTH) {
-      timers.push(setTimeout(show, MOBILE_DWELL_MS));
+      timers.push(setTimeout(show, mobileDelayS * 1000));
       const onScroll = () => {
         const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-        if (scrollable > 0 && window.scrollY / scrollable >= MOBILE_SCROLL_FRACTION) show();
+        if (scrollable > 0 && window.scrollY / scrollable >= mobileScrollPct / 100) show();
       };
       window.addEventListener('scroll', onScroll, { passive: true });
       return () => {
@@ -104,7 +108,7 @@ export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, s
       };
     }
     let armed = false;
-    timers.push(setTimeout(() => { armed = true; }, DESKTOP_MIN_DWELL_MS));
+    timers.push(setTimeout(() => { armed = true; }, desktopDelayS * 1000));
     const onMouseOut = (e: MouseEvent) => {
       if (!armed || e.relatedTarget || e.clientY > 0) return;
       show();
@@ -114,7 +118,7 @@ export function PromoPopup({ id, enabled, heading, body, ctaLabel, href, note, s
       timers.forEach(clearTimeout);
       document.removeEventListener('mouseout', onMouseOut);
     };
-  }, [enabled, open, suppressed, show]);
+  }, [enabled, open, suppressed, show, desktopDelayS, mobileDelayS, mobileScrollPct]);
 
   useEffect(() => {
     if (!open) return;
