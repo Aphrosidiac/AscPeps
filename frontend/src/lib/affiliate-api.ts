@@ -119,6 +119,8 @@ export const updateMyAffiliate = (data: Partial<Pick<Affiliate, 'fullName' | 'ph
   http.patch<MyAffiliate>('/api/v1/affiliate/me', data, memberAuth()).then((r) => r.data);
 export const getMyAffiliateOrders = (page = 1) =>
   http.get<{ data: AffiliateOrder[]; pagination: { page: number; totalPages: number; total: number } }>('/api/v1/affiliate/orders', { ...memberAuth(), params: { page, limit: 20 } }).then((r) => r.data);
+/** Store sizes, best sellers first (ids only). */
+export const getBestSellerOrder = () => http.get<{ variantIds: string[] }>('/api/v1/affiliate/products/order', memberAuth()).then((r) => r.data.variantIds);
 export const getMyEntries = () => http.get<{ entries: Entry[] }>('/api/v1/affiliate/entries', memberAuth()).then((r) => r.data);
 export const getMyPayouts = () => http.get<{ payouts: Payout[] }>('/api/v1/affiliate/payouts', memberAuth()).then((r) => r.data);
 export const requestMyPayout = () => http.post<{ payout: Payout }>('/api/v1/affiliate/payouts', {}, memberAuth()).then((r) => r.data);

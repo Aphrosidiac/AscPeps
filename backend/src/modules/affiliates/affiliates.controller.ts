@@ -287,6 +287,29 @@ const PAYOUT_SELECT = {
   reference: true, cancelReason: true, bankName: true, bankAccountName: true, bankAccountNumber: true,
 } as const;
 
+/**
+ * The store's sizes, best sellers first, for the Products page: units on paid
+ * orders (not deleted, cancelled or test), included supplies left out so a
+ * free Bac Water with every vial doesn't top the list. Only the order goes
+ * out — never the counts, which are the business's own figures.
+ */
+export async function bestSellerOrder(fastify: FastifyInstance) {
+  const rows = await fastify.prisma.orderItem.groupBy({
+    by: ['variantId'],
+    where: {
+      parentItemId: null,
+      order: { paymentStatus: 'PAID', status: { not: 'CANCELLED' }, deletedAt: null, isTest: false },
+    },
+    _sum: { quantity: true },
+  });
+  return {
+    variantIds: rows
+      .filter((r) => (r._sum.quantity ?? 0) > 0)
+      .sort((x, y) => (y._sum.quantity ?? 0) - (x._sum.quantity ?? 0))
+      .map((r) => r.variantId),
+  };
+}
+
 export async function listMyPayouts(fastify: FastifyInstance, memberId: string) {
   const affiliateId = await myAffiliateId(fastify, memberId);
   const payouts = await fastify.prisma.affiliatePayout.findMany({ where: { affiliateId }, orderBy: { createdAt: 'desc' }, select: PAYOUT_SELECT });

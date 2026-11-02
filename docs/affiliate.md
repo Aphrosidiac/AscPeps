@@ -126,6 +126,7 @@ Locally: `http://affiliate.localhost:3399`.
 | Join | name, WhatsApp, code (live availability check), where they share, the rules |
 | Waiting | their reserved code, changeable until approved |
 | Overview | balance and **Ask for a payout**; earned / waiting for payment / paid; their code and share link (copy buttons); latest orders |
+| Products | every size the code works on (the store's own list and sale prices): price, what the customer pays with the code, what one sale earns and what N sales earn (1, 5, 10, 25, 50 or any number), and a copy link to each product's page with the code |
 | Orders | order number, date, status, goods, commission — **never who bought** |
 | Payouts | ready to pay out, their payouts, every change to the balance |
 | Settings | bank details, name, WhatsApp, where they share |

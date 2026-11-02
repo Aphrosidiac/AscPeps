@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  bestSellerOrder,
   checkCode,
   getMyAffiliate,
   getProgramme,
@@ -17,6 +18,9 @@ export default async function affiliateRoutes(fastify: FastifyInstance) {
   fastify.get('/programme', async () => getProgramme(fastify));
 
   fastify.get('/me', { preHandler: [fastify.authenticateMember] }, async (request) => getMyAffiliate(fastify, request.member!.id));
+
+  // The Products page's order: best sellers first (ids only, no counts).
+  fastify.get('/products/order', { preHandler: [fastify.authenticateMember] }, async () => bestSellerOrder(fastify));
 
   fastify.get<{ Querystring: { code?: string; name?: string } }>(
     '/code',

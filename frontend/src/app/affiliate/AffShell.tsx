@@ -21,6 +21,7 @@ import { AffContext, Field, Notice, Tabs, useAffHref, useStoreOrigin } from './a
 
 const TABS = [
   { href: '/', label: 'Overview' },
+  { href: '/products', label: 'Products' },
   { href: '/orders', label: 'Orders' },
   { href: '/payouts', label: 'Payouts' },
   { href: '/settings', label: 'Settings' },
