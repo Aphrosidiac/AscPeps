@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { includesSummary, lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, CreditCard, Bitcoin, Landmark, ArrowLeft, CheckCircle, ShieldCheck, Truck, Lock, X, Tag, Clock } from 'lucide-react';
+import { MessageCircle, CreditCard, Bitcoin, Landmark, ChevronDown, ChevronLeft, CheckCircle, X, Tag, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
@@ -14,8 +14,6 @@ import { formatPrice, cn, normalizePhone } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import { isEastMalaysia, parseEastMalaysiaMinOrder, resolveShippingFeeSen } from '@/lib/shipping-region';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Animate } from '@/components/ui/Animate';
 import { rememberPendingPayment } from '@/lib/pending-payment';
 import { forgetGroupBuyCheckout } from '@/lib/group-buy';
@@ -23,91 +21,162 @@ import { rememberTrackedOrder } from '@/lib/tracked-order';
 import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
 import { forgetRefCode, useRefCode } from '@/lib/ref-code';
 
-const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
+const FIELD_ORDER = ['email', 'customerName', 'address', 'postcode', 'city', 'state', 'phone'] as const;
 
-// Written out in full rather than built from a template string, because
-// Tailwind scans source text for class names and never sees a composed one.
-const PAYMENT_ACCENTS = {
-  green: { bg: 'bg-green-100', fg: 'text-green-600' },
-  blue: { bg: 'bg-blue-100', fg: 'text-blue-600' },
-  amber: { bg: 'bg-amber-100', fg: 'text-amber-600' },
-  slate: { bg: 'bg-slate-100', fg: 'text-slate-700' },
-} as const;
+/*
+ * The checkout is laid out like our other stores' (Teliti, BuatBenda): Shopify's
+ * one-page checkout. The form sits on white with floating-label fields, the
+ * order sits on a sunk panel running down the right edge, and on phones the
+ * order folds into a "Show order summary" bar above the form. The page brings
+ * its own logo-only header (SiteChrome leaves /checkout bare): no nav, footer
+ * or chat bubble between the customer and paying.
+ */
+
+const fieldBox =
+  'peer w-full rounded-lg border bg-surface px-3.5 text-[15px] text-text-primary outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary';
+
+/** An input whose label sits inside it and moves up once there is a value. */
+function Field({
+  id, label, error, prefix, fixedLabel, className, ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  id: string;
+  label: string;
+  error?: string;
+  /** Text fixed at the start of the box, e.g. "+60". Keeps the label up. */
+  prefix?: string;
+  fixedLabel?: boolean;
+}) {
+  const up = fixedLabel || !!prefix;
+  return (
+    <div className={className}>
+      <div className="relative">
+        {prefix && <span className="pointer-events-none absolute left-3.5 bottom-[9px] text-[15px] text-text-muted">{prefix}</span>}
+        <input
+          id={id}
+          placeholder={props.placeholder ?? ' '}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={cn(fieldBox, 'h-[52px] pt-5 pb-1.5 placeholder:text-text-muted', !up && 'placeholder:text-transparent', error ? 'border-danger' : 'border-border-hover')}
+          // Inline so it always beats the box's own padding, whatever order the CSS lands in.
+          style={prefix ? { paddingLeft: 46 } : undefined}
+          {...props}
+        />
+        <label
+          htmlFor={id}
+          className={cn(
+            'pointer-events-none absolute left-3.5 top-1.5 text-[11px] leading-4 text-text-muted transition-all duration-100',
+            !up && 'peer-placeholder-shown:top-[15px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:leading-5 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:leading-4'
+          )}
+        >
+          {label}
+        </label>
+      </div>
+      {error && <p id={`${id}-error`} className="mt-1.5 text-[13px] text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function SelectField({
+  id, label, error, options, className, ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { id: string; label: string; error?: string; options: readonly string[] }) {
+  return (
+    <div className={className}>
+      <div className="relative">
+        <select
+          id={id}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={cn(fieldBox, 'h-[52px] appearance-none pt-5 pb-1.5 pr-9 cursor-pointer', error ? 'border-danger' : 'border-border-hover', !props.value && 'text-text-muted')}
+          {...props}
+        >
+          <option value="">Select</option>
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <label htmlFor={id} className="pointer-events-none absolute left-3.5 top-1.5 text-[11px] leading-4 text-text-muted">{label}</label>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+      </div>
+      {error && <p id={`${id}-error`} className="mt-1.5 text-[13px] text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/** "+ Add …": an optional field that stays out of the way until asked for. */
+function Reveal({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="justify-self-start py-1 text-[13px] font-medium text-text-primary underline underline-offset-4 decoration-border-hover hover:decoration-text-primary cursor-pointer">
+      + {label}
+    </button>
+  );
+}
 
 /**
- * One payment-method card. All three options render through this — they were
- * three hand-copied blocks before, which is exactly how they drifted out of
- * alignment: "Online Payment" is the only title that wraps to two lines, so
- * its header grew to 48px against the others' 36px and pushed its description
- * 26px lower than its neighbours'.
- *
- * The layout is three stacked rows — icon, title, description — rather than
- * icon-beside-title. In a third-width column (157px, so 125px of content) there
- * is simply not room for an icon, a title and a badge on one line: an earlier
- * attempt absolutely positioned the badge and reserved space with padding, but
- * flex items don't shrink below their content, so "Bitcoin" overflowed the
- * padding and sat underneath the "Soon" pill. Stacking gives the title the full
- * 125px — enough that "Online Payment" no longer wraps either — and puts the
- * badge beside the icon where nothing competes with it.
+ * One payment method: a row in a single bordered list, as on Shopify. The
+ * chosen row is tinted and opens its explanation underneath; a method that is
+ * off stays listed, greyed, with why.
  */
-function PaymentOption({
-  icon: Icon, title, description, note, badge, accent, selected, disabled, ariaLabel, onSelect,
+function PayRow({
+  icon: Icon, title, description, note, badge, selected, disabled, ariaLabel, onSelect, children,
 }: {
   icon: LucideIcon;
   title: string;
   description: string;
   /** Replaces the description in danger styling — for a method that is down. */
   note?: string;
-  /** Corner tag, e.g. "Soon" for a method that isn't live yet. */
+  /** e.g. "Soon" for a method that isn't live yet. */
   badge?: string;
-  accent: keyof typeof PAYMENT_ACCENTS;
   selected: boolean;
   disabled?: boolean;
   ariaLabel?: string;
   onSelect: () => void;
+  /** What happens next, shown while this method is chosen. */
+  children?: React.ReactNode;
 }) {
-  const { bg, fg } = PAYMENT_ACCENTS[accent];
   return (
-    <button
-      type="button"
-      onClick={() => { if (!disabled) onSelect(); }}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className={cn(
-        'relative flex flex-col p-4 rounded-xl border-2 text-left transition-all',
-        disabled
-          ? 'border-border opacity-50 cursor-not-allowed'
-          : selected
-            ? 'border-primary bg-primary/5 cursor-pointer'
-            : 'border-border hover:border-border-hover cursor-pointer'
-      )}
-    >
-      {/* Row 1 — icon, and the badge opposite it. Both are fixed-size, so this
-          row is the same height on every card whether or not there's a badge. */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', selected ? bg : 'bg-surface-elevated')}>
-          <Icon className={cn('w-5 h-5', selected ? fg : 'text-text-muted')} />
-        </div>
-        {badge && (
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted bg-surface-elevated border border-border rounded-full px-2 py-0.5 shrink-0">
-            {badge}
-          </span>
+    <div className={cn(selected && 'bg-surface-elevated')}>
+      <label
+        className={cn(
+          'flex items-center gap-3 px-4 py-3.5',
+          disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer',
+          selected && 'shadow-[inset_0_0_0_1px_var(--color-primary)] rounded-[inherit]'
         )}
+      >
+        <input
+          type="radio"
+          name="payment"
+          checked={selected}
+          disabled={disabled}
+          aria-label={ariaLabel ?? title}
+          onChange={() => { if (!disabled) onSelect(); }}
+          className="h-[18px] w-[18px] shrink-0 accent-[var(--color-primary)] cursor-pointer disabled:cursor-not-allowed"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="text-[15px] font-medium text-text-primary">{title}</span>
+            {badge && (
+              <span className="rounded-full border border-border bg-surface px-2 py-px text-[11px] font-semibold uppercase tracking-wider text-text-muted">{badge}</span>
+            )}
+          </span>
+          <span className={cn('block text-[13px] leading-snug', note ? 'text-danger' : 'text-text-secondary')}>{note ?? description}</span>
+        </span>
+        <Icon className="h-5 w-5 shrink-0 text-text-muted" aria-hidden="true" />
+      </label>
+      {selected && children && (
+        <div className="border-t border-border px-4 py-3.5 text-[13px] leading-relaxed text-text-secondary">{children}</div>
+      )}
+    </div>
+  );
+}
+
+function CheckoutHeader() {
+  return (
+    <header className="border-b border-border bg-surface">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-center px-4">
+        <Link href="/" aria-label="Ascend MY home" className="flex items-center gap-2">
+          <Image src="/images/pill-icon.png" alt="" width={30} height={30} />
+          <span className="font-display text-xl font-bold tracking-tight">Ascend MY</span>
+        </Link>
       </div>
-      {/* Row 2 — title. 15px rather than the default 16px because "Online
-          Payment" needs 122px at 16px and the column gives it 121: it wrapped
-          by a single pixel, which dropped that card's description a line below
-          its neighbours'. 15px needs 114px, so there's real headroom.
-          `truncate` is the structural guarantee — a longer label added later
-          ellipsises instead of silently knocking the row out of alignment
-          again. */}
-      <p className="font-semibold text-[15px] leading-tight mb-1.5 truncate">{title}</p>
-      {/* Row 3 — description. With rows 1 and 2 a fixed height on every card,
-          this starts on the same line across all three without any min-height. */}
-      <p className={cn('text-xs leading-relaxed', note ? 'text-danger' : 'text-text-secondary')}>
-        {note ?? description}
-      </p>
-    </button>
+    </header>
   );
 }
 
@@ -179,6 +248,12 @@ export default function CheckoutPage() {
     postcode: '',
     notes: '',
   });
+  // Optional bits Shopify keeps folded away until asked for.
+  const [address2, setAddress2] = useState('');
+  const [showAddress2, setShowAddress2] = useState(false);
+  const [showNote, setShowNote] = useState(false);
+  // Phones: the order is a bar above the form until opened.
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   // Both online methods hand off to a hosted payment page and are confirmed by
   // a gateway rather than by a human, so everything from here on that used to
@@ -232,6 +307,13 @@ export default function CheckoutPage() {
     return data?.message || data?.error;
   };
 
+  // The field shows +60, so whatever is typed after it (12-345 6789, or a
+  // pasted 012…/+6012…) becomes one full number; the server turns +60… into 0….
+  const fullPhone = () => {
+    const d = form.phone.replace(/\D/g, '').replace(/^(60|0)/, '');
+    return d ? `+60${d}` : '';
+  };
+
   const handleApplyDiscount = async (code = discountCode) => {
     if (!code.trim()) return;
     setDiscountLoading(true);
@@ -239,7 +321,7 @@ export default function CheckoutPage() {
     try {
       const result = await validateDiscount(code.trim(), total, {
         email: form.email.trim() || undefined,
-        phone: form.phone.trim() || undefined,
+        phone: fullPhone() || undefined,
       });
       setAppliedDiscount(result);
       setDiscountCode('');
@@ -302,6 +384,8 @@ export default function CheckoutPage() {
       }
       const result = await createOrder({
         ...form,
+        phone: fullPhone(),
+        address: [form.address.trim(), address2.trim()].filter(Boolean).join(', '),
         // Blank optional email must be omitted — the API rejects "" as an
         // invalid email address.
         email: form.email.trim() || undefined,
@@ -335,7 +419,7 @@ export default function CheckoutPage() {
 
       // So "Track Order" — here, on the success page, or days later — opens
       // straight onto this order instead of asking for it.
-      rememberTrackedOrder({ orderNumber: result.order.orderNumber, phone: normalizePhone(form.phone) });
+      rememberTrackedOrder({ orderNumber: result.order.orderNumber, phone: normalizePhone(fullPhone()) });
 
       // Deliberately NOT called "purchase" and deliberately carries no revenue.
       // At this point the order row exists but nothing has been paid: for
@@ -406,6 +490,8 @@ export default function CheckoutPage() {
     const needsWhatsApp = paymentMethod === 'WHATSAPP' && success.whatsappUrl;
 
     return (
+      <>
+      <CheckoutHeader />
       <div className="max-w-lg mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
         <Animate variant="scale" duration={0.5}>
           <CheckCircle className="w-14 h-14 text-success mx-auto mb-3" />
@@ -438,6 +524,7 @@ export default function CheckoutPage() {
           </div>
         </Animate>
       </div>
+      </>
     );
   }
 
@@ -450,9 +537,9 @@ export default function CheckoutPage() {
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
     if (!form.customerName.trim()) errors.customerName = 'Please enter your full name';
-    const phoneDigits = form.phone.replace(/\D/g, '');
+    const phoneDigits = form.phone.replace(/\D/g, '').replace(/^(60|0)/, '');
     if (!form.phone.trim()) errors.phone = 'Please enter your phone number';
-    else if (phoneDigits.length < 9 || phoneDigits.length > 12) errors.phone = 'Please enter a valid phone number, e.g. 012-3456789';
+    else if (phoneDigits.length < 8 || phoneDigits.length > 10) errors.phone = 'Please enter a valid Malaysian number, e.g. 12-345 6789';
     const email = form.email.trim();
     // The hosted bank-transfer page lives at a /pay/cs_… URL the customer can
     // lose the moment they switch to their banking app. The confirmation
@@ -471,367 +558,325 @@ export default function CheckoutPage() {
     return errors;
   };
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Link href="/cart" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-6 transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Back to Cart
-      </Link>
+  const emailLabel =
+    paymentMethod === 'CRYPTO'
+      // Crypto needs the email for a different reason than the fiat gateways
+      // do: a Bitcoin payment can settle after the customer has closed the
+      // tab, so email is the only way to tell them it cleared.
+      ? 'Email (for your payment confirmation)'
+      : paymentMethod === 'MANUAL'
+        ? 'Email (we send you a link back to your payment page)'
+        : isOnlinePayment ? 'Email' : 'Email (optional)';
 
-      <Animate variant="fadeUp" duration={0.5}>
-        <h1 className="font-display text-3xl font-bold mb-8">Checkout</h1>
-      </Animate>
+  const summary = (
+    <>
+      <ul className="space-y-4">
+        {items.map((item) => (
+          <li key={lineIdOf(item)} className="flex items-center gap-4">
+            <div className="relative h-16 w-16 shrink-0">
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-border bg-surface">
+                {item.imageUrl ? (
+                  <Image src={item.imageUrl} alt={item.name} fill sizes="64px" className="object-cover" />
+                ) : (
+                  <span className="w-full px-1 text-center text-[11px] font-bold leading-tight text-text-muted line-clamp-2 break-words">{item.code}</span>
+                )}
+              </div>
+              <span className="absolute -right-2 -top-2 flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-primary px-1.5 text-[12px] font-semibold text-white" aria-label={`Quantity ${item.quantity}`}>
+                {item.quantity}
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-semibold leading-snug">{item.code}</p>
+              <p className="text-[13px] leading-snug text-text-secondary line-clamp-2">{item.name}</p>
+              {preorderUnits(item.quantity, item.stock, item.preorder) > 0 && (
+                <p className="text-[13px] font-medium text-text-primary">{preorderLabel(item.quantity, item.stock)}</p>
+              )}
+              {(item.includes ?? []).length > 0 && (
+                <p className="text-[12px] leading-snug text-text-muted line-clamp-2">Includes {includesSummary(item)}</p>
+              )}
+            </div>
+            <p className="shrink-0 text-[14px] font-medium tabular-nums">{formatPrice(lineUnitPrice(item) * item.quantity)}</p>
+          </li>
+        ))}
+      </ul>
 
-      <form onSubmit={handleSubmit} noValidate className="grid lg:grid-cols-3 gap-6 lg:gap-8">
-        <div className="lg:col-span-2 space-y-5">
-          {/* Customer Info */}
-          <Animate variant="fadeUp" delay={0.05}>
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
-              <h2 className="font-display font-semibold text-lg">Customer Information</h2>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Full Name" id="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} error={fieldErrors.customerName} required />
-              <Input label="Phone Number" id="phone" type="tel" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="012-3456789" error={fieldErrors.phone} required />
-            </div>
-            <Input
-              label={
-                paymentMethod === 'CRYPTO'
-                  // Crypto needs the email for a different reason than the
-                  // fiat gateways do, and saying which one makes the extra
-                  // field feel less arbitrary: a Bitcoin payment can settle
-                  // after the customer has closed the tab, so email is the
-                  // only way to tell them it cleared.
-                  ? 'Email (required — we send your payment confirmation here)'
-                  : paymentMethod === 'MANUAL'
-                    ? 'Email (required — we send you a link back to your payment page)'
-                    : isOnlinePayment ? 'Email (required for online payment)' : 'Email (optional)'
-              }
-              id="email"
-              type="email"
-              value={form.email}
-              onChange={(e) => updateField('email', e.target.value)}
-              error={fieldErrors.email}
-              required={isRedirectPayment}
-            />
+      {items.some((i) => preorderUnits(i.quantity, i.stock, i.preorder) > 0) && (
+        <div className="flex gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] leading-relaxed text-text-secondary">
+          <Clock className="h-4 w-4 shrink-0 text-text-primary" aria-hidden="true" />
+          <p><span className="font-semibold text-text-primary">Includes a pre-order.</span> Your order ships together in {preorderLead}, when the restock lands.</p>
+        </div>
+      )}
+
+      {/* Discount code */}
+      <div className="border-t border-border pt-5">
+        {appliedDiscount ? (
+          <div className="flex items-center justify-between rounded-lg border border-success/30 bg-success/10 px-3 py-2.5">
+            <span className="flex items-center gap-2 text-[14px] font-medium text-success">
+              <Tag className="h-4 w-4" aria-hidden="true" /> {appliedDiscount.code}
+            </span>
+            <button type="button" onClick={handleRemoveDiscount} aria-label="Remove discount code" className="rounded p-1 text-success hover:bg-success/20 cursor-pointer">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          </Animate>
-
-          {/* Address */}
-          <Animate variant="fadeUp" delay={0.1}>
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
-              <h2 className="font-display font-semibold text-lg">Shipping Address</h2>
-            </div>
-            <Input label="Address" id="address" value={form.address} onChange={(e) => updateField('address', e.target.value)} error={fieldErrors.address} required />
-            <div className="grid sm:grid-cols-3 gap-4">
-              <Input label="City" id="city" value={form.city} onChange={(e) => updateField('city', e.target.value)} error={fieldErrors.city} required />
-              <Select
-                label="State"
-                id="state"
-                value={form.state}
-                onChange={(e) => updateField('state', e.target.value)}
-                options={MALAYSIAN_STATES.map((s) => ({ value: s, label: s }))}
-                error={fieldErrors.state}
-                required
+        ) : (
+          <div>
+            <div className="flex gap-2.5">
+              <Field
+                id="discount"
+                label="Discount code"
+                className="flex-1"
+                value={discountCode}
+                autoComplete="off"
+                onChange={(e) => { setDiscountCode(e.target.value); setDiscountError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyDiscount(); } }}
               />
-              <Input label="Postcode" id="postcode" value={form.postcode} onChange={(e) => updateField('postcode', e.target.value)} error={fieldErrors.postcode} required />
+              <button
+                type="button"
+                onClick={() => handleApplyDiscount()}
+                disabled={discountLoading || !discountCode.trim()}
+                className="h-[52px] shrink-0 rounded-lg border border-border-hover bg-surface px-5 text-[14px] font-semibold text-text-primary transition-colors enabled:hover:border-primary disabled:text-text-muted disabled:bg-surface-elevated cursor-pointer disabled:cursor-not-allowed"
+              >
+                {discountLoading ? '…' : 'Apply'}
+              </button>
+            </div>
+            {discountError && <p className="mt-1.5 text-[13px] text-danger">{discountError}</p>}
+            {/* The code from an affiliate's share link (lib/ref-code.ts): offered, never applied unasked. */}
+            {refCode && !discountCode.trim() && !discountError ? (
+              <p className="mt-2 text-[13px] text-text-secondary">
+                Code <span className="font-semibold text-text-primary">{refCode}</span> from your link.{' '}
+                <button type="button" className="font-semibold text-text-primary underline underline-offset-2 cursor-pointer" disabled={discountLoading} onClick={() => handleApplyDiscount(refCode)}>
+                  Apply it
+                </button>
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <dl className="space-y-2.5 border-t border-border pt-5 text-[14px] tabular-nums">
+        <div className="flex justify-between gap-4">
+          <dt className="text-text-secondary">Subtotal</dt>
+          <dd>{formatPrice(total)}</dd>
+        </div>
+        {appliedDiscount && (
+          <div className="flex justify-between gap-4">
+            <dt className="text-text-secondary">Discount <span className="text-text-muted">· {appliedDiscount.code}</span></dt>
+            <dd className="text-success">−{formatPrice(appliedDiscount.discountAmount)}</dd>
+          </div>
+        )}
+        <div className="flex justify-between gap-4">
+          <dt className="text-text-secondary">Shipping{isEastState ? ' · East Malaysia' : ''}</dt>
+          {/* Driven by the resolved fee rather than by the raw standard
+              setting, so picking an East Malaysian state updates this line
+              and the total along with it. */}
+          <dd className={shippingInSen === 0 ? 'font-medium text-success' : ''}>{shippingInSen === 0 ? 'Free' : formatPrice(shippingInSen)}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-4 pt-2">
+          <dt className="text-[17px] font-semibold">Total</dt>
+          <dd className="flex items-baseline gap-1.5">
+            <span className="text-[12px] text-text-muted">MYR</span>
+            <span className="font-display text-[24px] font-bold">{formatPrice(orderTotal)}</span>
+          </dd>
+        </div>
+      </dl>
+    </>
+  );
+
+  return (
+    <>
+    <CheckoutHeader />
+    <form onSubmit={handleSubmit} noValidate className="grid lg:min-h-[calc(100svh-65px)] lg:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]">
+      {/* The order: a bar above the form on phones, the right-hand panel from lg. */}
+      <aside aria-labelledby="summary-h" className="border-b border-border bg-surface-elevated lg:order-2 lg:border-b-0 lg:border-l">
+        <button
+          type="button"
+          onClick={() => setSummaryOpen((o) => !o)}
+          aria-expanded={summaryOpen}
+          aria-controls="order-summary"
+          className="flex w-full items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:hidden cursor-pointer"
+        >
+          <span className="flex items-center gap-1.5 text-[14px] font-medium text-text-primary">
+            {summaryOpen ? 'Hide order summary' : 'Show order summary'}
+            <ChevronDown className={cn('h-4 w-4 transition-transform', summaryOpen && 'rotate-180')} aria-hidden="true" />
+          </span>
+          <span className="font-display text-[18px] font-bold tabular-nums">{formatPrice(orderTotal)}</span>
+        </button>
+        <div
+          id="order-summary"
+          className={cn(
+            'space-y-5 px-4 pb-6 sm:px-6 lg:sticky lg:top-0 lg:block lg:max-w-[460px] lg:px-10 lg:py-12',
+            summaryOpen ? 'block' : 'hidden'
+          )}
+        >
+          <div className="flex items-baseline justify-between">
+            <h2 id="summary-h" className="text-[17px] font-semibold">Your order</h2>
+            <Link href="/cart" className="text-[13px] font-medium text-text-primary underline underline-offset-4 decoration-border-hover hover:decoration-text-primary">Edit cart</Link>
+          </div>
+          {summary}
+        </div>
+      </aside>
+
+      <div className="min-w-0 bg-surface px-4 pt-6 pb-12 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16">
+        <div className="mx-auto grid max-w-[580px] gap-9 lg:mr-0 lg:ml-auto">
+          <h1 className="sr-only">Checkout</h1>
+          <ol aria-label="Checkout steps" className="flex flex-wrap items-center gap-2 text-[13px] text-text-muted">
+            <li><Link href="/cart" className="font-medium text-text-primary underline underline-offset-4 decoration-border-hover hover:decoration-text-primary">Cart</Link></li>
+            <li aria-hidden="true">›</li>
+            <li aria-current="step" className="font-semibold text-text-primary">Details</li>
+            <li aria-hidden="true">›</li>
+            <li>Payment</li>
+          </ol>
+
+          <fieldset className="grid gap-3">
+            <legend className="mb-3 text-[19px] font-semibold">Contact</legend>
+            <Field label={emailLabel} id="email" type="email" autoComplete="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} error={fieldErrors.email} required={isRedirectPayment} />
+            <p className="text-[13px] text-text-muted">
+              {isRedirectPayment ? 'Needed for this payment method: your confirmation and payment link come here.' : 'For your order confirmation.'}
+            </p>
+            {/* Only offered once there's an address to attach it to, and never
+                pre-ticked: a pre-ticked box is not an opt-in. */}
+            {form.email.trim() !== '' && (
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input type="checkbox" checked={subscribe} onChange={(e) => setSubscribe(e.target.checked)} className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-[var(--color-primary)] cursor-pointer" />
+                <span className="text-[14px] leading-relaxed text-text-secondary">Email me restock alerts and new batch COAs. No spam, unsubscribe any time.</span>
+              </label>
+            )}
+          </fieldset>
+
+          <fieldset className="grid gap-3">
+            <legend className="mb-3 text-[19px] font-semibold">Delivery</legend>
+            <Field label="Full name" id="name" autoComplete="name" value={form.customerName} onChange={(e) => updateField('customerName', e.target.value)} error={fieldErrors.customerName} required />
+            <Field label="Address" id="address" autoComplete="address-line1" value={form.address} onChange={(e) => updateField('address', e.target.value)} error={fieldErrors.address} required />
+            {showAddress2 ? (
+              <Field label="Apartment, unit, floor (optional)" id="address2" autoComplete="address-line2" value={address2} onChange={(e) => setAddress2(e.target.value)} autoFocus />
+            ) : (
+              <Reveal label="Add apartment, unit or floor" onClick={() => setShowAddress2(true)} />
+            )}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field label="Postcode" id="postcode" autoComplete="postal-code" inputMode="numeric" maxLength={5} value={form.postcode} onChange={(e) => updateField('postcode', e.target.value)} error={fieldErrors.postcode} required />
+              <Field label="City" id="city" autoComplete="address-level2" value={form.city} onChange={(e) => updateField('city', e.target.value)} error={fieldErrors.city} required />
+              <SelectField label="State" id="state" autoComplete="address-level1" className="col-span-2 sm:col-span-1" options={MALAYSIAN_STATES} value={form.state} onChange={(e) => updateField('state', e.target.value)} error={fieldErrors.state} required />
             </div>
 
             {/* East Malaysia minimum. Appears the moment the state is picked,
                 not on submit — the customer needs to know they have to add
-                items while they still have the cart in mind, and the sticky
-                Place Order button is far from this card on mobile. Framed as
-                how much more is needed rather than as a refusal, because that
-                is the only version of this message they can act on. */}
+                items while they still have the cart in mind. Framed as how
+                much more is needed rather than as a refusal, because that is
+                the only version of this message they can act on. */}
             {blockedByEastMin && (
-              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-1.5">
-                  Minimum order for {form.state}
-                </p>
-                <p className="text-sm text-amber-900 leading-relaxed">
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+                <p className="mb-1 text-[13px] font-semibold text-amber-900">Minimum order for {form.state}</p>
+                <p className="text-[14px] leading-relaxed text-amber-900">
                   We ship to Sabah, Sarawak and Labuan on orders of{' '}
                   <strong>{formatPrice(eastMinInSen)}</strong> or more. Your cart is at{' '}
                   <strong>{formatPrice(total)}</strong> — add{' '}
                   <strong>{formatPrice(eastMinShortfall)}</strong> more to continue.
                 </p>
-                <Link href="/products" className="inline-block mt-2.5 text-sm font-medium text-amber-900 underline">
-                  Browse products
-                </Link>
+                <Link href="/products" className="mt-2 inline-block text-[14px] font-medium text-amber-900 underline">Browse products</Link>
               </div>
             )}
-          </div>
-          </Animate>
 
-          {/* Payment */}
-          <Animate variant="fadeUp" delay={0.15}>
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
-              <h2 className="font-display font-semibold text-lg">Payment Method</h2>
-            </div>
-            {/* Three columns, four cards when the hosted bank-transfer
-                checkout is switched on: it wraps to its own row rather than
-                squeezing the set, and is simply absent when off (unlike
-                Bitcoin, it is not being announced). */}
-            <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Phone" id="phone" type="tel" autoComplete="tel-national" inputMode="tel" prefix="+60" placeholder="12-345 6789" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} error={fieldErrors.phone} required />
+            <p className="-mt-1 text-[13px] text-text-muted">Malaysian number, for the courier.</p>
+
+            {showNote ? (
+              <div>
+                <div className="relative">
+                  <textarea
+                    id="notes"
+                    rows={3}
+                    placeholder=" "
+                    autoFocus
+                    value={form.notes}
+                    onChange={(e) => updateField('notes', e.target.value)}
+                    className={cn(fieldBox, 'block resize-y border-border-hover pt-6 pb-2 placeholder:text-transparent')}
+                  />
+                  <label htmlFor="notes" className="pointer-events-none absolute left-3.5 top-1.5 text-[11px] leading-4 text-text-muted">Note (optional)</label>
+                </div>
+              </div>
+            ) : (
+              <Reveal label="Add a note to your order" onClick={() => setShowNote(true)} />
+            )}
+          </fieldset>
+
+          <fieldset className="grid gap-3">
+            <legend className="mb-3 text-[19px] font-semibold">Payment</legend>
+            <div role="radiogroup" aria-label="Payment method" className="overflow-hidden rounded-lg border border-border-hover divide-y divide-border">
               {manualPaymentEnabled && (
-                <PaymentOption
+                <PayRow
                   icon={Landmark}
-                  title="Bank Transfer"
+                  title="Bank transfer"
                   description="DuitNow QR or transfer, then upload your receipt"
-                  accent="slate"
                   selected={paymentMethod === 'MANUAL'}
                   onSelect={() => { setPaymentMethod('MANUAL'); posthog.capture('payment_method_selected', { method: 'MANUAL', gateway: 'manualpaygate' }); }}
-                />
+                >
+                  You&apos;ll be taken to our payment page with the DuitNow QR and bank details for the exact amount. After paying, upload a screenshot of the confirmation there — your order is confirmed once we&apos;ve checked it, usually within a few hours.
+                </PayRow>
               )}
-              <PaymentOption
+              <PayRow
                 icon={MessageCircle}
                 title="WhatsApp"
-                description="Pay via bank transfer, confirm on WhatsApp"
-                accent="green"
+                description="Pay by bank transfer, confirm on WhatsApp"
                 selected={paymentMethod === 'WHATSAPP'}
                 onSelect={() => { setPaymentMethod('WHATSAPP'); posthog.capture('payment_method_selected', { method: 'WHATSAPP' }); }}
-              />
-              <PaymentOption
+              >
+                After you place the order, WhatsApp opens with it filled in. Send it and we reply with the payment details — the order isn&apos;t processed until we hear from you.
+              </PayRow>
+              <PayRow
                 icon={CreditCard}
-                title="Online Payment"
-                // Phrased to match its neighbours ("Pay via…", "Pay on-chain…").
-                // The bare "FPX via ToyyibPay" was a single short line between
-                // two three-line cards, which read as a gap rather than as the
-                // middle of a set.
-                description={paymentGateway === 'toyyibpay' ? 'Pay by FPX online banking via ToyyibPay' : 'Pay by FPX or card via Billplz'}
+                title="Online payment"
+                description={paymentGateway === 'toyyibpay' ? 'FPX online banking via ToyyibPay' : 'FPX or card via Billplz'}
                 note={onlinePaymentEnabled ? undefined : 'Currently unavailable. Please use WhatsApp checkout.'}
-                accent="blue"
                 selected={paymentMethod === 'BILLPLZ'}
                 disabled={!onlinePaymentEnabled}
                 onSelect={() => { setPaymentMethod('BILLPLZ'); posthog.capture('payment_method_selected', { method: 'BILLPLZ', gateway: paymentGateway }); }}
-              />
-              {/* Always rendered, even while switched off — announcing that
+              >
+                You&apos;ll pay on {paymentGateway === 'toyyibpay' ? 'ToyyibPay' : 'Billplz'}&apos;s page, then come straight back to your order.
+              </PayRow>
+              {/* Always listed, even while switched off — announcing that
                   Bitcoin is coming is the point of shipping this early. "Soon"
-                  rather than the red "Currently unavailable" Online Payment
+                  rather than the red "Currently unavailable" Online payment
                   uses: that one means a working method is broken right now,
                   this one has never been live. No mention of Lightning — the
-                  BTCPay instance is on-chain only, and naming a method the
-                  server can't offer is how you get a support ticket. */}
-              <PaymentOption
+                  BTCPay instance is on-chain only. */}
+              <PayRow
                 icon={Bitcoin}
                 title="Bitcoin"
                 description="Pay on-chain in BTC, rate locked at checkout"
                 badge={cryptoPaymentEnabled ? undefined : 'Soon'}
-                accent="amber"
                 selected={paymentMethod === 'CRYPTO'}
                 disabled={!cryptoPaymentEnabled}
                 ariaLabel={cryptoPaymentEnabled ? 'Pay with Bitcoin' : 'Bitcoin — coming soon, not yet available'}
                 onSelect={() => { setPaymentMethod('CRYPTO'); posthog.capture('payment_method_selected', { method: 'CRYPTO', gateway: 'btcpay' }); }}
-              />
+              >
+                {/* Set expectations before they leave the site: an on-chain
+                    payment isn't instant like FPX, and a customer who doesn't
+                    know that reads the delay as a failed order. */}
+                You&apos;ll send the exact BTC amount on our payment page; the rate is locked while the invoice is open. Your order is confirmed once the transaction is confirmed on-chain — usually a few minutes, occasionally longer — and we&apos;ll email you the moment it clears.
+              </PayRow>
             </div>
-            {paymentMethod === 'MANUAL' && (
-              <div className="rounded-xl border border-border bg-surface-elevated p-4">
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  You&apos;ll be taken to our payment page with the DuitNow QR and bank details for the exact amount. After paying, upload a screenshot of the confirmation there — your order is confirmed once we&apos;ve checked it, usually within a few hours.
-                </p>
-              </div>
-            )}
-            {paymentMethod === 'CRYPTO' && (
-              /* Set expectations before they leave the site. An on-chain
-                 payment isn't instant like FPX, and a customer who doesn't
-                 know that reads the delay as a failed order. */
-              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-                <p className="text-xs text-amber-900 leading-relaxed">
-                  You&apos;ll be taken to our payment page to send the exact BTC amount. The rate is locked while the invoice is open. Your order is confirmed once the transaction is confirmed on-chain — usually a few minutes, occasionally longer — and we&apos;ll email you the moment it clears.
-                </p>
-              </div>
-            )}
-          </div>
-          </Animate>
+          </fieldset>
 
-          {/* Notes */}
-          <Animate variant="fadeUp" delay={0.2}>
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
-            <label htmlFor="notes" className="block text-sm font-medium text-text-secondary mb-2">Order Notes (optional)</label>
-            <textarea
-              id="notes"
-              value={form.notes}
-              onChange={(e) => updateField('notes', e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              placeholder="Any special instructions..."
-            />
-
-            {/* Sits under Notes rather than beside the email field: the email
-                input is a required-for-payment field and stapling a marketing
-                consent to it invites people to tick it without reading. Only
-                offered once there's an address to attach it to. */}
-            {form.email.trim() !== '' && (
-              <label className="mt-4 flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={subscribe}
-                  onChange={(e) => setSubscribe(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 shrink-0 rounded border-border text-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                />
-                <span className="text-sm text-text-secondary leading-relaxed">
-                  Email me restock alerts and new batch COAs. No spam, unsubscribe any time.
-                </span>
-              </label>
-            )}
-          </div>
-          </Animate>
-
-          {error && <p className="text-danger text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3">{error}</p>}
-        </div>
-
-        {/* Order Summary */}
-        <Animate variant="fadeUp" delay={0.1}>
-        <div className="h-fit sticky top-24 space-y-4">
-          <div className="bg-surface rounded-xl border border-border p-5 sm:p-6">
-            <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
-            <div className="space-y-3 mb-4">
-              {items.map((item) => (
-                <div key={lineIdOf(item)} className="flex items-center gap-3">
-                  <div className="relative w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                    {item.imageUrl ? (
-                      <Image src={item.imageUrl} alt={item.name} fill sizes="40px" className="object-cover" />
-                    ) : (
-                      <span className="w-full text-center text-[7px] leading-tight font-bold text-text-muted px-0.5 line-clamp-2 break-words">{item.code}</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-display font-bold truncate">{item.code}</p>
-                    <p className="text-xs text-text-muted truncate">{item.name} &middot; Qty: {item.quantity}</p>
-                    {preorderUnits(item.quantity, item.stock, item.preorder) > 0 && (
-                      <p className="text-xs font-medium text-text-primary">{preorderLabel(item.quantity, item.stock)}</p>
-                    )}
-                    {(item.includes ?? []).length > 0 && (
-                      <p className="text-xs text-text-muted line-clamp-2">Includes {includesSummary(item)}</p>
-                    )}
-                  </div>
-                  <p className="text-sm font-semibold shrink-0">{formatPrice(lineUnitPrice(item) * item.quantity)}</p>
-                </div>
-              ))}
+          <div className="grid gap-4">
+            {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[14px] text-danger">{error}</p>}
+            <div className="flex flex-col-reverse items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <Link href="/cart" className="inline-flex items-center justify-center gap-1 text-[14px] font-medium text-text-secondary hover:text-text-primary">
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back to cart
+              </Link>
+              <Button type="submit" size="lg" className="min-h-[56px] sm:min-w-[220px]" disabled={loading || blockedByEastMin}>
+                {loading ? 'Placing order…' : isRedirectPayment ? 'Continue to payment' : 'Place order'}
+              </Button>
             </div>
-
-            {items.some((i) => preorderUnits(i.quantity, i.stock, i.preorder) > 0) && (
-              <div className="flex gap-2 rounded-lg border border-border bg-surface-elevated/60 px-3 py-2.5 mb-4 text-xs text-text-secondary leading-relaxed">
-                <Clock className="w-4 h-4 shrink-0 text-text-primary" aria-hidden="true" />
-                <p><span className="font-semibold text-text-primary">Includes a pre-order.</span> Your order ships together in {preorderLead}, when the restock lands.</p>
-              </div>
-            )}
-
-            {/* Discount Code */}
-            <div className="border-t border-border pt-4 mb-4">
-              {appliedDiscount ? (
-                <div className="flex items-center justify-between bg-success/10 border border-success/30 rounded-lg px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-success" />
-                    <span className="text-sm font-medium text-success">{appliedDiscount.code}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRemoveDiscount}
-                    className="p-0.5 rounded hover:bg-success/20 transition-colors"
-                  >
-                    <X className="w-4 h-4 text-success" />
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex gap-2">
-                    <Input
-                      id="discount"
-                      value={discountCode}
-                      onChange={(e) => { setDiscountCode(e.target.value); setDiscountError(''); }}
-                      placeholder="Discount code"
-                      className="flex-1 text-sm"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleApplyDiscount()}
-                      disabled={discountLoading || !discountCode.trim()}
-                    >
-                      {discountLoading ? '...' : 'Apply'}
-                    </Button>
-                  </div>
-                  {discountError && <p className="text-xs text-danger mt-1.5">{discountError}</p>}
-                  {/* The code from an affiliate's share link (lib/ref-code.ts): offered, never applied unasked. */}
-                  {refCode && !discountCode.trim() && !discountError ? (
-                    <p className="text-xs text-text-secondary mt-1.5">
-                      Code <span className="font-medium text-text-primary">{refCode}</span> from your link.{' '}
-                      <button type="button" className="font-medium text-primary underline underline-offset-2 cursor-pointer" disabled={discountLoading} onClick={() => handleApplyDiscount(refCode)}>
-                        Apply it
-                      </button>
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-border pt-4 space-y-2 mb-5">
-              <div className="flex justify-between text-sm text-text-secondary">
-                <span>Subtotal</span>
-                <span>{formatPrice(total)}</span>
-              </div>
-              {appliedDiscount && (
-                <div className="flex justify-between text-sm text-success">
-                  <span>Discount</span>
-                  <span>-{formatPrice(appliedDiscount.discountAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm text-text-secondary">
-                <span>Shipping</span>
-                {/* Driven by the resolved fee rather than by the raw standard
-                    setting, so picking an East Malaysian state updates this
-                    line and the total along with it. */}
-                <span className={shippingInSen === 0 ? 'text-success font-medium' : ''}>
-                  {shippingInSen === 0 ? 'Free' : formatPrice(shippingInSen)}
-                </span>
-              </div>
-              <div className="flex justify-between font-display font-bold text-lg pt-2 border-t border-border">
-                <span>Total</span>
-                <span>{formatPrice(orderTotal)}</span>
-              </div>
-            </div>
-
-            <Button type="submit" className="w-full" size="lg" disabled={loading || blockedByEastMin}>
-              {loading ? 'Placing Order...' : paymentMethod === 'MANUAL' ? 'Continue to Payment' : 'Place Order'}
-            </Button>
-            {/* The button is in a sticky sidebar that can sit a long way from
-                the address card, so a disabled button on its own would read as
-                broken. Says why, right where the click lands. */}
+            {/* A disabled button on its own reads as broken: say why, right where the click lands. */}
             {blockedByEastMin && (
-              <p className="text-xs text-amber-800 text-center mt-2.5 leading-relaxed">
-                Add {formatPrice(eastMinShortfall)} more to reach the{' '}
-                {formatPrice(eastMinInSen)} minimum for {form.state}.
+              <p className="text-center text-[13px] leading-relaxed text-amber-800 sm:text-right">
+                Add {formatPrice(eastMinShortfall)} more to reach the {formatPrice(eastMinInSen)} minimum for {form.state}.
               </p>
             )}
           </div>
-
-          {/* Trust Signals */}
-          <div className="flex items-center justify-center gap-4 text-text-muted">
-            <div className="flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5" />
-              <span className="text-xs">Secure</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span className="text-xs">Verified</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Truck className="w-3.5 h-3.5" />
-              <span className="text-xs">
-                {isEastState
-                  ? 'East Malaysia Shipping'
-                  : shippingInSen === 0 ? 'Free Shipping' : 'Peninsular Malaysia Shipping'}
-              </span>
-            </div>
-          </div>
         </div>
-        </Animate>
-      </form>
-    </div>
+      </div>
+    </form>
+    </>
   );
 }

@@ -65,6 +65,9 @@ export function SiteChrome({
   // no header, footer, announcement bar or newsletter popup between the
   // customer and the bank details.
   const isPayPage = pathname?.startsWith('/pay/');
+  // Checkout is Shopify-style, as on our other stores: its own logo-only
+  // header (app/checkout/page.tsx), nothing else of the store's around it.
+  const isCheckout = pathname === '/checkout';
   // The Group Buy portal brings its own shell (app/group-buy/PortalShell.tsx).
   const isGroupBuy = pathname === '/group-buy' || pathname?.startsWith('/group-buy/');
   // Ascend Affiliate (app/affiliate, served at affiliate.ascendpeptides.my)
@@ -90,12 +93,12 @@ export function SiteChrome({
       : k === 'signup'
         ? !signedIn() && !promoDismissed('signup', popups.signup.triggers.hideDays)
         : !promoDismissed('affiliate', popups.affiliate.triggers.hideDays);
-  const turn = usePopupTurn(groupBuyPromo?.popup || bare || isAdmin || isPayPage || isAffiliate ? [] : kinds, popupEligible);
+  const turn = usePopupTurn(groupBuyPromo?.popup || bare || isAdmin || isPayPage || isCheckout || isAffiliate ? [] : kinds, popupEligible);
   // Only the product detail page has the mobile sticky Add to Cart bar the
   // WhatsApp button needs to clear — see WhatsAppButton's `raised` prop.
   const isProductDetail = pathname ? /^\/products\/[^/]+$/.test(pathname) : false;
 
-  if (isAdmin || isPayPage || isAffiliate) {
+  if (isAdmin || isPayPage || isCheckout || isAffiliate) {
     return <>{children}</>;
   }
 
