@@ -23,6 +23,7 @@ import {
   cancelPayout,
   commissionTarget,
   mailbox,
+  suggestCode,
   markPayoutPaid,
   rateProblem,
   requestPayout,
@@ -330,6 +331,12 @@ async function part2() {
       await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: later, expected: p.amount + 1 }), /now pays/);
       await cancelPayout(prisma, p.id, 'test');
       await adjustBalance(prisma, affiliateId, -700, 'test credit back', 'test');
+    });
+
+    await check('suggested codes are initials and digits, not a name', async () => {
+      const codes = await Promise.all(['Amir Hakim', 'siti nur aminah', 'Ravi', "Nur'aisyah bt. Ali", ''].map((n) => suggestCode(prisma, n)));
+      for (const c of codes) if (!/^[A-Z]{2}\d{4,6}$/.test(c)) throw new Error(`bad shape: ${c}`);
+      eq(codes.slice(0, 3).map((c) => c.slice(0, 2)), ['AH', 'SN', 'RA']);
     });
 
     await check('details change by request: nothing moves until approved, one request at a time', async () => {

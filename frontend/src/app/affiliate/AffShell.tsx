@@ -463,7 +463,7 @@ function JoinPanel({ member, programme, onJoined }: { member: { displayName: str
             <input className="input" type="tel" inputMode="tel" placeholder="012 345 6789" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
           </Field>
           <div className="sm:col-span-2">
-            <Field label="Your code" error={codeError} help={codeState?.ok && codeState.code === normalised ? 'Available.' : 'Letters and numbers, 4 to 16.'}>
+            <Field label="Your code" error={codeError} help={codeState?.ok && codeState.code === normalised ? 'Available.' : 'We suggested one from your initials. Keep it, or use 4 to 16 letters and numbers of your own.'}>
               <input className="input uppercase tracking-[0.06em]" value={code} maxLength={20} onChange={(e) => setCode(e.target.value)} aria-invalid={!!codeError} />
             </Field>
           </div>

@@ -113,8 +113,7 @@ export async function checkCode(fastify: FastifyInstance, raw: string, exceptAff
 }
 
 export async function suggestMyCode(fastify: FastifyInstance, name: string) {
-  const s = await getAffiliateSettings(fastify.prisma);
-  return { code: await suggestCode(fastify.prisma, name || 'Ascend', s.customerDiscountPct) };
+  return { code: await suggestCode(fastify.prisma, name || 'Ascend') };
 }
 
 const joinSchema = z.object({

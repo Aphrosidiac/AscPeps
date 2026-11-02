@@ -283,15 +283,22 @@ export function normaliseCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-/** A free code built from the name, e.g. "Amir Hakim" → AMIR5, AMIR5A… */
-export async function suggestCode(db: Db, fullName: string, discountPct: number): Promise<string> {
-  const stem = normaliseCode(fullName.split(/\s+/)[0] ?? '').slice(0, 10) || 'ASCEND';
-  const base = `${stem}${discountPct}`.slice(0, 14).padEnd(4, 'X');
-  for (const suffix of ['', ...'ABCDEFGHJKLMNPQRSTUVWXYZ'.split(''), ...Array.from({ length: 90 }, (_, i) => String(i + 10))]) {
-    const code = `${base}${suffix}`.slice(0, 16);
+/**
+ * A free code to suggest at join: their initials and four random digits —
+ * "Amir Hakim" → AH4827. Short to type and to read out, vague enough that
+ * nobody's name is on every post (Fakhrul, 2026-11-03). Letters then digits,
+ * so an O is never mistaken for a 0. They can still type their own.
+ */
+export async function suggestCode(db: Db, fullName: string): Promise<string> {
+  const words = fullName.toUpperCase().replace(/[^A-Z\s]/g, ' ').split(/\s+/).filter(Boolean);
+  const initials = (words.length >= 2 ? words[0][0] + words[1][0] : (words[0] ?? '').slice(0, 2)).padEnd(2, 'A');
+  for (let attempt = 0; attempt < 30; attempt++) {
+    // Four digits for the first tries, five once those keep colliding.
+    const digits = attempt < 20 ? 1000 + Math.floor(Math.random() * 9000) : 10000 + Math.floor(Math.random() * 90000);
+    const code = `${initials}${digits}`;
     if (!(await db.discountCode.findUnique({ where: { code }, select: { id: true } }))) return code;
   }
-  return `${base}${Date.now().toString(36).toUpperCase()}`.slice(0, 16);
+  return `${initials}${Date.now().toString().slice(-6)}`;
 }
 
 // ── Balance ─────────────────────────────────────────────────────────────────

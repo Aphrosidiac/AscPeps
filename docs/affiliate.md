@@ -32,8 +32,9 @@ A store account (`members`) that applied. One `affiliates` row each:
 | `REJECTED` | not approved | never goes live |
 
 Joining needs a **confirmed email** (a payout goes to a real person), a
-Malaysian mobile number and a code (4–16 letters/numbers, suggested from the
-name). The code is an ordinary `discount_codes` row — `PERCENTAGE`, the
+Malaysian mobile number and a code (4–16 letters/numbers). The one suggested
+is their initials and four random digits — Amir Hakim → AH4827 — so nobody's
+name is on every post; they can type their own instead. The code is an ordinary `discount_codes` row — `PERCENTAGE`, the
 customer discount, `scope = STORE` (Group Buy prices are already cut) — kept
 `isActive` exactly while the affiliate is `ACTIVE`. A live code can only be
 changed by the team, from Affiliates: every link and post already shared uses
