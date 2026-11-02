@@ -1,43 +1,59 @@
 /*
- * Ascend Affiliate — the ASC staff UI ("Dashboard V15", ASC/docs/staff-ui.md)
- * taken whole: lavender canvas with soft glows, white 28px panels, ink pills,
- * pastel cards, Outfit, a sun/moon switch. Scoped to .aff so the store never
- * sees these tokens. Whole-pixel type; smoothing only on Retina (Fakhrul reads
- * on a 1x screen). Motion is feedback only — no entrances.
+ * Ascend Affiliate — the ASC staff UI's shapes kept whole (28px panels, pill
+ * controls, a travelling ink tab, a sun/moon switch; Fakhrul: keep the round
+ * edges, not boxy) with its colours replaced by
+ * Ascend MY's own brand (AscPeps/brand,
+ * tokens.css): Ink and Paper dominate, Mist hairlines, Graphite copy, Outfit
+ * for display and Inter for text. Colour has a reason: Signal Green for money
+ * earned, amber for money still waiting, Cobalt for focus and selection —
+ * every tint is a kit colour or a mix of one. Scoped to .aff so the store
+ * never sees these tokens. Whole-pixel type; smoothing only on Retina
+ * (Fakhrul reads on a 1x screen). Motion is feedback only — no entrances.
  */
 .aff {
-  --st-canvas: #ebe9fb;
-  --st-panel: #ffffff;
-  --st-field: #f3f1f8;
-  --st-fg: #1b1a20;
-  --st-fg-2: #55535d;
-  --st-fg-3: #666470;
-  --st-hair: #ebe9f1;
-  --st-solid: #17151c;
-  --st-solid-hover: #2d2a33;
-  --st-on-solid: #ffffff;
-  --st-lilac: #d3cef8;
-  --st-sky: #d2e1fa;
-  --st-mint: #ddf1d5;
-  --st-blush: #f8dce7;
-  --st-butter: #f6ecc8;
-  --st-s-purple: #7a71c6;
-  --st-ok: #23774b;
-  --st-ok-soft: #dff2e4;
-  --st-warn: #8a5d00;
-  --st-warn-soft: #f9eccb;
-  --st-bad: #b8304b;
-  --st-bad-soft: #fbe2e8;
-  --st-info: #305f9e;
-  --st-info-soft: #e0eafa;
-  --st-violet: #5a4bbd;
-  --st-violet-soft: #e9e6fc;
-  --st-shadow: 0 1px 2px rgb(40 30 90 / 0.04), 0 12px 32px -16px rgb(60 50 130 / 0.14);
-  --st-shadow-lift: 0 2px 4px rgb(40 30 90 / 0.05), 0 22px 44px -18px rgb(60 50 130 / 0.24);
-  --st-shadow-pop: 0 4px 10px rgb(40 30 90 / 0.06), 0 28px 60px -20px rgb(40 30 90 / 0.3);
-  --st-glow-a: #d8e0fd;
-  --st-glow-b: #f9e0ed;
-  --st-glow-c: #e3dffb;
+  /* The kit, verbatim. */
+  --k-ink: #0a0a0a;
+  --k-paper: #fafafa;
+  --k-white: #ffffff;
+  --k-graphite: #525252;
+  --k-mist: #e5e5e5;
+  --k-signal: #22c55e;
+  --k-cobalt: #3155d9;
+  --k-warning: #f59e0b;
+  --k-danger: #ef4444;
+
+  /* A Mist-tinted page under white panels, so they stand off it. */
+  --st-canvas: color-mix(in srgb, var(--k-mist) 50%, var(--k-paper));
+  --st-panel: var(--k-white);
+  --st-field: color-mix(in srgb, var(--k-mist) 40%, var(--k-paper));
+  --st-fg: var(--k-ink);
+  --st-fg-2: var(--k-graphite);
+  --st-fg-3: color-mix(in srgb, var(--k-graphite) 82%, var(--k-white));
+  --st-hair: var(--k-mist);
+  --st-solid: var(--k-ink);
+  --st-solid-hover: color-mix(in srgb, var(--k-ink) 88%, var(--k-white));
+  --st-on-solid: var(--k-white);
+  /* Tiles: money earned, money waiting, everything else neutral. */
+  --st-mint: color-mix(in srgb, var(--k-signal) 11%, var(--k-white));
+  --st-butter: color-mix(in srgb, var(--k-warning) 13%, var(--k-white));
+  --st-lilac: var(--st-field);
+  --st-sky: var(--st-field);
+  --st-blush: var(--st-field);
+  --st-s-purple: var(--k-cobalt);
+  --st-ok: color-mix(in srgb, var(--k-signal) 58%, var(--k-ink));
+  --st-ok-soft: color-mix(in srgb, var(--k-signal) 12%, var(--k-white));
+  --st-warn: color-mix(in srgb, var(--k-warning) 52%, var(--k-ink));
+  --st-warn-soft: color-mix(in srgb, var(--k-warning) 14%, var(--k-white));
+  --st-bad: color-mix(in srgb, var(--k-danger) 78%, var(--k-ink));
+  --st-bad-soft: color-mix(in srgb, var(--k-danger) 10%, var(--k-white));
+  --st-info: var(--k-cobalt);
+  --st-info-soft: color-mix(in srgb, var(--k-cobalt) 9%, var(--k-white));
+  --st-violet: var(--k-cobalt);
+  --st-violet-soft: color-mix(in srgb, var(--k-cobalt) 9%, var(--k-white));
+  /* A Mist hairline like the store's cards, with a breath of shadow. */
+  --st-shadow: 0 0 0 1px var(--st-hair), 0 1px 2px rgb(10 10 10 / 0.05), 0 10px 28px -16px rgb(10 10 10 / 0.14);
+  --st-shadow-lift: 0 0 0 1px var(--st-hair), 0 8px 24px -12px rgb(10 10 10 / 0.16);
+  --st-shadow-pop: 0 0 0 1px var(--st-hair), 0 24px 48px -20px rgb(10 10 10 / 0.28);
   --st-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   color-scheme: light;
@@ -46,63 +62,45 @@
   min-height: 100dvh;
   background: var(--st-canvas);
   color: var(--st-fg);
-  font-family: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   line-height: 20px;
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
 }
-.aff::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(60% 55% at 92% 0%, var(--st-glow-a) 0%, transparent 70%),
-    radial-gradient(55% 60% at 0% 100%, var(--st-glow-b) 0%, transparent 70%),
-    radial-gradient(70% 70% at 45% 40%, var(--st-glow-c) 0%, transparent 75%),
-    var(--st-canvas);
-}
 .aff[data-theme="dark"] {
-  --st-canvas: #0e0d13;
-  --st-panel: #24232d;
-  --st-field: #31303b;
-  --st-fg: #f1f0f6;
-  --st-fg-2: #b6b4bf;
-  --st-fg-3: #a3a1ad;
-  --st-hair: #393845;
-  --st-solid: #f1f0f6;
-  --st-solid-hover: #ffffff;
-  --st-on-solid: #15141b;
-  --st-lilac: #343060;
-  --st-sky: #233353;
-  --st-mint: #243b2c;
-  --st-blush: #3a2231;
-  --st-butter: #39301b;
-  --st-s-purple: #a49df0;
-  --st-ok: #7dd3a0;
-  --st-ok-soft: #173826;
-  --st-warn: #e7bf62;
-  --st-warn-soft: #3a2f13;
-  --st-bad: #f392a6;
-  --st-bad-soft: #421c27;
-  --st-info: #93b9f0;
-  --st-info-soft: #1a2b47;
-  --st-violet: #b3a9f6;
-  --st-violet-soft: #2a2552;
-  --st-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07), 0 18px 44px -18px rgb(0 0 0 / 0.75);
-  --st-shadow-lift: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 26px 52px -20px rgb(0 0 0 / 0.8);
-  --st-shadow-pop: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 30px 60px -20px rgb(0 0 0 / 0.85);
-  --st-glow-a: #1a1d3a;
-  --st-glow-b: #251422;
-  --st-glow-c: #151320;
+  --st-canvas: var(--k-ink);
+  --st-panel: color-mix(in srgb, var(--k-white) 5%, var(--k-ink));
+  --st-field: color-mix(in srgb, var(--k-white) 9%, var(--k-ink));
+  --st-fg: var(--k-paper);
+  --st-fg-2: color-mix(in srgb, var(--k-mist) 72%, var(--k-ink));
+  --st-fg-3: color-mix(in srgb, var(--k-mist) 58%, var(--k-ink));
+  --st-hair: color-mix(in srgb, var(--k-white) 12%, var(--k-ink));
+  --st-solid: var(--k-paper);
+  --st-solid-hover: var(--k-white);
+  --st-on-solid: var(--k-ink);
+  --st-mint: color-mix(in srgb, var(--k-signal) 14%, var(--st-panel));
+  --st-butter: color-mix(in srgb, var(--k-warning) 14%, var(--st-panel));
+  --st-s-purple: color-mix(in srgb, var(--k-cobalt) 60%, var(--k-white));
+  --st-ok: color-mix(in srgb, var(--k-signal) 75%, var(--k-white));
+  --st-ok-soft: color-mix(in srgb, var(--k-signal) 16%, var(--k-ink));
+  --st-warn: color-mix(in srgb, var(--k-warning) 75%, var(--k-white));
+  --st-warn-soft: color-mix(in srgb, var(--k-warning) 16%, var(--k-ink));
+  --st-bad: color-mix(in srgb, var(--k-danger) 70%, var(--k-white));
+  --st-bad-soft: color-mix(in srgb, var(--k-danger) 16%, var(--k-ink));
+  --st-info: color-mix(in srgb, var(--k-cobalt) 55%, var(--k-white));
+  --st-info-soft: color-mix(in srgb, var(--k-cobalt) 20%, var(--k-ink));
+  --st-violet: var(--st-info);
+  --st-violet-soft: var(--st-info-soft);
+  --st-shadow: 0 0 0 1px var(--st-hair);
+  --st-shadow-lift: 0 0 0 1px var(--st-hair), 0 18px 40px -18px rgb(0 0 0 / 0.8);
+  --st-shadow-pop: 0 0 0 1px var(--st-hair), 0 28px 56px -20px rgb(0 0 0 / 0.85);
   color-scheme: dark;
 }
 @media (min-resolution: 2dppx) {
   .aff { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 }
-.aff ::selection { background: var(--st-lilac); color: var(--st-fg); }
+.aff ::selection { background: color-mix(in srgb, var(--k-cobalt) 22%, transparent); color: var(--st-fg); }
 .aff :focus-visible { outline: 2px solid var(--st-s-purple); outline-offset: 2px; }
 /* Text fields show their own ring (.input); a checkbox keeps the outline. */
 .aff :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select):focus-visible { outline: none; }
@@ -130,13 +128,14 @@
 }
 .aff .btn-ring:hover { background: var(--st-field); }
 
-/* ── Type ── */
-.aff .st-title { font-size: 44px; line-height: 52px; font-weight: 500; letter-spacing: -0.02em; }
-.aff .st-h { font-size: 20px; line-height: 26px; font-weight: 500; letter-spacing: -0.01em; }
+/* ── Type: Outfit for display, Inter for everything read ── */
+.aff :is(.st-title, .st-h, .st-big, .st-fig, .st-display) { font-family: var(--font-outfit), ui-sans-serif, system-ui, sans-serif; }
+.aff .st-title { font-size: 44px; line-height: 52px; font-weight: 600; letter-spacing: -0.02em; }
+.aff .st-h { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .aff .st-sub { font-size: 13px; line-height: 18px; color: var(--st-fg-3); }
 .aff .st-label { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--st-fg-3); }
-.aff .st-big { font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.aff .st-fig { font-size: 24px; line-height: 30px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.aff .st-big { font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.aff .st-fig { font-size: 24px; line-height: 30px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .aff .fg { color: var(--st-fg); }
 .aff .fg-2 { color: var(--st-fg-2); }
 .aff .fg-3 { color: var(--st-fg-3); }
@@ -170,7 +169,7 @@
 }
 .aff textarea.input { height: auto; min-height: 96px; padding: 14px 18px; border-radius: 22px; resize: vertical; }
 .aff .input::placeholder { color: var(--st-fg-3); }
-.aff .input:focus { background: var(--st-panel); box-shadow: inset 0 0 0 1px var(--st-s-purple), 0 0 0 4px var(--st-violet-soft); }
+.aff .input:focus { background: var(--st-panel); box-shadow: inset 0 0 0 1px var(--st-s-purple), 0 0 0 3px var(--st-violet-soft); }
 .aff .input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--st-bad); }
 .aff .input:disabled { opacity: 0.6; cursor: not-allowed; }
 .aff .field-label { display: block; margin: 0 0 8px 6px; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--st-fg-2); }
@@ -220,7 +219,7 @@
 .aff .tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ── Dialog ── */
-.aff .scrim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgb(14 13 19 / 0.36); }
+.aff .scrim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgb(10 10 10 / 0.4); }
 @media (min-width: 640px) { .aff .scrim { align-items: center; padding: 16px; } }
 .aff .sheet { width: 100%; max-width: 440px; border-radius: 28px 28px 0 0; background: var(--st-panel); box-shadow: var(--st-shadow-pop); padding: 24px; }
 @media (min-width: 640px) { .aff .sheet { border-radius: 28px; padding: 28px; } }
@@ -230,6 +229,6 @@
   .aff .btn:active:not(:disabled) { transform: none; }
 }
 
-/* The store's pill mark on the ink square: white on ink, ink on the light square in dark mode. */
+/* The pill mark on the ink square: white on ink, ink on the light square in dark mode. */
 .aff .aff-logo { filter: invert(1); }
 .aff[data-theme="dark"] .aff-logo { filter: none; }

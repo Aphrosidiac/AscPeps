@@ -64,7 +64,7 @@ export default function AffiliateOverview() {
         {/* The code: what they actually share. */}
         <section className="panel flex flex-col p-6 sm:p-8" aria-labelledby="code-h">
           <p id="code-h" className="st-label">Your code</p>
-          <p className="mt-2 text-[34px] leading-10 font-medium tracking-[0.04em] fg">{a.code}</p>
+          <p className="st-display mt-2 text-[34px] leading-10 font-semibold tracking-[0.04em] fg">{a.code}</p>
           <p className="mt-1 text-[13px] leading-[19px] fg-2">{a.customerDiscountPct}% off for anyone who uses it at checkout.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <CopyButton text={a.code} label="Copy code" className="btn btn-ink btn-sm" />

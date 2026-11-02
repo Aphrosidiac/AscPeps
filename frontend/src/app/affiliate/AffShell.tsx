@@ -105,7 +105,7 @@ function Logo() {
         <Image src="/images/pill-icon.png" alt="" width={26} height={26} className="aff-logo" />
       </span>
       <span className="hidden leading-tight sm:block">
-        <span className="block text-[15px] font-medium fg">Ascend</span>
+        <span className="st-display block text-[15px] font-semibold fg">Ascend</span>
         <span className="block text-[12px] fg-3">Affiliate</span>
       </span>
     </Link>
@@ -143,8 +143,8 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
         aria-label={`Account: ${name}`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[14px] font-semibold fg"
-        style={{ background: 'linear-gradient(135deg,var(--st-lilac),var(--st-sky) 60%,var(--st-blush))', boxShadow: 'var(--st-shadow)' }}
+        className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[14px] font-semibold"
+        style={{ background: 'var(--st-solid)', color: 'var(--st-on-solid)' }}
       >
         {initials}
       </button>

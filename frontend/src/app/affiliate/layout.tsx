@@ -12,7 +12,11 @@ export const metadata: Metadata = {
 // affiliate.ascendpeptides.my (components/layout/SiteChrome.tsx); this hides
 // them from the very first paint so they never flash. The theme is set before
 // paint too, from the switch's saved choice.
-const BOOT = `body:has(> main [data-affiliate-root]) > :not(main) { display: none !important; }`;
+// The page under the portal matches its canvas (affiliate.css), so a short
+// page or an overscroll never shows the store's lighter Paper below it.
+const BOOT = `body:has(> main [data-affiliate-root]) > :not(main) { display: none !important; }
+body:has(> main [data-affiliate-root]) { background: #f0f0f0; }
+body:has(> main [data-affiliate-root][data-theme="dark"]) { background: #0a0a0a; }`;
 const THEME = `(function(){try{var t=localStorage.getItem('ascend-aff-theme');if(t==='dark')document.currentScript.parentElement.setAttribute('data-theme','dark')}catch(e){}})()`;
 
 export default function AffiliateLayout({ children }: { children: React.ReactNode }) {
