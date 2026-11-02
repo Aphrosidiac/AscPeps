@@ -16,6 +16,7 @@ import { usePopupTurn, type PopupKind } from '@/components/popups/popup-turn';
 import { fill, type PopupConfig } from '@/lib/popup-settings';
 import { getMemberToken } from '@/lib/member-session';
 import { AFFILIATE_URL } from '@/lib/affiliate-url';
+import type { HeaderMenuData } from '@/lib/header-menu';
 import { RefCapture } from '@/lib/ref-code';
 import type { GroupBuyPromo } from '@/types';
 
@@ -29,6 +30,8 @@ interface SiteChromeProps {
   groupBuyPromo?: GroupBuyPromo;
   /** At least one research article is live: the header links to /research. */
   researchLive?: boolean;
+  /** What the header's menus list (lib/header-menu.ts). */
+  headerMenu?: HeaderMenuData;
   /** Ascend Affiliate is open: the "become an affiliate" popup may show. */
   affiliate?: { discountPct: number; commission: string; rateBps: number } | null;
   /** The one-time sign-up bonus is on: the "create an account" popup may show. */
@@ -54,6 +57,7 @@ export function SiteChrome({
   newsletterPopupBody,
   groupBuyPromo,
   researchLive,
+  headerMenu,
   affiliate,
   signupBonusPct,
   popups,
@@ -121,7 +125,7 @@ export function SiteChrome({
         ? <GroupBuyBanner banner={groupBuyPromo.banner} />
         : <AnnouncementBar enabled={announcementEnabled} text={announcementText} />)}
       {!bare && <PendingPaymentBar />}
-      {!bare && <Navbar researchLive={researchLive} />}
+      {!bare && <Navbar researchLive={researchLive} menu={headerMenu} />}
       <main className="flex-1">{children}</main>
       {!bare && <Footer affiliate={!!affiliate} />}
       {!bare && <WhatsAppButton raised={isProductDetail} />}

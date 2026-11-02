@@ -5,11 +5,12 @@ import { CartProvider } from '@/lib/cart';
 import { SiteChrome } from '@/components/layout/SiteChrome';
 import { AffiliateOfferProvider } from '@/components/affiliate-promo/AffiliatePromo';
 import { affiliateOffer } from '@/lib/affiliate-offer';
+import { headerMenu } from '@/lib/header-menu';
 import { PreorderProvider } from '@/lib/preorder';
 import { parsePreorderSettings } from '@/lib/preorder-rules';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { PostHogPageView } from '@/components/PostHogPageView';
-import { getSettingsServer, getProductsServer, getGroupBuyPromoServer, getResearchListServer } from '@/lib/server-api';
+import { getCategoriesServer, getSettingsServer, getProductsServer, getGroupBuyPromoServer, getResearchListServer } from '@/lib/server-api';
 import { popupConfig } from '@/lib/popup-settings';
 import './globals.css';
 
@@ -113,11 +114,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [settings, catalog, groupBuyPromo, research] = await Promise.all([
+  const [settings, catalog, groupBuyPromo, research, categories] = await Promise.all([
     getSettingsServer(),
     getProductsServer({ limit: 100 }),
     getGroupBuyPromoServer(),
     getResearchListServer(),
+    getCategoriesServer(),
   ]);
   const announcementEnabled = settings.announcement_enabled === 'true' && !!settings.announcement_text;
 
@@ -166,6 +168,7 @@ gtag('config', 'G-4PHY1Z9BHD');`}
               newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
               groupBuyPromo={groupBuyPromo}
               researchLive={research.data.length > 0}
+              headerMenu={headerMenu(categories, catalog.data, research.data)}
               popups={{
                 newsletter: popupConfig(settings, 'newsletter'),
                 signup: popupConfig(settings, 'signup'),

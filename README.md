@@ -122,6 +122,17 @@ blocking the sale. Detail in [docs/add-ons.md](docs/add-ons.md). A product can
 also be flagged **No shipping charge** — an order made only of such products
 pays no shipping (the RM1 payment-test product uses it).
 
+The header is Bayang's, our store standard (`components/layout/Navbar.tsx`,
+`HeaderMenus.tsx`): Shop, Research, Learn and About open ink-glass panels over
+a blurred page — Shop with every goal and a featured product, the others as
+rows — and the right side carries **Track order** (never in a menu: customers
+come back for it), the account pill and the cart. On the homepage it sits dark
+on the dark hero and turns white once the page scrolls. The menus' contents
+come from the live catalogue (`lib/header-menu.ts`). On a phone the same menus
+open under the header on the same ink (`MobileMenu.tsx`): Shop unfolded with
+every goal and the featured product, the rest as rows, then Track order and
+the account as two big buttons.
+
 Buying follows the same pattern as our other stores (Teliti, BuatBenda):
 Add to Cart opens a slide-in cart that shows shipping before checkout, **Buy
 now** goes straight to a one-page checkout, and the checkout carries none of
