@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
+import { AFFILIATE_URL } from '@/lib/affiliate-url';
 
-export function Footer() {
+/** `affiliate`: the programme is open, so the Shop column links to it. */
+export function Footer({ affiliate = false }: { affiliate?: boolean }) {
   return (
     <footer className="mt-auto w-full">
       {/* Research Disclaimer Banner */}
@@ -33,6 +35,9 @@ export function Footer() {
                 <Link href="/products" className="block text-sm text-neutral-300 hover:text-white transition-colors">Products</Link>
                 <Link href="/track" className="block text-sm text-neutral-300 hover:text-white transition-colors">Track Order</Link>
                 <Link href="/about" className="block text-sm text-neutral-300 hover:text-white transition-colors">About</Link>
+                {affiliate && (
+                  <a href={AFFILIATE_URL} className="block text-sm text-neutral-300 hover:text-white transition-colors">Affiliate programme</a>
+                )}
               </div>
             </div>
 

@@ -13,6 +13,7 @@ import { MolecularNetwork } from '@/components/ui/MolecularNetwork';
 import { BannerStrip } from '@/components/ui/BannerStrip';
 import { HardsellCarousel } from '@/components/home/HardsellCarousel';
 import { getCategoryIcon } from '@/lib/category-icons';
+import { AffiliateBand } from '@/components/affiliate-promo/AffiliatePromo';
 import type { Product, Category, ResearchArticle } from '@/types';
 
 interface HomeClientProps {
@@ -220,6 +221,9 @@ export function HomeClient({
           </Stagger>
         </section>
       )}
+
+      {/* Ascend Affiliate, after the products: the page sells first. */}
+      <AffiliateBand />
 
       {/* Divider */}
       <BannerStrip src="/images/banners/lab-glass-strip-100.webp" height="100px" />

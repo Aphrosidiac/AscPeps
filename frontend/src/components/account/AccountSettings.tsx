@@ -17,6 +17,7 @@ import {
 import { clearMemberSession, setMemberSession, updateMemberCache, useMemberSession } from '@/lib/member-session';
 import { Field, MIN_PASSWORD, PasswordField, apiError, inputCls } from './fields';
 import { GROUP_BUY_ENABLED } from '@/lib/features';
+import { AffiliateAccountCard } from '@/components/affiliate-promo/AffiliatePromo';
 
 const SIGN_IN: Record<AccountWhere, { signin: string; signup: string }> = {
   store: { signin: '/account/login', signup: '/account/register' },
@@ -70,6 +71,7 @@ export function AccountSettings({ where }: { where: AccountWhere }) {
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8">
       <aside className="lg:order-2 lg:sticky lg:top-[88px]">
         <Identity member={member} onSignOut={signOut} />
+        {where === 'store' && <AffiliateAccountCard />}
       </aside>
       <div className="space-y-6 lg:order-1">
         {/* Keyed by member id so a different account never inherits typed values. */}

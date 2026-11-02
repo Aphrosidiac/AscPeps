@@ -3,13 +3,7 @@ import { env } from '../config/env.js';
 import { renderAffiliateEmail, type AffiliateMail, type AffiliateMailContext } from '../emails/affiliate.js';
 import { isEmailEnabled, sendEmail } from './email.js';
 import { getAffiliateSettings, pct } from './affiliate.js';
-
-/** Where the affiliate portal lives, for links in their emails. */
-export function affiliatePortalUrl(): string {
-  if (env.AFFILIATE_URL) return env.AFFILIATE_URL.replace(/\/$/, '');
-  const store = env.FRONTEND_URL.replace(/\/$/, '');
-  return /localhost|127\.0\.0\.1/.test(store) ? `${store}/affiliate` : 'https://affiliate.ascendpeptides.my';
-}
+import { affiliatePortalUrl } from './affiliate-url.js';
 
 /** Everything a template needs about one affiliate, read fresh. */
 export async function affiliateMailContext(fastify: FastifyInstance, affiliateId: string): Promise<AffiliateMailContext & { to: string }> {

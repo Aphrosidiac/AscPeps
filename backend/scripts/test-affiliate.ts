@@ -38,6 +38,7 @@ import { createOrder } from '../src/modules/orders/orders.controller.js';
 import { adminSetOrderTest, adminUpdateOrder } from '../src/modules/admin/admin-orders.controller.js';
 import { adminCancelPayout, adminUpdateAffiliate, joinProgramme, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
 import { affiliateMailSamples, renderAffiliateEmail } from '../src/emails/affiliate.js';
+import { affiliateLine } from '../src/emails/payment-receipt.js';
 import { mintSignupBonus } from '../src/modules/members/members.controller.js';
 import { adminDecideChange, changeState, requestChange, withdrawChange } from '../src/modules/affiliates/affiliate-changes.js';
 
@@ -102,6 +103,12 @@ function part1() {
   check('the team\'s reason is escaped', () => {
     const { html } = renderAffiliateEmail({ kind: 'changeRejected', fields: ['Name'], reason: '<script>x</script>' }, ctx, {});
     if (html.includes('<script>x')) throw new Error('raw HTML in the reason');
+  });
+
+  check('receipt: the affiliate line only while the programme is open, with its live numbers', () => {
+    eq(affiliateLine({ affiliate_enabled: 'false' }), '');
+    const line = affiliateLine({ affiliate_enabled: 'true', affiliate_customer_discount_pct: '7', affiliate_default_rate_bps: '450' });
+    if (!line.includes('7% off') || !line.includes('earn 4.5%') || !line.includes('Become an affiliate')) throw new Error(line);
   });
 
   console.log('\n— commission, budget, cost');

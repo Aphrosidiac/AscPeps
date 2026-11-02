@@ -123,7 +123,7 @@ export function SiteChrome({
       {!bare && <PendingPaymentBar />}
       {!bare && <Navbar researchLive={researchLive} />}
       <main className="flex-1">{children}</main>
-      {!bare && <Footer />}
+      {!bare && <Footer affiliate={!!affiliate} />}
       {!bare && <WhatsAppButton raised={isProductDetail} />}
       {!bare && <RefCapture />}
       {/* Mounted at the chrome level so the popup's own path exclusions are

@@ -9,6 +9,7 @@ import { CheckCircle, Clock } from 'lucide-react';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
 import { Animate } from '@/components/ui/Animate';
+import { AffiliateOrderCard } from '@/components/affiliate-promo/AffiliatePromo';
 
 // useSearchParams needs a Suspense boundary above it or the static build of
 // this route bails out to client rendering for the whole page.
@@ -116,6 +117,8 @@ function CheckoutSuccessContent() {
           You can view and download your receipt from the <Link href="/track" className="text-primary-light hover:underline">Track Order</Link> page.
         </p>
       </Animate>
+      {/* Only once the payment is confirmed, and not for a Group Buy batch. */}
+      {!manual && !groupBuy && <AffiliateOrderCard />}
     </div>
   );
 }

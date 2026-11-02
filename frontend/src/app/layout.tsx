@@ -3,6 +3,8 @@ import Script from 'next/script';
 import { Inter, Outfit } from 'next/font/google';
 import { CartProvider } from '@/lib/cart';
 import { SiteChrome } from '@/components/layout/SiteChrome';
+import { AffiliateOfferProvider } from '@/components/affiliate-promo/AffiliatePromo';
+import { affiliateOffer } from '@/lib/affiliate-offer';
 import { PreorderProvider } from '@/lib/preorder';
 import { parsePreorderSettings } from '@/lib/preorder-rules';
 import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
@@ -157,6 +159,7 @@ gtag('config', 'G-4PHY1Z9BHD');`}
         <PostHogPageView />
         <PreorderProvider value={parsePreorderSettings(settings)}>
           <CartProvider>
+            <AffiliateOfferProvider offer={affiliateOffer(settings)}>
             <SiteChrome
               announcementEnabled={announcementEnabled}
               announcementText={settings.announcement_text || ''}
@@ -168,15 +171,7 @@ gtag('config', 'G-4PHY1Z9BHD');`}
                 signup: popupConfig(settings, 'signup'),
                 affiliate: popupConfig(settings, 'affiliate'),
               }}
-              affiliate={
-                settings.affiliate_enabled === 'true'
-                  ? {
-                      discountPct: Number(settings.affiliate_customer_discount_pct || 5),
-                      commission: `${Number(settings.affiliate_default_rate_bps || 500) / 100}%`,
-                      rateBps: Number(settings.affiliate_default_rate_bps || 500),
-                    }
-                  : null
-              }
+              affiliate={affiliateOffer(settings)}
               signupBonusPct={settings.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null}
               newsletterPopupHeading={settings.newsletter_popup_heading || 'Reconstitution reference, free'}
               newsletterPopupBody={
@@ -186,6 +181,7 @@ gtag('config', 'G-4PHY1Z9BHD');`}
             >
               {children}
             </SiteChrome>
+            </AffiliateOfferProvider>
           </CartProvider>
         </PreorderProvider>
       </body>
