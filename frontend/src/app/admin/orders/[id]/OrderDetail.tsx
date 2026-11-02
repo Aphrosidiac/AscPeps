@@ -110,6 +110,8 @@ function profitSummary(
   const refunded = order.refundedAmount ?? 0;
   const revenue = (totalCents ?? order.total) - refunded;
   const gatewayFee = gatewayFeeCents ?? order.gatewayFee ?? 0;
+  // The affiliate's net commission: a cost, like the fee (backend utils/profit.ts).
+  const affiliateCommission = order.affiliateCommission ?? 0;
 
   // An order with no lines counts as uncosted, not as "fully costed with zero
   // cost" — matching backend/src/utils/profit.ts, which would otherwise exclude
@@ -127,7 +129,7 @@ function profitSummary(
     ? 0
     : order.items.reduce((sum, i) => sum + (unitCostFor(i.id) ?? 0) * i.quantity, 0);
   const extrasTotal = extraCents.reduce((sum, c) => sum + c, 0);
-  const totalCost = itemCostTotal + extrasTotal + gatewayFee;
+  const totalCost = itemCostTotal + extrasTotal + gatewayFee + affiliateCommission;
 
   // Withheld while any line is unpriced: a partial total reads as a real profit
   // figure and is simply wrong.
@@ -135,7 +137,7 @@ function profitSummary(
 
   return {
     itemsRevenue, revenue, refunded, unpricedCount,
-    itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit,
+    itemCostTotal, extrasTotal, gatewayFee, affiliateCommission, totalCost, netProfit,
   };
 }
 
@@ -1400,7 +1402,7 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
   const pendingLabel = discountLabel({ discountCode: order.discountCode, discountNote: discountNote.trim() || null });
   const {
     itemsRevenue, revenue, refunded, unpricedCount,
-    itemCostTotal, extrasTotal, gatewayFee, netProfit,
+    itemCostTotal, extrasTotal, gatewayFee, affiliateCommission, netProfit,
   } = profitSummary(
     order,
     (itemId) => inputToCents(itemCosts[itemId] ?? ''),
@@ -1935,6 +1937,12 @@ function ProfitSharingTab({ order, onChange }: { order: Order; onChange: () => v
               {gatewayFee > 0 ? `-${formatPrice(gatewayFee)}` : formatPrice(0)}
             </span>
           </div>
+          {affiliateCommission > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-text-muted">Affiliate commission</span>
+              <span className="font-medium text-danger">-{formatPrice(affiliateCommission)}</span>
+            </div>
+          )}
           <div className="flex justify-between font-display font-bold text-lg border-t border-border pt-2 mt-1">
             <span>Net profit</span>
             {netProfit === null ? (
@@ -2167,7 +2175,7 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
   // Reads saved values only — never the Profit Sharing tab's unsaved drafts.
   // This tab answers "what is recorded against this order", which is a
   // different question from "what am I currently typing".
-  const { revenue, unpricedCount, itemCostTotal, extrasTotal, gatewayFee, totalCost, netProfit } =
+  const { revenue, unpricedCount, itemCostTotal, extrasTotal, gatewayFee, affiliateCommission, totalCost, netProfit } =
     profitSummary(
       order,
       (itemId) => order.items.find((i) => i.id === itemId)?.unitCost ?? null,
@@ -2230,7 +2238,7 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
         <StatTile
           label="Total costs"
           value={formatPrice(totalCost)}
-          hint={`${formatPrice(itemCostTotal)} items + ${formatPrice(extrasTotal)} extras + ${formatPrice(gatewayFee)} fee`}
+          hint={`${formatPrice(itemCostTotal)} items + ${formatPrice(extrasTotal)} extras + ${formatPrice(gatewayFee)} fee${affiliateCommission > 0 ? ` + ${formatPrice(affiliateCommission)} affiliate` : ''}`}
         />
         <StatTile
           label="Net profit"
@@ -2360,6 +2368,12 @@ function OrderCompleteTab({ order, onGoTo }: { order: Order; onGoTo: (step: Step
               {gatewayFee > 0 ? `-${formatPrice(gatewayFee)}` : formatPrice(0)}
             </span>
           </div>
+          {affiliateCommission > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-text-muted">Affiliate commission</span>
+              <span className="font-medium text-danger">-{formatPrice(affiliateCommission)}</span>
+            </div>
+          )}
           {order.refundedAmount > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-text-muted">Refunded to customer</span>

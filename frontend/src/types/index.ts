@@ -233,6 +233,9 @@ export interface Order {
   gatewayFee: number;
   /** Cents handed back to the customer. Reverses revenue by exactly this much. */
   refundedAmount: number;
+  /** Bought with an affiliate's code: their net commission, a cost of the order (docs/affiliate.md). */
+  affiliateId?: string | null;
+  affiliateCommission?: number;
   /** Whether the order's stock went back into inventory. Only consulted on a
    *  refunded order — goods that came back are not a cost. */
   stockRestored?: boolean;
@@ -394,6 +397,9 @@ export interface Member {
   emailVerified: boolean;
   // A requested email change waiting for its confirmation link to be clicked.
   pendingEmail?: string | null;
+  // The one-time sign-up bonus code, once the email is confirmed (when the
+  // bonus is switched on). Only /members/me carries it.
+  signupBonus?: { code: string; percent: number; used: boolean } | null;
 }
 
 // The moderation-queue view of a comment: carries the hidden flag, the article
@@ -613,7 +619,9 @@ export interface FinanceOverview {
   cogs: number;
   extraCosts: number;
   gatewayFees: number;
-  /** costedRevenue − cogs − extraCosts − gatewayFees. */
+  /** Affiliate commission on the costed orders, net of reversals. */
+  affiliateCommissions?: number;
+  /** costedRevenue − cogs − extraCosts − gatewayFees − affiliateCommissions. */
   grossOrderProfit: number;
   /** The only expense figure that reduces net profit. */
   operatingSpend: number;
@@ -637,7 +645,7 @@ export interface FinanceOverview {
 /* -------------------------------------------------------------- Ascend Money */
 
 export type BankSource =
-  | 'OPENING' | 'MONEY_IN' | 'MONEY_OUT' | 'SALE' | 'REFUND' | 'CAPITAL' | 'EXPENSE' | 'PAYOUT' | 'REPAYMENT';
+  | 'OPENING' | 'MONEY_IN' | 'MONEY_OUT' | 'SALE' | 'REFUND' | 'CAPITAL' | 'EXPENSE' | 'PAYOUT' | 'REPAYMENT' | 'AFFILIATE';
 
 export interface BankMovement {
   key: string;
@@ -647,7 +655,7 @@ export interface BankMovement {
   amount: number;
   description: string;
   partnerName: string | null;
-  ref: { type: 'bank_entry' | 'order' | 'funding' | 'expense' | 'payout_run' | 'payout' | 'repayment'; id: string; label?: string };
+  ref: { type: 'bank_entry' | 'order' | 'funding' | 'expense' | 'payout_run' | 'payout' | 'repayment' | 'affiliate_payout'; id: string; label?: string };
   /** Running balance after this movement. */
   balance: number;
 }
@@ -749,6 +757,7 @@ export interface MoneyOverview {
     cogs: number;
     extraCosts: number;
     gatewayFees: number;
+    affiliateCommissions?: number;
     grossOrderProfit: number;
     operatingSpend: number;
     inventoryPurchased: number;

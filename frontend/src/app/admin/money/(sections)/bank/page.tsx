@@ -17,6 +17,7 @@ const FILTERS: { key: string; label: string; sources: BankSource[] }[] = [
   { key: 'all', label: 'All', sources: [] },
   { key: 'sales', label: 'Sales', sources: ['SALE', 'REFUND'] },
   { key: 'shares', label: 'Profit shares', sources: ['PAYOUT'] },
+  { key: 'affiliates', label: 'Affiliates', sources: ['AFFILIATE'] },
   { key: 'spend', label: 'Stock & bills', sources: ['EXPENSE'] },
   { key: 'partners', label: 'Partners', sources: ['CAPITAL', 'REPAYMENT'] },
   { key: 'other', label: 'Other', sources: ['OPENING', 'MONEY_IN', 'MONEY_OUT'] },
@@ -28,6 +29,7 @@ function hrefFor(m: BankMovement): string | null {
     case 'order': return `/admin/orders/${m.ref.id}`;
     case 'expense': return '/admin/money/expenses';
     case 'payout_run': return `/admin/money/share#run-${m.ref.id}`;
+    case 'affiliate_payout': return `/admin/affiliates/${m.ref.id}`;
     default: return null;
   }
 }

@@ -162,6 +162,15 @@ gtag('config', 'G-4PHY1Z9BHD');`}
               newsletterPopupEnabled={settings.newsletter_popup_enabled === 'true'}
               groupBuyPromo={groupBuyPromo}
               researchLive={research.data.length > 0}
+              affiliate={
+                settings.affiliate_enabled === 'true'
+                  ? {
+                      discountPct: Number(settings.affiliate_customer_discount_pct || 5),
+                      commission: `${Number(settings.affiliate_default_rate_bps || 500) / 100}%`,
+                    }
+                  : null
+              }
+              signupBonusPct={settings.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null}
               newsletterPopupHeading={settings.newsletter_popup_heading || 'Reconstitution reference, free'}
               newsletterPopupBody={
                 settings.newsletter_popup_body ||

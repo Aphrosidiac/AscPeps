@@ -163,6 +163,7 @@ export const SOURCE: Record<BankSource, { label: string; chip: string }> = {
   PAYOUT: { label: 'Profit share', chip: 'bg-purple-100 text-purple-800' },
   REPAYMENT: { label: 'Repayment', chip: 'bg-yellow-100 text-yellow-800' },
   MONEY_OUT: { label: 'Money out', chip: 'bg-surface-elevated text-text-secondary' },
+  AFFILIATE: { label: 'Affiliate', chip: 'bg-indigo-100 text-indigo-800' },
 };
 
 /* ---------- the split, drawn ---------- */

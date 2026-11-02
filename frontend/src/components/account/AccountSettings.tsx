@@ -96,6 +96,13 @@ function Identity({ member, onSignOut }: { member: Member; onSignOut: () => void
           ? <span className="inline-flex items-center gap-1.5 rounded-full bg-[#22C55E]/15 px-2.5 py-1 text-xs font-medium text-[#4ADE80]"><Check className="h-3.5 w-3.5" strokeWidth={3} />Email confirmed</span>
           : <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F59E0B]/15 px-2.5 py-1 text-xs font-medium text-[#FBBF24]"><AlertCircle className="h-3.5 w-3.5" />Email not confirmed</span>}
       </p>
+      {member.signupBonus && !member.signupBonus.used ? (
+        <div className="mt-5 rounded-xl bg-white/[0.06] p-4">
+          <p className="text-xs font-medium text-white/60">Your first-order code · {member.signupBonus.percent}% off</p>
+          <p className="mt-1 font-display text-xl font-semibold tracking-[0.04em]">{member.signupBonus.code}</p>
+          <p className="mt-1 text-xs text-white/50">One use, at checkout with this account&apos;s email.</p>
+        </div>
+      ) : null}
       <div className="mt-6 grid gap-2 border-t border-white/10 pt-5">
         <Link href={GROUP_BUY_ENABLED ? '/group-buy/orders' : '/track'} className="group flex h-11 items-center gap-2.5 rounded-xl bg-white/[0.06] px-3.5 text-sm font-medium hover:bg-white/[0.1]">
           <Package className="h-4 w-4 text-white/60" />{GROUP_BUY_ENABLED ? 'My orders' : 'Track an order'}

@@ -259,8 +259,10 @@ export const adminDeleteDiscount = (token: string, id: string) =>
   api.delete(`/api/v1/admin/discounts/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data);
 
 // Validate discount (public)
-export const validateDiscount = (code: string, subtotal: number) =>
-  api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number }>('/api/v1/orders/validate-discount', { code, subtotal }).then((r) => r.data);
+// Email and phone, when known, let the server check codes tied to a person:
+// a sign-up reward bound to one address, an affiliate's own code.
+export const validateDiscount = (code: string, subtotal: number, buyer: { email?: string; phone?: string } = {}) =>
+  api.post<{ code: string; discountType: string; discountValue: number; discountAmount: number; affiliate?: boolean }>('/api/v1/orders/validate-discount', { code, subtotal, ...buyer }).then((r) => r.data);
 
 /* ------------------------------------------------------------------ Finance */
 

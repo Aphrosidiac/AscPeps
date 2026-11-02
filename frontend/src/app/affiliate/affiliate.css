@@ -1,0 +1,232 @@
+/*
+ * Ascend Affiliate — the ASC staff UI ("Dashboard V15", ASC/docs/staff-ui.md)
+ * taken whole: lavender canvas with soft glows, white 28px panels, ink pills,
+ * pastel cards, Outfit, a sun/moon switch. Scoped to .aff so the store never
+ * sees these tokens. Whole-pixel type; smoothing only on Retina (Fakhrul reads
+ * on a 1x screen). Motion is feedback only — no entrances.
+ */
+.aff {
+  --st-canvas: #ebe9fb;
+  --st-panel: #ffffff;
+  --st-field: #f3f1f8;
+  --st-fg: #1b1a20;
+  --st-fg-2: #55535d;
+  --st-fg-3: #666470;
+  --st-hair: #ebe9f1;
+  --st-solid: #17151c;
+  --st-solid-hover: #2d2a33;
+  --st-on-solid: #ffffff;
+  --st-lilac: #d3cef8;
+  --st-sky: #d2e1fa;
+  --st-mint: #ddf1d5;
+  --st-blush: #f8dce7;
+  --st-butter: #f6ecc8;
+  --st-s-purple: #7a71c6;
+  --st-ok: #23774b;
+  --st-ok-soft: #dff2e4;
+  --st-warn: #8a5d00;
+  --st-warn-soft: #f9eccb;
+  --st-bad: #b8304b;
+  --st-bad-soft: #fbe2e8;
+  --st-info: #305f9e;
+  --st-info-soft: #e0eafa;
+  --st-violet: #5a4bbd;
+  --st-violet-soft: #e9e6fc;
+  --st-shadow: 0 1px 2px rgb(40 30 90 / 0.04), 0 12px 32px -16px rgb(60 50 130 / 0.14);
+  --st-shadow-lift: 0 2px 4px rgb(40 30 90 / 0.05), 0 22px 44px -18px rgb(60 50 130 / 0.24);
+  --st-shadow-pop: 0 4px 10px rgb(40 30 90 / 0.06), 0 28px 60px -20px rgb(40 30 90 / 0.3);
+  --st-glow-a: #d8e0fd;
+  --st-glow-b: #f9e0ed;
+  --st-glow-c: #e3dffb;
+  --st-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  color-scheme: light;
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  background: var(--st-canvas);
+  color: var(--st-fg);
+  font-family: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+.aff::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 55% at 92% 0%, var(--st-glow-a) 0%, transparent 70%),
+    radial-gradient(55% 60% at 0% 100%, var(--st-glow-b) 0%, transparent 70%),
+    radial-gradient(70% 70% at 45% 40%, var(--st-glow-c) 0%, transparent 75%),
+    var(--st-canvas);
+}
+.aff[data-theme="dark"] {
+  --st-canvas: #0e0d13;
+  --st-panel: #24232d;
+  --st-field: #31303b;
+  --st-fg: #f1f0f6;
+  --st-fg-2: #b6b4bf;
+  --st-fg-3: #a3a1ad;
+  --st-hair: #393845;
+  --st-solid: #f1f0f6;
+  --st-solid-hover: #ffffff;
+  --st-on-solid: #15141b;
+  --st-lilac: #343060;
+  --st-sky: #233353;
+  --st-mint: #243b2c;
+  --st-blush: #3a2231;
+  --st-butter: #39301b;
+  --st-s-purple: #a49df0;
+  --st-ok: #7dd3a0;
+  --st-ok-soft: #173826;
+  --st-warn: #e7bf62;
+  --st-warn-soft: #3a2f13;
+  --st-bad: #f392a6;
+  --st-bad-soft: #421c27;
+  --st-info: #93b9f0;
+  --st-info-soft: #1a2b47;
+  --st-violet: #b3a9f6;
+  --st-violet-soft: #2a2552;
+  --st-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07), 0 18px 44px -18px rgb(0 0 0 / 0.75);
+  --st-shadow-lift: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 26px 52px -20px rgb(0 0 0 / 0.8);
+  --st-shadow-pop: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 30px 60px -20px rgb(0 0 0 / 0.85);
+  --st-glow-a: #1a1d3a;
+  --st-glow-b: #251422;
+  --st-glow-c: #151320;
+  color-scheme: dark;
+}
+@media (min-resolution: 2dppx) {
+  .aff { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+}
+.aff ::selection { background: var(--st-lilac); color: var(--st-fg); }
+.aff :focus-visible { outline: 2px solid var(--st-s-purple); outline-offset: 2px; border-radius: 9999px; }
+.aff :is(input, textarea, select):focus-visible { outline: none; }
+.aff .tnum { font-variant-numeric: tabular-nums; }
+
+/* ── Surfaces ── */
+.aff .panel { border-radius: 28px; background: var(--st-panel); box-shadow: var(--st-shadow); }
+.aff .pop { border-radius: 22px; background: var(--st-panel); box-shadow: var(--st-shadow-pop); }
+.aff .tint { border-radius: 22px; padding: 20px; }
+.aff .tint-lilac { background: var(--st-lilac); }
+.aff .tint-sky { background: var(--st-sky); }
+.aff .tint-mint { background: var(--st-mint); }
+.aff .tint-blush { background: var(--st-blush); }
+.aff .tint-butter { background: var(--st-butter); }
+.aff .chip-ink {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: var(--st-solid); color: var(--st-on-solid); border-radius: 12px;
+}
+.aff .btn-ring {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  height: 44px; width: 44px; border-radius: 9999px; color: var(--st-fg);
+  box-shadow: inset 0 0 0 1px var(--st-hair); background: var(--st-panel);
+  transition: background-color 120ms var(--st-ease), transform 120ms var(--st-ease);
+  cursor: pointer;
+}
+.aff .btn-ring:hover { background: var(--st-field); }
+
+/* ── Type ── */
+.aff .st-title { font-size: 44px; line-height: 52px; font-weight: 500; letter-spacing: -0.02em; }
+.aff .st-h { font-size: 20px; line-height: 26px; font-weight: 500; letter-spacing: -0.01em; }
+.aff .st-sub { font-size: 13px; line-height: 18px; color: var(--st-fg-3); }
+.aff .st-label { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--st-fg-3); }
+.aff .st-big { font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.aff .st-fig { font-size: 24px; line-height: 30px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.aff .fg { color: var(--st-fg); }
+.aff .fg-2 { color: var(--st-fg-2); }
+.aff .fg-3 { color: var(--st-fg-3); }
+@media (max-width: 639px) {
+  .aff .st-title { font-size: 32px; line-height: 40px; }
+  .aff .st-big { font-size: 32px; line-height: 38px; }
+}
+
+/* ── Controls ── */
+.aff .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 22px; border-radius: 9999px; font-size: 14px; font-weight: 500;
+  white-space: nowrap; cursor: pointer;
+  transition: background-color 120ms var(--st-ease), color 120ms var(--st-ease), transform 120ms var(--st-ease);
+}
+.aff .btn:active:not(:disabled) { transform: scale(0.97); }
+.aff .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.aff .btn-ink { background: var(--st-solid); color: var(--st-on-solid); }
+.aff .btn-ink:hover:not(:disabled) { background: var(--st-solid-hover); }
+.aff .btn-soft { background: var(--st-field); color: var(--st-fg); }
+.aff .btn-soft:hover:not(:disabled) { background: var(--st-hair); }
+.aff .btn-ghost { background: transparent; color: var(--st-fg-2); }
+.aff .btn-ghost:hover:not(:disabled) { background: var(--st-field); color: var(--st-fg); }
+.aff .btn-sm { height: 36px; padding: 0 16px; font-size: 13px; }
+
+.aff .input {
+  width: 100%; height: 48px; padding: 0 18px; border-radius: 9999px;
+  background: var(--st-field); color: var(--st-fg); font-size: 15px;
+  border: 0; box-shadow: inset 0 0 0 1px transparent;
+  transition: box-shadow 120ms var(--st-ease), background-color 120ms var(--st-ease);
+}
+.aff textarea.input { height: auto; min-height: 96px; padding: 14px 18px; border-radius: 22px; resize: vertical; }
+.aff .input::placeholder { color: var(--st-fg-3); }
+.aff .input:focus { background: var(--st-panel); box-shadow: inset 0 0 0 1px var(--st-s-purple), 0 0 0 4px var(--st-violet-soft); }
+.aff .input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--st-bad); }
+.aff .input:disabled { opacity: 0.6; cursor: not-allowed; }
+.aff .field-label { display: block; margin: 0 0 8px 6px; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--st-fg-2); }
+.aff .field-help { margin: 6px 0 0 6px; font-size: 12px; line-height: 16px; color: var(--st-fg-3); }
+.aff .field-error { margin: 6px 0 0 6px; font-size: 12px; line-height: 16px; color: var(--st-bad); }
+
+/* ── Pills ── */
+.aff .pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px;
+  font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap;
+}
+.aff .pill::before { content: ""; width: 6px; height: 6px; border-radius: 9999px; background: currentColor; opacity: 0.8; }
+.aff .pill-neutral { background: var(--st-field); color: var(--st-fg-2); }
+.aff .pill-ok { background: var(--st-ok-soft); color: var(--st-ok); }
+.aff .pill-warn { background: var(--st-warn-soft); color: var(--st-warn); }
+.aff .pill-bad { background: var(--st-bad-soft); color: var(--st-bad); }
+.aff .pill-info { background: var(--st-info-soft); color: var(--st-info); }
+.aff .pill-violet { background: var(--st-violet-soft); color: var(--st-violet); }
+
+/* ── Tabs: a white pill of links with one ink pill travelling to the current one ── */
+.aff .tabs { position: relative; display: flex; gap: 2px; width: max-content; }
+.aff .tabs-wrap {
+  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  border-radius: 9999px; background: var(--st-panel); padding: 6px; box-shadow: var(--st-shadow);
+}
+.aff .tabs-wrap::-webkit-scrollbar { display: none; }
+.aff .tab {
+  position: relative; z-index: 1; display: flex; align-items: center; height: 44px; padding: 0 24px;
+  border-radius: 9999px; font-size: 14px; font-weight: 500; color: var(--st-fg-3);
+  transition: color 200ms var(--st-ease);
+}
+.aff .tab:hover { color: var(--st-fg); }
+.aff .tab[aria-current="page"] { color: var(--st-on-solid); }
+.aff .tab[aria-current="page"][data-unmeasured] { background: var(--st-solid); }
+.aff .tab-ink {
+  position: absolute; left: 0; top: 0; z-index: 0; border-radius: 9999px; background: var(--st-solid);
+  transition: transform 320ms cubic-bezier(0.34, 1.36, 0.64, 1), width 320ms cubic-bezier(0.34, 1.36, 0.64, 1);
+}
+
+/* ── Table ── */
+.aff .tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.aff .tbl th { text-align: left; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--st-fg-3); padding: 0 12px 10px; }
+.aff .tbl td { padding: 14px 12px; border-top: 1px solid var(--st-hair); vertical-align: middle; }
+.aff .tbl tr:first-child td { border-top: 0; }
+.aff .tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── Dialog ── */
+.aff .scrim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgb(14 13 19 / 0.36); }
+@media (min-width: 640px) { .aff .scrim { align-items: center; padding: 16px; } }
+.aff .sheet { width: 100%; max-width: 440px; border-radius: 28px 28px 0 0; background: var(--st-panel); box-shadow: var(--st-shadow-pop); padding: 24px; }
+@media (min-width: 640px) { .aff .sheet { border-radius: 28px; padding: 28px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aff .tab-ink, .aff .btn, .aff .btn-ring { transition: none; }
+  .aff .btn:active:not(:disabled) { transform: none; }
+}
+
+/* The store's pill mark on the ink square: white on ink, ink on the light square in dark mode. */
+.aff .aff-logo { filter: invert(1); }
+.aff[data-theme="dark"] .aff-logo { filter: none; }

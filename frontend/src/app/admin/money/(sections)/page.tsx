@@ -258,6 +258,7 @@ export default function MoneyOverviewPage() {
             <Line label="Goods" value={`−${rm(p.cogs)}`} muted />
             <Line label="Courier, packaging & other order costs" value={`−${rm(p.extraCosts)}`} muted />
             <Line label="Payment gateway fees" value={`−${rm(p.gatewayFees)}`} muted />
+            {p.affiliateCommissions ? <Line label="Affiliate commission" value={`−${rm(p.affiliateCommissions)}`} muted /> : null}
             <Line label="Profit from orders" value={signedPrice(p.grossOrderProfit)} strong divider />
             <Line label="Running costs" value={`−${rm(p.operatingSpend)}`} muted />
             <Line label="Net profit" value={signedPrice(p.netProfit)} strong divider tone={p.netProfit < 0 ? 'bad' : p.netProfit > 0 ? 'good' : undefined} />

@@ -21,6 +21,7 @@ import { rememberPendingPayment } from '@/lib/pending-payment';
 import { forgetGroupBuyCheckout } from '@/lib/group-buy';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
 import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
+import { useRefCode } from '@/lib/ref-code';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
 
@@ -159,6 +160,7 @@ export default function CheckoutPage() {
   // a pre-ticked box is not an opt-in.
   const [subscribe, setSubscribe] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
+  const refCode = useRefCode();
   const [discountLoading, setDiscountLoading] = useState(false);
   const [discountError, setDiscountError] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<{
@@ -230,12 +232,15 @@ export default function CheckoutPage() {
     return data?.message || data?.error;
   };
 
-  const handleApplyDiscount = async () => {
-    if (!discountCode.trim()) return;
+  const handleApplyDiscount = async (code = discountCode) => {
+    if (!code.trim()) return;
     setDiscountLoading(true);
     setDiscountError('');
     try {
-      const result = await validateDiscount(discountCode.trim(), total);
+      const result = await validateDiscount(code.trim(), total, {
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+      });
       setAppliedDiscount(result);
       setDiscountCode('');
       posthog.capture('discount_applied', {
@@ -742,13 +747,22 @@ export default function CheckoutPage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={handleApplyDiscount}
+                      onClick={() => handleApplyDiscount()}
                       disabled={discountLoading || !discountCode.trim()}
                     >
                       {discountLoading ? '...' : 'Apply'}
                     </Button>
                   </div>
                   {discountError && <p className="text-xs text-danger mt-1.5">{discountError}</p>}
+                  {/* The code from an affiliate's share link (lib/ref-code.ts): offered, never applied unasked. */}
+                  {refCode && !discountCode.trim() && !discountError ? (
+                    <p className="text-xs text-text-secondary mt-1.5">
+                      Code <span className="font-medium text-text-primary">{refCode}</span> from your link.{' '}
+                      <button type="button" className="font-medium text-primary underline underline-offset-2 cursor-pointer" disabled={discountLoading} onClick={() => handleApplyDiscount(refCode)}>
+                        Apply it
+                      </button>
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>
