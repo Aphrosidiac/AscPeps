@@ -979,6 +979,10 @@ const COVERED_ELSEWHERE: Record<string, string> = {
   // trust rule, provenance, undo, prompt rendering) is what has to be right;
   // calling the tool in isolation would only prove it forwards its arguments.
   memory: 'test-agent-memory.ts',
+  // scripts/test-affiliate.ts — commission and payouts only mean something
+  // across checkout -> paid -> payout -> refund, through the real paths.
+  set_affiliate: 'test-affiliate.ts',
+  mark_affiliate_payout_paid: 'test-affiliate.ts',
 };
 
 const writeTools = ALL_TOOLS.filter((t) => t.write).map((t) => t.name);

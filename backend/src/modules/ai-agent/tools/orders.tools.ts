@@ -365,7 +365,7 @@ export const orderTools: AgentTool[] = [
       if (input.discountCode) {
         try {
           // Read-only check — reserving the code happens inside createOrder.
-          const { discountAmount: amt } = await validateDiscountCode(fastify, input.discountCode, subtotal);
+          const { discountAmount: amt } = await validateDiscountCode(fastify, input.discountCode, subtotal, { email: input.email, phone: input.phone });
           discountAmount = amt;
         } catch (err: any) {
           discountNote = ` (discount ${input.discountCode} will be REJECTED: ${err?.message ?? 'invalid'})`;

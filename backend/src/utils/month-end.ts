@@ -10,6 +10,7 @@ import { getShareOut } from '../modules/admin/admin-money.controller.js';
 import { bankFlows, loadBank } from './bank.js';
 import { ensureDefaultSplits } from './split-rules.js';
 import { malaysiaDay, readHour, readSetting, writeSetting, SETTING_KEYS } from '../modules/ai-agent/schedule.js';
+import { syncAffiliateOrders } from './affiliate.js';
 
 /**
  * The month-end wrap: one WhatsApp message on the 1st covering the month that
@@ -74,7 +75,9 @@ export interface MonthEndReport {
   itemCost: number;
   extraCost: number;
   gatewayFees: number;
-  /** costed revenue − item, extra and gateway costs. Uncosted orders are in none of it. */
+  /** Affiliate commission on the costed orders, net of reversals. */
+  affiliateCommissions: number;
+  /** costed revenue − item, extra, gateway and affiliate costs. Uncosted orders are in none of it. */
   grossProfit: number;
   operatingSpend: number;
   inventoryBought: number;
@@ -116,6 +119,7 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
   // The default split goes on paid orders first, so the month's orders read
   // below carry it — the same sweep loadFinanceInput runs.
   await ensureDefaultSplits(prisma);
+  await syncAffiliateOrders(prisma);
 
   const [orders, expenses, openOrders, variants, financeInput, previousRevenue, bank, share] = await Promise.all([
     prisma.order.findMany({
@@ -126,6 +130,7 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
         status: true,
         paymentStatus: true,
         gatewayFee: true,
+        affiliateCommission: true,
         refundedAmount: true,
         stockRestored: true,
         createdAt: true,
@@ -175,6 +180,7 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
   let itemCost = 0;
   let extraCost = 0;
   let gatewayFees = 0;
+  let affiliateCommissions = 0;
   let grossProfit = 0;
   let unsplitProfit = 0;
   let unitsSold = 0;
@@ -219,6 +225,7 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
     itemCost += c.itemCost;
     extraCost += c.extraCost;
     gatewayFees += c.gatewayFee;
+    affiliateCommissions += c.affiliateCommission;
     grossProfit += c.profit;
 
     const shares = o.profitShares.filter((s) => s.partnerId);
@@ -266,6 +273,7 @@ export async function computeMonthEnd(fastify: FastifyInstance, month: MonthKey,
     itemCost,
     extraCost,
     gatewayFees,
+    affiliateCommissions,
     grossProfit,
     operatingSpend,
     inventoryBought,
@@ -351,7 +359,7 @@ export function monthEndText(r: MonthEndReport): string {
   out.push(`${r.stock.unitsOnHand} units on hand`);
 
   out.push('', `*Profit*${r.uncosted.length ? ` (${r.costedOrders} of ${r.orders.paid} orders costed)` : ''}`);
-  const costs = r.itemCost + r.extraCost + r.gatewayFees;
+  const costs = r.itemCost + r.extraCost + r.gatewayFees + r.affiliateCommissions;
   if (r.costedOrders) out.push(`Costs ${rm(costs)} → gross profit *${rm(r.grossProfit)}*`);
   else if (r.orders.paid) out.push('No paid order is costed yet, so there is no profit figure.');
   if (r.operatingSpend) out.push(`Company spending ${rm(r.operatingSpend)} → net *${rm(r.netProfit)}*`);

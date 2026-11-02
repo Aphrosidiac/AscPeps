@@ -294,28 +294,39 @@ model Order {
   // The share-out that paid this order's profit to its people. A legacy run
   // ("shared by hand") carries no payouts — the money moved outside the system.
   payoutRunId           String?
+  // Bought with an affiliate's code (docs/affiliate.md). The rate is copied
+  // from the affiliate at checkout so a later rate change never moves an order
+  // already placed. `affiliateCommission` is the order's net commission (what
+  // its affiliate_entries sum to), kept here so every profit read can count it
+  // as a cost without a join — utils/affiliate.ts is the only writer.
+  affiliateId           String?
+  affiliateRateBps      Int?
+  affiliateCommission   Int           @default(0)
   // Soft-delete only — admin "Delete" never removes the row, it just moves
   // the order into a separate Deleted view (set) / back out of it (null).
   deletedAt             DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  items           OrderItem[]
-  delivery        DeliveryBooking?
-  discountCode    DiscountCode?      @relation(fields: [discountCodeId], references: [id])
-  emails          EmailOutbox[]
-  profitShares    OrderProfitShare[]
-  extraCosts      OrderExtraCost[]
-  reminders       AgentReminder[]
-  documents       DocumentLink[]
-  payoutRun       PayoutRun?         @relation(fields: [payoutRunId], references: [id], onDelete: SetNull)
-  paymentAttempts PaymentAttempt[]
-  paymentEvents   PaymentEvent[]
-  groupBuy        GroupBuy?          @relation(fields: [groupBuyId], references: [id], onDelete: SetNull)
-  groupBuyNotices GroupBuyNotice[]
+  items            OrderItem[]
+  delivery         DeliveryBooking?
+  discountCode     DiscountCode?      @relation(fields: [discountCodeId], references: [id])
+  emails           EmailOutbox[]
+  profitShares     OrderProfitShare[]
+  extraCosts       OrderExtraCost[]
+  reminders        AgentReminder[]
+  documents        DocumentLink[]
+  payoutRun        PayoutRun?         @relation(fields: [payoutRunId], references: [id], onDelete: SetNull)
+  paymentAttempts  PaymentAttempt[]
+  paymentEvents    PaymentEvent[]
+  groupBuy         GroupBuy?          @relation(fields: [groupBuyId], references: [id], onDelete: SetNull)
+  groupBuyNotices  GroupBuyNotice[]
+  affiliate        Affiliate?         @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  affiliateEntries AffiliateEntry[]
 
   @@index([phone])
   @@index([groupBuyId])
+  @@index([affiliateId])
   @@index([payoutRunId])
   @@index([status])
   @@index([orderNumber])
@@ -606,6 +617,10 @@ model DiscountCode {
   // an admin deleting a subscriber can't orphan a code that a real order may
   // already reference (the relation is optional in both directions).
   subscriber     Subscriber?
+  // An affiliate's own code (one each), and the one-time sign-up bonus a new
+  // store account gets (bound to that account's email, single use).
+  affiliate      Affiliate?
+  signupBonusFor Member?
 
   @@map("discount_codes")
 }
@@ -743,7 +758,7 @@ model Member {
   resetTokenExpiresAt DateTime?
   // Member tokens issued before this are refused (see authenticateMember), so
   // a password change or reset signs out every other device.
-  passwordChangedAt DateTime?
+  passwordChangedAt   DateTime?
 
   // Moderation of last resort. Banned members keep their rows (so their past
   // comments stay attributable) but can neither sign in nor post.
@@ -754,6 +769,12 @@ model Member {
 
   comments        InsightComment[]
   groupBuySignups GroupBuySignup[]
+  affiliate       Affiliate?
+
+  // The one-time sign-up bonus code minted for this account (when the
+  // sign-up bonus is switched on). Single use, bound to the account's email.
+  signupBonusCodeId String?       @unique
+  signupBonusCode   DiscountCode? @relation(fields: [signupBonusCodeId], references: [id], onDelete: SetNull)
 
   @@index([verifyTokenHash])
   @@index([emailChangeTokenHash])
@@ -1048,6 +1069,128 @@ model BankEntry {
 
   @@index([occurredAt])
   @@map("bank_entries")
+}
+
+// ── Ascend Affiliate (docs/affiliate.md) ─────────────────────────────────────
+// A store account that shares a code: the customer gets a discount, the
+// affiliate earns a commission on the goods once the order is paid. Their
+// balance is the sum of their affiliate_entries — never stored — so a refund
+// after a payout simply leaves it negative until new commission covers it.
+// A paid payout is money out of Ascend's bank: utils/bank.ts reads it from
+// affiliate_payouts like it reads profit payouts, so it is never copied.
+
+enum AffiliateStatus {
+  APPLIED
+  ACTIVE
+  PAUSED
+  REJECTED
+}
+
+model Affiliate {
+  id             String          @id @default(cuid())
+  memberId       String          @unique
+  member         Member          @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  status         AffiliateStatus @default(APPLIED)
+  // Commission on the goods after discount, in basis points (500 = 5%).
+  rateBps        Int
+  // Their code. Lives in discount_codes so checkout validates it like any
+  // other; inactive until the affiliate is approved.
+  discountCodeId String          @unique
+  discountCode   DiscountCode    @relation(fields: [discountCodeId], references: [id], onDelete: Restrict)
+
+  fullName          String
+  phone             String
+  // Where they plan to share (an Instagram/TikTok link, a group, a clinic…).
+  channel           String?
+  // Payout destination. Copied onto each payout request when it is made.
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  // Ours: why paused/rejected, anything the team wants to remember.
+  adminNote         String?
+
+  approvedAt DateTime?
+  approvedBy String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  orders  Order[]
+  entries AffiliateEntry[]
+  payouts AffiliatePayout[]
+
+  @@index([status])
+  @@map("affiliates")
+}
+
+enum AffiliateEntryKind {
+  // Earned on a paid order.
+  COMMISSION
+  // Taken back: the order was refunded (in part or whole), cancelled, deleted
+  // or marked as a test after commission was counted.
+  REVERSAL
+  // Money paid to the affiliate (negative).
+  PAYOUT
+  // A hand correction by the team, either sign.
+  ADJUSTMENT
+}
+
+model AffiliateEntry {
+  id          String             @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate          @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  kind        AffiliateEntryKind
+  // Signed cents: commission positive, reversal and payout negative.
+  amount      Int
+  orderId     String?
+  order       Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payoutId    String?
+  payout      AffiliatePayout?   @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  note        String?
+  createdBy   String?
+  createdAt   DateTime           @default(now())
+
+  @@index([affiliateId, createdAt])
+  @@index([orderId])
+  @@map("affiliate_entries")
+}
+
+enum AffiliatePayoutStatus {
+  // Asked for; can be paid once availableAt has passed (the hold that lets
+  // refunds land first).
+  REQUESTED
+  PAID
+  CANCELLED
+}
+
+model AffiliatePayout {
+  id                String                @id @default(cuid())
+  affiliateId       String
+  affiliate         Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  status            AffiliatePayoutStatus @default(REQUESTED)
+  // What was asked for (the available balance at the time).
+  amount            Int
+  // What was actually paid: the smaller of `amount` and the balance when the
+  // team paid, so a refund inside the hold is not paid out.
+  paidAmount        Int?
+  availableAt       DateTime
+  // Bank details as they were when requested.
+  bankName          String
+  bankAccountName   String
+  bankAccountNumber String
+
+  paidAt       DateTime?
+  paidBy       String?
+  reference    String?
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  entries AffiliateEntry[]
+
+  @@index([affiliateId, status])
+  @@index([status])
+  @@map("affiliate_payouts")
 }
 
 // "The statement said RM X." The book balance at that moment is stored with

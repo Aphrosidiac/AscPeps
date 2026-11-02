@@ -247,13 +247,15 @@ const bankInput = {
   ],
   payouts: [{ id: 'po1', partnerName: 'Fakhrul', amount: 10_000, occurredAt: new Date('2026-10-24T01:00:00Z'), note: null, runId: 'r1' }],
   repayments: [],
+  affiliatePayouts: [{ id: 'ap1', affiliateId: 'a1', affiliateName: 'Aff Test', code: 'AFF5', amount: 2_500, paidAt: new Date('2026-10-25T01:00:00Z') }],
   checks: [],
 };
 
 check('the bank: opening + net sales + capital − stock − refunds − payouts − charges', () => {
   const b = computeBank(bankInput);
-  // 1000 + 719 + 320 − 320 (refund) + 200 − 300 − 5 − 100
-  eq(b.balance, 100_000 + 71_900 + 32_000 - 32_000 + 20_000 - 30_000 - 500 - 10_000);
+  // 1000 + 719 + 320 − 320 (refund) + 200 − 300 − 5 − 100 − 25 (an affiliate paid)
+  eq(b.balance, 100_000 + 71_900 + 32_000 - 32_000 + 20_000 - 30_000 - 500 - 10_000 - 2_500);
+  eq(b.movements.find((m) => m.key === 'AFFILIATE:ap1')?.amount, -2_500, 'affiliate payout:');
 });
 
 check('the bank leaves out what never touched it', () => {

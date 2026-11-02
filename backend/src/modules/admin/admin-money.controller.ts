@@ -21,6 +21,7 @@ import { costOrder, allocate } from '../../utils/profit.js';
 import { bankFlows, loadBank } from '../../utils/bank.js';
 import { loadSplitRules, ruleAt, sortShares } from '../../utils/split-rules.js';
 import { loadFinanceInput } from './admin-finance.controller.js';
+import { syncAffiliateOrders } from '../../utils/affiliate.js';
 
 const moneyCents = z.number().int().min(1).max(1_000_000_000);
 
@@ -66,11 +67,13 @@ const shareOutSchema = z.object({
 
 /** Everything an order needs to be judged for sharing, and its split worked out. */
 async function loadShareable(fastify: FastifyInstance, where: Record<string, unknown>) {
+  // Commission is a cost of the order: book any change before splitting it.
+  await syncAffiliateOrders(fastify.prisma);
   const orders = await fastify.prisma.order.findMany({
     where: { deletedAt: null, paymentStatus: { in: ['PAID', 'REFUNDED'] }, ...where },
     select: {
       id: true, orderNumber: true, customerName: true, status: true, paymentStatus: true, paidAt: true, createdAt: true,
-      total: true, gatewayFee: true, refundedAmount: true, stockRestored: true, profitShared: true, payoutRunId: true,
+      total: true, gatewayFee: true, affiliateCommission: true, refundedAmount: true, stockRestored: true, profitShared: true, payoutRunId: true,
       items: { select: { quantity: true, unitCost: true, unitPrice: true } },
       extraCosts: { select: { amount: true } },
       profitShares: { select: { partnerId: true, name: true, shareBps: true, partner: { select: { name: true, kind: true } } } },
@@ -481,6 +484,7 @@ export async function getMoneyOverview(fastify: FastifyInstance, query: unknown)
       cogs: period.cogs,
       extraCosts: period.extraCosts,
       gatewayFees: period.gatewayFees,
+      affiliateCommissions: period.affiliateCommissions,
       grossOrderProfit: period.grossOrderProfit,
       operatingSpend: period.operatingSpend,
       inventoryPurchased: period.inventoryPurchased,

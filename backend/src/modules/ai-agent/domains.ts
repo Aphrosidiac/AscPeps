@@ -31,6 +31,7 @@ export const DOMAINS = [
   'documents',
   'shadow',
   'web',
+  'affiliates',
 ] as const;
 
 export type Domain = (typeof DOMAINS)[number];
@@ -118,6 +119,8 @@ const KEYWORDS: Record<Domain, string[]> = {
     'split', 'pecahan', 'repay', 'bayar balik', 'loan', 'pinjam',
   ],
   promos: ['discount', 'diskaun', 'promo', 'coupon', 'voucher', 'code', 'kod', 'percent'],
+  // Ascend Affiliate (docs/affiliate.md): people who share a code for commission.
+  affiliates: ['affiliate', 'afiliat', 'commission', 'komisen', 'referral', 'referrer', 'ejen', 'agent code'],
   content: ['insight', 'article', 'artikel', 'blog', 'post', 'content', 'kandungan', 'write up', 'copy'],
   ops: [
     'setting', 'tetapan', 'config', 'email', 'emel', 'outbox', 'operator',
@@ -191,6 +194,15 @@ interface Playbook {
 }
 
 const PLAYBOOKS: Record<string, Playbook> = {
+  affiliates: {
+    title: 'Ascend Affiliate',
+    body: `1. An affiliate is a store account that shares a code. The customer gets a few percent off; the affiliate earns a commission on the goods (after the discount, not shipping) once the order is PAID. The rate is fixed on the order at checkout.
+2. Commission follows the order by itself: a refund, cancel, delete or test-mark takes it back (a REVERSAL), even after it was paid out — then the balance goes negative and new commission pays it off first. Never "fix" a balance by hand unless the operator asks for an adjustment.
+3. Commission is a cost of the order: profit, the split and the month-end are already net of it. Don't subtract it again.
+4. A payout is asked for by the affiliate on their site and can be paid only after the hold (3 days by default). The team transfers the money from Ascend's bank themselves, then you record it with mark_affiliate_payout_paid — never before the transfer is done.
+5. New applications wait as APPLIED; their code does nothing until approved (set_affiliate status ACTIVE).
+6. An affiliate never sees who bought: never send them customer names, phones or addresses.`,
+  },
   browsing: {
     title: 'Using the web browser',
     body: `You have a real web browser (the browser_* tools), for anything outside the shop — from every chat, WhatsApp included. On the dashboard the operator can watch it live in the Browser panel and take control of it; on WhatsApp every screenshot you take is sent into the chat. When the operator asks to browse something or for a screenshot, just do it: never say the browser is dashboard-only, asleep or only for certain tasks. "Screenshot your browser" with nothing given means what is open now — if that is a blank page, say nothing is open and ask what to open, or open what the conversation was about.
@@ -278,6 +290,7 @@ const DOMAIN_PLAYBOOKS: Record<Domain, string[]> = {
   // variant, and the model needs to know a product is not the sellable thing.
   shadow: ['products'],
   web: ['browsing'],
+  affiliates: ['affiliates'],
 };
 
 // ------------------------------------------------------------------- routing
@@ -354,5 +367,6 @@ const DOMAIN_BLURB: Record<Domain, string> = {
   reminders: 'reminders for the operators',
   documents: 'the document store — receipts, invoices, bank slips, statements, and what they are filed against',
   shadow: 'shadow SKUs — the generalised names products are listed under on internal paperwork, and which SKUs still have none',
+  affiliates: "Ascend Affiliate — people who share a discount code for commission: applications to approve, their sales and balances, payouts waiting to be transferred",
   web: 'a real web browser — anything OUTSIDE the shop: other websites, search engines, competitor and marketplace prices, news, studies, courier and supplier sites; open, search, read, click, type, screenshot (from any chat — on WhatsApp the screenshot is sent into the chat). NOT for Ascend\'s own store: "the website" / "the site" means the shop, and its prices, stock and orders come from the shop tools you already have',
 };

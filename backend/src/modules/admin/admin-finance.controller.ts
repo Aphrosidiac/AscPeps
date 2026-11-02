@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { computeFinance, type FinanceOrder } from '../../utils/finance.js';
 import { ensureDefaultSplits } from '../../utils/split-rules.js';
+import { syncAffiliateOrders } from '../../utils/affiliate.js';
 
 // Cents. Capped well above any plausible figure so a mistyped amount can't
 // overflow the INTEGER column.
@@ -69,6 +70,7 @@ export async function loadFinanceInput(fastify: FastifyInstance) {
   // A paid order with no split yet gets the default before anything sums it,
   // or its profit would be in nobody's balance. See utils/split-rules.ts.
   await ensureDefaultSplits(fastify.prisma);
+  await syncAffiliateOrders(fastify.prisma);
 
   const [partners, orders, expenses, funding, payouts] = await Promise.all([
     fastify.prisma.partner.findMany(),
@@ -86,6 +88,7 @@ export async function loadFinanceInput(fastify: FastifyInstance) {
         id: true,
         total: true,
         gatewayFee: true,
+        affiliateCommission: true,
         refundedAmount: true,
         stockRestored: true,
         items: { select: { quantity: true, unitCost: true, unitPrice: true } },
@@ -266,7 +269,7 @@ export async function getPartnerDetail(fastify: FastifyInstance, id: string) {
         order: {
           select: {
             id: true, orderNumber: true, createdAt: true, total: true, deletedAt: true, paymentStatus: true,
-            gatewayFee: true, refundedAmount: true, stockRestored: true,
+            gatewayFee: true, affiliateCommission: true, refundedAmount: true, stockRestored: true,
             items: { select: { quantity: true, unitCost: true, unitPrice: true } },
             extraCosts: { select: { amount: true } },
             profitShares: { select: { partnerId: true, shareBps: true, capitalAmount: true, capitalFundingId: true } },

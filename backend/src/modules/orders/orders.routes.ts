@@ -18,6 +18,8 @@ const validateDiscountSchema = z.object({
   groupBuyId: z.string().optional(),
   // Sign-up reward codes are tied to one address; without it the check says so.
   email: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
+  // An affiliate's code is refused on their own order, matched by phone too.
+  phone: z.preprocess((v) => (v === '' ? undefined : v), z.string().max(40).optional()),
 });
 
 export default async function orderRoutes(fastify: FastifyInstance) {
@@ -65,13 +67,15 @@ export default async function orderRoutes(fastify: FastifyInstance) {
     '/validate-discount',
     { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } },
     async (request) => {
-      const { code, subtotal, groupBuyId, email } = validateDiscountSchema.parse(request.body);
-      const { discount, discountAmount } = await validateDiscountCode(fastify, code, subtotal, { groupBuyId, email });
+      const { code, subtotal, groupBuyId, email, phone } = validateDiscountSchema.parse(request.body);
+      const { discount, discountAmount, affiliate } = await validateDiscountCode(fastify, code, subtotal, { groupBuyId, email, phone });
       return {
         code: discount.code,
         discountType: discount.discountType,
         discountValue: discount.discountValue,
         discountAmount,
+        // Lets checkout say "Code from an Ascend affiliate" without exposing who.
+        affiliate: affiliate != null,
       };
     }
   );

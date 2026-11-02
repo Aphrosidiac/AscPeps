@@ -24,6 +24,12 @@ const PUBLIC_KEYS = [
   // anyone read the offer without joining the list, and the code itself is
   // minted per-subscriber server-side anyway.
   'newsletter_popup_enabled', 'newsletter_popup_heading', 'newsletter_popup_body',
+  // Ascend Affiliate (utils/affiliate.ts): whether the programme and the
+  // sign-up bonus are on, and the two offers the store's popups state. The
+  // bonus code itself is minted per confirmed account, so stating it costs
+  // nothing.
+  'affiliate_enabled', 'affiliate_customer_discount_pct', 'affiliate_default_rate_bps',
+  'signup_bonus_enabled', 'signup_bonus_pct',
 ];
 
 export default async function publicSettingsRoutes(fastify: FastifyInstance) {

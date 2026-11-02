@@ -33,12 +33,14 @@ const someOrder = await fastify.prisma.order.findFirst({ where: { deletedAt: nul
 const someInsight = await fastify.prisma.insight.findFirst();
 const somePartner = await fastify.prisma.partner.findFirst();
 const someDocument = await fastify.prisma.document.findFirst();
+const someAffiliate = await fastify.prisma.affiliate.findFirst({ select: { discountCode: { select: { code: true } } } });
 
 const INPUTS: Record<string, any> = {
   get_product: someProduct ? { productIdOrSlug: someProduct.slug } : null,
   get_order: someOrder ? { orderRef: someOrder.orderNumber } : null,
   get_insight: someInsight ? { insightId: someInsight.id } : null,
   get_partner: somePartner ? { partnerRef: somePartner.name } : null,
+  get_affiliate: someAffiliate ? { affiliate: someAffiliate.discountCode.code } : null,
   search_products: { limit: 3 },
   list_orders: { limit: 3 },
   top_products: { limit: 3 },

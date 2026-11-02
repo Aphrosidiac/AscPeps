@@ -6,6 +6,7 @@ import { env } from '../../config/env.js';
 import { isEmailEnabled, sendEmail } from '../../utils/email.js';
 import { renderVerifyEmail } from '../../emails/verify-email.js';
 import { renderConfirmNewEmail, renderEmailChangedNotice, renderResetPasswordEmail } from '../../emails/account.js';
+import { getAffiliateSettings } from '../../utils/affiliate.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(200),
@@ -144,12 +145,53 @@ export async function login(fastify: FastifyInstance, body: unknown) {
 export async function getMe(fastify: FastifyInstance, memberId: string) {
   const member = await fastify.prisma.member.findUnique({
     where: { id: memberId },
-    select: publicFields,
+    select: { ...publicFields, signupBonusCode: { select: { code: true, discountValue: true, usedCount: true, isActive: true } } },
   });
   if (!member) {
     throw { statusCode: 404, message: 'Account not found' };
   }
-  return member;
+  const { signupBonusCode, ...rest } = member;
+  return {
+    ...rest,
+    // Shown on the account page until it is used.
+    signupBonus: signupBonusCode
+      ? { code: signupBonusCode.code, percent: signupBonusCode.discountValue, used: signupBonusCode.usedCount > 0 || !signupBonusCode.isActive }
+      : null,
+  };
+}
+
+/** A single-use code for this account's email, once per account. */
+export async function mintSignupBonus(fastify: FastifyInstance, memberId: string) {
+  const settings = await getAffiliateSettings(fastify.prisma);
+  if (!settings.signupBonusEnabled) return null;
+  const member = await fastify.prisma.member.findUnique({ where: { id: memberId }, select: { email: true, signupBonusCodeId: true, emailVerified: true } });
+  if (!member || member.signupBonusCodeId || !member.emailVerified) return null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = `WELCOME-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    try {
+      return await fastify.prisma.$transaction(async (tx) => {
+        const created = await tx.discountCode.create({
+          data: {
+            code,
+            description: `Sign-up bonus · ${member.email}`,
+            discountType: 'PERCENTAGE',
+            discountValue: settings.signupBonusPct,
+            maxUses: 1,
+            scope: 'STORE',
+            boundEmail: member.email,
+          },
+        });
+        // Conditional so two confirmations racing mint one code.
+        const { count } = await tx.member.updateMany({ where: { id: memberId, signupBonusCodeId: null }, data: { signupBonusCodeId: created.id } });
+        if (count === 0) throw new Error('already minted');
+        return created;
+      });
+    } catch (err) {
+      if ((err as Error).message === 'already minted') return null;
+      if ((err as { code?: string }).code !== 'P2002') throw err;
+    }
+  }
+  return null;
 }
 
 export async function verifyEmail(fastify: FastifyInstance, token: string) {
@@ -172,6 +214,9 @@ export async function verifyEmail(fastify: FastifyInstance, token: string) {
     // Token cleared so the link is strictly single-use.
     data: { emailVerified: true, verifyTokenHash: null, verifyTokenExpiresAt: null },
   });
+  // The one-time sign-up bonus, when it is on. Minted on confirmation rather
+  // than sign-up, so a made-up address never gets one.
+  await mintSignupBonus(fastify, member.id).catch((err) => fastify.log.warn({ err, memberId: member.id }, 'sign-up bonus not minted'));
 
   return { success: true };
 }

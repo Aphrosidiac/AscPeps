@@ -153,13 +153,15 @@ export interface FinanceSummary {
 
   /* The cost side, all measured over the SAME costed orders as costedRevenue,
      so grossOrderProfit === costedRevenue − cogs − extraCosts − gatewayFees
-     exactly. Mixing in figures from uncosted orders would break that identity
+     − affiliateCommissions exactly. Mixing in figures from uncosted orders would break that identity
      and leave a summary that doesn't add up. */
   cogs: number;
   extraCosts: number;
   gatewayFees: number;
+  /** Paid to affiliates on these orders, net of reversals (utils/affiliate.ts). */
+  affiliateCommissions: number;
 
-  /** costedRevenue − cogs − extraCosts − gatewayFees. Before company spending. */
+  /** costedRevenue − cogs − extraCosts − gatewayFees − affiliateCommissions. Before company spending. */
   grossOrderProfit: number;
 
   /** Spending consumed now. The only expense figure that reduces net profit. */
@@ -229,6 +231,7 @@ export function computeFinance(input: {
   let cogs = 0;
   let extraCosts = 0;
   let gatewayFees = 0;
+  let affiliateCommissions = 0;
   let costedOrders = 0;
   let uncostedOrders = 0;
 
@@ -247,6 +250,7 @@ export function computeFinance(input: {
     cogs += costing.itemCost;
     extraCosts += costing.extraCost;
     gatewayFees += costing.gatewayFee;
+    affiliateCommissions += costing.affiliateCommission;
 
     const profit = costing.profit;
 
@@ -350,7 +354,7 @@ export function computeFinance(input: {
   // Derived from its own components rather than accumulated separately, so the
   // summary can never report a gross profit that its own cost lines disagree
   // with.
-  const grossOrderProfit = costedRevenue - cogs - extraCosts - gatewayFees;
+  const grossOrderProfit = costedRevenue - cogs - extraCosts - gatewayFees - affiliateCommissions;
 
   return {
     revenue,
@@ -360,6 +364,7 @@ export function computeFinance(input: {
     cogs,
     extraCosts,
     gatewayFees,
+    affiliateCommissions,
     grossOrderProfit,
     operatingSpend,
     inventoryPurchased,

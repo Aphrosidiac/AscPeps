@@ -303,10 +303,14 @@ export async function createOrder(
 
     let discountAmount = 0;
     let discountCodeId: string | undefined;
+    // Set when the code is an affiliate's: the order remembers them and the
+    // rate they earn at, so a later rate change never moves it.
+    let affiliate: { affiliateId: string; rateBps: number } | null = null;
     if (data.discountCode) {
-      const result = await validateDiscountCode(fastify, data.discountCode, subtotal, { groupBuyId: data.groupBuyId, email: data.email });
+      const result = await validateDiscountCode(fastify, data.discountCode, subtotal, { groupBuyId: data.groupBuyId, email: data.email, phone: data.phone });
       discountAmount = result.discountAmount;
       discountCodeId = result.discount.id;
+      affiliate = result.affiliate;
       // Atomically reserve one use so concurrent orders can't push a capped code
       // past maxUses (the read-based check above is racy on its own).
       if (result.discount.maxUses != null) {
@@ -356,6 +360,8 @@ export async function createOrder(
         paymentMethod: isManualPay ? 'WHATSAPP' : (data.paymentMethod as 'WHATSAPP' | 'BILLPLZ' | 'CRYPTO'),
         paymentGateway: isManualPay ? MANUALPAY_GATEWAY : undefined,
         discountCodeId,
+        affiliateId: affiliate?.affiliateId,
+        affiliateRateBps: affiliate?.rateBps,
         notes: data.notes,
         idempotencyKey: data.idempotencyKey,
         // A Group Buy order ships with its batch; it is not a store pre-order.

@@ -10,6 +10,7 @@ import { isOnlineMethod } from '../../utils/payment-gateway.js';
 import { computeGatewayFee } from '../../utils/gateway-fee.js';
 import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
 import { notifyOrder } from '../../utils/order-notify.js';
+import { syncAffiliateOrdersQuietly } from '../../utils/affiliate.js';
 import { applyPaid } from '../../utils/payment-reconcile.js';
 import { inspectAndRecord, recordPaymentEvent, refineFailureReason } from '../../utils/payment-trail.js';
 import { carryDiscount, goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
@@ -296,7 +297,7 @@ export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string
 // "discount": the profit came out right, but the customer's total, the
 // receipt and the revenue figure were all wrong, and the discount was invisible
 // to reporting.
-export async function adminSetOrderDiscount(fastify: FastifyInstance, id: string, body: unknown) {
+async function adminSetOrderDiscountUnsynced(fastify: FastifyInstance, id: string, body: unknown) {
   const input = manualDiscountSchema.parse(body);
 
   const order = await fastify.prisma.order.findUnique({
@@ -362,7 +363,7 @@ export async function adminSetOrderDiscount(fastify: FastifyInstance, id: string
 // the customer's total cannot change under a settled online payment, a
 // refund, or an open hosted payment page. Nothing is emailed — the operator
 // resends the confirmation if the customer needs the new one.
-export async function adminSetOrderItems(fastify: FastifyInstance, id: string, body: unknown) {
+async function adminSetOrderItemsUnsynced(fastify: FastifyInstance, id: string, body: unknown) {
   const { items } = orderItemsSchema.parse(body);
 
   // A variant listed twice is one line: the last quantity wins, the way a
@@ -712,7 +713,7 @@ export async function adminUpdateOrderProfitShares(fastify: FastifyInstance, id:
   });
 }
 
-export async function adminUpdateOrder(fastify: FastifyInstance, id: string, body: unknown, actor: string | null = null) {
+async function adminUpdateOrderUnsynced(fastify: FastifyInstance, id: string, body: unknown, actor: string | null = null) {
   const { profitShared, ...data } = updateOrderSchema.parse(body);
 
   const order = await fastify.prisma.order.findUnique({ where: { id }, include: { items: true } });
@@ -843,13 +844,13 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
 // Soft-delete: never removes the row. It just sets deletedAt so the order
 // disappears from every normal view and only shows up under the "DELETED"
 // filter — order/payment status and stock are untouched either way.
-export async function adminDeleteOrder(fastify: FastifyInstance, id: string) {
+async function adminDeleteOrderUnsynced(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({ where: { id } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
   return fastify.prisma.order.update({ where: { id }, data: { deletedAt: new Date() } });
 }
 
-export async function adminRestoreOrder(fastify: FastifyInstance, id: string) {
+async function adminRestoreOrderUnsynced(fastify: FastifyInstance, id: string) {
   const order = await fastify.prisma.order.findUnique({ where: { id } });
   if (!order) throw { statusCode: 404, message: 'Order not found' };
   return fastify.prisma.order.update({ where: { id }, data: { deletedAt: null } });
@@ -916,9 +917,50 @@ export async function adminCheckOrderPayment(fastify: FastifyInstance, id: strin
 const setTestSchema = z.object({ isTest: z.boolean() });
 
 /** Tick an order as the team's own test — kept out of payment analytics. */
-export async function adminSetOrderTest(fastify: FastifyInstance, id: string, body: unknown) {
+async function adminSetOrderTestUnsynced(fastify: FastifyInstance, id: string, body: unknown) {
   const { isTest } = setTestSchema.parse(body);
   const { count } = await fastify.prisma.order.updateMany({ where: { id }, data: { isTest } });
   if (!count) throw { statusCode: 404, message: 'Order not found' };
   return { id, isTest };
+}
+
+// Every edit that can change what an order earns its affiliate — paid,
+// refunded, cancelled, deleted or restored, a test, new items or discount —
+// books the difference right after (utils/affiliate.ts). The money reads sweep
+// as well, so a path that skips these still comes right before anyone looks.
+
+export async function adminUpdateOrder(fastify: FastifyInstance, id: string, body: unknown, actor: string | null = null) {
+  const result = await adminUpdateOrderUnsynced(fastify, id, body, actor);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
+}
+
+export async function adminSetOrderDiscount(fastify: FastifyInstance, id: string, body: unknown) {
+  const result = await adminSetOrderDiscountUnsynced(fastify, id, body);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
+}
+
+export async function adminSetOrderItems(fastify: FastifyInstance, id: string, body: unknown) {
+  const result = await adminSetOrderItemsUnsynced(fastify, id, body);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
+}
+
+export async function adminDeleteOrder(fastify: FastifyInstance, id: string) {
+  const result = await adminDeleteOrderUnsynced(fastify, id);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
+}
+
+export async function adminRestoreOrder(fastify: FastifyInstance, id: string) {
+  const result = await adminRestoreOrderUnsynced(fastify, id);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
+}
+
+export async function adminSetOrderTest(fastify: FastifyInstance, id: string, body: unknown) {
+  const result = await adminSetOrderTestUnsynced(fastify, id, body);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
 }

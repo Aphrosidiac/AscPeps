@@ -36,6 +36,8 @@ import adminSettingsRoutes from './modules/admin/admin-settings.routes.js';
 import publicSettingsRoutes from './modules/settings/settings.routes.js';
 import adminUploadRoutes from './modules/admin/admin-upload.routes.js';
 import adminDiscountRoutes from './modules/admin/admin-discounts.routes.js';
+import affiliateRoutes from './modules/affiliates/affiliates.routes.js';
+import adminAffiliateRoutes from './modules/affiliates/admin-affiliates.routes.js';
 import subscriberRoutes from './modules/subscribers/subscribers.routes.js';
 import adminSubscriberRoutes from './modules/admin/admin-subscribers.routes.js';
 import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
@@ -183,6 +185,8 @@ await fastify.register(adminSuppliersRoutes, { prefix: '/api/v1/admin/suppliers'
 await fastify.register(adminSettingsRoutes, { prefix: '/api/v1/admin/settings' });
 await fastify.register(adminUploadRoutes, { prefix: '/api/v1/admin/upload' });
 await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' });
+await fastify.register(adminAffiliateRoutes, { prefix: '/api/v1/admin/affiliates' });
+await fastify.register(affiliateRoutes, { prefix: '/api/v1/affiliate' });
 await fastify.register(adminSubscriberRoutes, { prefix: '/api/v1/admin/subscribers' });
 await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
 if (env.GROUP_BUY_ENABLED) {

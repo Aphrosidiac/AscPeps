@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
+import { checkAffiliateCode } from '../../utils/affiliate.js';
 
 // The optional fields are `.nullish()`, not `.optional()`, and the difference
 // is the whole bug: zod's `.optional()` accepts `undefined` but REJECTS `null`,
@@ -97,6 +98,9 @@ export async function adminDeleteDiscount(fastify: FastifyInstance, id: string) 
 export interface DiscountContext {
   groupBuyId?: string | null;
   email?: string | null;
+  // The buyer's phone: an affiliate's code is refused on their own order by
+  // email OR phone (utils/affiliate.ts).
+  phone?: string | null;
 }
 
 export async function validateDiscountCode(fastify: FastifyInstance, code: string, subtotal: number, ctx: DiscountContext = {}) {
@@ -114,6 +118,8 @@ export async function validateDiscountCode(fastify: FastifyInstance, code: strin
     if (email !== discount.boundEmail.toLowerCase()) throw { statusCode: 400, message: 'This code belongs to a different email address' };
   }
   if (!discount.isActive) throw { statusCode: 400, message: 'This discount code is no longer active' };
+  // An affiliate's code: programme on, affiliate active, not their own order.
+  const affiliate = await checkAffiliateCode(fastify.prisma, discount.id, { email: ctx.email, phone: ctx.phone });
   if (discount.expiresAt && discount.expiresAt < new Date()) throw { statusCode: 400, message: 'This discount code has expired' };
   if (discount.maxUses && discount.usedCount >= discount.maxUses) throw { statusCode: 400, message: 'This discount code has reached its usage limit' };
   if (discount.minOrderAmount && subtotal < discount.minOrderAmount) {
@@ -127,5 +133,5 @@ export async function validateDiscountCode(fastify: FastifyInstance, code: strin
     discountAmount = Math.min(discount.discountValue, subtotal);
   }
 
-  return { discount, discountAmount };
+  return { discount, discountAmount, affiliate };
 }

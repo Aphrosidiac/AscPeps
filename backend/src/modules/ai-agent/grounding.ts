@@ -496,6 +496,8 @@ export const PRECONDITIONS: Precondition[] = [
       'get_order', 'finance_overview', 'set_order_costs', 'set_order_profit_shares',
       'get_partner', 'save_partners', 'record_payout', 'sales_breakdown', 'sales_analytics',
       'month_end_report', 'ready_to_share', 'share_out_profit', 'get_split_rule', 'set_split_rule',
+      // An affiliate's orders with the commission on each, and their payouts.
+      'get_affiliate',
     ],
     describes: "an order's costs or profit split",
   },

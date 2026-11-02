@@ -15,6 +15,7 @@ import { deliveryTools } from './tools/delivery.tools.js';
 import { reminderTools } from './tools/reminders.tools.js';
 import { memoryTools } from './tools/memory.tools.js';
 import { browserTools } from './tools/browser.tools.js';
+import { affiliateTools } from './tools/affiliates.tools.js';
 
 // Domain membership is assigned here rather than as a field on each tool, so
 // the eight tool files stay unaware of routing entirely.
@@ -58,6 +59,8 @@ const DOMAIN_TOOLS: Record<Domain, AgentTool[]> = {
   shadow: shadowTools,
   // Abby's web browser. Empty unless AGENT_BROWSER=on.
   web: browserTools,
+  // Ascend Affiliate: its own bucket, keyed on "affiliate"/"commission".
+  affiliates: affiliateTools,
 };
 
 export const ALL_TOOLS: AgentTool[] = DOMAINS.flatMap((d) => DOMAIN_TOOLS[d]);

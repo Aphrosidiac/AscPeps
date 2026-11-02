@@ -4,6 +4,7 @@ import { getVariantDisplayName } from '../../utils/product-addons.js';
 import { costOrder, allocate } from '../../utils/profit.js';
 import { RESTOCK_BELOW } from '../../utils/restock.js';
 import { ensureDefaultSplits } from '../../utils/split-rules.js';
+import { syncAffiliateOrders } from '../../utils/affiliate.js';
 
 export async function getDashboardStats(fastify: FastifyInstance) {
   const today = new Date();
@@ -123,6 +124,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
 
   // Same sweep as Finance: a paid order with no split gets the default first.
   await ensureDefaultSplits(fastify.prisma);
+  await syncAffiliateOrders(fastify.prisma);
 
   const orders = await fastify.prisma.order.findMany({
     where: { createdAt: { gte: since }, deletedAt: null },
@@ -136,6 +138,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       paymentMethod: true,
       paymentGateway: true,
       gatewayFee: true,
+      affiliateCommission: true,
       refundedAmount: true,
       stockRestored: true,
       createdAt: true,
@@ -180,6 +183,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   // The processor's cut. A real cost of every online sale, and previously
   // recorded nowhere — so reported margin was overstated by exactly this.
   let totalGatewayFees = 0;
+  let totalAffiliateCommissions = 0;
   let totalRefunded = 0;
   const profitByPerson: Record<string, { name: string; company: boolean; amount: number }> = {};
 
@@ -213,6 +217,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
         totalItemCost += costing.itemCost;
         totalExtraCost += costing.extraCost;
         totalGatewayFees += costing.gatewayFee;
+        totalAffiliateCommissions += costing.affiliateCommission;
 
         if (dailyRevenue[dayKey]) {
           dailyRevenue[dayKey].costedRevenue += costing.revenue;
@@ -264,7 +269,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
   const conversionRate = totalOrders > 0 ? Math.round((paidOrders / totalOrders) * 10000) / 100 : 0;
   const avgOrderValue = paidOrders > 0 ? Math.round(totalRevenue / paidOrders) : 0;
 
-  const totalCost = totalItemCost + totalExtraCost + totalGatewayFees;
+  const totalCost = totalItemCost + totalExtraCost + totalGatewayFees + totalAffiliateCommissions;
   const netProfit = costedRevenue - totalCost;
   // Against costedRevenue, not totalRevenue — see the note where these are summed.
   const profitMargin = costedRevenue > 0 ? Math.round((netProfit / costedRevenue) * 10000) / 100 : 0;
@@ -286,6 +291,7 @@ export async function getAnalytics(fastify: FastifyInstance, query: { days?: str
       totalItemCost,
       totalExtraCost,
       totalGatewayFees,
+      totalAffiliateCommissions,
       totalRefunded,
       totalCost,
       netProfit,

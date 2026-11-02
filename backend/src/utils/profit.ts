@@ -23,6 +23,12 @@ export interface CostableOrder {
   /** Cents handed back to the customer. Reverses revenue by exactly this much. */
   refundedAmount?: number;
   /**
+   * The affiliate's net commission on this order (orders.affiliateCommission,
+   * utils/affiliate.ts). A cost like the gateway fee: the partners split what
+   * is left after paying the affiliate. Absent is zero.
+   */
+  affiliateCommission?: number;
+  /**
    * Whether the order's stock went back into inventory. Only consulted on a
    * refunded order — see the item-cost reversal below.
    */
@@ -36,7 +42,8 @@ export interface OrderCosting {
   itemCost: number;
   extraCost: number;
   gatewayFee: number;
-  /** itemCost + extraCost + gatewayFee. */
+  affiliateCommission: number;
+  /** itemCost + extraCost + gatewayFee + affiliateCommission. */
   cost: number;
   /** null when any line is still unpriced — never a partial figure. */
   profit: number | null;
@@ -69,7 +76,9 @@ export function costOrder(order: CostableOrder): OrderCosting {
   // A fully refunded order is therefore a real loss of exactly those, which is
   // the truth and used to be reported as nothing at all.
   const extraCost = order.extraCosts.reduce((sum, c) => sum + c.amount, 0);
-  const cost = itemCost + extraCost + gatewayFee;
+  // Already net of any reversal: a refunded order's commission comes back with it.
+  const affiliateCommission = order.affiliateCommission ?? 0;
+  const cost = itemCost + extraCost + gatewayFee + affiliateCommission;
 
   return {
     revenue,
@@ -77,6 +86,7 @@ export function costOrder(order: CostableOrder): OrderCosting {
     itemCost,
     extraCost,
     gatewayFee,
+    affiliateCommission,
     cost,
     profit: costed ? revenue - cost : null,
     costed,

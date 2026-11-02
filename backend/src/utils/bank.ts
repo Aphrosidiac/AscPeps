@@ -13,6 +13,7 @@
  *        an expense the company paid              (company_expenses, no partner)
  *        a profit share paid to someone           (profit_payouts)
  *        an advance paid back                     (partner_repayments)
+ *        an affiliate's commission paid to them   (affiliate_payouts, PAID)
  *
  * The OPENING entry's date is the day tracking started (Fakhrul, 2026-10-21:
  * "all goes into bank starting now"). Nothing dated before it touches the
@@ -35,7 +36,8 @@ export type BankSource =
   | 'CAPITAL'
   | 'EXPENSE'
   | 'PAYOUT'
-  | 'REPAYMENT';
+  | 'REPAYMENT'
+  | 'AFFILIATE';
 
 export interface BankMovement {
   /** `${source}:${row id}` — unique across sources. */
@@ -48,7 +50,7 @@ export interface BankMovement {
   /** Who, when a person is involved (capital, payout, repayment, expense). */
   partnerName: string | null;
   /** Where the movement is recorded, so the page can link to it. */
-  ref: { type: 'bank_entry' | 'order' | 'funding' | 'expense' | 'payout_run' | 'payout' | 'repayment'; id: string; label?: string };
+  ref: { type: 'bank_entry' | 'order' | 'funding' | 'expense' | 'payout_run' | 'payout' | 'repayment' | 'affiliate_payout'; id: string; label?: string };
   /** Running balance after this movement, oldest first. */
   balance: number;
 }
@@ -70,6 +72,7 @@ export interface BankInput {
   expenses: { id: string; occurredAt: Date; amount: number; description: string; category: string; paidByPartnerId: string | null }[];
   payouts: { id: string; partnerName: string; amount: number; occurredAt: Date; note: string | null; runId: string | null }[];
   repayments: { id: string; partnerName: string; amount: number; occurredAt: Date; note: string | null; fundingDescription: string }[];
+  affiliatePayouts: { id: string; affiliateId: string; affiliateName: string; code: string; amount: number; paidAt: Date }[];
   checks: { id: string; checkedAt: Date; statementBalance: number; bookBalance: number; note: string | null }[];
 }
 
@@ -184,6 +187,19 @@ export function computeBank(input: BankInput): BankSummary {
     });
   }
 
+  for (const a of input.affiliatePayouts) {
+    if (!since(a.paidAt)) continue;
+    moves.push({
+      key: `AFFILIATE:${a.id}`,
+      source: 'AFFILIATE',
+      occurredAt: a.paidAt,
+      amount: -a.amount,
+      description: `Affiliate payout · ${a.affiliateName} (${a.code})`,
+      partnerName: null,
+      ref: { type: 'affiliate_payout', id: a.affiliateId },
+    });
+  }
+
   // OPENING first on its own date, then by time. Ties keep a stable order so
   // the running balance on the page doesn't reshuffle between loads.
   moves.sort(
@@ -239,7 +255,7 @@ export async function loadBankInput(fastify: FastifyInstance): Promise<BankInput
   // Before the bank starts there is nothing to read past the entries table.
   const start = opening?.occurredAt ?? new Date(8.64e15);
 
-  const [entries, orders, funding, expenses, payouts, repayments, checks] = await Promise.all([
+  const [entries, orders, funding, expenses, payouts, repayments, affiliatePayouts, checks] = await Promise.all([
     prisma.bankEntry.findMany(),
     prisma.order.findMany({
       where: { deletedAt: null, paymentStatus: { in: ['PAID', 'REFUNDED'] }, paidAt: { gte: start } },
@@ -258,6 +274,13 @@ export async function loadBankInput(fastify: FastifyInstance): Promise<BankInput
       where: { occurredAt: { gte: start } },
       include: { funding: { select: { description: true, partner: { select: { name: true } } } } },
     }),
+    prisma.affiliatePayout.findMany({
+      where: { status: 'PAID', paidAt: { gte: start } },
+      select: {
+        id: true, affiliateId: true, paidAmount: true, paidAt: true,
+        affiliate: { select: { fullName: true, discountCode: { select: { code: true } } } },
+      },
+    }),
     prisma.bankCheck.findMany(),
   ]);
 
@@ -271,6 +294,14 @@ export async function loadBankInput(fastify: FastifyInstance): Promise<BankInput
       ...r,
       partnerName: r.funding.partner.name,
       fundingDescription: r.funding.description,
+    })),
+    affiliatePayouts: affiliatePayouts.map((a) => ({
+      id: a.id,
+      affiliateId: a.affiliateId,
+      affiliateName: a.affiliate.fullName,
+      code: a.affiliate.discountCode.code,
+      amount: a.paidAmount ?? 0,
+      paidAt: a.paidAt as Date,
     })),
     checks,
   };

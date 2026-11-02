@@ -8,6 +8,7 @@ import { capturePurchase } from './posthog.js';
 import { computeGatewayFee } from './gateway-fee.js';
 import { notifyOrder } from './order-notify.js';
 import { inspectAndRecord, recordPaymentEvent, releaseReason } from './payment-trail.js';
+import { syncAffiliateOrdersQuietly } from './affiliate.js';
 
 // Online orders older than this with no successful payment are re-checked
 // against the gateway, then released if still unpaid.
@@ -87,6 +88,8 @@ export async function applyPaid(
     await ensureDefaultSplits(fastify.prisma, [order.id]).catch((err) =>
       fastify.log.warn({ err, orderId: order.id }, 'default split not applied')
     );
+    // The affiliate's commission, if the code was theirs (utils/affiliate.ts).
+    await syncAffiliateOrdersQuietly(fastify, [order.id]);
     // Outside the transaction and after the guard: only a genuine
     // UNPAID -> PAID transition emits revenue, so duplicate callbacks and
     // reconcile sweeps can't double-count.
