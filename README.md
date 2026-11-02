@@ -44,7 +44,7 @@ git clone https://github.com/Aphrosidiac/AscPeps && cd AscPeps   # then see "Run
 
 | | |
 |---|---|
-| **Storefront** | Server-rendered catalogue, a cart where the supplies a peptide needs ride under it, checkout, order tracking, a reconstitution calculator, Certificates of Analysis, research articles with comments, optional email-verified customer accounts |
+| **Storefront** | Server-rendered catalogue, a slide-in cart where the supplies a peptide needs ride under it, Buy now, a one-page checkout in the style of our other stores, order tracking, a reconstitution calculator, Certificates of Analysis, research articles with comments, optional email-verified customer accounts |
 | **Payments** | Billplz live (FPX), ToyyibPay as the alternative adapter, BTCPay for Bitcoin, WhatsApp bank transfer, and a hosted proof-of-transfer checkout (ManualPayGate) behind a flag |
 | **Back office** | Orders with per-line costing and profit split, products and sale windows, discounts, delivery slots, subscribers and campaigns, an email outbox with a template preview, comment moderation, the WhatsApp allowlist |
 | **The books** | Revenue, COGS, gateway fees, operating vs inventory spend, partner balances, and a document store that is private by construction |
@@ -121,6 +121,11 @@ order includes; a free supply that runs out ships what is left rather than
 blocking the sale. Detail in [docs/add-ons.md](docs/add-ons.md). A product can
 also be flagged **No shipping charge** — an order made only of such products
 pays no shipping (the RM1 payment-test product uses it).
+
+Buying follows the same pattern as our other stores (Teliti, BuatBenda):
+Add to Cart opens a slide-in cart that shows shipping before checkout, **Buy
+now** goes straight to a one-page checkout, and the checkout carries none of
+the store's chrome. Detail in [docs/cart-and-checkout.md](docs/cart-and-checkout.md).
 
 Ordering needs no account. The cart lives in `localStorage`; tracking takes
 the order number *and* the phone, and returns no PII, so it cannot be used
@@ -210,7 +215,8 @@ every route behind a 24-hour JWT with the algorithm pinned.
 | **Subscribers · Campaigns** | The list, the welcome flow, broadcast drafting and sending |
 | **Insights · Comments** | Research articles with numbered figures; reader comments, moderated |
 | **Discounts** | Percentage or fixed, with optional minimum, cap and expiry — all three genuinely optional |
-| **Affiliates** | Applications to approve, each affiliate's sales, commission and balance, the payout queue with its hold, the programme's numbers and the sign-up bonus — [affiliate.md](docs/affiliate.md) |
+| **Affiliates** | Applications to approve, each affiliate's sales, commission and balance, the payout queue with its hold, details change requests, the programme's numbers and the sign-up bonus — [affiliate.md](docs/affiliate.md) |
+| **Popups** | When the newsletter, sign-up and affiliate popups may open, how long a closed one stays away, and their wording |
 | **WhatsApp** | The operator allowlist, LID binding, allowlisted groups, and every conversation the agent has had |
 | **Settings** | Announcement bar, business details, shipping, the active gateway, email toggles |
 
@@ -273,11 +279,14 @@ any document store is paperwork piling up unattached.
 
 ## Transactional email
 
-Six templates in [`backend/src/emails/`](backend/src/emails) — order
+The templates in [`backend/src/emails/`](backend/src/emails) — order
 confirmation, payment receipt, abandoned checkout, welcome, verification,
-campaign — rendered by an outbox worker, in the site's own visual language: a
-near-black hero with the constellation motif, the two-tone headline, one
-green used only for status.
+campaign, the account-security mails, Group Buy notices and Ascend
+Affiliate's mails ([affiliate.md](docs/affiliate.md#emails-and-notices)) —
+share the site's own visual language: a near-black hero with the
+constellation motif, the two-tone headline, one green used only for status.
+Order mails go through an outbox worker; account and affiliate mails are sent
+directly, because they have no order to hang off.
 
 What is load-bearing and easy to undo:
 
@@ -625,7 +634,8 @@ approve / decline / undo, memory, routines, model settings — are listed in
 | [payments.md](docs/payments.md) | the methods, Billplz keys and limits, an online order end to end, unpaid orders, refunds, live testing, what to check when payment breaks |
 | [add-ons.md](docs/add-ons.md) | included vs suggested add-ons, who decides what an order includes, how orders show and change, money and reports |
 | [preorder.md](docs/preorder.md) | sold-out sizes on pre-order: switches, how stock and lines record it, where it shows |
-| [affiliate.md](docs/affiliate.md) | Ascend Affiliate: codes, commission as an order cost, refunds and negative balances, the payout hold, the affiliate site, popups, admin, Abby, deploying it |
+| [affiliate.md](docs/affiliate.md) | Ascend Affiliate end to end: why, every setting, codes, commission as an order cost, refunds and negative balances, the payout hold, details by request, the affiliate site (showcase, onboarding, tour, guide), emails and notices, where the store promotes it, admin, Abby, data, tests, decisions, deploying it |
+| [cart-and-checkout.md](docs/cart-and-checkout.md) | Add to Cart and Buy now, the slide-in cart, the cart page and the one-page checkout: why each changed, what it does, where the code is |
 | [group-buy.md](docs/group-buy.md) | Group Buy batches: every admin control, the customer portal, data model, running a batch |
 | [assistant.md](docs/assistant.md) | the harness: data model, a turn step by step, tiers and undo, memory and the trust rule, routines, the model menu, tests |
 | [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
