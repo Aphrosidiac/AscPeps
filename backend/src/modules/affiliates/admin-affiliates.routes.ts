@@ -10,6 +10,7 @@ import {
   adminSaveSettings,
   adminUpdateAffiliate,
 } from './affiliates.controller.js';
+import { adminDecideChange, adminListChanges } from './affiliate-changes.js';
 
 /** Admin → Affiliates. */
 export default async function adminAffiliateRoutes(fastify: FastifyInstance) {
@@ -25,6 +26,11 @@ export default async function adminAffiliateRoutes(fastify: FastifyInstance) {
     adminMarkPayoutPaid(fastify, request.params.id, request.body, actor(request))
   );
   fastify.post<{ Params: { id: string } }>('/payouts/:id/cancel', async (request) => adminCancelPayout(fastify, request.params.id, request.body));
+
+  fastify.get<{ Querystring: Record<string, string> }>('/changes', async (request) => adminListChanges(fastify, request.query));
+  fastify.post<{ Params: { id: string } }>('/changes/:id', async (request) =>
+    adminDecideChange(fastify, request.params.id, request.body, actor(request))
+  );
 
   fastify.get<{ Querystring: Record<string, string> }>('/', async (request) => adminListAffiliates(fastify, request.query));
   fastify.get<{ Params: { id: string } }>('/:id', async (request) => adminGetAffiliate(fastify, request.params.id));

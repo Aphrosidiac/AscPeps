@@ -22,6 +22,7 @@ import { normalizePhone } from '../../utils/phone.js';
 import { notifyAffiliateTeam } from '../../utils/affiliate-notify.js';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
 import { notifyRevalidate } from '../../utils/revalidate.js';
+import { changeState } from './affiliate-changes.js';
 
 /**
  * Ascend Affiliate, both sides: what an affiliate sees and does on
@@ -76,7 +77,7 @@ export async function getMyAffiliate(fastify: FastifyInstance, memberId: string)
   const affiliate = await fastify.prisma.affiliate.findUnique({ where: { memberId }, select: AFFILIATE_PUBLIC });
   if (!affiliate) return { programme: publicProgramme(settings), affiliate: null, balance: null, openPayout: null };
   await syncAffiliateOrders(fastify.prisma, (await fastify.prisma.order.findMany({ where: { affiliateId: affiliate.id }, select: { id: true } })).map((o) => o.id));
-  const [balance, openPayout, monthOrders] = await Promise.all([
+  const [balance, openPayout, monthOrders, changes] = await Promise.all([
     affiliateBalance(fastify.prisma, affiliate.id),
     fastify.prisma.affiliatePayout.findFirst({
       where: { affiliateId: affiliate.id, status: 'REQUESTED' },
@@ -85,8 +86,9 @@ export async function getMyAffiliate(fastify: FastifyInstance, memberId: string)
     fastify.prisma.order.count({
       where: { affiliateId: affiliate.id, paymentStatus: 'PAID', deletedAt: null, isTest: false, paidAt: { gte: startOfMonthMyt() } },
     }),
+    changeState(fastify, affiliate.id),
   ]);
-  return { programme: publicProgramme(settings), affiliate: shapeAffiliate(affiliate), balance, openPayout, paidOrdersThisMonth: monthOrders };
+  return { programme: publicProgramme(settings), affiliate: shapeAffiliate(affiliate), balance, openPayout, paidOrdersThisMonth: monthOrders, ...changes };
 }
 
 /** Midnight on the 1st, Malaysia time, as a UTC instant. */
@@ -171,31 +173,16 @@ export async function joinProgramme(fastify: FastifyInstance, member: { id: stri
   return { affiliate: shapeAffiliate(affiliate) };
 }
 
+// Only the code, and only while waiting for approval. Their details (bank,
+// name, WhatsApp, where they share) are changed by request: affiliate-changes.ts.
 const updateMineSchema = z.object({
-  fullName: z.string().trim().min(2).max(80).optional(),
-  phone: z.string().trim().min(8).max(20).optional(),
-  channel: z.string().trim().max(200).nullable().optional(),
-  bankName: z.string().trim().min(2).max(80).optional(),
-  bankAccountName: z.string().trim().min(2).max(80).optional(),
-  bankAccountNumber: z.string().trim().regex(/^[0-9 -]{6,24}$/, 'Numbers only').transform((v) => v.replace(/[ -]/g, '')).optional(),
-  code: z.string().trim().min(1).max(30).optional(),
+  code: z.string().trim().min(1).max(30),
 });
 
 export async function updateMyAffiliate(fastify: FastifyInstance, memberId: string, body: unknown) {
   const data = updateMineSchema.parse(body);
   const a = await fastify.prisma.affiliate.findUnique({ where: { memberId }, select: { id: true, status: true, discountCodeId: true } });
   if (!a) throw { statusCode: 404, message: 'You have not joined yet.' };
-  const patch: Record<string, unknown> = {};
-  for (const k of ['fullName', 'channel', 'bankName', 'bankAccountName', 'bankAccountNumber'] as const) {
-    if (data[k] !== undefined) patch[k] = data[k];
-  }
-  if (data.phone !== undefined) {
-    try {
-      patch.phone = normalizePhone(data.phone);
-    } catch {
-      throw { statusCode: 400, message: 'Enter a Malaysian mobile number.' };
-    }
-  }
   await fastify.prisma.$transaction(async (tx) => {
     if (data.code !== undefined) {
       // Changing a code people already have would break every link and post
@@ -207,7 +194,6 @@ export async function updateMyAffiliate(fastify: FastifyInstance, memberId: stri
       if (!check.available) throw { statusCode: 400, message: check.reason ?? 'That code is not available.' };
       await tx.discountCode.update({ where: { id: a.discountCodeId }, data: { code: check.code } });
     }
-    if (Object.keys(patch).length) await tx.affiliate.update({ where: { id: a.id }, data: patch });
   });
   return getMyAffiliate(fastify, memberId);
 }
@@ -389,14 +375,22 @@ export async function adminGetAffiliate(fastify: FastifyInstance, id: string) {
   });
   if (!a) throw { statusCode: 404, message: 'Affiliate not found' };
   await syncAffiliateOrders(fastify.prisma, (await fastify.prisma.order.findMany({ where: { affiliateId: id }, select: { id: true } })).map((o) => o.id));
-  const [balance, orders, entries, payouts] = await Promise.all([
+  const [balance, orders, entries, payouts, changes] = await Promise.all([
     affiliateBalance(fastify.prisma, id),
     listAffiliateOrders(fastify, id, { limit: '100' }),
     listAffiliateEntries(fastify, id, 200),
     fastify.prisma.affiliatePayout.findMany({ where: { affiliateId: id }, orderBy: { createdAt: 'desc' }, select: { ...PAYOUT_SELECT, paidBy: true } }),
+    changeState(fastify, id),
   ]);
   const { member, ...rest } = a;
-  return { affiliate: { ...shapeAffiliate(rest), email: member.email, emailVerified: member.emailVerified }, balance, orders: orders.data, entries, payouts };
+  return {
+    affiliate: { ...shapeAffiliate(rest), email: member.email, emailVerified: member.emailVerified },
+    balance,
+    orders: orders.data,
+    entries,
+    payouts,
+    changeRequest: changes.changeRequest,
+  };
 }
 
 const adminPatchSchema = z.object({

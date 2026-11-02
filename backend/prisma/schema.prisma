@@ -1114,12 +1114,47 @@ model Affiliate {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  orders  Order[]
-  entries AffiliateEntry[]
-  payouts AffiliatePayout[]
+  orders         Order[]
+  entries        AffiliateEntry[]
+  payouts        AffiliatePayout[]
+  changeRequests AffiliateChangeRequest[]
 
   @@index([status])
   @@map("affiliates")
+}
+
+enum AffiliateChangeStatus {
+  // Waiting for the team. At most one per affiliate: sending again replaces it.
+  PENDING
+  APPROVED
+  REJECTED
+  // Taken back by the affiliate, or sent again with nothing left to change.
+  WITHDRAWN
+}
+
+// An affiliate asking to change their own details (bank, name, WhatsApp,
+// where they share). Nothing moves until the team approves, so a payout can
+// never be sent somewhere the team hasn't seen (Fakhrul, 2026-11-03).
+model AffiliateChangeRequest {
+  id           String                @id @default(cuid())
+  affiliateId  String
+  affiliate    Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  status       AffiliateChangeStatus @default(PENDING)
+  // Only the fields that differ from the approved details: { field: new value }.
+  changes      Json
+  // Those fields as they were when it was (last) sent, for the before → after.
+  previous     Json
+  decidedAt    DateTime?
+  decidedBy    String?
+  // Shown to the affiliate.
+  rejectReason String?
+  createdAt    DateTime              @default(now())
+  // When it was last sent: a new request overwrites the pending one in place.
+  updatedAt    DateTime              @updatedAt
+
+  @@index([affiliateId, status])
+  @@index([status])
+  @@map("affiliate_change_requests")
 }
 
 enum AffiliateEntryKind {

@@ -219,7 +219,7 @@ export function AffShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto max-w-[1180px] px-4 pb-16 sm:px-6">
-      <header className="sticky top-0 z-30 -mx-4 mb-6 px-4 pt-4 pb-3 sm:-mx-6 sm:mb-8 sm:px-6 sm:pt-6" style={{ background: 'linear-gradient(var(--st-canvas) 70%, transparent)' }}>
+      <header className="sticky top-0 z-30 -mx-4 mb-6 px-4 pt-4 pb-3 sm:-mx-6 sm:mb-8 sm:px-6 sm:pt-6" style={{ background: 'var(--st-canvas)' }}>
         {/* Equal side columns, so the tabs sit dead centre whatever is on either side. */}
         <div className="grid grid-cols-[1fr_auto] items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
           <Logo />

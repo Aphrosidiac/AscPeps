@@ -12,6 +12,7 @@ import {
   suggestMyCode,
   updateMyAffiliate,
 } from './affiliates.controller.js';
+import { requestChange, withdrawChange } from './affiliate-changes.js';
 
 /** affiliate.ascendpeptides.my's API. Signed in with the store account. */
 export default async function affiliateRoutes(fastify: FastifyInstance) {
@@ -40,6 +41,20 @@ export default async function affiliateRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateMember], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request) => updateMyAffiliate(fastify, request.member!.id, request.body)
   );
+
+  // Their details change by request; the team approves (affiliate-changes.ts).
+  fastify.post(
+    '/me/change',
+    { preHandler: [fastify.authenticateMember], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request) => {
+      await requestChange(fastify, request.member!.id, request.body);
+      return getMyAffiliate(fastify, request.member!.id);
+    }
+  );
+  fastify.delete('/me/change', { preHandler: [fastify.authenticateMember] }, async (request) => {
+    await withdrawChange(fastify, request.member!.id);
+    return getMyAffiliate(fastify, request.member!.id);
+  });
 
   fastify.get<{ Querystring: Record<string, string> }>('/orders', { preHandler: [fastify.authenticateMember] }, async (request) =>
     listMyOrders(fastify, request.member!.id, request.query)

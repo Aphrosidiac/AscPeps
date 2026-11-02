@@ -11,19 +11,22 @@ import { cn, formatPrice } from '@/lib/utils';
 import {
   adminCancelAffiliatePayout,
   adminGetAffiliateSettings,
+  adminListAffiliateChanges,
   adminListAffiliatePayouts,
   adminListAffiliates,
   adminSaveAffiliateSettings,
   adminUpdateAffiliate,
   apiError,
   type AdminAffiliateRow,
+  type AdminChangeRow,
+  type ChangeRequest,
   type AdminPayoutRow,
   type AffiliateSettings,
   type AffiliateStatus,
   type PayoutStatus,
 } from '@/lib/affiliate-api';
 import { AFFILIATE_URL } from '@/lib/affiliate-url';
-import { MarkPaidDialog, PayoutBadge, StatusBadge, myt, signed } from './affiliate-admin-ui';
+import { ChangeDiff, DecideChange, MarkPaidDialog, PayoutBadge, StatusBadge, myt, signed } from './affiliate-admin-ui';
 
 /**
  * Admin → Affiliates (docs/affiliate.md): who applied and who sells, the
@@ -31,21 +34,23 @@ import { MarkPaidDialog, PayoutBadge, StatusBadge, myt, signed } from './affilia
  * use affiliate.ascendpeptides.my.
  */
 
-type Tab = 'affiliates' | 'payouts' | 'settings';
+type Tab = 'affiliates' | 'payouts' | 'changes' | 'settings';
 
 export default function AdminAffiliatesPage() {
   const { token } = useAuth();
   const [tab, setTab] = useState<Tab>('affiliates');
-  const [waiting, setWaiting] = useState<{ approve: number; pay: number }>({ approve: 0, pay: 0 });
+  const [waiting, setWaiting] = useState<{ approve: number; pay: number; changes: number }>({ approve: 0, pay: 0, changes: 0 });
   // Stable, or each tab's loader would re-run on every render.
   const onApprove = useCallback((approve: number) => setWaiting((w) => ({ ...w, approve })), []);
   const onPay = useCallback((pay: number) => setWaiting((w) => ({ ...w, pay })), []);
+  const onChanges = useCallback((changes: number) => setWaiting((w) => ({ ...w, changes })), []);
 
-  // The payouts count shows on its tab before anyone opens it.
+  // The waiting counts show on their tabs before anyone opens them.
   useEffect(() => {
     if (!token) return;
     adminListAffiliatePayouts(token).then((r) => onPay(r.payouts.length), () => {});
-  }, [token, onPay]);
+    adminListAffiliateChanges(token).then((r) => onChanges(r.changes.length), () => {});
+  }, [token, onPay, onChanges]);
 
   return (
     <div className="max-w-[1280px]">
@@ -66,6 +71,7 @@ export default function AdminAffiliatesPage() {
         tabs={[
           { id: 'affiliates', label: waiting.approve ? `Affiliates · ${waiting.approve} to approve` : 'Affiliates' },
           { id: 'payouts', label: waiting.pay ? `Payouts · ${waiting.pay} waiting` : 'Payouts' },
+          { id: 'changes', label: waiting.changes ? `Changes · ${waiting.changes} waiting` : 'Changes' },
           { id: 'settings', label: 'Settings' },
         ]}
       />
@@ -73,6 +79,8 @@ export default function AdminAffiliatesPage() {
         <AffiliatesTab token={token} onCounts={onApprove} />
       ) : tab === 'payouts' ? (
         <PayoutsTab token={token} onCounts={onPay} />
+      ) : tab === 'changes' ? (
+        <ChangesTab token={token} onCounts={onChanges} />
       ) : (
         <SettingsTab token={token} />
       )}
@@ -401,6 +409,115 @@ function CancelPayoutDialog({ token, payout, onDone, onClose }: { token: string;
       </Field>
       {error ? <p className="mt-3 text-[13px] text-danger">{error}</p> : null}
     </Dialog>
+  );
+}
+
+/* ── Changes ── */
+
+const CHANGE_FILTERS: { key: ChangeRequest['status']; label: string }[] = [
+  { key: 'PENDING', label: 'Waiting' },
+  { key: 'APPROVED', label: 'Approved' },
+  { key: 'REJECTED', label: 'Rejected' },
+  { key: 'WITHDRAWN', label: 'Withdrawn' },
+];
+
+/** Affiliates asking to change their bank, name, WhatsApp or where they share. */
+function ChangesTab({ token, onCounts }: { token: string; onCounts: (n: number) => void }) {
+  const [status, setStatus] = useState<ChangeRequest['status']>('PENDING');
+  const [rows, setRows] = useState<AdminChangeRow[] | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+  const load = useCallback(() => setVersion((v) => v + 1), []);
+
+  useEffect(() => {
+    let live = true;
+    adminListAffiliateChanges(token, status).then(
+      (r) => {
+        if (!live) return;
+        setRows(r.changes);
+        if (status === 'PENDING') onCounts(r.changes.length);
+        setError('');
+      },
+      (err) => live && setError(apiError(err, 'Could not load the changes.'))
+    );
+    return () => {
+      live = false;
+    };
+  }, [token, status, onCounts, version]);
+
+  return (
+    <Card>
+      <CardHeader
+        title={status === 'PENDING' ? 'Changes to approve' : CHANGE_FILTERS.find((f) => f.key === status)!.label}
+        description={
+          status === 'PENDING'
+            ? 'Affiliates can only change their details by asking. Nothing moves until you approve; sending again replaces their last request.'
+            : 'History.'
+        }
+        actions={
+          <div className="flex flex-wrap gap-1.5">
+            {CHANGE_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => {
+                  if (f.key === status) return;
+                  setRows(null);
+                  setError('');
+                  setStatus(f.key);
+                }}
+                className={cn(
+                  'h-8 rounded-full px-3 text-[13px] font-medium cursor-pointer',
+                  status === f.key ? 'bg-text-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      {notice ? <p className="border-b border-border bg-amber-50 px-6 py-2.5 text-[13px] text-amber-800">{notice}</p> : null}
+      {error ? (
+        <p className="px-6 py-10 text-center text-sm text-danger">{error}</p>
+      ) : !rows ? (
+        <div className="h-40 animate-pulse" />
+      ) : rows.length === 0 ? (
+        <p className="px-6 py-12 text-center text-sm text-text-secondary">{status === 'PENDING' ? 'No changes waiting.' : 'None.'}</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rows.map((c) => (
+            <li key={c.id} className="flex flex-wrap items-start gap-x-6 gap-y-3 px-6 py-4">
+              <div className="min-w-[260px] flex-1">
+                <div className="flex items-center gap-2">
+                  <Link href={`/admin/affiliates/${c.affiliateId}`} className="font-medium text-text-primary hover:underline">{c.name}</Link>
+                  <span className="text-[12px] font-medium tracking-wide text-text-secondary">{c.code}</span>
+                  {c.affiliateStatus !== 'ACTIVE' ? <StatusBadge status={c.affiliateStatus} /> : null}
+                </div>
+                <p className="mb-3 mt-0.5 text-[12px] text-text-muted">
+                  Sent {myt(c.sentAt, true)}
+                  {c.decidedAt && c.status !== 'PENDING' ? ` · ${c.status.toLowerCase()} ${myt(c.decidedAt, true)}${c.decidedBy ? ` by ${c.decidedBy}` : ''}` : ''}
+                  {c.rejectReason ? ` · "${c.rejectReason}"` : ''}
+                </p>
+                <ChangeDiff change={c} />
+              </div>
+              {c.status === 'PENDING' ? (
+                <DecideChange
+                  token={token}
+                  change={c}
+                  name={c.name}
+                  onDone={(note) => {
+                    setNotice(note);
+                    load();
+                  }}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 

@@ -18,7 +18,7 @@ import {
   type AdminAffiliateDetail,
   type AffiliateStatus,
 } from '@/lib/affiliate-api';
-import { MarkPaidDialog, PayoutBadge, StateBadge, StatusBadge, myt, signed } from '../affiliate-admin-ui';
+import { ChangeDiff, DecideChange, MarkPaidDialog, PayoutBadge, StateBadge, StatusBadge, myt, signed } from '../affiliate-admin-ui';
 
 /** One affiliate: approve/pause, their rate, what they sold and earned, their payouts. */
 export default function AdminAffiliatePage() {
@@ -88,6 +88,27 @@ export default function AdminAffiliatePage() {
             <Tile label="Paid out" value={formatPrice(b.paidOut)} />
             <Tile label="Waiting for payment" value={formatPrice(b.awaitingPayment)} hint={`${b.awaitingPaymentOrders} unpaid`} />
           </div>
+
+          {d.changeRequest ? (
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-4">
+                <div className="min-w-[260px] flex-1">
+                  <p className="font-medium text-text-primary">They asked to change their details</p>
+                  <p className="mb-3 text-[12px] text-text-muted">Sent {myt(d.changeRequest.sentAt, true)} · nothing changes until you approve</p>
+                  <ChangeDiff change={d.changeRequest} />
+                </div>
+                <DecideChange
+                  token={token}
+                  change={d.changeRequest}
+                  name={a.fullName}
+                  onDone={(note) => {
+                    setNotice(note);
+                    load();
+                  }}
+                />
+              </div>
+            </Card>
+          ) : null}
 
           {open ? (
             <Card>

@@ -61,12 +61,41 @@ export interface OpenPayout {
   createdAt: string;
 }
 
+/** The details an affiliate changes by request (affiliate-changes.ts on the API). */
+export const DETAIL_FIELDS = ['fullName', 'phone', 'channel', 'bankName', 'bankAccountName', 'bankAccountNumber'] as const;
+export type DetailField = (typeof DETAIL_FIELDS)[number];
+export type Details = Record<DetailField, string | null>;
+
+export const DETAIL_LABEL: Record<DetailField, string> = {
+  fullName: 'Full name',
+  phone: 'WhatsApp',
+  channel: 'Where you share',
+  bankName: 'Bank',
+  bankAccountName: 'Account holder',
+  bankAccountNumber: 'Account number',
+};
+
+export interface ChangeRequest {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+  changes: Partial<Details>;
+  previous: Partial<Details>;
+  sentAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  rejectReason: string | null;
+}
+
 export interface MyAffiliate {
   programme: Programme;
   affiliate: Affiliate | null;
   balance: Balance | null;
   openPayout: OpenPayout | null;
   paidOrdersThisMonth?: number;
+  /** Waiting for the team; at most one. */
+  changeRequest?: ChangeRequest | null;
+  /** The last answer, when it was a no — until they send again. */
+  lastRejected?: ChangeRequest | null;
 }
 
 export interface AffiliateOrder {
@@ -115,7 +144,11 @@ export const suggestAffiliateCode = (name: string) =>
   http.get<{ code: string }>('/api/v1/affiliate/code', { ...memberAuth(), params: { name } }).then((r) => r.data);
 export const joinAffiliate = (data: { fullName: string; phone: string; channel?: string; code: string; acceptTerms: true }) =>
   http.post<{ affiliate: Affiliate }>('/api/v1/affiliate/join', data, memberAuth()).then((r) => r.data);
-export const updateMyAffiliate = (data: Partial<Pick<Affiliate, 'fullName' | 'phone' | 'channel' | 'bankName' | 'bankAccountName' | 'bankAccountNumber' | 'code'>>) =>
+/** Sends the details as they should be; replaces a request still waiting. */
+export const requestAffiliateChange = (data: Details) => http.post<MyAffiliate>('/api/v1/affiliate/me/change', data, memberAuth()).then((r) => r.data);
+export const withdrawAffiliateChange = () => http.delete<MyAffiliate>('/api/v1/affiliate/me/change', memberAuth()).then((r) => r.data);
+/** The code only, while waiting for approval. */
+export const updateMyAffiliate = (data: { code: string }) =>
   http.patch<MyAffiliate>('/api/v1/affiliate/me', data, memberAuth()).then((r) => r.data);
 export const getMyAffiliateOrders = (page = 1) =>
   http.get<{ data: AffiliateOrder[]; pagination: { page: number; totalPages: number; total: number } }>('/api/v1/affiliate/orders', { ...memberAuth(), params: { page, limit: 20 } }).then((r) => r.data);
@@ -143,6 +176,14 @@ export interface AdminAffiliateDetail {
   orders: AffiliateOrder[];
   entries: Entry[];
   payouts: Payout[];
+  changeRequest: ChangeRequest | null;
+}
+
+export interface AdminChangeRow extends ChangeRequest {
+  affiliateId: string;
+  name: string;
+  code: string;
+  affiliateStatus: AffiliateStatus;
 }
 
 export interface AdminPayoutRow extends Payout {
@@ -167,6 +208,10 @@ export interface AffiliateSettings {
 const A = '/api/v1/admin/affiliates';
 export const adminListAffiliates = (token: string, params: { status?: string; search?: string } = {}) =>
   http.get<{ counts: Partial<Record<AffiliateStatus, number>>; affiliates: AdminAffiliateRow[] }>(A, { ...auth(token), params }).then((r) => r.data);
+export const adminListAffiliateChanges = (token: string, status: ChangeRequest['status'] = 'PENDING') =>
+  http.get<{ changes: AdminChangeRow[] }>(`${A}/changes`, { ...auth(token), params: { status } }).then((r) => r.data);
+export const adminDecideAffiliateChange = (token: string, id: string, data: { decision: 'approve' } | { decision: 'reject'; reason: string }) =>
+  http.post(`${A}/changes/${id}`, data, auth(token)).then((r) => r.data);
 export const adminGetAffiliate = (token: string, id: string) => http.get<AdminAffiliateDetail>(`${A}/${id}`, auth(token)).then((r) => r.data);
 export const adminUpdateAffiliate = (token: string, id: string, data: Record<string, unknown>) =>
   http.patch<AdminAffiliateDetail>(`${A}/${id}`, data, auth(token)).then((r) => r.data);

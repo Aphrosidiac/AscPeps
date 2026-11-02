@@ -129,7 +129,7 @@ Locally: `http://affiliate.localhost:3399`.
 | Products | every size the code works on (the store's own list and sale prices): price, what the customer pays with the code, what one sale earns and what N sales earn (1, 5, 10, 25, 50 or any number), and a copy link to each product's page with the code |
 | Orders | order number, date, status, goods, commission — **never who bought** |
 | Payouts | ready to pay out, their payouts, every change to the balance |
-| Settings | bank details, name, WhatsApp, where they share |
+| Settings | bank details, name, WhatsApp, where they share — locked; **Edit** a section and saving sends a change request (below) |
 
 The look is the ASC staff UI taken whole (`ASC/docs/staff-ui.md`): lavender
 canvas, white 28px panels, ink pills with a travelling tab pill, pastel cards,
@@ -147,6 +147,31 @@ page is on the store" with a link to it there (`app/affiliate/[...rest]`).
 
 Members sign in separately on the subdomain (the session is per-origin
 localStorage, like the store's).
+
+## Changing their details
+
+Fakhrul, 2026-11-03: an affiliate can't just change their bank account, name,
+WhatsApp or where they share. Settings shows them greyed out; **Edit** opens
+one section, and saving is **Request change** (`modules/affiliates/affiliate-changes.ts`).
+
+- Nothing moves until the team approves. Even the first bank details go
+  through it, so a payout never goes to an account the team hasn't seen.
+- One request at a time (`affiliate_change_requests`, status `PENDING`).
+  Editing again starts from what is already asked for, and sending replaces
+  the waiting request in place, so the team only ever sees the latest one.
+  Sending the approved details back unchanged withdraws it; so does
+  **Withdraw it**.
+- The request keeps only the fields that differ, with what they were
+  (`changes`, `previous`), and the team gets a WhatsApp notice (account
+  numbers as ····1234).
+- **Admin → Affiliates → Changes** (and a card on the affiliate's page):
+  before → after per field with full account numbers; **Approve** applies it
+  and moves a payout still waiting to the new account; **Reject** needs a
+  reason, which the affiliate sees on Settings until they send another.
+- Bank details can be changed, never removed, and come as all three (bank,
+  account holder, number) or none. The code is not part of this: a live code
+  only changes through the team.
+- The team can still edit an affiliate directly on their admin page.
 
 ## The store
 
@@ -197,18 +222,20 @@ ejen…), with its own playbook:
 ## API
 
 Affiliate (`/api/v1/affiliate`, member token): `GET /programme` (public),
-`GET /me`, `GET /code?code=` or `?name=`, `POST /join`, `PATCH /me`,
+`GET /me`, `GET /code?code=` or `?name=`, `POST /join`, `PATCH /me` (the code,
+while waiting for approval), `POST|DELETE /me/change`, `GET /products/order`,
 `GET /orders`, `GET /entries`, `GET /payouts`, `POST /payouts`.
 
 Admin (`/api/v1/admin/affiliates`): `GET /`, `GET /:id`, `PATCH /:id`,
 `POST /:id/adjust`, `GET /payouts?status=`, `POST /payouts/:id/paid`,
-`POST /payouts/:id/cancel`, `GET|PUT /settings`.
+`POST /payouts/:id/cancel`, `GET /changes?status=`, `POST /changes/:id`
+(`{decision: approve}` or `{decision: reject, reason}`), `GET|PUT /settings`.
 
 ## Tests
 
 ```bash
 cd backend
-npm run test:affiliate        # 42 checks: the sum, budget, checkout, paid, hold, payout,
+npm run test:affiliate        # 43 checks: the sum, budget, checkout, paid, hold, payout,
                               # refund after payout (negative), test-mark, paused payouts, stale Mark paid,
                               # aliases, sign-up bonus, Abby's write tools
 npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders) + SITI5 (to approve)
@@ -216,8 +243,9 @@ npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders) 
 
 ## Deploying it (when Fakhrul says)
 
-1. `prisma migrate deploy` — `20261102120000_ascend_affiliate` is additive
-   (new tables, three nullable/defaulted order columns, one member column).
+1. `prisma migrate deploy` — `20261102120000_ascend_affiliate` and
+   `20261103120000_affiliate_change_requests` are additive (new tables, three
+   nullable/defaulted order columns, one member column).
 2. Backend: tsup build, restart `ascend-api` (check no agent thread is
    running first).
 3. DNS: `affiliate` A record → ascend-vps, proxied (Rikaidrawings Cloudflare

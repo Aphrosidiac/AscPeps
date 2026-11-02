@@ -3,14 +3,18 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Dialog } from '@/components/admin/Dialog';
+import { ConfirmDialog, Dialog } from '@/components/admin/Dialog';
 import { Field, TextInput } from '@/components/admin/ui';
 import { formatPrice, cn } from '@/lib/utils';
 import {
+  DETAIL_LABEL,
   STATE_LABEL,
   STATUS_LABEL,
+  adminDecideAffiliateChange,
   adminMarkAffiliatePayoutPaid,
   apiError,
+  type ChangeRequest,
+  type DetailField,
   type AffiliateStatus,
   type OrderState,
   type PayoutStatus,
@@ -128,5 +132,98 @@ export function MarkPaidDialog({
         {error ? <p className="text-[13px] text-danger">{error}</p> : null}
       </div>
     </Dialog>
+  );
+}
+
+/** A change request's before → after, one line per field. Full account numbers: the team checks them. */
+export function ChangeDiff({ change }: { change: Pick<ChangeRequest, 'changes' | 'previous'> }) {
+  return (
+    <dl className="grid gap-1.5 text-[13px]">
+      {(Object.keys(change.changes) as DetailField[]).map((k) => (
+        <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3">
+          <dt className="text-text-secondary">{DETAIL_LABEL[k]}</dt>
+          <dd className="min-w-0 break-words">
+            <span className="text-text-muted line-through">{change.previous[k] ?? 'none'}</span>
+            <span className="mx-1.5 text-text-muted">→</span>
+            <span className="font-medium text-text-primary">{change.changes[k] ?? 'none'}</span>
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * Approve or reject a waiting change. Approving applies it (and moves a payout
+ * still waiting to the new account); rejecting needs a reason they will see.
+ */
+export function DecideChange({ token, change, name, onDone }: { token: string; change: ChangeRequest; name: string; onDone: (note: string) => void }) {
+  const [mode, setMode] = useState<'approve' | 'reject' | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const bank = (['bankName', 'bankAccountName', 'bankAccountNumber'] as DetailField[]).some((k) => k in change.changes);
+
+  const decide = async (body: { decision: 'approve' } | { decision: 'reject'; reason: string }) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await adminDecideAffiliateChange(token, change.id, body);
+      onDone(body.decision === 'approve' ? `${name}'s change is approved.` : `${name}'s change was rejected; they see why.`);
+      return true;
+    } catch (err) {
+      setError(apiError(err, 'Could not save that.'));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex gap-2">
+        <Button size="sm" variant="ghost" onClick={() => (setMode('reject'), setError(null))}>Reject</Button>
+        <Button size="sm" onClick={() => (setMode('approve'), setError(null))}>Approve</Button>
+      </div>
+      {mode === 'approve' ? (
+        <ConfirmDialog
+          title={`Approve ${name}'s change?`}
+          body={bank ? 'Their bank details change now. A payout still waiting will go to the new account.' : 'Their details change now.'}
+          confirmLabel="Approve"
+          busy={busy}
+          error={error}
+          onConfirm={() => decide({ decision: 'approve' }).then((ok) => (ok ? undefined : false))}
+          onClose={() => setMode(null)}
+        />
+      ) : null}
+      {mode === 'reject' ? (
+        <Dialog
+          title={`Reject ${name}'s change?`}
+          description="Nothing changes. They see your reason on their Settings page."
+          onClose={() => setMode(null)}
+          footer={(close) => (
+            <>
+              <Button type="button" variant="ghost" size="sm" onClick={close} disabled={busy}>Keep it</Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={busy || reason.trim().length < 2}
+                onClick={async () => {
+                  if (await decide({ decision: 'reject', reason: reason.trim() })) close();
+                }}
+              >
+                Reject
+              </Button>
+            </>
+          )}
+        >
+          <Field label="Why" help="Shown to the affiliate.">
+            <TextInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. The account name doesn't match yours" data-autofocus />
+          </Field>
+          {error ? <p className="mt-3 text-[13px] text-danger">{error}</p> : null}
+        </Dialog>
+      ) : null}
+    </>
   );
 }
