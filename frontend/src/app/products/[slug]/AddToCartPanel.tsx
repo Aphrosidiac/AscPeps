@@ -213,38 +213,41 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         </div>
       ))}
 
-      <div ref={inlineButtonRef} className="flex items-center gap-4 pt-4">
-        <div className="flex items-center border border-border rounded-lg">
-          <button
-            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer"
-            aria-label="Decrease quantity"
-          >
-            -
-          </button>
-          <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
-          <button
-            onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-            disabled={quantity >= maxQty}
-            className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Increase quantity"
-          >
-            +
-          </button>
+      {/* The two ways to buy, as one group: 12px apart, not the panel's 24px. */}
+      <div className="space-y-3 pt-4">
+        <div ref={inlineButtonRef} className="flex items-center gap-4">
+          <div className="flex items-center border border-border rounded-lg">
+            <button
+              onClick={() => setQuantity(Math.max(1, quantity - 1))}
+              className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer"
+              aria-label="Decrease quantity"
+            >
+              -
+            </button>
+            <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
+            <button
+              onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
+              disabled={quantity >= maxQty}
+              className="px-3 py-2 min-w-11 min-h-11 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Increase quantity"
+            >
+              +
+            </button>
+          </div>
+          {added ? (
+            <Button size="lg" className="flex-1 whitespace-nowrap" onClick={() => openCart()}>
+              <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button onClick={handleAddToCart} disabled={!canBuy} size="lg" className="flex-1">
+              {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add to Cart</>}
+            </Button>
+          )}
         </div>
-{added ? (
-          <Button size="lg" className="flex-1 whitespace-nowrap" onClick={() => openCart()}>
-            <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
-          </Button>
-        ) : (
-          <Button onClick={handleAddToCart} disabled={!canBuy} size="lg" className="flex-1">
-            {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add to Cart</>}
-          </Button>
-        )}
+        <Button onClick={handleBuyNow} disabled={!canBuy} variant="buy" size="lg" className="w-full min-h-[52px]">
+          <Zap className="w-4 h-4 fill-current" aria-hidden="true" /> {isPreorderOnly ? 'Pre-order now' : 'Buy now'}
+        </Button>
       </div>
-      <Button onClick={handleBuyNow} disabled={!canBuy} variant="buy" size="lg" className="mt-3 w-full min-h-[52px]">
-        <Zap className="w-4 h-4 fill-current" aria-hidden="true" /> {isPreorderOnly ? 'Pre-order now' : 'Buy now'}
-      </Button>
       <PreorderNote quantity={quantity} stock={stock} preorder={preorder} leadTime={leadTime} />
 
       {/* Mobile-only sticky CTA — keeps Add to Cart reachable once the inline
