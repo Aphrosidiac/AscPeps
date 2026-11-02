@@ -210,6 +210,7 @@ every route behind a 24-hour JWT with the algorithm pinned.
 | **Subscribers · Campaigns** | The list, the welcome flow, broadcast drafting and sending |
 | **Insights · Comments** | Research articles with numbered figures; reader comments, moderated |
 | **Discounts** | Percentage or fixed, with optional minimum, cap and expiry — all three genuinely optional |
+| **Affiliates** | Applications to approve, each affiliate's sales, commission and balance, the payout queue with its hold, the programme's numbers and the sign-up bonus — [affiliate.md](docs/affiliate.md) |
 | **WhatsApp** | The operator allowlist, LID binding, allowlisted groups, and every conversation the agent has had |
 | **Settings** | Announcement bar, business details, shipping, the active gateway, email toggles |
 
@@ -442,6 +443,7 @@ npm run test:agent:grounding      # the fact guard, unit and replay
 npm run test:agent:documents      # the agent can never emit a document's file
 npm run test:agent:e2e            # real model, real conversations, asserted on database state
 npm run test:payment-failure      # refused payments are recorded, restocked, and chased
+npm run test:affiliate            # commission, refunds after payout, the hold, self-referral, sign-up bonus
 npx tsx scripts/test-finance-split.ts · test-delivery-flow.ts · test-reminder-flow.ts · test-mention-parsing.ts
 ```
 
@@ -623,6 +625,7 @@ approve / decline / undo, memory, routines, model settings — are listed in
 | [payments.md](docs/payments.md) | the methods, Billplz keys and limits, an online order end to end, unpaid orders, refunds, live testing, what to check when payment breaks |
 | [add-ons.md](docs/add-ons.md) | included vs suggested add-ons, who decides what an order includes, how orders show and change, money and reports |
 | [preorder.md](docs/preorder.md) | sold-out sizes on pre-order: switches, how stock and lines record it, where it shows |
+| [affiliate.md](docs/affiliate.md) | Ascend Affiliate: codes, commission as an order cost, refunds and negative balances, the payout hold, the affiliate site, popups, admin, Abby, deploying it |
 | [group-buy.md](docs/group-buy.md) | Group Buy batches: every admin control, the customer portal, data model, running a batch |
 | [assistant.md](docs/assistant.md) | the harness: data model, a turn step by step, tiers and undo, memory and the trust rule, routines, the model menu, tests |
 | [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
