@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import type { ButtonHTMLAttributes } from 'react';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'buy';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -12,6 +12,8 @@ const variants = {
   outline: 'border border-border text-text-primary hover:bg-surface-elevated',
   ghost: 'text-text-secondary hover:bg-surface-elevated hover:text-text-primary',
   danger: 'bg-danger text-white hover:bg-red-600',
+  // Buy now: the brand's cobalt, lifted a touch so it reads as the way through.
+  buy: 'bg-cobalt text-white font-semibold shadow-[0_8px_20px_-8px_rgb(49_85_217/0.65)] hover:bg-cobalt-deep active:translate-y-px',
 };
 
 const sizes = {

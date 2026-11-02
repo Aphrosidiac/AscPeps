@@ -17,6 +17,10 @@
   --color-warning: #F59E0B;
   /* #EF4444 was 3.8:1 as small text on white. */
   --color-danger: #DC2626;
+  /* Ascend Cobalt, from the brand kit (AscPeps/brand/tokens.css): the one
+     colour that says "buy" — Buy now. White on it is 5:1. */
+  --color-cobalt: #3155D9;
+  --color-cobalt-deep: color-mix(in srgb, #3155D9 82%, #0A0A0A);
   --font-display: var(--font-outfit);
   --font-body: var(--font-inter);
 }
@@ -540,4 +544,39 @@ h1, h2, h3, h4, h5, h6 {
   .reveal, .reveal > * { transition: none; }
   .stream-caret::after { animation: none; }
   .press, .press:active:not(:disabled) { transition: none; transform: none; }
+}
+
+/* The slide-in cart (components/cart/CartDrawer.tsx): a modal <dialog> from the right. */
+.cart-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(440px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+.cart-drawer::backdrop {
+  background: rgb(10 10 10 / 0.4);
+}
+.cart-drawer[open] {
+  animation: cart-drawer-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes cart-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+html:has(.cart-drawer[open]) {
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cart-drawer[open] {
+    animation: none;
+  }
 }

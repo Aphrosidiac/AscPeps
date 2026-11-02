@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart, Check, ArrowRight, Clock } from 'lucide-react';
+import { ShoppingCart, Check, ArrowRight, Clock, Zap } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
 import { Button } from '@/components/ui/Button';
@@ -45,7 +44,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     (addOns ?? []).filter((a) => a.addOnRequired).map((a) => a.id)
   );
   const inlineButtonRef = useRef<HTMLDivElement>(null);
-  const { addItems, itemCount, items } = useCart();
+  const { addItems, itemCount, items, openCart } = useCart();
   const router = useRouter();
 
   function toggleAddOn(id: string, required: boolean) {
@@ -234,19 +233,17 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
           </button>
         </div>
 {added ? (
-          <Link href="/cart" className="flex-1">
-            <Button size="lg" className="w-full whitespace-nowrap">
-              <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
-            </Button>
-          </Link>
+          <Button size="lg" className="flex-1 whitespace-nowrap" onClick={() => openCart()}>
+            <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
+          </Button>
         ) : (
           <Button onClick={handleAddToCart} disabled={!canBuy} size="lg" className="flex-1">
             {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add to Cart</>}
           </Button>
         )}
       </div>
-      <Button onClick={handleBuyNow} disabled={!canBuy} variant="outline" size="lg" className="mt-3 w-full border-text-primary">
-        {isPreorderOnly ? 'Pre-order now' : 'Buy now'}
+      <Button onClick={handleBuyNow} disabled={!canBuy} variant="buy" size="lg" className="mt-3 w-full min-h-[52px]">
+        <Zap className="w-4 h-4 fill-current" aria-hidden="true" /> {isPreorderOnly ? 'Pre-order now' : 'Buy now'}
       </Button>
       <PreorderNote quantity={quantity} stock={stock} preorder={preorder} leadTime={leadTime} />
 
@@ -264,18 +261,16 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                 rather than as the number the customer is deciding on. */}
             <span className="font-display font-bold text-lg shrink-0">{formatPrice(price)}</span>
 {added ? (
-              <Link href="/cart" className="flex-1">
-                <Button size="lg" className="w-full whitespace-nowrap">
-                  <Check className="w-4 h-4" /> View cart ({itemCount}) <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
+              <Button size="lg" className="flex-1 px-3 whitespace-nowrap" onClick={() => openCart()}>
+                <Check className="w-4 h-4" /> Cart ({itemCount})
+              </Button>
             ) : (
               <Button onClick={handleAddToCart} size="lg" className="flex-1 px-3 whitespace-nowrap">
                 {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add</>}
               </Button>
             )}
-            <Button onClick={handleBuyNow} variant="outline" size="lg" className="flex-1 px-3 whitespace-nowrap border-text-primary">
-              Buy now
+            <Button onClick={handleBuyNow} variant="buy" size="lg" className="flex-1 px-3 whitespace-nowrap">
+              <Zap className="w-4 h-4 fill-current" aria-hidden="true" /> Buy now
             </Button>
           </div>,
           document.body

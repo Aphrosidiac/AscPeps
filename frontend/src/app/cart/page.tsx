@@ -1,137 +1,24 @@
-'use client';
-import Image from 'next/image';
+import { getProductsServer } from '@/lib/server-api';
+import { ProductCard } from '@/components/products/ProductCard';
+import { CartView } from './CartView';
 
-import Link from 'next/link';
-import { lineIdOf, lineUnitPrice } from '@/lib/cart-lines';
-import { Trash2, ShoppingCart, Clock } from 'lucide-react';
-import posthog from 'posthog-js';
-import { useCart } from '@/lib/cart';
-import { formatPrice } from '@/lib/utils';
-import { Button } from '@/components/ui/Button';
-import { Animate, Stagger } from '@/components/ui/Animate';
-import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
-
-export default function CartPage() {
-  const { items, removeItem, updateQuantity, total, itemCount } = useCart();
-  const { leadTime } = usePreorder();
-  const anyPreorder = items.some((i) => preorderUnits(i.quantity, i.stock, i.preorder) > 0);
-
-  if (items.length === 0) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <Animate variant="scale" duration={0.5}>
-        <ShoppingCart className="w-16 h-16 text-text-muted mx-auto mb-4" />
-        <h1 className="font-display text-2xl font-bold mb-2">Your cart is empty</h1>
-        <p className="text-text-secondary mb-6">Browse our products and add items to your cart.</p>
-        <Link href="/products"><Button>Browse Products</Button></Link>
-        </Animate>
-      </div>
-    );
-  }
-
+/**
+ * /cart, laid out like our other stores': the lines on the left, the summary
+ * (with shipping) on the right. An empty cart is not a dead end: it shows the
+ * featured products, fetched here so the page does not wait on them.
+ */
+export default async function CartPage() {
+  const featured = await getProductsServer({ featured: true, limit: 4 });
+  const products = featured.data.length > 0 ? featured.data : (await getProductsServer({ limit: 4 })).data;
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Animate variant="fadeUp" duration={0.5}>
-        <h1 className="font-display text-3xl font-bold mb-8">Shopping Cart</h1>
-      </Animate>
-
-      <div className="grid lg:grid-cols-3 gap-8">
-        <Stagger className="lg:col-span-2 space-y-4" stagger={0.08}>
-          {items.map((item) => (
-            <div key={lineIdOf(item)} className="bg-surface rounded-xl border border-border p-4">
-              <div className="flex items-center gap-3">
-                <div className="relative w-14 h-14 sm:w-16 sm:h-16 bg-surface-elevated rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                  {item.imageUrl ? (
-                    <Image src={item.imageUrl} alt={item.name} fill sizes="64px" className="object-cover" />
-                  ) : (
-                    <span className="w-full text-center text-[9px] sm:text-[10px] leading-tight font-bold text-text-muted px-1 line-clamp-2 break-words">{item.code}</span>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-display font-bold text-sm sm:text-base truncate">{item.code}</h3>
-                  <p className="text-xs sm:text-sm text-text-secondary truncate">{item.name}</p>
-                  <p className="text-sm text-text-secondary">{formatPrice(lineUnitPrice(item))}</p>
-                  {preorderUnits(item.quantity, item.stock, item.preorder) > 0 && (
-                    <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-text-primary">
-                      <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                      {preorderLabel(item.quantity, item.stock)} · ships in {leadTime}
-                    </p>
-                  )}
-                </div>
-
-                <button aria-label={`Remove ${item.code}`} onClick={() => { removeItem(lineIdOf(item)); posthog.capture('remove_from_cart', { variant_id: item.variantId, product_code: item.code, quantity: item.quantity }); }} className="p-2 text-text-muted hover:text-danger transition-colors cursor-pointer shrink-0">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
-                <div className="flex items-center border border-border rounded-lg">
-                  <button
-                    onClick={() => updateQuantity(lineIdOf(item), Math.max(1, item.quantity - 1))}
-                    className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
-                  >
-                    -
-                  </button>
-                  <span className="px-4 py-1.5 text-sm font-medium">{item.quantity}</span>
-                  <button
-                    onClick={() => updateQuantity(lineIdOf(item), item.quantity + 1)}
-                    className="px-3 py-1.5 text-text-secondary hover:text-text-primary cursor-pointer"
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="font-display font-bold text-lg">{formatPrice(lineUnitPrice(item) * item.quantity)}</p>
-              </div>
-
-              {/* What comes with it — part of this line, not lines of their own:
-                  no quantity or delete, scales with the quantity above, goes
-                  when the product goes. */}
-              {(item.includes ?? []).length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border">
-                  <p className="text-xs font-medium text-text-muted mb-1.5">Included</p>
-                  <ul className="space-y-1">
-                    {item.includes!.map((inc) => (
-                      <li key={inc.variantId} className="flex items-center justify-between gap-3 text-xs sm:text-sm text-text-secondary">
-                        <span className="min-w-0 truncate">{inc.perUnit * item.quantity}× {inc.name}</span>
-                        <span className={`shrink-0 ${inc.price === 0 ? 'text-success' : ''}`}>
-                          {inc.price === 0 ? 'Free' : formatPrice(inc.price * inc.perUnit * item.quantity)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ))}
-        </Stagger>
-
-        <Animate variant="fadeUp" delay={0.2}>
-        <div className="bg-surface rounded-xl border border-border p-6 h-fit sticky top-24">
-          <h3 className="font-display font-semibold text-lg mb-4">Order Summary</h3>
-          <div className="space-y-2 mb-4">
-            <div className="flex justify-between text-sm text-text-secondary">
-              <span>Items ({itemCount})</span>
-              <span>{formatPrice(total)}</span>
-            </div>
+    <CartView
+      suggestions={
+        products.length > 0 ? (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {products.map((p) => <ProductCard key={p.id} product={p} />)}
           </div>
-          <div className="border-t border-border pt-4 mb-6">
-            <div className="flex justify-between font-display font-bold text-lg">
-              <span>Total</span>
-              <span>{formatPrice(total)}</span>
-            </div>
-          </div>
-          {anyPreorder && (
-            <p className="mb-4 text-xs text-text-secondary leading-relaxed">
-              Your order includes a pre-order, so it ships together in {leadTime}, when the restock lands.
-            </p>
-          )}
-          <Link href="/checkout" className="block" onClick={() => posthog.capture('checkout_started', { item_count: itemCount, total_cents: total })}>
-            <Button className="w-full" size="lg">Proceed to Checkout</Button>
-          </Link>
-        </div>
-        </Animate>
-      </div>
-    </div>
+        ) : null
+      }
+    />
   );
 }

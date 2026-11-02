@@ -1,9 +1,9 @@
 'use client';
 
-import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback, type ReactNode } from 'react';
 import type { CartItem } from '@/types';
 import { lineIdOf, lineKey, lineMaxQuantity, lineUnitPrice } from '@/lib/cart-lines';
-import { CartToast } from '@/components/ui/CartToast';
+import { CartDrawer } from '@/components/cart/CartDrawer';
 
 interface CartState {
   items: CartItem[];
@@ -16,6 +16,7 @@ interface CartState {
 type CartAction =
   | { type: 'ADD_ITEM'; payload: CartItem }
   | { type: 'REMOVE_ITEM'; payload: string }
+  | { type: 'RESTORE_ITEM'; payload: { item: CartItem; index: number } }
   | { type: 'UPDATE_QUANTITY'; payload: { lineId: string; quantity: number } }
   | { type: 'CLEAR' }
   | { type: 'LOAD'; payload: CartItem[] };
@@ -49,6 +50,13 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     }
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter((i) => lineIdOf(i) !== action.payload) };
+    // Undo of a remove: the line goes back where it was.
+    case 'RESTORE_ITEM': {
+      const { item, index } = action.payload;
+      const rest = state.items.filter((i) => lineIdOf(i) !== lineIdOf(item));
+      rest.splice(Math.min(index, rest.length), 0, item);
+      return { ...state, items: rest };
+    }
     case 'UPDATE_QUANTITY':
       return {
         ...state,
@@ -75,6 +83,13 @@ interface CartContextType {
    *  add-on. See the comment on the implementation. `quiet` skips the
    *  confirmation, for Buy now, which goes straight on to checkout. */
   addItems: (items: CartItem[], opts?: { quiet?: boolean }) => void;
+  /** Puts a removed line back at `index` (the cart's Undo). */
+  restoreItem: (item: CartItem, index: number) => void;
+  /** The slide-in cart (components/cart/CartDrawer.tsx). `added` is the line
+   *  just added, shown first under "Added to your cart". */
+  drawer: { open: boolean; added: string | null };
+  openCart: (added?: string) => void;
+  closeCart: () => void;
   /** By line id (lib/cart-lines lineIdOf) — removes what the line includes with it. */
   removeItem: (lineId: string) => void;
   updateQuantity: (lineId: string, quantity: number) => void;
@@ -83,21 +98,13 @@ interface CartContextType {
   itemCount: number;
 }
 
-export interface ToastItem {
-  code: string;
-  name: string;
-  /** Add-ons that rode along with it. Counted rather than listed — naming three
-   *  consumables is noise next to the thing they bought. */
-  extras: number;
-  key: number;
-}
-
 const CartContext = createContext<CartContextType | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [], hydrated: false });
-  const [toastItem, setToastItem] = useState<ToastItem | null>(null);
-  const toastKeyRef = useRef(0);
+  const [drawer, setDrawer] = useState<{ open: boolean; added: string | null }>({ open: false, added: null });
+  const openCart = useCallback((added?: string) => setDrawer({ open: true, added: added ?? null }), []);
+  const closeCart = useCallback(() => setDrawer((d) => ({ ...d, open: false })), []);
 
   useEffect(() => {
     // Always dispatch LOAD — even with nothing saved — so `hydrated` flips
@@ -135,35 +142,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Products, not syringes: what a line includes is not counted as items.
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
 
+  // Adding opens the cart with the line on top (the Teliti / Shopify pattern):
+  // the customer sees it went in, the total, and the way to checkout or back.
   const addItem = useCallback((item: CartItem) => {
     dispatch({ type: 'ADD_ITEM', payload: item });
-    toastKeyRef.current += 1;
-    setToastItem({ code: item.code, name: item.name, extras: 0, key: toastKeyRef.current });
+    setDrawer({ open: true, added: item.lineId ?? lineKey(item.variantId, item.includes) });
   }, []);
 
   /**
-   * One action, one confirmation.
-   *
-   * The product page adds the product and then each selected add-on. When every
-   * one of those went through addItem, each fired its own toast and React
-   * batched them — so the only one that ever rendered was the LAST add-on.
-   * Tapping "Add to cart" on Retatrutide confirmed "Alcohol Swab": the customer
-   * saw a thing they never chose and no sign of the thing they did.
-   *
-   * The first item is the one the customer actually asked for; anything after
-   * it (a SUGGESTED product ticked on its page) is counted, not named. What the
-   * first item includes rides inside it and is not counted.
+   * One action, one confirmation. The product page adds the product and each
+   * ticked add-on in one go; the cart opens on the product the customer asked
+   * for (the first), not whichever add-on happened to go in last.
    */
   const addItems = useCallback((items: CartItem[], opts?: { quiet?: boolean }) => {
     if (items.length === 0) return;
     for (const item of items) dispatch({ type: 'ADD_ITEM', payload: item });
     if (opts?.quiet) return;
-    toastKeyRef.current += 1;
     const [lead] = items;
-    setToastItem({ code: lead.code, name: lead.name, extras: items.length - 1, key: toastKeyRef.current });
+    setDrawer({ open: true, added: lead.lineId ?? lineKey(lead.variantId, lead.includes) });
   }, []);
-
-  const clearToast = useCallback(() => setToastItem(null), []);
 
   return (
     <CartContext value={{
@@ -172,13 +169,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
       addItem,
       addItems,
       removeItem: (id) => dispatch({ type: 'REMOVE_ITEM', payload: id }),
+      restoreItem: (item, index) => dispatch({ type: 'RESTORE_ITEM', payload: { item, index } }),
+      drawer,
+      openCart,
+      closeCart,
       updateQuantity: (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { lineId: id, quantity: qty } }),
       clearCart: () => dispatch({ type: 'CLEAR' }),
       total,
       itemCount,
     }}>
       {children}
-      <CartToast item={toastItem} onDone={clearToast} />
+      <CartDrawer />
     </CartContext>
   );
 }

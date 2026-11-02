@@ -12,7 +12,7 @@ import { GROUP_BUY_ENABLED } from '@/lib/features';
 const EASE = 'cubic-bezier(0.16,1,0.3,1)';
 
 export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
-  const { itemCount } = useCart();
+  const { itemCount, openCart } = useCart();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   // menuOpen is the logical on/off state. menuClosing keeps the overlay in
@@ -170,9 +170,18 @@ export function Navbar({ researchLive = false }: { researchLive?: boolean }) {
               <User className="w-5 h-5" />
             </Link>
 
+            {/* Opens the slide-in cart; still a link to /cart for a new tab, or
+                if scripts fail. On /cart itself it just goes there. */}
             <Link
               href="/cart"
               aria-label={itemCount > 0 ? `Cart, ${itemCount} item${itemCount === 1 ? '' : 's'}` : 'Cart'}
+              aria-haspopup="dialog"
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                if (window.location.pathname === '/cart') return;
+                e.preventDefault();
+                openCart();
+              }}
               className="relative p-1.5 sm:p-3 hover:bg-surface-elevated rounded-lg transition-colors"
             >
               <ShoppingCart className="w-5 h-5" />
