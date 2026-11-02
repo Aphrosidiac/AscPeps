@@ -72,8 +72,9 @@ interface CartContextType {
   addItem: (item: CartItem) => void;
   /** Add several lines as ONE action — a product plus the add-ons that came
    *  with it. Fires a single confirmation naming the product, not the last
-   *  add-on. See the comment on the implementation. */
-  addItems: (items: CartItem[]) => void;
+   *  add-on. See the comment on the implementation. `quiet` skips the
+   *  confirmation, for Buy now, which goes straight on to checkout. */
+  addItems: (items: CartItem[], opts?: { quiet?: boolean }) => void;
   /** By line id (lib/cart-lines lineIdOf) — removes what the line includes with it. */
   removeItem: (lineId: string) => void;
   updateQuantity: (lineId: string, quantity: number) => void;
@@ -153,9 +154,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
    * it (a SUGGESTED product ticked on its page) is counted, not named. What the
    * first item includes rides inside it and is not counted.
    */
-  const addItems = useCallback((items: CartItem[]) => {
+  const addItems = useCallback((items: CartItem[], opts?: { quiet?: boolean }) => {
     if (items.length === 0) return;
     for (const item of items) dispatch({ type: 'ADD_ITEM', payload: item });
+    if (opts?.quiet) return;
     toastKeyRef.current += 1;
     const [lead] = items;
     setToastItem({ code: lead.code, name: lead.name, extras: items.length - 1, key: toastKeyRef.current });

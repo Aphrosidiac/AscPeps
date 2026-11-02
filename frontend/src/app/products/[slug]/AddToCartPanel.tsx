@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ShoppingCart, Check, ArrowRight, Clock } from 'lucide-react';
 import posthog from 'posthog-js';
 import { useCart } from '@/lib/cart';
@@ -44,7 +45,8 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     (addOns ?? []).filter((a) => a.addOnRequired).map((a) => a.id)
   );
   const inlineButtonRef = useRef<HTMLDivElement>(null);
-  const { addItems, itemCount } = useCart();
+  const { addItems, itemCount, items } = useCart();
+  const router = useRouter();
 
   function toggleAddOn(id: string, required: boolean) {
     if (required) return;
@@ -66,7 +68,7 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
   const selection = `${variantId}|${quantity}|${selectedAddOnIds.join(',')}`;
   const added = addedFor === selection;
 
-  const handleAddToCart = () => {
+  const buildLines = (): CartItem[] => {
     // INCLUDED add-ons (syringes, swabs, vials) ride inside the product's line,
     // per unit; a sold-out free one is left off (the server ships what is left).
     // SUGGESTED ones (another product) become lines of their own.
@@ -106,10 +108,12 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
         imageUrl: addOn.imageUrl,
       });
     }
-    // One call, so the confirmation names the product rather than whichever
-    // add-on happened to be added last.
-    addItems(lines);
+    return lines;
+  };
+
+  const trackAdd = (via: 'add_to_cart' | 'buy_now') =>
     posthog.capture('add_to_cart', {
+      via,
       variant_id: variantId,
       product_code: code,
       variant_size: size,
@@ -118,6 +122,12 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
       add_on_count: selectedAddOnIds.length,
       preorder_units: preorderUnits(quantity, stock, preorder),
     });
+
+  const handleAddToCart = () => {
+    // One call, so the confirmation names the product rather than whichever
+    // add-on happened to be added last.
+    addItems(buildLines());
+    trackAdd('add_to_cart');
     // Deliberately NOT reset on a timer. "Added" used to revert after two
     // seconds and the toast expired half a second later, so a few seconds after
     // tapping there was no trace anything had happened and no way forward — the
@@ -125,6 +135,20 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
     // the customer changes what they are buying.
     setAddedFor(selection);
   };
+
+  // Buy now = this selection into the cart, then straight to checkout. It
+  // stays in the cart, so backing out of checkout finds it there. Already in
+  // the cart (Add to Cart just now, or a Buy now they backed out of)? Then it
+  // is not added again: checkout shows it, and Edit cart changes it.
+  const handleBuyNow = () => {
+    if (!added && !items.some((i) => i.variantId === variantId)) {
+      addItems(buildLines(), { quiet: true });
+      trackAdd('buy_now');
+      setAddedFor(selection);
+    }
+    router.push('/checkout');
+  };
+  const canBuy = maxQty > 0 && quantity <= maxQty;
 
   return (
     <>
@@ -216,11 +240,14 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
             </Button>
           </Link>
         ) : (
-          <Button onClick={handleAddToCart} disabled={maxQty <= 0 || quantity > maxQty} size="lg" className="flex-1">
+          <Button onClick={handleAddToCart} disabled={!canBuy} size="lg" className="flex-1">
             {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add to Cart</>}
           </Button>
         )}
       </div>
+      <Button onClick={handleBuyNow} disabled={!canBuy} variant="outline" size="lg" className="mt-3 w-full border-text-primary">
+        {isPreorderOnly ? 'Pre-order now' : 'Buy now'}
+      </Button>
       <PreorderNote quantity={quantity} stock={stock} preorder={preorder} leadTime={leadTime} />
 
       {/* Mobile-only sticky CTA — keeps Add to Cart reachable once the inline
@@ -243,10 +270,13 @@ export function AddToCartPanel({ variantId, code, name, size, price, imageUrl, s
                 </Button>
               </Link>
             ) : (
-              <Button onClick={handleAddToCart} size="lg" className="flex-1">
-                {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add to Cart</>}
+              <Button onClick={handleAddToCart} size="lg" className="flex-1 px-3 whitespace-nowrap">
+                {isPreorderOnly ? <><Clock className="w-4 h-4" /> Pre-order</> : <><ShoppingCart className="w-4 h-4" /> Add</>}
               </Button>
             )}
+            <Button onClick={handleBuyNow} variant="outline" size="lg" className="flex-1 px-3 whitespace-nowrap border-text-primary">
+              Buy now
+            </Button>
           </div>,
           document.body
         )}
