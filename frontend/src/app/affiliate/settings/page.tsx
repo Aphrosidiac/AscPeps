@@ -10,7 +10,7 @@ import {
   type DetailField,
   type Details,
 } from '@/lib/affiliate-api';
-import { Field, Notice, PageHead, useAff } from '../aff-ui';
+import { Field, GuideLink, Notice, PageHead, useAff } from '../aff-ui';
 
 /**
  * The affiliate's details, locked. Edit a section, and saving sends a change
@@ -140,7 +140,7 @@ export default function AffiliateSettings() {
 
   return (
     <>
-      <PageHead title="Settings" sub="Your details and where we pay you" />
+      <PageHead title="Settings" sub="Your details and where we pay you" actions={<GuideLink section="details">How changes work</GuideLink>} />
 
       {pending ? (
         <div className="mb-5">

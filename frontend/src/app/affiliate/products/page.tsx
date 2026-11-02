@@ -8,7 +8,7 @@ import { getBestSellerOrder } from '@/lib/affiliate-api';
 import { canPreorder, usePreorder } from '@/lib/preorder';
 import { getEffectivePrice, isSaleActive } from '@/lib/utils';
 import type { Product } from '@/types';
-import { CopyButton, PageHead, rm, useAff, useStoreOrigin } from '../aff-ui';
+import { CopyButton, GuideLink, PageHead, rm, useAff, useStoreOrigin } from '../aff-ui';
 
 /**
  * Everything the code works on, and what it earns: the store's own list and
@@ -122,6 +122,7 @@ export default function AffiliateProducts() {
       <PageHead
         title="Products"
         sub={`Everything your code works on. Your people pay ${a.customerDiscountPct}% less, and you earn ${a.commission} of what they pay.`}
+        actions={<GuideLink section="code">How links work</GuideLink>}
       />
 
       <section className="panel p-6 sm:p-8" aria-labelledby="calc-h">

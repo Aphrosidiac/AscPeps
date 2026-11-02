@@ -3,7 +3,7 @@
 import { cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { X } from 'lucide-react';
+import { BookOpen, X } from 'lucide-react';
 import type { MyAffiliate, OrderState, PayoutStatus } from '@/lib/affiliate-api';
 import type { Member } from '@/types';
 
@@ -240,5 +240,15 @@ export function Tabs({ items }: { items: { href: string; label: string }[] }) {
         ))}
       </div>
     </nav>
+  );
+}
+
+/** "How payouts work" and the like: opens that section of the guide. */
+export function GuideLink({ section, children }: { section: string; children: React.ReactNode }) {
+  const href = useAffHref();
+  return (
+    <Link href={href(`/guide#${section}`)} className="btn btn-soft btn-sm">
+      <BookOpen className="h-4 w-4" aria-hidden /> {children}
+    </Link>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, BookOpen } from 'lucide-react';
 import { getMyAffiliateOrders, STATE_LABEL, type AffiliateOrder } from '@/lib/affiliate-api';
 import { CopyButton, PageHead, STATE_TONE, rm, useAff, useAffHref, useStoreOrigin, when } from './aff-ui';
 import { PayoutButton } from './PayoutButton';
@@ -32,14 +32,20 @@ export default function AffiliateOverview() {
               : `Your code gives ${a.customerDiscountPct}% off · you earn ${a.commission}`
         }
         actions={
-          <a
-            href={store}
-            className="btn bg-[var(--st-panel)] fg hover:bg-[var(--st-field)]"
-            style={{ boxShadow: 'var(--st-shadow)' }}
-          >
-            Back to Store
-            <ArrowUpRight className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden />
-          </a>
+          <>
+            <Link href={href('/guide')} className="btn bg-[var(--st-panel)] fg hover:bg-[var(--st-field)]" style={{ boxShadow: 'var(--st-shadow)' }}>
+              <BookOpen className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden />
+              Guide
+            </Link>
+            <a
+              href={store}
+              className="btn bg-[var(--st-panel)] fg hover:bg-[var(--st-field)]"
+              style={{ boxShadow: 'var(--st-shadow)' }}
+            >
+              Back to Store
+              <ArrowUpRight className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden />
+            </a>
+          </>
         }
       />
 

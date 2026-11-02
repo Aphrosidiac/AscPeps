@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getMyAffiliateOrders, STATE_LABEL, type AffiliateOrder } from '@/lib/affiliate-api';
-import { PageHead, STATE_TONE, rm, when } from '../aff-ui';
+import { GuideLink, PageHead, STATE_TONE, rm, when } from '../aff-ui';
 
 export default function AffiliateOrders() {
   const [page, setPage] = useState(1);
@@ -24,7 +24,11 @@ export default function AffiliateOrders() {
 
   return (
     <>
-      <PageHead title="Orders" sub={res ? `${res.total} ${res.total === 1 ? 'order' : 'orders'} with your code` : 'Orders made with your code'} />
+      <PageHead
+        title="Orders"
+        sub={res ? `${res.total} ${res.total === 1 ? 'order' : 'orders'} with your code` : 'Orders made with your code'}
+        actions={<GuideLink section="earning">How earning works</GuideLink>}
+      />
       <section className="panel p-4 sm:p-6">
         {failed ? (
           <p className="p-2 text-[14px] fg-2">Couldn&apos;t load your orders. Refresh to try again.</p>

@@ -130,6 +130,7 @@ Locally: `http://affiliate.localhost:3399`.
 | Orders | order number, date, status, goods, commission — **never who bought** |
 | Payouts | ready to pay out, their payouts, every change to the balance |
 | Settings | bank details, name, WhatsApp, where they share — locked; **Edit** a section and saving sends a change request (below) |
+| Guide (`/guide`, from **Guide** on Overview, the account menu and each page's "How … works") | the whole programme in eight sections — How it works, Code & link, Earning, Payouts, Refunds, Your details, Rules, Questions — each linkable as `/guide#payouts`; numbers are the affiliate's own (code, rate, discount, hold days); graphics: the journey, an earnings slider, the payout timeline, a refund ledger crossing zero, and replicas of the real screens. Every rule it states is one the system enforces — change the rule, change the guide |
 
 The look is the ASC staff UI taken whole (`ASC/docs/staff-ui.md`): lavender
 canvas, white 28px panels, ink pills with a travelling tab pill, pastel cards,

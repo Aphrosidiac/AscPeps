@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { LogOut, Moon, Store, Sun } from 'lucide-react';
+import { BookOpen, LogOut, Moon, Store, Sun } from 'lucide-react';
 import { useMemberSession, setMemberSession } from '@/lib/member-session';
 import { memberLogin, memberRegister, memberResendVerification } from '@/lib/api';
 import {
@@ -118,6 +118,7 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
   const ref = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const store = useStoreOrigin();
+  const href = useAffHref();
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
@@ -155,6 +156,9 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
             <p className="truncate text-[14px] font-medium fg">{name}</p>
             <p className="truncate text-[12px] fg-3">{email}</p>
           </div>
+          <Link href={href('/guide')} onClick={() => setOpen(false)} className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]">
+            <BookOpen className="h-4 w-4" aria-hidden /> Guide
+          </Link>
           <a href={store} className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]">
             <Store className="h-4 w-4" aria-hidden /> Go to the store
           </a>

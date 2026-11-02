@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ENTRY_LABEL, getMyEntries, getMyPayouts, type Entry, type Payout } from '@/lib/affiliate-api';
-import { PAYOUT_TONE, PageHead, rm, useAff, when } from '../aff-ui';
+import { GuideLink, PageHead, PAYOUT_TONE, rm, useAff, when } from '../aff-ui';
 import { PayoutButton } from '../PayoutButton';
 
 const PAYOUT_LABEL = { REQUESTED: 'On its way', PAID: 'Paid', CANCELLED: 'Cancelled' } as const;
@@ -21,7 +21,11 @@ export default function AffiliatePayouts() {
 
   return (
     <>
-      <PageHead title="Payouts" sub={data.programme.holdDays ? `Paid to your bank ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask` : 'Paid to your bank once you ask'} />
+      <PageHead
+        title="Payouts"
+        sub={data.programme.holdDays ? `Paid to your bank ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask` : 'Paid to your bank once you ask'}
+        actions={<GuideLink section="payouts">How payouts work</GuideLink>}
+      />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="panel p-6 sm:p-8">
