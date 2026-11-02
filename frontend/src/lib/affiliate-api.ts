@@ -172,7 +172,7 @@ export const adminAdjustAffiliate = (token: string, id: string, data: { amount: 
   http.post<AdminAffiliateDetail>(`${A}/${id}/adjust`, data, auth(token)).then((r) => r.data);
 export const adminListAffiliatePayouts = (token: string, status: PayoutStatus = 'REQUESTED') =>
   http.get<{ payouts: AdminPayoutRow[] }>(`${A}/payouts`, { ...auth(token), params: { status } }).then((r) => r.data);
-export const adminMarkAffiliatePayoutPaid = (token: string, id: string, data: { reference?: string | null; paidAt?: string }) =>
+export const adminMarkAffiliatePayoutPaid = (token: string, id: string, data: { reference?: string | null; paidAt?: string; expectedAmount?: number }) =>
   http.post<{ status: 'PAID' | 'CANCELLED'; paidAmount: number; note: string | null }>(`${A}/payouts/${id}/paid`, data, auth(token)).then((r) => r.data);
 export const adminCancelAffiliatePayout = (token: string, id: string, reason: string) =>
   http.post(`${A}/payouts/${id}/cancel`, { reason }, auth(token)).then((r) => r.data);
@@ -207,6 +207,8 @@ export const ENTRY_LABEL: Record<EntryKind, string> = {
 
 /** The axios error's message, or a fallback. */
 export function apiError(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
-  const e = err as { response?: { data?: { error?: string; message?: string } } };
+  const e = err as { response?: { data?: { error?: string; message?: string } }; request?: unknown };
+  // No answer at all is the connection, not the email or password.
+  if (e?.request && !e.response) return "Couldn't reach Ascend. Check your connection and try again.";
   return e?.response?.data?.error || e?.response?.data?.message || fallback;
 }

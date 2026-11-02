@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
@@ -89,12 +89,21 @@ export function PageHead({ title, sub, actions }: { title: React.ReactNode; sub?
 }
 
 export function Field({ label, help, error, children }: { label: string; help?: React.ReactNode; error?: string | null; children: React.ReactNode }) {
+  // The help and error sit outside the <label>, so the field's name is just
+  // its label; they are tied to the control by aria-describedby instead.
+  const id = useId();
+  const note = error ?? help;
+  const control = isValidElement<{ 'aria-describedby'?: string; 'aria-invalid'?: boolean }>(children) && note
+    ? cloneElement(children, { 'aria-describedby': id, ...(error ? { 'aria-invalid': true } : {}) })
+    : children;
   return (
-    <label className="block">
-      <span className="field-label">{label}</span>
-      {children}
-      {error ? <p className="field-error">{error}</p> : help ? <p className="field-help">{help}</p> : null}
-    </label>
+    <div className="block">
+      <label className="block">
+        <span className="field-label">{label}</span>
+        {control}
+      </label>
+      {error ? <p id={id} className="field-error">{error}</p> : help ? <p id={id} className="field-help">{help}</p> : null}
+    </div>
   );
 }
 
@@ -132,18 +141,40 @@ export function CopyButton({ text, label, className = 'btn btn-soft btn-sm' }: {
 /** A small dialog in the portal's own style: sheet on a phone, card on a desktop. */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Held in a ref: callers pass a new function each render, and re-running the
+  // effect would hand focus back to the opener behind the scrim mid-dialog.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>('[data-autofocus], button.btn-ink, input')?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') close.current();
+      if (e.key !== 'Tab' || !ref.current) return;
+      // Keep Tab inside the dialog.
+      const items = [...ref.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select, textarea, a[href]')];
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
       prev?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div className="scrim" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className="sheet" role="dialog" aria-modal="true" aria-label={title}>
@@ -178,10 +209,13 @@ export function Tabs({ items }: { items: { href: string; label: string }[] }) {
   }, [current]);
   useLayoutEffect(() => {
     measure();
+    // On a narrow strip the current tab may sit past the edge.
+    const el = current ? refs.current.get(current) : null;
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     const ro = new ResizeObserver(measure);
     for (const el of refs.current.values()) if (el) ro.observe(el);
     return () => ro.disconnect();
-  }, [measure]);
+  }, [measure, current]);
 
   return (
     <nav aria-label="Affiliate" className="tabs-wrap">

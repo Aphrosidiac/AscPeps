@@ -62,8 +62,17 @@ export async function adminCreateDiscount(fastify: FastifyInstance, body: unknow
   });
 }
 
+// An affiliate's code is run from Affiliates: its discount follows the
+// programme setting, it is live exactly while they are active, and renaming it
+// breaks every link they shared.
+async function refuseAffiliateCode(fastify: FastifyInstance, id: string) {
+  const owner = await fastify.prisma.affiliate.findUnique({ where: { discountCodeId: id }, select: { fullName: true } });
+  if (owner) throw { statusCode: 400, message: `This is ${owner.fullName}'s affiliate code. Change it in Marketing → Affiliates.` };
+}
+
 export async function adminUpdateDiscount(fastify: FastifyInstance, id: string, body: unknown) {
   const data = updateDiscountSchema.parse(body);
+  await refuseAffiliateCode(fastify, id);
   // The key is added ONLY when the caller sent one, rather than being set to
   // `undefined` when they didn't. Passing an explicit undefined here cleared
   // the column instead of being ignored, so editing a discount's description
@@ -85,6 +94,7 @@ export async function adminUpdateDiscount(fastify: FastifyInstance, id: string, 
 }
 
 export async function adminDeleteDiscount(fastify: FastifyInstance, id: string) {
+  await refuseAffiliateCode(fastify, id);
   const used = await fastify.prisma.order.count({ where: { discountCodeId: id } });
   if (used > 0) {
     return fastify.prisma.discountCode.update({ where: { id }, data: { isActive: false } });

@@ -28,6 +28,7 @@ export default function AdminAffiliatePage() {
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState<AffiliateStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -214,15 +215,20 @@ export default function AdminAffiliatePage() {
           confirmLabel={confirm === 'ACTIVE' ? 'Yes' : confirm === 'PAUSED' ? 'Pause' : 'Reject'}
           tone={confirm === 'ACTIVE' ? 'primary' : 'danger'}
           busy={busy}
+          error={confirmError}
           onConfirm={async () => {
             setBusy(true);
+            setConfirmError(null);
             try {
               setD(await adminUpdateAffiliate(token, id, { status: confirm }));
+            } catch (err) {
+              setConfirmError(apiError(err, 'Could not change it.'));
+              return false;
             } finally {
               setBusy(false);
             }
           }}
-          onClose={() => setConfirm(null)}
+          onClose={() => (setConfirm(null), setConfirmError(null))}
         />
       ) : null}
       {adjusting ? <AdjustDialog token={token} id={id} onDone={setD} onClose={() => setAdjusting(false)} /> : null}
@@ -266,7 +272,8 @@ function RateCard({ token, d, onSaved }: { token: string; d: AdminAffiliateDetai
   const [note, setNote] = useState(a.adminNote ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const bps = Math.round(Number(rate) * 100);
+  // An emptied field is no rate at all, not 0%.
+  const bps = rate.trim() === '' ? NaN : Math.round(Number(rate) * 100);
   const dirty = bps !== a.rateBps || note !== (a.adminNote ?? '');
   return (
     <Card>
@@ -284,7 +291,7 @@ function RateCard({ token, d, onSaved }: { token: string; d: AdminAffiliateDetai
           {msg ? <p className={cn('text-[13px]', msg.ok ? 'text-success' : 'text-danger')}>{msg.text}</p> : <span />}
           <Button
             size="sm"
-            disabled={!dirty || busy || !Number.isFinite(bps)}
+            disabled={!dirty || busy || !Number.isFinite(bps) || bps < 0 || bps > 5000}
             onClick={async () => {
               setBusy(true);
               try {

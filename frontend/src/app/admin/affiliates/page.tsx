@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Copy, Handshake, Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -98,16 +98,21 @@ function AffiliatesTab({ token, onCounts }: { token: string; onCounts: (approve:
   const [error, setError] = useState('');
   const [approving, setApproving] = useState<AdminAffiliateRow | null>(null);
   const [busy, setBusy] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
+  // Only the latest request may fill the list: a slow "All" must not land under "Active".
+  const latest = useRef(0);
 
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     try {
       const r = await adminListAffiliates(token, { status: status || undefined, search: search.trim() || undefined });
+      if (mine !== latest.current) return;
       setRows(r.affiliates);
       setCounts(r.counts);
       onCounts(r.counts.APPLIED ?? 0);
       setError('');
     } catch (err) {
-      setError(apiError(err, 'Could not load affiliates.'));
+      if (mine === latest.current) setError(apiError(err, 'Could not load affiliates.'));
     }
   }, [token, status, search, onCounts]);
 
@@ -210,16 +215,21 @@ function AffiliatesTab({ token, onCounts }: { token: string; onCounts: (approve:
           }
           confirmLabel="Approve"
           busy={busy}
+          error={approveError}
           onConfirm={async () => {
             setBusy(true);
+            setApproveError(null);
             try {
               await adminUpdateAffiliate(token, approving.id, { status: 'ACTIVE' });
               await load();
+            } catch (err) {
+              setApproveError(apiError(err, 'Could not approve.'));
+              return false;
             } finally {
               setBusy(false);
             }
           }}
-          onClose={() => setApproving(null)}
+          onClose={() => (setApproving(null), setApproveError(null))}
         />
       ) : null}
     </Card>
@@ -269,7 +279,13 @@ function PayoutsTab({ token, onCounts }: { token: string; onCounts: (n: number) 
               <button
                 key={s}
                 type="button"
-                onClick={() => setStatus(s)}
+                onClick={() => {
+                  if (s === status) return;
+                  // Never show waiting rows (and their Mark paid) under Paid.
+                  setRows(null);
+                  setError('');
+                  setStatus(s);
+                }}
                 className={cn(
                   'h-8 rounded-full px-3 text-[13px] font-medium cursor-pointer',
                   status === s ? 'bg-text-primary text-white' : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
@@ -422,22 +438,22 @@ function SettingsTab({ token }: { token: string }) {
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Customer discount" help="Off goods, with an affiliate's code.">
               <Affixed suffix="%">
-                <input type="number" min={0} max={50} value={draft.customerDiscountPct} onChange={(e) => set('customerDiscountPct', num(e.target.value))} />
+                <input type="number" min={0} max={50} value={Number.isNaN(draft.customerDiscountPct) ? '' : draft.customerDiscountPct} onChange={(e) => set('customerDiscountPct', num(e.target.value))} />
               </Affixed>
             </Field>
             <Field label="Commission" help="For newly approved affiliates. Each can have their own.">
               <Affixed suffix="%">
-                <input type="number" min={0} max={50} step={0.5} value={ratePct} onChange={(e) => set('defaultRateBps', Math.round(num(e.target.value) * 100))} />
+                <input type="number" min={0} max={50} step={0.5} value={Number.isNaN(ratePct) ? '' : ratePct} onChange={(e) => set('defaultRateBps', Math.round(num(e.target.value) * 100))} />
               </Affixed>
             </Field>
             <Field label="Margin budget" help="Discount + commission may not go over this." error={over ? `${draft.customerDiscountPct}% + ${ratePct}% is over ${draft.marginBudgetPct}%.` : null}>
               <Affixed suffix="%">
-                <input type="number" min={0} max={50} value={draft.marginBudgetPct} onChange={(e) => set('marginBudgetPct', num(e.target.value))} />
+                <input type="number" min={0} max={50} value={Number.isNaN(draft.marginBudgetPct) ? '' : draft.marginBudgetPct} onChange={(e) => set('marginBudgetPct', num(e.target.value))} />
               </Affixed>
             </Field>
             <Field label="Payout hold" help="Days between asking and being payable, so refunds land first.">
               <Affixed suffix="days">
-                <input type="number" min={0} max={60} value={draft.holdDays} onChange={(e) => set('holdDays', num(e.target.value))} />
+                <input type="number" min={0} max={60} value={Number.isNaN(draft.holdDays) ? '' : draft.holdDays} onChange={(e) => set('holdDays', num(e.target.value))} />
               </Affixed>
             </Field>
           </div>
@@ -454,7 +470,7 @@ function SettingsTab({ token }: { token: string }) {
           />
           <Field label="Bonus" className="max-w-[200px]">
             <Affixed suffix="% off">
-              <input type="number" min={1} max={50} value={draft.signupBonusPct} onChange={(e) => set('signupBonusPct', num(e.target.value))} />
+              <input type="number" min={1} max={50} value={Number.isNaN(draft.signupBonusPct) ? '' : draft.signupBonusPct} onChange={(e) => set('signupBonusPct', num(e.target.value))} />
             </Affixed>
           </Field>
         </div>

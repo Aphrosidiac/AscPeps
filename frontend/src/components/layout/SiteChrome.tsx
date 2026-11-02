@@ -7,10 +7,10 @@ import { PendingPaymentBar } from './PendingPaymentBar';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { WhatsAppButton } from './WhatsAppButton';
-import { NewsletterPopup } from '@/components/newsletter/NewsletterPopup';
+import { NewsletterPopup, newsletterDone } from '@/components/newsletter/NewsletterPopup';
 import { GroupBuyBanner } from '@/components/group-buy/GroupBuyBanner';
 import { GroupBuyPopup } from '@/components/group-buy/GroupBuyPopup';
-import { PromoPopup } from '@/components/popups/PromoPopup';
+import { PromoPopup, promoDismissed } from '@/components/popups/PromoPopup';
 import { usePopupTurn, type PopupKind } from '@/components/popups/popup-turn';
 import { getMemberToken } from '@/lib/member-session';
 import { AFFILIATE_URL } from '@/lib/affiliate-url';
@@ -37,6 +37,8 @@ interface SiteChromeProps {
 const noop = () => () => {};
 const onAffiliateHost = () => window.location.hostname.startsWith('affiliate.');
 const signedIn = () => !!getMemberToken();
+const popupEligible = (k: PopupKind) =>
+  k === 'newsletter' ? !newsletterDone() : k === 'signup' ? !signedIn() && !promoDismissed('signup') : !promoDismissed('affiliate');
 
 // The admin panel (/admin/*) has its own sidebar/nav chrome and isn't part
 // of the customer-facing storefront — it must never be wrapped in the
@@ -77,7 +79,7 @@ export function SiteChrome({
   if (newsletterPopupEnabled) kinds.push('newsletter');
   if (signupBonusPct) kinds.push('signup');
   if (affiliate) kinds.push('affiliate');
-  const turn = usePopupTurn(groupBuyPromo?.popup || bare ? [] : kinds);
+  const turn = usePopupTurn(groupBuyPromo?.popup || bare || isAdmin || isPayPage || isAffiliate ? [] : kinds, popupEligible);
   // Only the product detail page has the mobile sticky Add to Cart bar the
   // WhatsApp button needs to clear — see WhatsAppButton's `raised` prop.
   const isProductDetail = pathname ? /^\/products\/[^/]+$/.test(pathname) : false;

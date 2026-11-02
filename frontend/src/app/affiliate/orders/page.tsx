@@ -77,7 +77,7 @@ export default function AffiliateOrders() {
         ) : null}
       </section>
       <p className="mt-4 px-2 text-[12px] leading-[17px] fg-3">
-        Commission is counted once an order is paid. &quot;Waiting for payment&quot; shows what it will earn. A refund takes back the same share of the commission.
+        Commission is counted once an order is paid. &quot;Awaiting payment&quot; shows what it will earn. A refund takes back the same share of the commission.
       </p>
     </>
   );

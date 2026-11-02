@@ -6,7 +6,7 @@ import { env } from '../../config/env.js';
 import { isEmailEnabled, sendEmail } from '../../utils/email.js';
 import { renderVerifyEmail } from '../../emails/verify-email.js';
 import { renderConfirmNewEmail, renderEmailChangedNotice, renderResetPasswordEmail } from '../../emails/account.js';
-import { getAffiliateSettings } from '../../utils/affiliate.js';
+import { getAffiliateSettings, mailbox } from '../../utils/affiliate.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(200),
@@ -166,6 +166,10 @@ export async function mintSignupBonus(fastify: FastifyInstance, memberId: string
   if (!settings.signupBonusEnabled) return null;
   const member = await fastify.prisma.member.findUnique({ where: { id: memberId }, select: { email: true, signupBonusCodeId: true, emailVerified: true } });
   if (!member || member.signupBonusCodeId || !member.emailVerified) return null;
+  // One per inbox: me+2@gmail.com and m.e@gmail.com are me@gmail.com again.
+  const inbox = mailbox(member.email);
+  const minted = await fastify.prisma.member.findMany({ where: { signupBonusCodeId: { not: null } }, select: { email: true } });
+  if (minted.some((m) => mailbox(m.email) === inbox)) return null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = `WELCOME-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     try {

@@ -74,6 +74,16 @@ function ThemeSwitch() {
             type="button"
             role="radio"
             aria-checked={on}
+            // One Tab stop for the group; arrows switch, the way radios do.
+            tabIndex={on ? 0 : -1}
+            onKeyDown={(e) => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+              e.preventDefault();
+              const next = t === 'light' ? 'dark' : 'light';
+              setPressed(true);
+              setTheme(next);
+              (e.currentTarget.parentElement?.querySelector(`[aria-label^="${next === 'light' ? 'Light' : 'Dark'}"]`) as HTMLElement | null)?.focus();
+            }}
             aria-label={`${t === 'light' ? 'Light' : 'Dark'} theme`}
             onClick={() => (setPressed(true), setTheme(t))}
             className="relative z-10 flex h-9 w-9 items-center justify-center rounded-full"
@@ -105,13 +115,18 @@ function Logo() {
 function AccountMenu({ name, email, onSignOut }: { name: string; email: string; onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const store = useStoreOrigin();
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      button.current?.focus();
+    };
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', esc);
     return () => {
@@ -123,8 +138,9 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
   return (
     <div ref={ref} className="relative">
       <button
+        ref={button}
         type="button"
-        aria-haspopup="menu"
+        aria-label={`Account: ${name}`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[14px] font-semibold fg"
@@ -133,16 +149,15 @@ function AccountMenu({ name, email, onSignOut }: { name: string; email: string; 
         {initials}
       </button>
       {open ? (
-        <div role="menu" className="pop absolute right-0 top-[calc(100%+10px)] z-40 w-64 p-2">
+        <div className="pop absolute right-0 top-[calc(100%+10px)] z-40 w-64 p-2">
           <div className="px-3 py-2">
             <p className="truncate text-[14px] font-medium fg">{name}</p>
             <p className="truncate text-[12px] fg-3">{email}</p>
           </div>
-          <a role="menuitem" href={store} className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]">
+          <a href={store} className="flex h-10 items-center gap-2.5 rounded-full px-3 text-[14px] fg-2 hover:bg-[var(--st-field)]">
             <Store className="h-4 w-4" aria-hidden /> Go to the store
           </a>
           <button
-            role="menuitem"
             type="button"
             onClick={onSignOut}
             className="flex h-10 w-full items-center gap-2.5 rounded-full px-3 text-left text-[14px] fg-2 hover:bg-[var(--st-field)]"
@@ -171,7 +186,8 @@ export function AffShell({ children }: { children: React.ReactNode }) {
     try {
       setLoaded({ token, data: await getMyAffiliate(), failed: false });
     } catch {
-      setLoaded({ token, data: null, failed: true });
+      // A blip after a save keeps what is on screen; only a first load fails the page.
+      setLoaded((prev) => (prev && prev.token === token && prev.data ? prev : { token, data: null, failed: true }));
     }
   }, [token]);
 
@@ -304,8 +320,7 @@ function AuthPanel() {
             ['tint-mint', '3', 'Share and earn', 'Ask for a payout whenever you have a balance.'],
           ].map(([tint, n, h, t]) => (
             <li key={n} className={`tint ${tint}`}>
-              <span className="chip-ink h-9 w-9 rounded-[11px] text-[14px] font-semibold">{n}</span>
-              <p className="mt-4 text-[16px] font-medium fg">{h}</p>
+              <p className="text-[16px] font-medium fg">{h}</p>
               <p className="mt-1 text-[13px] leading-[18px] fg-2">{t}</p>
             </li>
           ))}
@@ -373,7 +388,7 @@ function JoinPanel({ member, programme, onJoined }: { member: { displayName: str
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [resent, setResent] = useState(false);
+  const [resent, setResent] = useState<boolean | 'failed'>(false);
   const suggested = useRef(false);
 
   // One suggestion from their name, until they type their own.
@@ -423,11 +438,11 @@ function JoinPanel({ member, programme, onJoined }: { member: { displayName: str
           <div className="mt-6">
             <Notice tone="warn">
               Confirm your email first — we sent a link to <strong>{member.email}</strong>.{' '}
-              {resent ? (
+              {resent === true ? (
                 'Sent again.'
               ) : (
-                <button type="button" className="underline underline-offset-2" onClick={() => memberResendVerification(member.email).then(() => setResent(true), () => {})}>
-                  Send it again
+                <button type="button" className="underline underline-offset-2" onClick={() => memberResendVerification(member.email).then(() => setResent(true), () => setResent('failed'))}>
+                  {resent === 'failed' ? "Couldn't send it. Try again" : 'Send it again'}
                 </button>
               )}
             </Notice>

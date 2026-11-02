@@ -28,6 +28,7 @@ interface AnalyticsData {
     avgOrderValue: number;
     totalItemCost: number;
     totalExtraCost: number;
+    totalAffiliateCommissions?: number;
     totalCost: number;
     netProfit: number;
     profitMargin: number;
@@ -306,7 +307,7 @@ export default function AdminAnalyticsPage() {
       value: hasProfit ? formatPrice(summary.totalCost) : '—',
       icon: Coins,
       subtext: hasProfit
-        ? `${formatPrice(summary.totalItemCost)} goods + ${formatPrice(summary.totalExtraCost)} extras`
+        ? `${formatPrice(summary.totalItemCost)} goods + ${formatPrice(summary.totalExtraCost)} extras${summary.totalAffiliateCommissions ? ` + ${formatPrice(summary.totalAffiliateCommissions)} affiliate` : ''}`
         : 'Nothing costed yet',
     },
     {

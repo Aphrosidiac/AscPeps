@@ -20,16 +20,19 @@ import {
   AFFILIATE_SETTING_KEYS,
   adjustBalance,
   affiliateBalance,
+  cancelPayout,
   commissionTarget,
+  mailbox,
   markPayoutPaid,
   rateProblem,
   requestPayout,
+  subscriber,
   syncAffiliateOrders,
   type CommissionableOrder,
 } from '../src/utils/affiliate.js';
 import { costOrder } from '../src/utils/profit.js';
 import { computeBank, loadBankInput } from '../src/utils/bank.js';
-import { validateDiscountCode } from '../src/modules/admin/admin-discounts.controller.js';
+import { adminUpdateDiscount, validateDiscountCode } from '../src/modules/admin/admin-discounts.controller.js';
 import { createOrder } from '../src/modules/orders/orders.controller.js';
 import { adminSetOrderTest, adminUpdateOrder } from '../src/modules/admin/admin-orders.controller.js';
 import { adminUpdateAffiliate, joinProgramme, listAffiliateOrders } from '../src/modules/affiliates/affiliates.controller.js';
@@ -95,6 +98,13 @@ function part1() {
   check('a part refund takes back the same share', () => eq(commissionTarget({ ...base, refundedAmount: 2_000 }), 855));
   check('no affiliate, no commission', () => eq(commissionTarget({ ...base, affiliateId: null }), 0));
   check('3% is 3%', () => eq(commissionTarget({ ...base, affiliateRateBps: 300 }), 570));
+
+  check('one inbox, however it is written', () => {
+    eq(['Amir+shop@Gmail.com', 'a.mir@googlemail.com', ' amir@gmail.com '].map(mailbox), ['amir@gmail.com', 'amir@gmail.com', 'amir@gmail.com']);
+    eq([mailbox('a.mir@ascend.my'), mailbox('amir+x@ascend.my')], ['a.mir@ascend.my', 'amir@ascend.my']);
+  });
+  check('one phone, however it is written', () =>
+    eq(['+60 13-777 8899', '60137778899', '0137778899', '137778899'].map(subscriber), Array(4).fill('137778899')));
 
   const s = { customerDiscountPct: 5, marginBudgetPct: 10 };
   check('5% + 5% fits a 10% budget', () => eq(rateProblem(500, s), null));
@@ -300,6 +310,32 @@ async function part2() {
       if (!(r.paidAmount < p.amount)) throw new Error('should have paid less than asked');
     });
 
+    await check("a paused affiliate's payout waits", async () => {
+      await adjustBalance(prisma, affiliateId, 500, 'test credit', 'test');
+      const t = new Date();
+      const p = await requestPayout(prisma, affiliateId, t);
+      await adminUpdateAffiliate(fastify, affiliateId, { status: 'PAUSED' }, 'test');
+      await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: new Date(t.getTime() + 4 * 86_400_000) }), /paused/);
+      await cancelPayout(prisma, p.id, 'test');
+      await adminUpdateAffiliate(fastify, affiliateId, { status: 'ACTIVE' }, 'test');
+      await adjustBalance(prisma, affiliateId, -500, 'test credit back', 'test');
+    });
+
+    await check('mark paid is refused when the sum moved since the page loaded', async () => {
+      await adjustBalance(prisma, affiliateId, 700, 'test credit', 'test');
+      const t = new Date();
+      const p = await requestPayout(prisma, affiliateId, t);
+      const later = new Date(t.getTime() + 4 * 86_400_000);
+      await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: later, expected: p.amount + 1 }), /now pays/);
+      await cancelPayout(prisma, p.id, 'test');
+      await adjustBalance(prisma, affiliateId, -700, 'test credit back', 'test');
+    });
+
+    await check('the discounts page cannot edit an affiliate code', async () => {
+      const a = await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { discountCodeId: true } });
+      await refused(() => adminUpdateDiscount(fastify, a.discountCodeId, { discountValue: 50 }), /affiliate code/);
+    });
+
     await check("the affiliate's order list shows no customer details", async () => {
       const r = await listAffiliateOrders(fastify, affiliateId, {});
       const keys = Object.keys(r.data[0] ?? {});
@@ -347,6 +383,10 @@ async function part2() {
       eq([c?.discountValue, c?.maxUses, c?.boundEmail], [10, 1, m2.email]);
       eq(await mintSignupBonus(fastify, m2.id), null, 'second time:');
       await refused(() => validateDiscountCode(fastify, c!.code, 10_000, { email: 'someone-else@example.test' }), /different email/);
+      // The same inbox again, as an alias: no second code.
+      const m3 = await prisma.member.create({ data: { email: `bonus-${stamp}+again@example.test`, passwordHash: 'x', displayName: 'Bonus', emailVerified: true } });
+      memberIds.push(m3.id);
+      eq(await mintSignupBonus(fastify, m3.id), null, 'alias:');
     });
   } finally {
     // Put back the stock checkout took, then remove everything made here.

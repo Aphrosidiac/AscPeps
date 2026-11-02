@@ -44,6 +44,17 @@ interface NewsletterPopupProps {
   body: string;
 }
 
+/** Subscribed, or dismissed in the last month: the popup turn passes it by (popups/popup-turn.ts). */
+export function newsletterDone(): boolean {
+  try {
+    if (localStorage.getItem(SUBSCRIBED_KEY)) return true;
+    const dismissedAt = Number(localStorage.getItem(DISMISSED_KEY));
+    return !!dismissedAt && Date.now() - dismissedAt < DISMISS_FOR_MS;
+  } catch {
+    return true;
+  }
+}
+
 function suppressed(pathname: string | null): boolean {
   if (pathname && EXCLUDED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true;
   try {

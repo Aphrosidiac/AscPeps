@@ -28,7 +28,7 @@ async function resolveAffiliate(ctx: ToolContext, ref: string) {
         { member: { email: { equals: q.toLowerCase() } } },
       ],
     },
-    select: { id: true, fullName: true, status: true, rateBps: true, discountCode: { select: { code: true } } },
+    select: { id: true, fullName: true, status: true, rateBps: true, adminNote: true, discountCode: { select: { code: true } } },
     take: 5,
   });
   const exact = rows.find((r) => r.discountCode.code === q.toUpperCase());
@@ -177,8 +177,13 @@ export const affiliateTools: AgentTool[] = [
       const a = await resolveAffiliate(ctx, input.affiliate);
       const body: Record<string, unknown> = {};
       if (input.status) body.status = input.status;
-      if (input.commissionPercent != null) body.rateBps = Math.round(Number(input.commissionPercent) * 100);
-      if (input.note) body.adminNote = input.note;
+      if (input.commissionPercent != null) {
+        const percent = Number(input.commissionPercent);
+        if (!Number.isFinite(percent)) throw new Error(`"${input.commissionPercent}" is not a percentage.`);
+        body.rateBps = Math.round(percent * 100);
+      }
+      // Added under what the team already wrote, never over it.
+      if (input.note) body.adminNote = [a.adminNote, String(input.note).trim()].filter(Boolean).join('\n').slice(-1000);
       const d = await adminUpdateAffiliate(ctx.fastify, a.id, body, `Abby for ${ctx.actor.name || 'an operator'}`);
       return { affiliate: `${d.affiliate.fullName} (${d.affiliate.code})`, status: d.affiliate.status, commission: d.affiliate.commission };
     },

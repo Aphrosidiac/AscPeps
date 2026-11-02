@@ -36,7 +36,9 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       error.config?.headers?.Authorization &&
-      typeof window !== 'undefined'
+      typeof window !== 'undefined' &&
+      // A member's token expiring (account, affiliate site) is not the admin's.
+      String(error.config.headers.Authorization) === `Bearer ${localStorage.getItem('ascend-admin-token')}`
     ) {
       localStorage.removeItem('ascend-admin-token');
       // Only redirect if we're on an admin page (extra safety for customer pages)

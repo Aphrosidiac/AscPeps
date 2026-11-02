@@ -24,7 +24,13 @@ export default function AffiliateOverview() {
     <>
       <PageHead
         title={`Hi, ${a.fullName.split(' ')[0]}`}
-        sub={a.status === 'PAUSED' ? 'Your code is paused — it does nothing at checkout until we switch it back on.' : `Your code gives ${a.customerDiscountPct}% off · you earn ${a.commission}`}
+        sub={
+          !data.programme.enabled
+            ? 'The programme is closed for now, so your code does nothing at checkout. Your balance is kept.'
+            : a.status === 'PAUSED'
+              ? 'Your code is paused — it does nothing at checkout until we switch it back on.'
+              : `Your code gives ${a.customerDiscountPct}% off · you earn ${a.commission}`
+        }
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
@@ -44,7 +50,7 @@ export default function AffiliateOverview() {
               <p className="st-fig mt-1 fg">{rm(b.earned - b.reversed)}</p>
             </div>
             <div className="tint tint-butter">
-              <p className="st-label fg-2">Waiting for payment</p>
+              <p className="st-label fg-2">Awaiting payment</p>
               <p className="st-fig mt-1 fg">{rm(b.awaitingPayment)}</p>
               <p className="mt-1 text-[12px] fg-2">{b.awaitingPaymentOrders} {b.awaitingPaymentOrders === 1 ? 'order' : 'orders'}</p>
             </div>
@@ -67,7 +73,7 @@ export default function AffiliateOverview() {
           <div className="mt-6 rounded-[18px] px-4 py-3" style={{ background: 'var(--st-field)' }}>
             <p className="st-label">Your link</p>
             <p className="mt-1 break-all text-[13px] leading-[19px] fg">{link}</p>
-            <p className="mt-1 text-[12px] leading-4 fg-3">Opens the store with your code already filled in at checkout.</p>
+            <p className="mt-1 text-[12px] leading-4 fg-3">Opens the store; checkout offers your code in one tap.</p>
           </div>
           <p className="mt-auto pt-6 text-[12px] leading-[17px] fg-3">{data.paidOrdersThisMonth ?? 0} paid {data.paidOrdersThisMonth === 1 ? 'order' : 'orders'} with your code this month.</p>
         </section>

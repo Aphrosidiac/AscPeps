@@ -20,7 +20,7 @@ export default async function affiliateRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Querystring: { code?: string; name?: string } }>(
     '/code',
-    { preHandler: [fastify.authenticateMember], config: { rateLimit: { max: 40, timeWindow: '1 minute' } } },
+    { preHandler: [fastify.authenticateMember], config: { rateLimit: { max: 15, timeWindow: '1 minute' } } },
     async (request) => (request.query.code ? checkCode(fastify, request.query.code) : suggestMyCode(fastify, request.query.name ?? ''))
   );
 

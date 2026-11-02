@@ -98,7 +98,7 @@ export function MarkPaidDialog({
               setBusy(true);
               setError('');
               try {
-                const r = await adminMarkAffiliatePayoutPaid(token, payout.id, { reference: reference.trim() || null });
+                const r = await adminMarkAffiliatePayoutPaid(token, payout.id, { reference: reference.trim() || null, expectedAmount: pay });
                 onDone(r.status === 'CANCELLED' ? r.note : r.note ? r.note : null);
                 close();
               } catch (err) {

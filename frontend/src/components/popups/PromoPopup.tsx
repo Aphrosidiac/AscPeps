@@ -22,6 +22,16 @@ const DESKTOP_MIN_DWELL_MS = 5000;
 const MOBILE_DWELL_MS = 15000;
 const MOBILE_SCROLL_FRACTION = 0.5;
 
+/** Dismissed in the last month: the popup turn passes it by (popup-turn.ts). */
+export function promoDismissed(id: string): boolean {
+  try {
+    const at = Number(localStorage.getItem(`ascend-${id}-popup-dismissed-at`));
+    return !!at && Date.now() - at < DISMISS_FOR_MS;
+  } catch {
+    return true;
+  }
+}
+
 export interface PromoPopupProps {
   /** Storage and analytics name, e.g. "signup". */
   id: string;

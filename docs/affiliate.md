@@ -28,7 +28,7 @@ A store account (`members`) that applied. One `affiliates` row each:
 |---|---|---|
 | `APPLIED` | waiting for the team | reserved, does nothing; they may still change it |
 | `ACTIVE` | approved | works at checkout |
-| `PAUSED` | stopped by the team | does nothing; balance kept, payouts wait |
+| `PAUSED` | stopped by the team | does nothing; balance kept, payouts wait (Mark paid is refused until they are active again, or the request is cancelled) |
 | `REJECTED` | not approved | never goes live |
 
 Joining needs a **confirmed email** (a payout goes to a real person), a
@@ -36,7 +36,9 @@ Malaysian mobile number and a code (4–16 letters/numbers, suggested from the
 name). The code is an ordinary `discount_codes` row — `PERCENTAGE`, the
 customer discount, `scope = STORE` (Group Buy prices are already cut) — kept
 `isActive` exactly while the affiliate is `ACTIVE`. A live code can only be
-changed by the team: every link and post already shared uses it.
+changed by the team, from Affiliates: every link and post already shared uses
+it. The Discounts page refuses to edit or delete an affiliate's code. Moving
+anyone to `ACTIVE` re-checks their rate against today's margin budget.
 
 ## The money
 
@@ -44,7 +46,11 @@ All in `backend/src/utils/affiliate.ts`.
 
 **At checkout** (`validateDiscountCode` → `checkAffiliateCode`) an
 affiliate's code is refused when the programme is off, the affiliate is not
-active, or the buyer is the affiliate — same email **or** same phone. The
+active, or the buyer is the affiliate — same inbox **or** same phone. The
+inbox ignores case, `+tags` and Gmail's dots (`a.mir+x@gmail.com` is
+`amir@gmail.com`); the phone ignores `+60`, a leading 0, spaces and dashes.
+Someone with a second inbox and a second SIM still gets through; that is the
+limit of what checkout can know. The
 order is stamped with `affiliateId` and `affiliateRateBps` (the rate *then*:
 a later rate change never moves an order already placed). One code per
 order, so the sign-up bonus and an affiliate code never stack.
@@ -98,6 +104,9 @@ zero; new commission pays it back first. The team can add an `ADJUSTMENT`
    `mark_affiliate_payout_paid`). It pays the **smaller of the ask and the
    balance now**; if refunds took the balance to nothing, the request is
    cancelled instead. A reference is optional and shown to the affiliate.
+   The admin sends the amount it showed; if a refund moved it since the page
+   loaded, Mark paid is refused with the new figure, so nobody records a
+   different sum than the one transferred.
 4. A paid payout is money out of Ascend's bank: `utils/bank.ts` reads it from
    `affiliate_payouts` as an `AFFILIATE` movement (Ascend Money → Bank →
    Affiliates), the way it reads profit payouts — never copied.
@@ -132,6 +141,9 @@ the pathname there reads `/` — so `SiteChrome` drops them after hydration by
 hostname, keeping `<main>` in place, and the portal's layout hides them with
 CSS for the first paint.
 
+Any other path on the subdomain (`/checkout`, `/products/…`) shows "That
+page is on the store" with a link to it there (`app/affiliate/[...rest]`).
+
 Members sign in separately on the subdomain (the session is per-origin
 localStorage, like the store's).
 
@@ -147,7 +159,8 @@ localStorage, like the store's).
   checkout/cart/account, exit-intent on desktop, 15 s or half a page on a
   phone, a dismissal holds 30 days.
 - **Sign-up bonus**: minted when the account's email is **confirmed** (a
-  made-up address never gets one), single use, bound to that email, shown on
+  made-up address never gets one), once per inbox (an alias of an address
+  that already had one gets none), single use, bound to that email, shown on
   the account card until used.
 - Saving the programme settings revalidates the store, so the popups follow
   at once.
@@ -194,8 +207,9 @@ Admin (`/api/v1/admin/affiliates`): `GET /`, `GET /:id`, `PATCH /:id`,
 
 ```bash
 cd backend
-npm run test:affiliate        # 37 checks: the sum, budget, checkout, paid, hold, payout,
-                              # refund after payout (negative), test-mark, sign-up bonus, Abby's write tools
+npm run test:affiliate        # 42 checks: the sum, budget, checkout, paid, hold, payout,
+                              # refund after payout (negative), test-mark, paused payouts, stale Mark paid,
+                              # aliases, sign-up bonus, Abby's write tools
 npx tsx scripts/seed-affiliate-demo.ts   # LOCAL demo: AMIR5 (active, 4 orders) + SITI5 (to approve)
 ```
 

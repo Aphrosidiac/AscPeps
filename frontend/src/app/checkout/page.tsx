@@ -21,7 +21,7 @@ import { rememberPendingPayment } from '@/lib/pending-payment';
 import { forgetGroupBuyCheckout } from '@/lib/group-buy';
 import { rememberTrackedOrder } from '@/lib/tracked-order';
 import { preorderLabel, preorderUnits, usePreorder } from '@/lib/preorder';
-import { useRefCode } from '@/lib/ref-code';
+import { forgetRefCode, useRefCode } from '@/lib/ref-code';
 
 const FIELD_ORDER = ['customerName', 'phone', 'email', 'address', 'city', 'state', 'postcode'] as const;
 
@@ -249,6 +249,9 @@ export default function CheckoutPage() {
       });
     } catch (err: unknown) {
       setDiscountError(apiErrorMessage(err) || 'Invalid discount code');
+      // A link's code that is refused (paused affiliate, programme off, their
+      // own) is not offered again on the next visit.
+      if (code === refCode) forgetRefCode();
     } finally {
       setDiscountLoading(false);
     }

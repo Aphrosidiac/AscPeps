@@ -21,11 +21,11 @@ export default function AffiliatePayouts() {
 
   return (
     <>
-      <PageHead title="Payouts" sub={`Paid to your bank ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask`} />
+      <PageHead title="Payouts" sub={data.programme.holdDays ? `Paid to your bank ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask` : 'Paid to your bank once you ask'} />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="panel p-6 sm:p-8">
-          <p className="st-label">Ready to pay out</p>
+          <p className="st-label">Available to ask for</p>
           <p className="st-big mt-2 fg">{rm(b.available)}</p>
           <div className="mt-6">
             <PayoutButton />

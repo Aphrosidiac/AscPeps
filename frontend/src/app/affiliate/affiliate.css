@@ -103,8 +103,9 @@
   .aff { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 }
 .aff ::selection { background: var(--st-lilac); color: var(--st-fg); }
-.aff :focus-visible { outline: 2px solid var(--st-s-purple); outline-offset: 2px; border-radius: 9999px; }
-.aff :is(input, textarea, select):focus-visible { outline: none; }
+.aff :focus-visible { outline: 2px solid var(--st-s-purple); outline-offset: 2px; }
+/* Text fields show their own ring (.input); a checkbox keeps the outline. */
+.aff :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select):focus-visible { outline: none; }
 .aff .tnum { font-variant-numeric: tabular-nums; }
 
 /* ── Surfaces ── */
@@ -202,6 +203,8 @@
   transition: color 200ms var(--st-ease);
 }
 .aff .tab:hover { color: var(--st-fg); }
+/* Four tabs fit a 343px phone strip. */
+@media (max-width: 480px) { .aff .tab { padding: 0 14px; } }
 .aff .tab[aria-current="page"] { color: var(--st-on-solid); }
 .aff .tab[aria-current="page"][data-unmeasured] { background: var(--st-solid); }
 .aff .tab-ink {

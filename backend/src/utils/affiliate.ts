@@ -245,20 +245,34 @@ export async function checkAffiliateCode(
   if (!settings.enabled || affiliate.status !== 'ACTIVE') {
     throw { statusCode: 400, message: 'This discount code is no longer active' };
   }
-  const email = buyer.email?.trim().toLowerCase();
-  const phone = buyer.phone ? safePhone(buyer.phone) : null;
-  if ((email && email === affiliate.member.email.toLowerCase()) || (phone && phone === safePhone(affiliate.phone))) {
+  const email = buyer.email ? mailbox(buyer.email) : null;
+  const phone = buyer.phone ? subscriber(buyer.phone) : null;
+  if ((email && email === mailbox(affiliate.member.email)) || (phone && phone === subscriber(affiliate.phone))) {
     throw { statusCode: 400, message: "Your own affiliate code can't be used on your own order" };
   }
   return { affiliateId: affiliate.id, rateBps: affiliate.rateBps };
 }
 
-function safePhone(raw: string): string {
+/**
+ * The inbox an address delivers to, so amir+shop@gmail.com and
+ * a.mir@gmail.com are the affiliate's own amir@gmail.com.
+ */
+export function mailbox(raw: string): string {
+  const [local = '', domain = ''] = raw.trim().toLowerCase().split('@');
+  const bare = local.split('+')[0];
+  const gmail = domain === 'gmail.com' || domain === 'googlemail.com';
+  return `${gmail ? bare.replace(/\./g, '') : bare}@${gmail ? 'gmail.com' : domain}`;
+}
+
+/** The number without its country code or trunk 0: +60 13-777 8899, 0137778899 and 137778899 all read 137778899. */
+export function subscriber(raw: string): string {
+  let digits: string;
   try {
-    return normalizePhone(raw);
+    digits = normalizePhone(raw).replace(/\D/g, '');
   } catch {
-    return raw.replace(/\D/g, '');
+    digits = raw.replace(/\D/g, '');
   }
+  return digits.replace(/^0+/, '');
 }
 
 // ── Codes ───────────────────────────────────────────────────────────────────
@@ -383,7 +397,7 @@ export interface PayResult {
 export async function markPayoutPaid(
   db: PrismaClient,
   payoutId: string,
-  opts: { by: string; reference?: string | null; paidAt?: Date; now?: Date }
+  opts: { by: string; reference?: string | null; paidAt?: Date; now?: Date; /** What the team transferred; refused if the sum moved since. */ expected?: number }
 ): Promise<PayResult> {
   const now = opts.now ?? new Date();
   const first = await db.affiliatePayout.findUnique({ where: { id: payoutId }, select: { affiliateId: true } });
@@ -394,6 +408,11 @@ export async function markPayoutPaid(
     await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${first.affiliateId} FOR UPDATE`;
     const p = await tx.affiliatePayout.findUniqueOrThrow({ where: { id: payoutId } });
     if (p.status !== 'REQUESTED') throw new AffiliateError(`This payout is already ${p.status.toLowerCase()}.`);
+    // A paused affiliate's money waits: reactivate them, or cancel the request.
+    const owner = await tx.affiliate.findUniqueOrThrow({ where: { id: p.affiliateId }, select: { status: true, fullName: true } });
+    if (owner.status !== 'ACTIVE') {
+      throw new AffiliateError(`${owner.fullName} is ${owner.status.toLowerCase()}: make them active again to pay this, or cancel it.`);
+    }
     if (p.availableAt.getTime() > now.getTime()) {
       throw new AffiliateError(`Payable from ${p.availableAt.toISOString()} — the hold lets refunds land first.`);
     }
@@ -406,6 +425,9 @@ export async function markPayoutPaid(
         data: { status: 'CANCELLED', cancelledAt: now, cancelReason: note },
       });
       return { status: 'CANCELLED' as const, paidAmount: 0, note };
+    }
+    if (opts.expected !== undefined && opts.expected !== pay) {
+      throw new AffiliateError(`This now pays ${ringgit(pay)}, not ${ringgit(opts.expected)} — a refund landed since the page loaded. Check what was transferred and try again.`, 409);
     }
     const note = pay < p.amount ? `Paid ${ringgit(pay)} of ${ringgit(p.amount)} asked: refunds since the request.` : null;
     await tx.affiliatePayout.update({
@@ -430,6 +452,10 @@ export async function cancelPayout(db: PrismaClient, payoutId: string, reason: s
 /** A hand correction by the team, either sign. */
 export async function adjustBalance(db: PrismaClient, affiliateId: string, amount: number, note: string, by: string) {
   if (!Number.isInteger(amount) || amount === 0) throw new AffiliateError('Enter an amount other than zero.');
+  if (Math.abs(amount) > 10_000_000) throw new AffiliateError('An adjustment is at most RM 100,000.');
   if (!note.trim()) throw new AffiliateError('Say why.');
+  if (!(await db.affiliate.findUnique({ where: { id: affiliateId }, select: { id: true } }))) {
+    throw new AffiliateError('Affiliate not found.', 404);
+  }
   return db.affiliateEntry.create({ data: { affiliateId, kind: 'ADJUSTMENT', amount, note: note.trim(), createdBy: by } });
 }

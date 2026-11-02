@@ -200,7 +200,9 @@ export async function updateMyAffiliate(fastify: FastifyInstance, memberId: stri
     if (data.code !== undefined) {
       // Changing a code people already have would break every link and post
       // they shared, so it is only theirs to change while waiting for approval.
-      if (a.status !== 'APPLIED') throw { statusCode: 400, message: 'Your code is live. Ask us if it really has to change.' };
+      // Read again inside the transaction: the team may have just approved it.
+      const now = await tx.affiliate.findUniqueOrThrow({ where: { id: a.id }, select: { status: true } });
+      if (now.status !== 'APPLIED') throw { statusCode: 400, message: 'Your code is live. Ask us if it really has to change.' };
       const check = await checkCode(fastify, data.code, a.id);
       if (!check.available) throw { statusCode: 400, message: check.reason ?? 'That code is not available.' };
       await tx.discountCode.update({ where: { id: a.discountCodeId }, data: { code: check.code } });
@@ -297,7 +299,7 @@ export async function requestMyPayout(fastify: FastifyInstance, memberId: string
   const a = await fastify.prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { fullName: true, discountCode: { select: { code: true } } } });
   void notifyAffiliateTeam(
     fastify,
-    `💸 *Affiliate payout requested*\n${a.fullName} (${a.discountCode.code}) · RM ${(payout.amount / 100).toFixed(2)}\nTo ${payout.bankName} ${payout.bankAccountNumber} (${payout.bankAccountName})\nPayable from ${payout.availableAt.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}\n\nMark it paid in Admin → Affiliates → Payouts once the transfer is done.`
+    `💸 *Affiliate payout requested*\n${a.fullName} (${a.discountCode.code}) · RM ${(payout.amount / 100).toFixed(2)}\nTo ${payout.bankName} ····${payout.bankAccountNumber.slice(-4)} (${payout.bankAccountName}), full number in Admin\nPayable from ${payout.availableAt.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}\n\nMark it paid in Admin → Affiliates → Payouts once the transfer is done.`
   );
   return { payout };
 }
@@ -383,16 +385,18 @@ const adminPatchSchema = z.object({
   phone: z.string().trim().min(8).max(20).optional(),
   bankName: z.string().trim().max(80).nullable().optional(),
   bankAccountName: z.string().trim().max(80).nullable().optional(),
-  bankAccountNumber: z.string().trim().max(24).nullable().optional(),
+  bankAccountNumber: z.string().trim().regex(/^[0-9 -]{6,24}$/, 'Numbers only').transform((v) => v.replace(/[ -]/g, '')).nullable().optional(),
 });
 
 export async function adminUpdateAffiliate(fastify: FastifyInstance, id: string, body: unknown, actor: string | null) {
   const data = adminPatchSchema.parse(body);
-  const a = await fastify.prisma.affiliate.findUnique({ where: { id }, select: { id: true, status: true, discountCodeId: true } });
+  const a = await fastify.prisma.affiliate.findUnique({ where: { id }, select: { id: true, status: true, discountCodeId: true, rateBps: true, approvedAt: true } });
   if (!a) throw { statusCode: 404, message: 'Affiliate not found' };
   const settings = await getAffiliateSettings(fastify.prisma);
-  if (data.rateBps !== undefined) {
-    const problem = rateProblem(data.rateBps, settings);
+  // A new rate, or an old one going live again: either way it has to fit the
+  // budget as it is now (the settings check skips rejected affiliates).
+  if (data.rateBps !== undefined || (data.status === 'ACTIVE' && a.status !== 'ACTIVE')) {
+    const problem = rateProblem(data.rateBps ?? a.rateBps, settings);
     if (problem) throw { statusCode: 400, message: problem };
   }
   const patch: Record<string, unknown> = {};
@@ -408,7 +412,7 @@ export async function adminUpdateAffiliate(fastify: FastifyInstance, id: string,
   }
   if (data.status !== undefined && data.status !== a.status) {
     patch.status = data.status;
-    if (data.status === 'ACTIVE' && a.status === 'APPLIED') {
+    if (data.status === 'ACTIVE' && !a.approvedAt) {
       patch.approvedAt = new Date();
       patch.approvedBy = actor;
     }
@@ -428,7 +432,7 @@ export async function adminUpdateAffiliate(fastify: FastifyInstance, id: string,
 }
 
 export async function adminAdjust(fastify: FastifyInstance, id: string, body: unknown, actor: string) {
-  const { amount, note } = z.object({ amount: z.number().int(), note: z.string() }).parse(body);
+  const { amount, note } = z.object({ amount: z.number().int(), note: z.string().trim().min(1).max(300) }).parse(body);
   await adjustBalance(fastify.prisma, id, amount, note, actor).catch(fail);
   return adminGetAffiliate(fastify, id);
 }
@@ -442,7 +446,9 @@ export async function adminListPayouts(fastify: FastifyInstance, query: Record<s
     select: { ...PAYOUT_SELECT, paidBy: true, affiliateId: true, affiliate: { select: { fullName: true, phone: true, discountCode: { select: { code: true } } } } },
   });
   const now = Date.now();
-  // What each would pay now: the smaller of the ask and today's balance.
+  // What each would pay now: the smaller of the ask and today's balance, with
+  // any refund since booked first (the same sweep marking it paid runs).
+  if (status === 'REQUESTED' && payouts.length) await syncAffiliateOrders(fastify.prisma);
   const balances = new Map<string, number>();
   for (const id of new Set(payouts.map((p) => p.affiliateId))) balances.set(id, (await affiliateBalance(fastify.prisma, id)).balance);
   return {
@@ -458,10 +464,11 @@ export async function adminListPayouts(fastify: FastifyInstance, query: Record<s
 }
 
 export async function adminMarkPayoutPaid(fastify: FastifyInstance, id: string, body: unknown, actor: string) {
-  const { reference, paidAt } = z
-    .object({ reference: z.string().trim().max(120).nullable().optional(), paidAt: z.coerce.date().optional() })
+  const { reference, paidAt, expectedAmount } = z
+    .object({ reference: z.string().trim().max(120).nullable().optional(), paidAt: z.coerce.date().optional(), expectedAmount: z.number().int().min(0).optional() })
     .parse(body ?? {});
-  return markPayoutPaid(fastify.prisma, id, { by: actor, reference: reference ?? null, paidAt }).catch(fail);
+  if (paidAt && paidAt.getTime() > Date.now() + 60 * 60_000) throw { statusCode: 400, message: 'The transfer date cannot be in the future.' };
+  return markPayoutPaid(fastify.prisma, id, { by: actor, reference: reference ?? null, paidAt, expected: expectedAmount }).catch(fail);
 }
 
 export async function adminCancelPayout(fastify: FastifyInstance, id: string, body: unknown) {
