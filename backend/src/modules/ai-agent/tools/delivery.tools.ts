@@ -8,6 +8,7 @@ import {
   updateDeliveryStatus,
 } from '../../admin/admin-delivery.controller.js';
 import { describeSlot, fromMytWallClock, parseTimeOfDay } from '../../../utils/delivery-slots.js';
+import { orderType } from '../../../utils/preorder.js';
 
 // Delivery scheduling over WhatsApp — which is where Asywa actually is when
 // she is deciding a run. Everything delegates to admin-delivery.controller so
@@ -112,6 +113,7 @@ export const deliveryTools: AgentTool[] = [
         count: orders.length,
         orders: orders.map((o: any) => ({
           orderNumber: o.orderNumber,
+          orderType: orderType(o),
           customer: o.customerName,
           phone: o.phone,
           area: `${o.city}, ${o.state}`,

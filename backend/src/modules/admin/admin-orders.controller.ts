@@ -146,6 +146,11 @@ export async function adminListOrders(fastify: FastifyInstance, query: Record<st
     where.paymentStatus = query.paymentStatus;
   }
 
+  // Orders and Pre-orders are separate admin tabs. Opt-in, so every other
+  // reader of this list (Payments, Money, the document picker) still sees both.
+  if (query.preorder === 'true') where.isPreorder = true;
+  if (query.preorder === 'false') where.isPreorder = false;
+
   // The review queue: hosted-checkout orders whose customer has uploaded a
   // proof nobody has looked at yet. Resolved through the session table so
   // the list never needs a second round-trip per row.

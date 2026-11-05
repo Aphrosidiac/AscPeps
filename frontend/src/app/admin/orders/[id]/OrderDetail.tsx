@@ -299,8 +299,8 @@ export function OrderDetail({ orderId }: { orderId: string }) {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div className="flex items-start gap-3 min-w-0">
           <button
-            onClick={() => router.push('/admin/orders')}
-            aria-label="Back to orders"
+            onClick={() => router.push(order.isPreorder ? '/admin/pre-orders' : '/admin/orders')}
+            aria-label={order.isPreorder ? 'Back to pre-orders' : 'Back to orders'}
             className="mt-1 p-1 -ml-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />

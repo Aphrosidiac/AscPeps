@@ -546,6 +546,16 @@ await check('share_out_profit pays from the bank, previews, refuses twice, undoe
   return `${ref}: paid ${out.paid.map((p: any) => p.name).join(' + ')} — refused twice, undone`;
 });
 
+await check('list_orders keeps pre-orders and orders apart, and every row says which', async () => {
+  const all: any = await run('list_orders', { limit: 50 });
+  const pre: any = await run('list_orders', { orderType: 'PRE_ORDER', limit: 50 });
+  const plain: any = await run('list_orders', { orderType: 'ORDER', limit: 50 });
+  if (all.preOrders !== pre.matched) throw new Error(`preOrders ${all.preOrders}, list has ${pre.matched}`);
+  if (pre.orders.some((o: any) => o.orderType !== 'PRE_ORDER')) throw new Error('a non pre-order in the pre-order list');
+  if (plain.orders.some((o: any) => o.orderType !== 'ORDER')) throw new Error('a pre-order in the order list');
+  if (plain.preOrders !== 0) throw new Error('ORDER filter still counts pre-orders');
+});
+
 await check('list_orders profitShared:false lists paid orders left to share', async () => {
   const r: any = await run('list_orders', { profitShared: false, limit: 50 });
   assert(r.orders.every((o: any) => o.profitShared === false && o.paymentStatus === 'PAID' && o.status !== 'CANCELLED'), 'wrong rows');

@@ -33,3 +33,14 @@ export async function getPreorderSettings(db: SettingsDb): Promise<PreorderSetti
 export function canPreorder(settings: PreorderSettings, variant: { preorder: boolean }): boolean {
   return settings.enabled && variant.preorder;
 }
+
+/**
+ * Which of the three an order is, as Abby reads it. A Group Buy order is never
+ * isPreorder, so the two checks can't disagree.
+ */
+export type OrderType = 'ORDER' | 'PRE_ORDER' | 'GROUP_BUY';
+
+export function orderType(o: { isPreorder?: boolean | null; groupBuyId?: string | null }): OrderType {
+  if (o.groupBuyId) return 'GROUP_BUY';
+  return o.isPreorder ? 'PRE_ORDER' : 'ORDER';
+}

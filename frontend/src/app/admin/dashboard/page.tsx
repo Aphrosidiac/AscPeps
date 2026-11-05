@@ -20,6 +20,7 @@ interface DashboardStats {
   recentOrders: {
     id: string;
     orderNumber: string;
+    isPreorder?: boolean;
     customerName: string;
     total: number;
     status: string;
@@ -130,7 +131,7 @@ export default function AdminDashboardPage() {
           ) : (
             <div className="space-y-3">
               {stats.recentOrders.map((order, i) => (
-                <Link key={order.id} href="/admin/orders" style={{ animationDelay: `${Math.min(i * 35, 300)}ms` }} className="row-rise flex items-center justify-between py-2.5 border-b border-border last:border-0 hover:bg-surface-elevated/50 -mx-2 px-2 rounded transition-colors">
+                <Link key={order.id} href={order.isPreorder ? '/admin/pre-orders' : '/admin/orders'} style={{ animationDelay: `${Math.min(i * 35, 300)}ms` }} className="row-rise flex items-center justify-between py-2.5 border-b border-border last:border-0 hover:bg-surface-elevated/50 -mx-2 px-2 rounded transition-colors">
                   <div>
                     <p className="font-medium text-sm">{order.orderNumber}</p>
                     <p className="text-xs text-text-muted">{order.customerName} &middot; {formatDate(order.createdAt)}</p>
