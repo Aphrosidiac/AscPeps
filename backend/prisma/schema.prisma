@@ -1135,6 +1135,16 @@ enum AffiliateChangeStatus {
 // An affiliate asking to change their own details (bank, name, WhatsApp,
 // where they share). Nothing moves until the team approves, so a payout can
 // never be sent somewhere the team hasn't seen (Fakhrul, 2026-11-03).
+// One sign-up bonus to an inbox (utils/affiliate.ts mailbox()), kept apart from
+// the member so an email change or a deleted account doesn't free it again.
+model SignupBonusClaim {
+  inbox     String   @id
+  memberId  String?
+  createdAt DateTime @default(now())
+
+  @@map("signup_bonus_claims")
+}
+
 model AffiliateChangeRequest {
   id           String                @id @default(cuid())
   affiliateId  String

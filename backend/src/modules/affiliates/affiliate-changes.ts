@@ -14,6 +14,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { oneLine } from '../../utils/affiliate.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { notifyAffiliateTeam } from '../../utils/affiliate-notify.js';
 import { mailAffiliate } from '../../utils/affiliate-mail.js';
@@ -35,12 +36,16 @@ const BANK_FIELDS: DetailField[] = ['bankName', 'bankAccountName', 'bankAccountN
 
 const blank = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
 
+// How long after an affiliate's last send the team isn't pinged again. The
+// Changes tab always shows the latest, and it is what they approve from.
+const NOTIFY_GAP_MS = 10 * 60 * 1000;
+
 const requestSchema = z.object({
-  fullName: z.string().trim().min(2, 'Enter your full name.').max(80),
+  fullName: z.string().transform(oneLine).pipe(z.string().min(2, 'Enter your full name.').max(80)),
   phone: z.string().trim().min(8, 'Enter a Malaysian mobile number.').max(20),
-  channel: z.string().trim().max(200).nullable().optional(),
-  bankName: z.string().trim().max(80).nullable().optional(),
-  bankAccountName: z.string().trim().max(80).nullable().optional(),
+  channel: z.string().transform(oneLine).pipe(z.string().max(200)).nullable().optional(),
+  bankName: z.string().transform(oneLine).pipe(z.string().max(80)).nullable().optional(),
+  bankAccountName: z.string().transform(oneLine).pipe(z.string().max(80)).nullable().optional(),
   bankAccountNumber: z
     .string()
     .trim()
@@ -127,6 +132,8 @@ export async function requestChange(fastify: FastifyInstance, memberId: string, 
     if (now.bankName && !want.bankName) throw { statusCode: 400, message: 'Bank details can be changed, not removed.' };
 
     const changed = DETAIL_FIELDS.filter((k) => want[k] !== now[k]);
+    const last = await tx.affiliateChangeRequest.findFirst({ where: { affiliateId: a.id }, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } });
+    const quiet = !!last && Date.now() - last.updatedAt.getTime() < NOTIFY_GAP_MS;
     const pending = await tx.affiliateChangeRequest.findFirst({ where: { affiliateId: a.id, status: 'PENDING' }, select: { id: true } });
     if (!changed.length) {
       if (!pending) throw { statusCode: 400, message: 'Nothing has changed.' };
@@ -137,9 +144,9 @@ export async function requestChange(fastify: FastifyInstance, memberId: string, 
     const previous = Object.fromEntries(changed.map((k) => [k, now[k]]));
     if (pending) await tx.affiliateChangeRequest.update({ where: { id: pending.id }, data: { changes, previous } });
     else await tx.affiliateChangeRequest.create({ data: { affiliateId: a.id, changes, previous } });
-    return { a, changed, changes, previous, replaced: !!pending };
+    return { a, changed, changes, previous, replaced: !!pending, quiet };
   });
-  if (!result) return;
+  if (!result || result.quiet) return;
   const { a, changed, changes, previous, replaced } = result;
   const lines = changed.map((k) => `${LABEL[k]}: ${shown(k, previous[k] as string | null)} → ${shown(k, changes[k] as string | null)}`);
   void notifyAffiliateTeam(
@@ -179,9 +186,11 @@ export async function adminListChanges(fastify: FastifyInstance, query: Record<s
   };
 }
 
+// `sentAt` is the version on the admin's screen: a request is replaced in
+// place, so the id alone doesn't say which one they looked at.
 const decideSchema = z.discriminatedUnion('decision', [
-  z.object({ decision: z.literal('approve') }),
-  z.object({ decision: z.literal('reject'), reason: z.string().trim().min(2, 'Say why — they will see it.').max(300) }),
+  z.object({ decision: z.literal('approve'), sentAt: z.string() }),
+  z.object({ decision: z.literal('reject'), sentAt: z.string(), reason: z.string().trim().min(2, 'Say why — they will see it.').max(300) }),
 ]);
 
 /**
@@ -195,6 +204,11 @@ export async function adminDecideChange(fastify: FastifyInstance, id: string, bo
     const r = await tx.affiliateChangeRequest.findUnique({ where: { id }, select: { affiliateId: true, status: true, changes: true } });
     if (!r) throw { statusCode: 404, message: 'Change request not found.' };
     await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${r.affiliateId} FOR UPDATE`;
+    // Read again under the lock: what counts is what was on the admin's screen.
+    const current = await tx.affiliateChangeRequest.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } });
+    if (current.updatedAt.getTime() !== new Date(d.sentAt).getTime()) {
+      throw { statusCode: 409, message: 'They sent a newer version. Reload to see it before deciding.' };
+    }
     // Claimed from PENDING only: a second click, or a replacement sent in
     // between, never applies twice or applies the wrong one.
     const { count } = await tx.affiliateChangeRequest.updateMany({

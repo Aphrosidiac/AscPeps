@@ -219,7 +219,7 @@ export const adminListAffiliates = (token: string, params: { status?: string; se
   http.get<{ counts: Partial<Record<AffiliateStatus, number>>; affiliates: AdminAffiliateRow[] }>(A, { ...auth(token), params }).then((r) => r.data);
 export const adminListAffiliateChanges = (token: string, status: ChangeRequest['status'] = 'PENDING') =>
   http.get<{ changes: AdminChangeRow[] }>(`${A}/changes`, { ...auth(token), params: { status } }).then((r) => r.data);
-export const adminDecideAffiliateChange = (token: string, id: string, data: { decision: 'approve' } | { decision: 'reject'; reason: string }) =>
+export const adminDecideAffiliateChange = (token: string, id: string, data: { decision: 'approve'; sentAt: string } | { decision: 'reject'; sentAt: string; reason: string }) =>
   http.post(`${A}/changes/${id}`, data, auth(token)).then((r) => r.data);
 export const adminGetAffiliate = (token: string, id: string) => http.get<AdminAffiliateDetail>(`${A}/${id}`, auth(token)).then((r) => r.data);
 export const adminUpdateAffiliate = (token: string, id: string, data: Record<string, unknown>) =>

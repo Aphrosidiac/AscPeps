@@ -47,7 +47,7 @@ export function PayoutButton() {
         <Sheet title="Ask for a payout" onClose={() => !busy && setOpen(false)}>
           <p className="st-big fg">{rm(b.available)}</p>
           <p className="mt-3 text-[14px] leading-[21px] fg-2">
-            To {a.bankName} ••••{last4} ({a.bankAccountName}). We pay {hold === 0 ? 'once we have checked it' : `${hold} ${hold === 1 ? 'day' : 'days'} after you ask`}, so any
+            To {a.bankName} ••••{last4} ({a.bankAccountName}). We pay {hold === 0 ? 'once we have checked it' : `at least ${hold} ${hold === 1 ? 'day' : 'days'} after you ask`}, so any
             refund lands first — if one does, it comes off this amount.
           </p>
           {error ? (

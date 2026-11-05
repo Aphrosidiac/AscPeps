@@ -267,7 +267,7 @@ function AffiliatesTab({ token, onCounts }: { token: string; onCounts: (approve:
             setBusy(true);
             setApproveError(null);
             try {
-              await adminUpdateAffiliate(token, approving.id, { status: 'ACTIVE' });
+              await adminUpdateAffiliate(token, approving.id, { status: 'ACTIVE', expectedCode: approving.code });
               await load();
             } catch (err) {
               setApproveError(apiError(err, 'Could not approve.'));

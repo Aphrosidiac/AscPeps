@@ -1,5 +1,5 @@
 import type { AgentTool, ToolContext } from '../tool-kit.js';
-import { money, rm } from '../tool-kit.js';
+import { money, rm, toCents } from '../tool-kit.js';
 import {
   adminGetAffiliate,
   adminListAffiliates,
@@ -7,13 +7,20 @@ import {
   adminMarkPayoutPaid,
   adminUpdateAffiliate,
 } from '../../affiliates/affiliates.controller.js';
-import { getAffiliateSettings, pct, rateProblem } from '../../../utils/affiliate.js';
+import { affiliateBalance, getAffiliateSettings, pct, rateProblem, syncAffiliateOrders } from '../../../utils/affiliate.js';
 
 /**
  * Ascend Affiliate for Abby (docs/affiliate.md): who the affiliates are, what
  * they sold and earned, the payout queue, approving/pausing and paying out.
  * Every figure comes from the same controller as Admin → Affiliates.
  */
+
+/** What a waiting payout would pay right now: refunds can have lowered it. */
+async function payNow(ctx: ToolContext, affiliateId: string, asked: number) {
+  await syncAffiliateOrders(ctx.prisma);
+  const { balance } = await affiliateBalance(ctx.prisma, affiliateId);
+  return Math.max(0, Math.min(asked, balance));
+}
 
 /** An affiliate by code, name, phone or email — one match or a clear refusal. */
 async function resolveAffiliate(ctx: ToolContext, ref: string) {
@@ -127,21 +134,25 @@ export const affiliateTools: AgentTool[] = [
       type: 'object',
       properties: {
         affiliate: { type: 'string', description: 'Code or name of the affiliate whose waiting payout was paid' },
+        amountRm: { type: 'number', description: 'The ringgit actually transferred, as the operator said it. Refused if it is not what the payout pays now: refunds can lower it after the request. Never assume it: take payNow from affiliate_payouts and ask.' },
         reference: { type: 'string', description: 'Bank transfer reference, if given' },
       },
-      required: ['affiliate'],
+      required: ['affiliate', 'amountRm'],
     },
     summarize: async (ctx, input) => {
       const a = await resolveAffiliate(ctx, input.affiliate);
       const p = await ctx.prisma.affiliatePayout.findFirst({ where: { affiliateId: a.id, status: 'REQUESTED' } });
       if (!p) return `${a.fullName} (${a.discountCode.code}) has no payout waiting — nothing would change.`;
+      const pay = await payNow(ctx, a.id, p.amount);
+      const said = toCents(input.amountRm);
+      if (said !== pay) throw new Error(`${a.fullName}'s payout pays ${rm(pay)} now (${rm(p.amount)} asked), not ${rm(said)}. Tell the operator and ask what was actually transferred.`);
       return `Mark ${a.fullName}'s (${a.discountCode.code}) payout of ${rm(p.amount)} PAID to ${p.bankName} ${p.bankAccountNumber}${input.reference ? `, ref ${input.reference}` : ''} — money out of Ascend's bank.`;
     },
     run: async (ctx, input) => {
       const a = await resolveAffiliate(ctx, input.affiliate);
       const p = await ctx.prisma.affiliatePayout.findFirst({ where: { affiliateId: a.id, status: 'REQUESTED' } });
       if (!p) return { done: false, note: `${a.fullName} has no payout waiting.` };
-      const r = await adminMarkPayoutPaid(ctx.fastify, p.id, { reference: input.reference ?? null }, `Abby for ${ctx.actor.name || 'an operator'}`);
+      const r = await adminMarkPayoutPaid(ctx.fastify, p.id, { reference: input.reference ?? null, expectedAmount: toCents(input.amountRm) }, `Abby for ${ctx.actor.name || 'an operator'}`);
       return { done: true, affiliate: `${a.fullName} (${a.discountCode.code})`, status: r.status, paid: money(r.paidAmount), note: r.note };
     },
   },
@@ -157,6 +168,7 @@ export const affiliateTools: AgentTool[] = [
       properties: {
         affiliate: { type: 'string', description: 'Code, name, phone or email' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'REJECTED'] },
+        approvedCode: { type: 'string', description: 'Required to approve an application: their code exactly as shown to the operator. Applicants can change it until approved, so it must match.' },
         commissionPercent: { type: 'number', description: 'e.g. 3 or 4.5' },
         note: { type: 'string', description: 'Why, kept on the affiliate for the team' },
       },
@@ -165,6 +177,9 @@ export const affiliateTools: AgentTool[] = [
     summarize: async (ctx, input) => {
       const a = await resolveAffiliate(ctx, input.affiliate);
       const parts: string[] = [];
+      if (input.status === 'ACTIVE' && a.status === 'APPLIED' && !input.approvedCode) {
+        throw new Error(`Show the operator ${a.fullName}'s code (${a.discountCode.code}) and pass it as approvedCode.`);
+      }
       if (input.status && input.status !== a.status) parts.push(`${a.status} → ${input.status}`);
       if (input.commissionPercent != null) {
         const bps = Math.round(Number(input.commissionPercent) * 100);
@@ -177,6 +192,7 @@ export const affiliateTools: AgentTool[] = [
       const a = await resolveAffiliate(ctx, input.affiliate);
       const body: Record<string, unknown> = {};
       if (input.status) body.status = input.status;
+      if (input.approvedCode) body.expectedCode = String(input.approvedCode).trim().toUpperCase();
       if (input.commissionPercent != null) {
         const percent = Number(input.commissionPercent);
         if (!Number.isFinite(percent)) throw new Error(`"${input.commissionPercent}" is not a percentage.`);

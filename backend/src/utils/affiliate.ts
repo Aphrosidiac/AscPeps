@@ -137,6 +137,8 @@ export interface CommissionableOrder {
 export function commissionTarget(o: CommissionableOrder): number {
   if (!o.affiliateId || !o.affiliateRateBps) return 0;
   if (o.paymentStatus !== 'PAID' && o.paymentStatus !== 'REFUNDED') return 0;
+  // Refunded with no amount given means the whole of it came back.
+  if (o.paymentStatus === 'REFUNDED' && o.refundedAmount <= 0) return 0;
   if (o.status === 'CANCELLED' || o.isTest || o.deletedAt) return 0;
   if (o.total <= 0) return 0;
   const goods = Math.max(0, o.total - o.shippingFee);
@@ -243,7 +245,7 @@ export async function checkAffiliateCode(
   if (!affiliate) return null;
   const settings = await getAffiliateSettings(db);
   if (!settings.enabled || affiliate.status !== 'ACTIVE') {
-    throw { statusCode: 400, message: 'This discount code is no longer active' };
+    throw { statusCode: 404, message: 'Invalid discount code' };
   }
   const email = buyer.email ? mailbox(buyer.email) : null;
   const phone = buyer.phone ? subscriber(buyer.phone) : null;
@@ -278,6 +280,23 @@ export function subscriber(raw: string): string {
 // ── Codes ───────────────────────────────────────────────────────────────────
 
 export const CODE_PATTERN = /^[A-Z0-9]{4,16}$/;
+
+// Codes that would read as Ascend's own, or as a generic offer. Only the team
+// can give one out (adminUpdateAffiliate).
+const RESERVED_WORDS = ['ASCEND', 'ADMIN', 'OFFICIAL', 'STAFF', 'SUPPORT'];
+const RESERVED_CODES = new Set(['TEST', 'FREE', 'SALE', 'PROMO', 'DISCOUNT', 'WELCOME', 'AFFILIATE']);
+
+export function isReservedCode(code: string): boolean {
+  return RESERVED_CODES.has(code) || RESERVED_WORDS.some((w) => code.includes(w));
+}
+
+/**
+ * Text an affiliate typed, on one line. These fields reach the team's WhatsApp
+ * notices, where a line break would let them write lines of their own.
+ */
+export function oneLine(raw: string): string {
+  return raw.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 export function normaliseCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -424,17 +443,19 @@ export async function markPayoutPaid(
       throw new AffiliateError(`Payable from ${p.availableAt.toISOString()} — the hold lets refunds land first.`);
     }
     const { balance } = await affiliateBalance(tx, p.affiliateId);
-    const pay = Math.min(p.amount, balance);
-    if (pay <= 0) {
+    const pay = Math.max(0, Math.min(p.amount, balance));
+    // Before anything is recorded, a nothing-left cancellation included: if the
+    // team moved a different sum, the record must not quietly say otherwise.
+    if (opts.expected !== undefined && opts.expected !== pay) {
+      throw new AffiliateError(`This now pays ${ringgit(pay)}, not ${ringgit(opts.expected)} — a refund landed since the page loaded. Check it again.`, 409);
+    }
+    if (pay === 0) {
       const note = 'Refunds since the request took the balance to nothing.';
       await tx.affiliatePayout.update({
         where: { id: p.id },
         data: { status: 'CANCELLED', cancelledAt: now, cancelReason: note },
       });
       return { status: 'CANCELLED' as const, paidAmount: 0, note };
-    }
-    if (opts.expected !== undefined && opts.expected !== pay) {
-      throw new AffiliateError(`This now pays ${ringgit(pay)}, not ${ringgit(opts.expected)} — a refund landed since the page loaded. Check what was transferred and try again.`, 409);
     }
     const note = pay < p.amount ? `Paid ${ringgit(pay)} of ${ringgit(p.amount)} asked: refunds since the request.` : null;
     await tx.affiliatePayout.update({
@@ -449,11 +470,18 @@ export async function markPayoutPaid(
 }
 
 export async function cancelPayout(db: PrismaClient, payoutId: string, reason: string, now = new Date()) {
-  const { count } = await db.affiliatePayout.updateMany({
-    where: { id: payoutId, status: 'REQUESTED' },
-    data: { status: 'CANCELLED', cancelledAt: now, cancelReason: reason },
+  const first = await db.affiliatePayout.findUnique({ where: { id: payoutId }, select: { affiliateId: true } });
+  if (!first) throw new AffiliateError('Payout not found.', 404);
+  // The lock markPayoutPaid holds, so a cancel can't land between its check
+  // and its write and leave a payout both paid and cancelled.
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${first.affiliateId} FOR UPDATE`;
+    const { count } = await tx.affiliatePayout.updateMany({
+      where: { id: payoutId, status: 'REQUESTED' },
+      data: { status: 'CANCELLED', cancelledAt: now, cancelReason: reason },
+    });
+    if (count === 0) throw new AffiliateError('Only a payout still waiting can be cancelled.');
   });
-  if (count === 0) throw new AffiliateError('Only a payout still waiting can be cancelled.');
 }
 
 /** A hand correction by the team, either sign. */

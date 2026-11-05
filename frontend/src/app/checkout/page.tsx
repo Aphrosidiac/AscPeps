@@ -231,6 +231,7 @@ export default function CheckoutPage() {
   const [subscribe, setSubscribe] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
   const refCode = useRefCode();
+  const [refRefused, setRefRefused] = useState<string | null>(null);
   const [discountLoading, setDiscountLoading] = useState(false);
   const [discountError, setDiscountError] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<{
@@ -297,6 +298,21 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (shouldRedirect) router.push('/cart');
   }, [shouldRedirect, router]);
+
+  // The link's code is checked before it is offered: nobody should be told
+  // they have a code that won't work. If the check itself fails, the offer
+  // stands and pressing it gets the real answer.
+  useEffect(() => {
+    if (!refCode) return;
+    validateDiscount(refCode, total, { email: form.email.trim() || undefined })
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } }).response?.status;
+        if (status === 400) setRefRefused(refCode);
+        if (status === 404) forgetRefCode();
+      });
+    // Once per code: the buyer's details are checked again when it is applied.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refCode]);
 
   if (!hydrated || shouldRedirect) return null;
 
@@ -655,7 +671,7 @@ export default function CheckoutPage() {
               </p>
             ) : null}
             {/* The code from an affiliate's share link (lib/ref-code.ts): offered, never applied unasked. */}
-            {refCode && !discountCode.trim() && !discountError ? (
+            {refCode && refCode !== refRefused && !discountCode.trim() && !discountError ? (
               <p className="mt-2 text-[13px] text-text-secondary">
                 Code <span className="font-semibold text-text-primary">{refCode}</span> from your link.{' '}
                 <button type="button" className="font-semibold text-text-primary underline underline-offset-2 cursor-pointer" disabled={discountLoading} onClick={() => handleApplyDiscount(refCode)}>

@@ -116,7 +116,8 @@ export interface DiscountContext {
 export async function validateDiscountCode(fastify: FastifyInstance, code: string, subtotal: number, ctx: DiscountContext = {}) {
   const discount = await fastify.prisma.discountCode.findUnique({ where: { code: code.toUpperCase().trim() } });
 
-  if (!discount) throw { statusCode: 404, message: 'Invalid discount code' };
+  // Missing and switched off read the same, so nobody can probe for real codes.
+  if (!discount || !discount.isActive) throw { statusCode: 404, message: 'Invalid discount code' };
   if (discount.scope === 'GROUP_BUY' && !ctx.groupBuyId) throw { statusCode: 400, message: 'This code is for Group Buy orders only' };
   if (discount.scope === 'GROUP_BUY' && discount.groupBuyId && ctx.groupBuyId !== discount.groupBuyId) {
     throw { statusCode: 400, message: 'This code is for a different Group Buy batch' };
@@ -127,7 +128,6 @@ export async function validateDiscountCode(fastify: FastifyInstance, code: strin
     if (!email) throw { statusCode: 400, message: 'This code belongs to one email address: enter it above, then apply the code' };
     if (email !== discount.boundEmail.toLowerCase()) throw { statusCode: 400, message: 'This code belongs to a different email address' };
   }
-  if (!discount.isActive) throw { statusCode: 400, message: 'This discount code is no longer active' };
   // An affiliate's code: programme on, affiliate active, not their own order.
   const affiliate = await checkAffiliateCode(fastify.prisma, discount.id, { email: ctx.email, phone: ctx.phone });
   if (discount.expiresAt && discount.expiresAt < new Date()) throw { statusCode: 400, message: 'This discount code has expired' };

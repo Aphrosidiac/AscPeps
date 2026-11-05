@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
   AffiliateError,
@@ -8,8 +10,10 @@ import {
   cancelPayout,
   commissionTarget,
   getAffiliateSettings,
+  isReservedCode,
   markPayoutPaid,
   normaliseCode,
+  oneLine,
   pct,
   rateProblem,
   requestPayout,
@@ -102,15 +106,32 @@ const codeSchema = z.string().trim().transform(normaliseCode).refine((c) => CODE
   message: 'Use 4–16 letters and numbers.',
 });
 
-export async function checkCode(fastify: FastifyInstance, raw: string, exceptAffiliateId?: string) {
+export async function checkCode(fastify: FastifyInstance, raw: string, exceptAffiliateId?: string, opts: { team?: boolean } = {}) {
+  const { releaseFrom: _, ...answer } = await resolveCode(fastify, raw, exceptAffiliateId, opts);
+  return answer;
+}
+
+/** Whether a code can be had; `releaseFrom` is the rejected application still holding it. */
+async function resolveCode(fastify: FastifyInstance, raw: string, exceptAffiliateId?: string, opts: { team?: boolean } = {}) {
   const parsed = codeSchema.safeParse(raw);
-  if (!parsed.success) return { code: normaliseCode(raw), available: false, reason: 'Use 4–16 letters and numbers.' };
+  if (!parsed.success) return { code: normaliseCode(raw), available: false, reason: 'Use 4–16 letters and numbers.', releaseFrom: null };
   const taken = await fastify.prisma.discountCode.findUnique({
     where: { code: parsed.data },
-    select: { id: true, affiliate: { select: { id: true } } },
+    select: { id: true, affiliate: { select: { id: true, status: true } } },
   });
-  const mine = taken?.affiliate?.id && taken.affiliate.id === exceptAffiliateId;
-  return { code: parsed.data, available: !taken || !!mine, reason: taken && !mine ? 'That code is taken.' : null };
+  const mine = !!taken?.affiliate && taken.affiliate.id === exceptAffiliateId;
+  if (!mine && !opts.team && isReservedCode(parsed.data)) {
+    return { code: parsed.data, available: false, reason: 'That code is reserved. Try another.', releaseFrom: null };
+  }
+  // A rejected application can't use its code, so it shouldn't hold it either.
+  if (taken?.affiliate?.status === 'REJECTED' && !mine) return { code: parsed.data, available: true, reason: null, releaseFrom: taken.id };
+  return { code: parsed.data, available: !taken || mine, reason: taken && !mine ? 'That code is taken.' : null, releaseFrom: null };
+}
+
+/** Gives a rejected application a throwaway code, so its old one can be claimed. */
+async function releaseCode(tx: Prisma.TransactionClient, discountCodeId: string | null) {
+  if (!discountCodeId) return;
+  await tx.discountCode.update({ where: { id: discountCodeId }, data: { code: `RJ${crypto.randomBytes(5).toString('hex').toUpperCase()}` } });
 }
 
 export async function suggestMyCode(fastify: FastifyInstance, name: string) {
@@ -118,15 +139,15 @@ export async function suggestMyCode(fastify: FastifyInstance, name: string) {
 }
 
 const joinSchema = z.object({
-  fullName: z.string().trim().min(2).max(80),
+  fullName: z.string().transform(oneLine).pipe(z.string().min(2).max(80)),
   phone: z.string().trim().min(8).max(20),
-  channel: z.string().trim().max(200).optional().nullable(),
+  channel: z.string().transform(oneLine).pipe(z.string().max(200)).optional().nullable(),
   code: z.string().trim().min(1).max(30),
   // Optional at join (onboarding's payout step can be skipped). Sent with the
   // application, so the team approves them with it; later changes go through
   // a change request (affiliate-changes.ts).
-  bankName: z.string().trim().max(80).optional().nullable(),
-  bankAccountName: z.string().trim().max(80).optional().nullable(),
+  bankName: z.string().transform(oneLine).pipe(z.string().max(80)).optional().nullable(),
+  bankAccountName: z.string().transform(oneLine).pipe(z.string().max(80)).optional().nullable(),
   bankAccountNumber: z
     .string()
     .trim()
@@ -150,13 +171,14 @@ export async function joinProgramme(fastify: FastifyInstance, member: { id: stri
   } catch {
     throw { statusCode: 400, message: 'Enter a Malaysian mobile number.' };
   }
-  const check = await checkCode(fastify, data.code);
+  const check = await resolveCode(fastify, data.code);
   if (!check.available) throw { statusCode: 400, message: check.reason ?? 'That code is not available.' };
   const bank = { bankName: data.bankName?.trim() || null, bankAccountName: data.bankAccountName?.trim() || null, bankAccountNumber: data.bankAccountNumber || null };
   const filled = Object.values(bank).filter(Boolean).length;
   if (filled > 0 && filled < 3) throw { statusCode: 400, message: 'Fill in the bank, the account holder name and the account number — or skip it for now.' };
 
   const affiliate = await fastify.prisma.$transaction(async (tx) => {
+    await releaseCode(tx, check.releaseFrom);
     const code = await tx.discountCode.create({
       data: {
         code: check.code,
@@ -205,10 +227,12 @@ export async function updateMyAffiliate(fastify: FastifyInstance, memberId: stri
       // Changing a code people already have would break every link and post
       // they shared, so it is only theirs to change while waiting for approval.
       // Read again inside the transaction: the team may have just approved it.
+      await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${a.id} FOR UPDATE`;
       const now = await tx.affiliate.findUniqueOrThrow({ where: { id: a.id }, select: { status: true } });
       if (now.status !== 'APPLIED') throw { statusCode: 400, message: 'Your code is live. Ask us if it really has to change.' };
-      const check = await checkCode(fastify, data.code, a.id);
+      const check = await resolveCode(fastify, data.code, a.id);
       if (!check.available) throw { statusCode: 400, message: check.reason ?? 'That code is not available.' };
+      await releaseCode(tx, check.releaseFrom);
       await tx.discountCode.update({ where: { id: a.discountCodeId }, data: { code: check.code } });
     }
   });
@@ -368,7 +392,7 @@ export async function adminListAffiliates(fastify: FastifyInstance, query: Recor
       by: ['affiliateId'],
       where: { affiliateId: { in: ids }, paymentStatus: { in: ['PAID', 'REFUNDED'] }, deletedAt: null, isTest: false, status: { not: 'CANCELLED' } },
       _count: { _all: true },
-      _sum: { total: true, refundedAmount: true },
+      _sum: { total: true, shippingFee: true, refundedAmount: true },
     }),
   ]);
   const counts = await fastify.prisma.affiliate.groupBy({ by: ['status'], _count: { _all: true } });
@@ -382,11 +406,13 @@ export async function adminListAffiliates(fastify: FastifyInstance, query: Recor
         ...shapeAffiliate(a),
         email: a.member.email,
         balance: sum(),
-        earned: sum('COMMISSION'),
+        // After refunds, as the affiliate's own portal shows it.
+        earned: sum('COMMISSION') + sum('REVERSAL'),
         paidOut: -sum('PAYOUT'),
         requested: open.find((o) => o.affiliateId === a.id)?._sum.amount ?? 0,
         paidOrders: oc?._count._all ?? 0,
-        sales: (oc?._sum.total ?? 0) - (oc?._sum.refundedAmount ?? 0),
+        // Goods, like commission: shipping left out.
+        sales: Math.max(0, (oc?._sum.total ?? 0) - (oc?._sum.shippingFee ?? 0) - (oc?._sum.refundedAmount ?? 0)),
       };
     }),
   };
@@ -422,12 +448,16 @@ const adminPatchSchema = z.object({
   rateBps: z.number().int().min(0).max(5000).optional(),
   adminNote: z.string().trim().max(1000).nullable().optional(),
   code: z.string().trim().min(1).max(30).optional(),
+  // The code the admin was looking at when they pressed Approve.
+  expectedCode: z.string().trim().min(1).max(30).optional(),
   fullName: z.string().trim().min(2).max(80).optional(),
   phone: z.string().trim().min(8).max(20).optional(),
   bankName: z.string().trim().max(80).nullable().optional(),
   bankAccountName: z.string().trim().max(80).nullable().optional(),
   bankAccountNumber: z.string().trim().regex(/^[0-9 -]{6,24}$/, 'Numbers only').transform((v) => v.replace(/[ -]/g, '')).nullable().optional(),
 });
+
+const BANK_KEYS = ['bankName', 'bankAccountName', 'bankAccountNumber'] as const;
 
 export async function adminUpdateAffiliate(fastify: FastifyInstance, id: string, body: unknown, actor: string | null) {
   const data = adminPatchSchema.parse(body);
@@ -459,12 +489,35 @@ export async function adminUpdateAffiliate(fastify: FastifyInstance, id: string,
     }
   }
   await fastify.prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${id} FOR UPDATE`;
+    // Approving what was on screen: an applicant can still change their code
+    // until this moment, and it goes live with the approval.
+    if (data.expectedCode !== undefined) {
+      const { code } = await tx.discountCode.findUniqueOrThrow({ where: { id: a.discountCodeId }, select: { code: true } });
+      if (code !== data.expectedCode) throw { statusCode: 409, message: `They changed their code to ${code}. Check it, then approve.` };
+    }
     if (data.code !== undefined) {
-      const check = await checkCode(fastify, data.code, a.id);
+      const check = await resolveCode(fastify, data.code, a.id, { team: true });
       if (!check.available) throw { statusCode: 400, message: check.reason ?? 'That code is not available.' };
+      await releaseCode(tx, check.releaseFrom);
       await tx.discountCode.update({ where: { id: a.discountCodeId }, data: { code: check.code } });
     }
     if (Object.keys(patch).length) await tx.affiliate.update({ where: { id }, data: patch });
+    // Same as an approved change request: a waiting payout goes where the
+    // details now say, because the team transfers from the payout's own line.
+    if (BANK_KEYS.some((k) => k in patch)) {
+      const bank = await tx.affiliate.findUniqueOrThrow({ where: { id }, select: { bankName: true, bankAccountName: true, bankAccountNumber: true } });
+      const waiting = await tx.affiliatePayout.count({ where: { affiliateId: id, status: 'REQUESTED' } });
+      if (waiting) {
+        if (!bank.bankName || !bank.bankAccountName || !bank.bankAccountNumber) {
+          throw { statusCode: 400, message: 'A payout is waiting on these bank details. Fill them all in, or cancel the payout first.' };
+        }
+        await tx.affiliatePayout.updateMany({
+          where: { affiliateId: id, status: 'REQUESTED' },
+          data: { bankName: bank.bankName, bankAccountName: bank.bankAccountName, bankAccountNumber: bank.bankAccountNumber },
+        });
+      }
+    }
     // The code is live exactly while the affiliate is active.
     const status = (patch.status as string | undefined) ?? a.status;
     await tx.discountCode.update({ where: { id: a.discountCodeId }, data: { isActive: status === 'ACTIVE' } });

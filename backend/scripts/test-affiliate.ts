@@ -36,7 +36,7 @@ import { computeBank, loadBankInput } from '../src/utils/bank.js';
 import { adminUpdateDiscount, validateDiscountCode } from '../src/modules/admin/admin-discounts.controller.js';
 import { createOrder } from '../src/modules/orders/orders.controller.js';
 import { adminSetOrderTest, adminUpdateOrder } from '../src/modules/admin/admin-orders.controller.js';
-import { adminCancelPayout, adminUpdateAffiliate, joinProgramme, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
+import { adminCancelPayout, adminListAffiliates, adminUpdateAffiliate, checkCode, joinProgramme, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
 import { affiliateMailSamples, renderAffiliateEmail } from '../src/emails/affiliate.js';
 import { affiliateLine } from '../src/emails/payment-receipt.js';
 import { renderVerifyEmail } from '../src/emails/verify-email.js';
@@ -242,7 +242,7 @@ async function part2() {
     });
 
     await check('an unapproved code does nothing at checkout', () =>
-      refused(() => validateDiscountCode(fastify, code, 10_000, { email: 'someone@example.test' }), /no longer active/)
+      refused(() => validateDiscountCode(fastify, code, 10_000, { email: 'someone@example.test' }), /Invalid discount code/)
     );
 
     await check('approve: code goes live at the default rate', async () => {
@@ -410,17 +410,17 @@ async function part2() {
       // A payout waiting when it is approved goes to the new account.
       await adjustBalance(prisma, affiliateId, 300, 'test credit', 'test');
       const p = await requestPayout(prisma, affiliateId);
-      await adminDecideChange(fastify, pending[0].id, { decision: 'approve' }, 'test');
+      await adminDecideChange(fastify, pending[0].id, { decision: 'approve', sentAt: pending[0].updatedAt.toISOString() }, 'test');
       const after = await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } });
       const payout = await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } });
       eq([after.bankName, after.bankAccountNumber, after.channel, payout.bankName, payout.bankAccountNumber], ['CIMB Bank', '700012345678', '@aff.test', 'CIMB Bank', '700012345678']);
-      await refused(() => adminDecideChange(fastify, pending[0].id, { decision: 'approve' }, 'test'), /already approved/);
+      await refused(async () => adminDecideChange(fastify, pending[0].id, { decision: 'approve', sentAt: (await prisma.affiliateChangeRequest.findUniqueOrThrow({ where: { id: pending[0].id } })).updatedAt.toISOString() }, 'test'), /already approved/);
       await cancelPayout(prisma, p.id, 'test');
       await adjustBalance(prisma, affiliateId, -300, 'test credit back', 'test');
       // Rejected: nothing moves, they see why. Withdrawn: gone.
       await requestChange(fastify, member.id, { ...base, fullName: 'Someone Else', bankName: 'CIMB Bank', bankAccountNumber: '700012345678', channel: '@aff.test' });
       const r = await prisma.affiliateChangeRequest.findFirstOrThrow({ where: { affiliateId, status: 'PENDING' } });
-      await adminDecideChange(fastify, r.id, { decision: 'reject', reason: 'Name does not match the account' }, 'test');
+      await adminDecideChange(fastify, r.id, { decision: 'reject', sentAt: r.updatedAt.toISOString(), reason: 'Name does not match the account' }, 'test');
       eq([(await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).fullName, (await changeState(fastify, affiliateId)).lastRejected?.rejectReason], [a.fullName, 'Name does not match the account']);
       await requestChange(fastify, member.id, { ...base, phone: '0137000000', bankName: 'CIMB Bank', bankAccountNumber: '700012345678', channel: '@aff.test' });
       await withdrawChange(fastify, member.id);
@@ -456,7 +456,10 @@ async function part2() {
       await adjustBalance(prisma, affiliateId, 1_000, 'test top-up', 'test');
       await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '0');
       const p = await requestPayout(prisma, affiliateId);
-      const r: any = await tool('mark_affiliate_payout_paid').run(ctx, { affiliate: code, reference: 'ABBY1' });
+      // The sum the team really sent has to be what it pays: never a quiet difference.
+      await refused(() => tool('mark_affiliate_payout_paid').summarize!(ctx, { affiliate: code, amountRm: p.amount / 100 + 1 }), /pays RM/);
+      await refused(() => tool('mark_affiliate_payout_paid').run(ctx, { affiliate: code, amountRm: p.amount / 100 + 1 }), /now pays/);
+      const r: any = await tool('mark_affiliate_payout_paid').run(ctx, { affiliate: code, amountRm: p.amount / 100, reference: 'ABBY1' });
       const row = await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } });
       eq([r.status, row.status, row.reference, row.paidBy], ['PAID', 'PAID', 'ABBY1', 'Abby for Test']);
       await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '7');
@@ -507,9 +510,93 @@ async function part2() {
       }
     });
 
+    await check('audit: a stale screen can neither approve a replaced change nor pay a moved sum', async () => {
+      const a = await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } });
+      const base = { fullName: a.fullName, phone: a.phone, channel: a.channel, bankName: a.bankName, bankAccountName: a.bankAccountName, bankAccountNumber: a.bankAccountNumber };
+      await requestChange(fastify, member.id, { ...base, channel: '@first.test' });
+      const seen = await prisma.affiliateChangeRequest.findFirstOrThrow({ where: { affiliateId, status: 'PENDING' } });
+      await new Promise((r) => setTimeout(r, 5));
+      await requestChange(fastify, member.id, { ...base, bankName: 'RHB Bank', bankAccountNumber: '999988887777' });
+      await refused(() => adminDecideChange(fastify, seen.id, { decision: 'approve', sentAt: seen.updatedAt.toISOString() }, 'test'), /newer version/);
+      eq((await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).bankName, a.bankName, 'bank untouched:');
+      await requestChange(fastify, member.id, base);
+      // A sum the balance can't cover is refused, not cancelled behind the team's back.
+      await adjustBalance(prisma, affiliateId, 500, 'test credit', 'test');
+      const t = new Date();
+      const p = await requestPayout(prisma, affiliateId, t);
+      await adjustBalance(prisma, affiliateId, -(await affiliateBalance(prisma, affiliateId)).balance, 'test wipe', 'test');
+      await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: new Date(t.getTime() + 8 * 86_400_000), expected: 500 }), /now pays/);
+      eq((await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } })).status, 'REQUESTED', 'still waiting:');
+      await cancelPayout(prisma, p.id, 'test');
+      await adjustBalance(prisma, affiliateId, 500, 'test credit back', 'test');
+    });
+
+    await check('audit: an admin bank edit moves a waiting payout too', async () => {
+      await adjustBalance(prisma, affiliateId, 400, 'test credit', 'test');
+      const p = await requestPayout(prisma, affiliateId);
+      await adminUpdateAffiliate(fastify, affiliateId, { bankName: 'Bank Islam', bankAccountNumber: '123456789012' }, 'test');
+      const row = await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } });
+      eq([row.bankName, row.bankAccountNumber], ['Bank Islam', '123456789012']);
+      await refused(() => adminUpdateAffiliate(fastify, affiliateId, { bankName: null }, 'test'), /payout is waiting/);
+      await cancelPayout(prisma, p.id, 'test');
+      await adjustBalance(prisma, affiliateId, -400, 'test credit back', 'test');
+    });
+
+    await check('audit: details are one line, so they cannot fake lines in a team notice', async () => {
+      const a = await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } });
+      const base = { fullName: a.fullName, phone: a.phone, channel: a.channel, bankName: a.bankName, bankAccountName: a.bankAccountName, bankAccountNumber: a.bankAccountNumber };
+      await requestChange(fastify, member.id, { ...base, channel: 'tiktok\n✅ *Approved by Ascend*' });
+      const r = await prisma.affiliateChangeRequest.findFirstOrThrow({ where: { affiliateId, status: 'PENDING' } });
+      eq((r.changes as any).channel, 'tiktok ✅ *Approved by Ascend*');
+      await requestChange(fastify, member.id, base);
+    });
+
+    await check('audit: reserved codes are the team\'s, and a rejected application lets go of its code', async () => {
+      for (const c of ['ASCEND', 'ascend-my', 'ADMIN1', 'OFFICIAL', 'TEST', 'MYSTAFF']) eq((await checkCode(fastify, c)).available, false, `${c}:`);
+      eq((await checkCode(fastify, 'AH4827')).available, true, 'plain code:');
+      const m = await prisma.member.create({ data: { email: `rej-${stamp}@example.test`, passwordHash: 'x', displayName: 'Rej', emailVerified: true } });
+      memberIds.push(m.id);
+      const wanted = `FREED${stamp}`.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 14);
+      const j: any = await joinProgramme(fastify, { id: m.id, email: m.email }, { fullName: 'Rej Ected', phone: '0123999001', code: wanted, acceptTerms: true });
+      codeIds.push((await prisma.discountCode.findUniqueOrThrow({ where: { code: wanted } })).id);
+      eq((await checkCode(fastify, wanted)).available, false, 'held while applied:');
+      await refused(() => adminUpdateAffiliate(fastify, j.affiliate.id, { status: 'ACTIVE', expectedCode: 'SOMETHINGELSE' }, 'test'), /changed their code/);
+      await adminUpdateAffiliate(fastify, j.affiliate.id, { status: 'REJECTED' }, 'test');
+      eq((await checkCode(fastify, wanted)).available, true, 'free once rejected:');
+      await adminUpdateAffiliate(fastify, affiliateId, { code: wanted }, 'test');
+      eq((await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { discountCode: { select: { code: true } } } })).discountCode.code, wanted, 'claimed:');
+      await adminUpdateAffiliate(fastify, affiliateId, { code }, 'test');
+      await prisma.affiliate.delete({ where: { id: j.affiliate.id } });
+    });
+
+    await check('audit: Abby cannot edit or delete an affiliate\'s discount code', async () => {
+      const { contentTools } = await import('../src/modules/ai-agent/tools/content.tools.js');
+      const ctx = { fastify, prisma, actor: { phone: '', name: 'Test', canWrite: true } } as any;
+      const dc = await prisma.discountCode.findUniqueOrThrow({ where: { code } });
+      const tool = (n: string) => contentTools.find((t: any) => t.name === n)!;
+      await refused(() => tool('update_discount_code').run(ctx, { discountId: dc.id, isActive: false }), /affiliate code/);
+      await refused(() => tool('delete_discount_code').run(ctx, { discountId: dc.id }), /affiliate code/);
+    });
+
+    await check('audit: a refund with no money kept, or on money never paid, earns nothing', async () => {
+      eq(commissionTarget({ affiliateId: 'a', affiliateRateBps: 500, paymentStatus: 'REFUNDED', status: 'CONFIRMED', isTest: false, deletedAt: null, total: 10_000, shippingFee: 0, refundedAmount: 0 }), 0);
+      const o = await buy('unpaid-refund', { discountCode: code });
+      await adminUpdateOrder(fastify, o.id, { paymentStatus: 'REFUNDED', refundedAmount: 100 }, 'test');
+      await syncAffiliateOrders(prisma, [o.id]);
+      eq((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).affiliateCommission, 0);
+    });
+
+    await check('audit: admin figures match the portal: net of refunds, goods only', async () => {
+      const row = (await adminListAffiliates(fastify, {})).affiliates.find((a) => a.id === affiliateId)!;
+      const b = await affiliateBalance(prisma, affiliateId);
+      eq(row.earned, b.earned - b.reversed);
+      const orders = await prisma.order.findMany({ where: { affiliateId, paymentStatus: { in: ['PAID', 'REFUNDED'] }, deletedAt: null, isTest: false, status: { not: 'CANCELLED' } } });
+      eq(row.sales, Math.max(0, orders.reduce((s, o) => s + o.total - o.shippingFee - o.refundedAmount, 0)));
+    });
+
     await check('programme off: codes stop working', async () => {
       await setSetting(AFFILIATE_SETTING_KEYS.enabled, 'false');
-      await refused(() => validateDiscountCode(fastify, code, 10_000, { email: 'other@example.test' }), /no longer active/);
+      await refused(() => validateDiscountCode(fastify, code, 10_000, { email: 'other@example.test' }), /Invalid discount code/);
       await setSetting(AFFILIATE_SETTING_KEYS.enabled, 'true');
     });
 
@@ -531,6 +618,15 @@ async function part2() {
       const m3 = await prisma.member.create({ data: { email: `bonus-${stamp}+again@example.test`, passwordHash: 'x', displayName: 'Bonus', emailVerified: true } });
       memberIds.push(m3.id);
       eq(await mintSignupBonus(fastify, m3.id), null, 'alias:');
+      // Moving the email away doesn't free the old inbox for a new account.
+      await prisma.member.update({ where: { id: m2.id }, data: { email: `moved-${stamp}@example.test` } });
+      eq(await mintSignupBonus(fastify, m3.id), null, 'after email change:');
+      // Two confirmations at once on the same inbox: one code.
+      const racers = await Promise.all(['a', 'b'].map((x) => prisma.member.create({ data: { email: `race-${stamp}+${x}@example.test`, passwordHash: 'x', displayName: x, emailVerified: true } })));
+      memberIds.push(...racers.map((r) => r.id));
+      const minted = (await Promise.all(racers.map((r) => mintSignupBonus(fastify, r.id)))).filter(Boolean);
+      codeIds.push(...minted.map((c) => c!.id));
+      eq(minted.length, 1, 'race:');
     });
   } finally {
     // Put back the stock checkout took, then remove everything made here.
@@ -549,6 +645,7 @@ async function part2() {
     await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
     if (affiliateId) await prisma.affiliate.delete({ where: { id: affiliateId } }).catch(() => {});
+    await prisma.signupBonusClaim.deleteMany({ where: { memberId: { in: memberIds } } });
     await prisma.member.deleteMany({ where: { id: { in: memberIds } } });
     await prisma.discountCode.deleteMany({ where: { id: { in: codeIds } } });
     await prisma.setting.deleteMany({ where: { key: { in: keys } } });

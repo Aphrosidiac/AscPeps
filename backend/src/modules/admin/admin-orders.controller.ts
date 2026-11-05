@@ -791,6 +791,11 @@ async function adminUpdateOrderUnsynced(fastify: FastifyInstance, id: string, bo
   if (data.paymentStatus === 'REFUNDED' && data.refundedAmount === undefined) {
     updateData.refundedAmount = order.total;
   }
+  // Money that never came in can't be partly kept: an unpaid affiliate order
+  // marked refunded must not earn commission on the "rest" of it.
+  if (data.paymentStatus === 'REFUNDED' && order.affiliateId && (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'FAILED')) {
+    updateData.refundedAmount = order.total;
+  }
   if (data.refundedAmount !== undefined && data.refundedAmount > order.total) {
     throw {
       statusCode: 400,

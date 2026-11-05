@@ -32,6 +32,13 @@ async function uniqueSlug(prisma: any, title: string): Promise<string> {
   throw new Error(`Could not derive a free slug from "${title}" — pass one explicitly.`);
 }
 
+// An affiliate's code is run from Affiliates, as on the Discounts page: its
+// discount follows the programme, it is live exactly while they are active.
+async function refuseAffiliateCode(prisma: any, discountId: string) {
+  const owner = await prisma.affiliate.findUnique({ where: { discountCodeId: discountId }, select: { fullName: true } });
+  if (owner) throw new Error(`This is ${owner.fullName}'s affiliate code. Use set_affiliate to pause them instead; the code follows their status.`);
+}
+
 export const contentTools: AgentTool[] = [
   {
     name: 'list_insights',
@@ -282,6 +289,7 @@ export const contentTools: AgentTool[] = [
       if (!Object.keys(data).length) throw new Error('Nothing to update — pass at least one field.');
       const was = await prisma.discountCode.findUnique({ where: { id: input.discountId } });
       if (!was) throw new Error(`No discount code with id ${input.discountId}.`);
+      await refuseAffiliateCode(prisma, input.discountId);
       const d = await prisma.discountCode.update({ where: { id: input.discountId }, data });
       const fields = Object.keys(data);
       const pick = (o: any) => Object.fromEntries(fields.map((k) => [k, o[k]]));
@@ -304,9 +312,11 @@ export const contentTools: AgentTool[] = [
     summarize: async ({ prisma }, input) => {
       const d = await prisma.discountCode.findUnique({ where: { id: input.discountId } });
       if (!d) throw new Error(`No discount code with id ${input.discountId}.`);
+      await refuseAffiliateCode(prisma, input.discountId);
       return `permanently delete discount code ${d.code} (used ${d.usedCount} time(s))`;
     },
     run: async ({ prisma }, input) => {
+      await refuseAffiliateCode(prisma, input.discountId);
       const d = await prisma.discountCode.delete({ where: { id: input.discountId } });
       return { deleted: true, code: d.code };
     },

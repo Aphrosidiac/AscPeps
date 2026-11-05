@@ -23,7 +23,7 @@ export default function AffiliatePayouts() {
     <>
       <PageHead
         title="Payouts"
-        sub={data.programme.holdDays ? `Paid to your bank ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask` : 'Paid to your bank once you ask'}
+        sub={data.programme.holdDays ? `Paid to your bank at least ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask` : 'Paid to your bank once you ask'}
         actions={<GuideLink section="payouts">How payouts work</GuideLink>}
       />
 

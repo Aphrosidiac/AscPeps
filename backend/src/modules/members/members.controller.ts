@@ -180,6 +180,11 @@ export async function mintSignupBonus(fastify: FastifyInstance, memberId: string
   if (!member || member.signupBonusCodeId || !member.emailVerified) return null;
   const pct = await signupBonusFor(fastify, member.email);
   if (pct === null) return null;
+  // One to an inbox, for good. The row outlives an email change and a deleted
+  // account, and its key settles two confirmations racing each other.
+  const inbox = mailbox(member.email);
+  const claimed = await fastify.prisma.signupBonusClaim.createMany({ data: [{ inbox, memberId }], skipDuplicates: true });
+  if (claimed.count === 0) return null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = `WELCOME-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     let created;
@@ -203,7 +208,11 @@ export async function mintSignupBonus(fastify: FastifyInstance, memberId: string
       });
     } catch (err) {
       if ((err as Error).message === 'already minted') return null;
-      if ((err as { code?: string }).code !== 'P2002') throw err;
+      if ((err as { code?: string }).code !== 'P2002') {
+        // Nothing was given, so the inbox can still have its code.
+        await fastify.prisma.signupBonusClaim.delete({ where: { inbox } }).catch(() => {});
+        throw err;
+      }
       continue;
     }
     // The popup promised it: send it now rather than leave it on a page they

@@ -65,7 +65,7 @@ export default async function orderRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/validate-discount',
-    { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request) => {
       const { code, subtotal, groupBuyId, email, phone } = validateDiscountSchema.parse(request.body);
       const { discount, discountAmount, affiliate } = await validateDiscountCode(fastify, code, subtotal, { groupBuyId, email, phone });

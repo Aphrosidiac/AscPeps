@@ -498,6 +498,31 @@ Fakhrul's calls during the build, so nobody undoes them as a "cleanup":
 | Affiliate promos after the products, never on product page or checkout | The store sells first; the programme is for people who already bought |
 | Emails promise nothing the system doesn't do | No review times, transfer times or "reply to this email" |
 
+## Rules from the 6 Nov 2026 audit
+
+Each of these closed a real gap, and `test:affiliate` holds them ("audit:" checks).
+
+| Rule | Where |
+|---|---|
+| The sum marked paid must be what the payout pays now, checked before anything is recorded, including a nothing-left cancellation. Abby has to be told `amountRm` | `markPayoutPaid`, `mark_affiliate_payout_paid` |
+| A waiting payout follows the bank details, whichever way they change. An admin can't blank them while one waits | `adminUpdateAffiliate`, `adminDecideChange` |
+| Deciding a change needs `sentAt`, the version on screen: a request is replaced in place, so the id alone isn't enough | `adminDecideChange` |
+| Approving an application needs the code that was on screen (`expectedCode`, Abby's `approvedCode`): applicants can change it until then | `adminUpdateAffiliate` |
+| Paying and cancelling take the same lock on the affiliate | `markPayoutPaid`, `cancelPayout` |
+| Text an affiliate types is one line, so it can't write lines of its own into a team notice. The team is pinged about a details change at most once in 10 minutes per affiliate; the Changes tab always has the latest | `oneLine`, `requestChange` |
+| One sign-up bonus to an inbox for good: `signup_bonus_claims` outlives an email change or a deleted account, and its key settles a race | `mintSignupBonus` |
+| ASCEND, ADMIN, OFFICIAL, STAFF and SUPPORT anywhere in a code, and a few generic words, are the team's to give out | `isReservedCode` |
+| A rejected application lets go of its code: whoever claims it next gets it, and the rejected row gets a throwaway `RJ…` code | `resolveCode`, `releaseCode` |
+| Abby can't edit or delete an affiliate's discount code | `content.tools.ts` |
+| A code that is missing or switched off answers the same ("Invalid discount code"), and checking is 10 a minute per IP | `validateDiscountCode` |
+| An unpaid or failed affiliate order marked refunded earns nothing, and neither does a refund with no amount | `adminUpdateOrder`, `commissionTarget` |
+| Checkout checks a `?ref=` code before offering it | `app/checkout/page.tsx` |
+| Admin Earned is net of refunds and Sales is goods only, both as the portal counts them | `adminListAffiliates` |
+
+Stays on purpose: commission on orders placed before a pause or a rejection still
+reaches the balance when they are paid. No money moves, because payouts need an
+active affiliate.
+
 ## Deploying it (when Fakhrul says)
 
 1. `prisma migrate deploy` — the two migrations are additive (new tables,

@@ -85,7 +85,7 @@ export default function AdminAffiliatePage() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
             <Tile label="Balance" value={signed(b.balance)} tone={b.balance < 0 ? 'bad' : undefined} />
-            <Tile label="Earned" value={formatPrice(b.earned)} hint={b.reversed ? `${formatPrice(b.reversed)} taken back` : undefined} />
+            <Tile label="Earned" value={formatPrice(b.earned - b.reversed)} hint={b.reversed ? `${formatPrice(b.reversed)} taken back` : undefined} />
             <Tile label="Paid out" value={formatPrice(b.paidOut)} />
             <Tile label="Waiting for payment" value={formatPrice(b.awaitingPayment)} hint={`${b.awaitingPaymentOrders} unpaid`} />
           </div>
@@ -244,7 +244,7 @@ export default function AdminAffiliatePage() {
             setBusy(true);
             setConfirmError(null);
             try {
-              setD(await adminUpdateAffiliate(token, id, { status: confirm }));
+              setD(await adminUpdateAffiliate(token, id, { status: confirm, ...(confirm === 'ACTIVE' && a.status === 'APPLIED' ? { expectedCode: a.code } : {}) }));
             } catch (err) {
               setConfirmError(apiError(err, 'Could not change it.'));
               return false;

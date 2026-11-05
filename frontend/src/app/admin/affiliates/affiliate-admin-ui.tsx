@@ -168,7 +168,7 @@ export function DecideChange({ token, change, name, onDone }: { token: string; c
     setBusy(true);
     setError(null);
     try {
-      await adminDecideAffiliateChange(token, change.id, body);
+      await adminDecideAffiliateChange(token, change.id, { ...body, sentAt: change.sentAt });
       onDone(body.decision === 'approve' ? `${name}'s change is approved.` : `${name}'s change was rejected; they see why.`);
       return true;
     } catch (err) {
