@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, Gift, KeyRound, Loader2, Mail, MailCheck, User } from 'lucide-react';
 import { useStoreSettings } from '@/lib/store-settings';
+import { useAffiliateOffer } from '@/components/affiliate-promo/AffiliatePromo';
 import type { GroupBuySummary } from '@/types';
 import { memberForgotPassword, memberLogin, memberRegister, memberResendVerification, memberResetPassword } from '@/lib/api';
 import { setMemberSession } from '@/lib/member-session';
@@ -25,14 +26,17 @@ const ROUTES: Record<Where, Record<'signin' | 'signup' | 'forgot', string>> = {
 };
 
 // Everything here is something an account really does today — keep it that
-// way: no promises the system doesn't keep.
-const PERKS = GROUP_BUY_ENABLED
-  ? [
-      'Every Group Buy order in one place, with its live batch timeline',
-      'Your name and email filled in at checkout',
-      'Sign-up reward codes shown on screen, not only in your inbox',
-    ]
-  : ['Your name and email filled in at checkout'];
+// way: no promises the system doesn't keep. (Checkout fills in the email and
+// offers the sign-up code; it does not fill in the name.)
+function perksFor(bonus: number | null, commission: string | null): string[] {
+  return [
+    ...(bonus ? [`${bonus}% off your first order, emailed once you confirm`] : []),
+    ...(GROUP_BUY_ENABLED ? ['Every Group Buy order in one place, with its live batch timeline'] : []),
+    `Your email filled in at checkout${bonus ? ', and your code offered there' : ''}`,
+    'Comment on our research articles',
+    ...(commission ? [`Ascend Affiliate on the same account: earn ${commission} of every paid order`] : []),
+  ];
+}
 
 function rewardWhere(r: NonNullable<AuthBatch['reward']>) {
   return r.scope === 'GROUP_BUY' ? 'your batch order' : r.scope === 'STORE' ? 'your next store order' : 'your next order';
@@ -54,6 +58,11 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
   const signup = mode === 'signup';
   const listOpen = !!batch && (batch.phase === 'LIVE' || batch.phase === 'UPCOMING');
   const reward = listOpen ? batch.reward : null;
+  const settings = useStoreSettings();
+  const offer = useAffiliateOffer();
+  // The store's own sign-up bonus, while it is on.
+  const bonus = where === 'store' && settings?.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null;
+  const perks = perksFor(bonus, where === 'store' ? offer?.commission ?? null : null);
 
   // useId, not fixed ids: Next keeps the previous route mounted (hidden), so
   // two of these screens can be in the page at once.
@@ -137,7 +146,9 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
                 </h1>
                 <p className="mt-1.5 hidden text-[15px] leading-relaxed text-[#0A0A0A]/60 sm:block">
                   {!GROUP_BUY_ENABLED
-                    ? 'Your name and email filled in at checkout.'
+                    ? signup
+                      ? bonus ? `Confirm your email and ${bonus}% off your first order is yours.` : 'Free, and buying as a guest still works.'
+                      : 'Your codes, your email at checkout, and Ascend Affiliate.'
                     : signup
                       ? 'Follow your Group Buy orders and keep your rewards.'
                       : 'See your orders, batch timelines and rewards.'}
@@ -192,7 +203,7 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
 
                 {/* Phones get the perks under the form; the side panel has them on desktop. */}
                 <ul className="mt-8 space-y-2.5 border-t border-[#0A0A0A]/10 pt-6 lg:hidden">
-                  {PERKS.map((p) => (
+                  {perks.map((p) => (
                     <li key={p} className="flex gap-2.5 text-sm text-[#0A0A0A]/70"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#16A34A]" />{p}</li>
                   ))}
                 </ul>
@@ -204,14 +215,27 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
         {/* Side panel: the open batch and what an account gets you */}
         <aside className="order-1 lg:order-2 overflow-hidden rounded-2xl bg-[#0A0A0A] text-white">
           <div className="flex h-full flex-col p-5 sm:p-8 lg:p-9">
-            {batch && listOpen ? <BatchPitch batch={batch} /> : (
+            {batch && listOpen ? <BatchPitch batch={batch} /> : bonus && signup ? (
+              // The offer the popup and the header pill made, said big — like
+              // the Group Buy reward above.
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/50">New to Ascend MY</p>
+                <p className="mt-3 font-display font-bold leading-tight tracking-tight">
+                  <span className="text-4xl text-[#22C55E] lg:block lg:text-6xl lg:leading-none">{bonus}% off</span>{' '}
+                  <span className="text-xl lg:mt-2 lg:block lg:text-3xl">your first order.</span>
+                </p>
+                <p className="mt-3 hidden max-w-sm text-sm leading-relaxed text-white/60 lg:block">
+                  Create your account and confirm your email: the one-time code is emailed to you straight away, and checkout offers it when you&apos;re signed in.
+                </p>
+              </>
+            ) : (
               <>
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-white/50">Ascend MY account</p>
-                <h2 className="mt-3 font-display text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Everything you order, in one place.</h2>
+                <h2 className="mt-3 font-display text-2xl sm:text-3xl font-bold leading-tight tracking-tight">{signup ? 'Free, and worth having.' : 'Good to see you again.'}</h2>
               </>
             )}
             <ul className="mt-7 hidden space-y-3 border-t border-white/10 pt-7 lg:block">
-              {PERKS.map((p) => (
+              {perks.map((p) => (
                 <li key={p} className="flex gap-3 text-[15px] leading-snug text-white/80">
                   <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#22C55E] text-[#0A0A0A]"><Check className="h-3 w-3" strokeWidth={3} /></span>
                   {p}
