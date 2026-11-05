@@ -28,9 +28,10 @@ const ROUTES: Record<Where, Record<'signin' | 'signup' | 'forgot', string>> = {
 // Everything here is something an account really does today — keep it that
 // way: no promises the system doesn't keep. (Checkout fills in the email and
 // offers the sign-up code; it does not fill in the name.)
-function perksFor(bonus: number | null, commission: string | null): string[] {
+function perksFor(signup: boolean, bonus: number | null, commission: string | null): string[] {
   return [
-    ...(bonus ? [`${bonus}% off your first order, emailed once you confirm`] : []),
+    // Sign-in still makes the offer, to whoever has no account yet.
+    ...(bonus ? [signup ? `${bonus}% off your first order, emailed once you confirm` : `New here? Create an account for ${bonus}% off your first order`] : []),
     ...(GROUP_BUY_ENABLED ? ['Every Group Buy order in one place, with its live batch timeline'] : []),
     `Your email filled in at checkout${bonus ? ', and your code offered there' : ''}`,
     'Comment on our research articles',
@@ -62,7 +63,7 @@ export function AuthScreen({ mode, where, batch }: { mode: Mode; where: Where; b
   const offer = useAffiliateOffer();
   // The store's own sign-up bonus, while it is on.
   const bonus = where === 'store' && settings?.signup_bonus_enabled === 'true' ? Number(settings.signup_bonus_pct || 10) : null;
-  const perks = perksFor(bonus, where === 'store' ? offer?.commission ?? null : null);
+  const perks = perksFor(signup, bonus, where === 'store' ? offer?.commission ?? null : null);
 
   // useId, not fixed ids: Next keeps the previous route mounted (hidden), so
   // two of these screens can be in the page at once.
