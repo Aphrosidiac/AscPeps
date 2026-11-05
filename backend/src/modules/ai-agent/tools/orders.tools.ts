@@ -1,4 +1,4 @@
-import { getPreorderSettings } from '../../../utils/preorder.js';
+import { getPreorderSettings, orderType } from '../../../utils/preorder.js';
 import type { AgentTool } from '../tool-kit.js';
 import { resolveOrderLines, linesSubtotal, OrderLineError, groupOrderItems, isIncludedItem } from '../../../utils/order-lines.js';
 import { audited, clampLimit, listResult, money, parseDate, rm, summaryOnly, toCents } from '../tool-kit.js';
@@ -153,6 +153,10 @@ function orderSummary(o: any, activeGateway?: string) {
   return {
     orderId: o.id,
     orderNumber: o.orderNumber,
+    // ORDER ships from stock; PRE_ORDER waits for a restock and has its own
+    // admin tab; GROUP_BUY ships with its batch. On every order read so a
+    // pre-order can't be mistaken for an order that is running late.
+    orderType: orderType(o),
     customer: o.customerName,
     phone: o.phone,
     email: o.email,
@@ -453,7 +457,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'list_orders',
     description:
-      'List orders with filters. Use for "today\'s orders", "unpaid orders", "what has not shipped", etc. Returns summaries — call get_order for full detail on one.',
+      'List orders with filters. Use for "today\'s orders", "unpaid orders", "what has not shipped", etc. Pre-orders are a separate list from orders: every row has orderType, and without the orderType filter both come back, with preOrders saying how many of the matches are pre-orders. Returns summaries — call get_order for full detail on one.',
     input_schema: {
       type: 'object',
       properties: {
@@ -462,6 +466,12 @@ export const orderTools: AgentTool[] = [
           enum: ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'DELETED'],
         },
         paymentStatus: { type: 'string', enum: ['UNPAID', 'PAID', 'FAILED', 'REFUNDED'] },
+        orderType: {
+          type: 'string',
+          enum: ['ORDER', 'PRE_ORDER', 'GROUP_BUY'],
+          description:
+            'ORDER = ships from stock (the Orders tab). PRE_ORDER = part of it was bought past the stock, so the whole order waits for the restock (the Pre-orders tab). GROUP_BUY = ships with its batch. Leave out for all of them.',
+        },
         search: { type: 'string', description: 'Matches order number, customer name or phone.' },
         from: { type: 'string', description: 'Date as YYYY-MM-DD, "today", "yesterday" or "30d".' },
         to: { type: 'string', description: 'Date as YYYY-MM-DD.' },
@@ -492,6 +502,9 @@ export const orderTools: AgentTool[] = [
       }
       if (input.status && input.status !== 'DELETED') where.status = input.status;
       if (input.paymentStatus) where.paymentStatus = input.paymentStatus;
+      if (input.orderType === 'PRE_ORDER') where.isPreorder = true;
+      if (input.orderType === 'ORDER') { where.isPreorder = false; where.groupBuyId = null; }
+      if (input.orderType === 'GROUP_BUY') where.groupBuyId = { not: null };
       if (input.missingCosts) {
         // A cancelled or unpaid order has no profit to cost; a line with a
         // null unitCost is "not entered yet" (profit.ts treats 0 as a real
@@ -513,14 +526,18 @@ export const orderTools: AgentTool[] = [
       if (from || to) where.createdAt = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
 
       const gateway = await activeGatewayName(prisma);
-      const [orders, total, sum] = await Promise.all([
+      const [orders, total, sum, preOrders] = await Promise.all([
         prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take: clampLimit(input.limit) }),
         prisma.order.count({ where }),
         prisma.order.aggregate({ where, _sum: { total: true } }),
+        prisma.order.count({ where: { AND: [where, { isPreorder: true }] } }),
       ]);
 
       return {
         matched: total,
+        // Of `matched`, so a count of "orders" can say how many are pre-orders
+        // even when the page shown doesn't include them all.
+        preOrders,
         showing: orders.length,
         truncated: total > orders.length,
         // Travels with the data, not just in the tool description. Both August
@@ -564,6 +581,8 @@ export const orderTools: AgentTool[] = [
           code: i.variant.code,
           size: i.variant.size,
           quantity: i.quantity,
+          // Of quantity: the units that weren't on the shelf and ship on the restock.
+          ...(i.preorderQty ? { preorderQty: i.preorderQty } : {}),
           unitPrice: money(i.unitPrice),
           lineTotal: money(i.unitPrice * i.quantity),
           unitCost: i.unitCost == null ? null : money(i.unitCost),

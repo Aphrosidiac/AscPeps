@@ -172,6 +172,8 @@ export async function listUnscheduledOrders(fastify: FastifyInstance, limit = 25
     select: {
       id: true,
       orderNumber: true,
+      isPreorder: true,
+      groupBuyId: true,
       customerName: true,
       phone: true,
       city: true,
