@@ -34,7 +34,7 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
   const d = programme?.customerDiscountPct ?? 5;
   const bps = programme?.commissionBps ?? 500;
   const rate = programme?.commission ?? '5%';
-  const hold = programme?.holdDays ?? 3;
+  const hold = programme?.holdDays ?? 7;
   const pays = (sen: number) => Math.round((sen * (100 - d)) / 100);
   const earn = (sen: number) => Math.round((pays(sen) * bps) / 10_000);
 

@@ -3,7 +3,7 @@
  *
  * Fakhrul's note, 2026-11-02: give up at most 10% of an order — 5% off for the
  * customer who uses the code, 3–5% commission for the affiliate. Payouts are
- * paid no sooner than 3 days after they are asked for, so refunds land first;
+ * paid no sooner than 7 days after they are asked for, so refunds land first;
  * a refund after a payout takes the commission back anyway and the balance
  * goes negative.
  *
@@ -66,7 +66,7 @@ export const AFFILIATE_DEFAULTS: AffiliateSettings = {
   defaultRateBps: 500,
   customerDiscountPct: 5,
   marginBudgetPct: 10,
-  holdDays: 3,
+  holdDays: 7,
   signupBonusEnabled: false,
   signupBonusPct: 10,
 };

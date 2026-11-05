@@ -38,7 +38,7 @@ Fakhrul's brief, and how each line was built:
 | Discount for the code: 5% | `affiliate_customer_discount_pct` = 5, on every affiliate code at once |
 | Possible one-time sign-up bonus: 10% | `signup_bonus_enabled` (off by default) + `signup_bonus_pct` = 10 |
 | Popups: sign-up, affiliate | Two store popups that take turns with the newsletter one, one per visit |
-| Payout: 3 days minimum after asking, so refunds land; a refund after that makes the account negative | `affiliate_payout_hold_days` = 3; balances are a ledger and may go below zero |
+| Payout: 7 days minimum after asking, so refunds land; a refund after that makes the account negative | `affiliate_payout_hold_days` = 7; balances are a ledger and may go below zero |
 | Its own simple site | `frontend/src/app/affiliate`, served at affiliate.ascendpeptides.my |
 
 What it must never do: pay out money that a refund took back, let an
@@ -63,7 +63,7 @@ hasn't seen, or show an affiliate who their customers are.
  pays ──────────────────────────► COMMISSION booked (5% of the goods)
  (refund? ──────────────────────► REVERSAL booked, may go negative)
                                   Ask for a payout ──────────────────► WhatsApp notice
-                                  ◄── "payout requested" email          3-day hold, then
+                                  ◄── "payout requested" email          7-day hold, then
                                                                         transfer + Mark paid
                                   ◄── "paid" email
 ```
@@ -80,7 +80,7 @@ revalidates the store, so every placement follows at once.
 | `affiliate_customer_discount_pct` | 5 | What every affiliate code takes off, in whole percent |
 | `affiliate_default_rate_bps` | 500 | Commission for new affiliates, in basis points (500 = 5%) |
 | `affiliate_margin_budget_pct` | 10 | Discount + any affiliate's rate must fit inside it |
-| `affiliate_payout_hold_days` | 3 | Days between asking and being payable |
+| `affiliate_payout_hold_days` | 7 | Days between asking and being payable |
 | `signup_bonus_enabled` / `signup_bonus_pct` | off / 10 | The one-time first-order code for a new confirmed account |
 | `popup_<kind>_desktop_delay` · `_mobile_delay` · `_mobile_scroll` · `_hide_days` | the old fixed behaviour | When each popup (`newsletter`, `signup`, `affiliate`) may open; the API bounds them (`utils/popup-settings.ts`) |
 | `popup_<kind>_enabled` · `_heading` · `_body` · `_cta` · `_note` | defaults in `frontend/src/lib/popup-settings.ts` | The sign-up and affiliate popups' switch and words; `{discount}`, `{commission}`, `{bonus}` fill in the live numbers |

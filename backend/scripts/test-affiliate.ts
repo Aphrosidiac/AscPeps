@@ -228,7 +228,7 @@ async function part2() {
     await setSetting(AFFILIATE_SETTING_KEYS.defaultRateBps, '500');
     await setSetting(AFFILIATE_SETTING_KEYS.customerDiscountPct, '5');
     await setSetting(AFFILIATE_SETTING_KEYS.marginBudgetPct, '10');
-    await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '3');
+    await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '7');
     let code = '';
     await check('join: APPLIED, code made but not live', async () => {
       const r = await joinProgramme(fastify, { id: member.id, email: member.email }, {
@@ -298,19 +298,19 @@ async function part2() {
     const c1 = Math.round(goods1() * 0.05);
     let payoutId = '';
     const t0 = new Date();
-    await check('payout asked: the whole balance, payable after 3 days', async () => {
+    await check('payout asked: the whole balance, payable after 7 days', async () => {
       const p = await requestPayout(prisma, affiliateId, t0);
       payoutId = p.id;
-      eq([p.amount, p.availableAt.getTime() - t0.getTime(), p.bankAccountNumber], [c1, 3 * 86_400_000, '112233445566']);
+      eq([p.amount, p.availableAt.getTime() - t0.getTime(), p.bankAccountNumber], [c1, 7 * 86_400_000, '112233445566']);
       const b = await affiliateBalance(prisma, affiliateId);
       eq([b.balance, b.requested, b.available], [c1, c1, 0]);
     });
     await check('one open request at a time', () => refused(() => requestPayout(prisma, affiliateId), /already have a payout/));
     await check('not payable inside the hold', () =>
-      refused(() => markPayoutPaid(prisma, payoutId, { by: 'test', now: new Date(t0.getTime() + 2 * 86_400_000) }), /Payable from/)
+      refused(() => markPayoutPaid(prisma, payoutId, { by: 'test', now: new Date(t0.getTime() + 6 * 86_400_000) }), /Payable from/)
     );
     await check('paid after the hold: PAYOUT entry, balance zero', async () => {
-      const r = await markPayoutPaid(prisma, payoutId, { by: 'test', reference: 'TRX1', now: new Date(t0.getTime() + 3 * 86_400_000 + 60_000) });
+      const r = await markPayoutPaid(prisma, payoutId, { by: 'test', reference: 'TRX1', now: new Date(t0.getTime() + 7 * 86_400_000 + 60_000) });
       eq([r.status, r.paidAmount], ['PAID', c1]);
       eq((await affiliateBalance(prisma, affiliateId)).balance, 0);
     });
@@ -354,7 +354,7 @@ async function part2() {
       // Half of order three comes back while the payout waits.
       await adminUpdateOrder(fastify, o3.id, { refundedAmount: Math.round(o3.total / 2) }, 'test');
       const now = (await affiliateBalance(prisma, affiliateId)).balance;
-      const r = await markPayoutPaid(prisma, p.id, { by: 'test', now: new Date(t.getTime() + 4 * 86_400_000) });
+      const r = await markPayoutPaid(prisma, p.id, { by: 'test', now: new Date(t.getTime() + 8 * 86_400_000) });
       eq([r.status, r.paidAmount, (await affiliateBalance(prisma, affiliateId)).balance], ['PAID', Math.min(p.amount, now), now - Math.min(p.amount, now)]);
       if (!(r.paidAmount < p.amount)) throw new Error('should have paid less than asked');
     });
@@ -364,7 +364,7 @@ async function part2() {
       const t = new Date();
       const p = await requestPayout(prisma, affiliateId, t);
       await adminUpdateAffiliate(fastify, affiliateId, { status: 'PAUSED' }, 'test');
-      await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: new Date(t.getTime() + 4 * 86_400_000) }), /paused/);
+      await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: new Date(t.getTime() + 8 * 86_400_000) }), /paused/);
       await cancelPayout(prisma, p.id, 'test');
       await adminUpdateAffiliate(fastify, affiliateId, { status: 'ACTIVE' }, 'test');
       await adjustBalance(prisma, affiliateId, -500, 'test credit back', 'test');
@@ -374,7 +374,7 @@ async function part2() {
       await adjustBalance(prisma, affiliateId, 700, 'test credit', 'test');
       const t = new Date();
       const p = await requestPayout(prisma, affiliateId, t);
-      const later = new Date(t.getTime() + 4 * 86_400_000);
+      const later = new Date(t.getTime() + 8 * 86_400_000);
       await refused(() => markPayoutPaid(prisma, p.id, { by: 'test', now: later, expected: p.amount + 1 }), /now pays/);
       await cancelPayout(prisma, p.id, 'test');
       await adjustBalance(prisma, affiliateId, -700, 'test credit back', 'test');
@@ -459,7 +459,7 @@ async function part2() {
       const r: any = await tool('mark_affiliate_payout_paid').run(ctx, { affiliate: code, reference: 'ABBY1' });
       const row = await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } });
       eq([r.status, row.status, row.reference, row.paidBy], ['PAID', 'PAID', 'ABBY1', 'Abby for Test']);
-      await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '3');
+      await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '7');
     });
 
     await check('affiliate emails: one at each step, to their account email', async () => {

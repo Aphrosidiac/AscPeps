@@ -199,7 +199,7 @@ const PLAYBOOKS: Record<string, Playbook> = {
     body: `1. An affiliate is a store account that shares a code. The customer gets a few percent off; the affiliate earns a commission on the goods (after the discount, not shipping) once the order is PAID. The rate is fixed on the order at checkout.
 2. Commission follows the order by itself: a refund, cancel, delete or test-mark takes it back (a REVERSAL), even after it was paid out — then the balance goes negative and new commission pays it off first. Never "fix" a balance by hand unless the operator asks for an adjustment.
 3. Commission is a cost of the order: profit, the split and the month-end are already net of it. Don't subtract it again.
-4. A payout is asked for by the affiliate on their site and can be paid only after the hold (3 days by default). The team transfers the money from Ascend's bank themselves, then you record it with mark_affiliate_payout_paid — never before the transfer is done.
+4. A payout is asked for by the affiliate on their site and can be paid only after the hold (7 days by default). The team transfers the money from Ascend's bank themselves, then you record it with mark_affiliate_payout_paid — never before the transfer is done.
 5. New applications wait as APPLIED; their code does nothing until approved (set_affiliate status ACTIVE).
 6. An affiliate never sees who bought: never send them customer names, phones or addresses.`,
   },
