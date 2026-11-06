@@ -36,12 +36,14 @@ import { computeBank, loadBankInput } from '../src/utils/bank.js';
 import { adminUpdateDiscount, validateDiscountCode } from '../src/modules/admin/admin-discounts.controller.js';
 import { createOrder } from '../src/modules/orders/orders.controller.js';
 import { adminSetOrderTest, adminUpdateOrder } from '../src/modules/admin/admin-orders.controller.js';
-import { adminCancelPayout, adminListAffiliates, adminUpdateAffiliate, checkCode, joinProgramme, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
+import { adminAdjust, adminCancelPayout, adminListAffiliates, adminMarkPayoutPaid, adminSaveSettings, adminUpdateAffiliate, checkCode, joinProgramme, requestMyPayout, updateMyAffiliate, listAffiliateOrders, requestMyPayout } from '../src/modules/affiliates/affiliates.controller.js';
 import { affiliateMailSamples, renderAffiliateEmail } from '../src/emails/affiliate.js';
 import { affiliateLine } from '../src/emails/payment-receipt.js';
 import { renderVerifyEmail } from '../src/emails/verify-email.js';
 import { renderSignupBonusEmail } from '../src/emails/account.js';
 import { mintSignupBonus } from '../src/modules/members/members.controller.js';
+import { captureAffiliateNotices } from '../src/utils/affiliate-notify.js';
+import { sweepAffiliateNotices } from '../src/utils/affiliate-sweep.js';
 import { adminDecideChange, changeState, requestChange, withdrawChange } from '../src/modules/affiliates/affiliate-changes.js';
 
 let pass = 0;
@@ -186,6 +188,9 @@ async function part2() {
   const savedSettings = await prisma.setting.findMany({ where: { key: { in: keys } } });
   const setSetting = (key: string, value: string) => prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
 
+  const notices: string[] = [];
+  captureAffiliateNotices((t) => notices.push(t));
+
   const memberIds: string[] = [];
   const orderIds: string[] = [];
   const codeIds: string[] = [];
@@ -228,7 +233,8 @@ async function part2() {
     await setSetting(AFFILIATE_SETTING_KEYS.defaultRateBps, '500');
     await setSetting(AFFILIATE_SETTING_KEYS.customerDiscountPct, '5');
     await setSetting(AFFILIATE_SETTING_KEYS.marginBudgetPct, '10');
-    await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '7');
+    // Off for the walk-through; the hold has its own check.
+    await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '0');
     let code = '';
     await check('join: APPLIED, code made but not live', async () => {
       const r = await joinProgramme(fastify, { id: member.id, email: member.email }, {
@@ -298,18 +304,15 @@ async function part2() {
     const c1 = Math.round(goods1() * 0.05);
     let payoutId = '';
     const t0 = new Date();
-    await check('payout asked: the whole balance, payable after 7 days', async () => {
+    await check('payout asked: the whole balance, payable at once', async () => {
       const p = await requestPayout(prisma, affiliateId, t0);
       payoutId = p.id;
-      eq([p.amount, p.availableAt.getTime() - t0.getTime(), p.bankAccountNumber], [c1, 7 * 86_400_000, '112233445566']);
+      eq([p.amount, p.availableAt.getTime() - t0.getTime(), p.bankAccountNumber], [c1, 0, '112233445566']);
       const b = await affiliateBalance(prisma, affiliateId);
       eq([b.balance, b.requested, b.available], [c1, c1, 0]);
     });
     await check('one open request at a time', () => refused(() => requestPayout(prisma, affiliateId), /already have a payout/));
-    await check('not payable inside the hold', () =>
-      refused(() => markPayoutPaid(prisma, payoutId, { by: 'test', now: new Date(t0.getTime() + 6 * 86_400_000) }), /Payable from/)
-    );
-    await check('paid after the hold: PAYOUT entry, balance zero', async () => {
+    await check('paid: PAYOUT entry, balance zero', async () => {
       const r = await markPayoutPaid(prisma, payoutId, { by: 'test', reference: 'TRX1', now: new Date(t0.getTime() + 7 * 86_400_000 + 60_000) });
       eq([r.status, r.paidAmount], ['PAID', c1]);
       eq((await affiliateBalance(prisma, affiliateId)).balance, 0);
@@ -346,7 +349,7 @@ async function part2() {
     });
 
     let o3!: Awaited<ReturnType<typeof buy>>;
-    await check('a refund inside the hold is not paid out', async () => {
+    await check('a refund after asking is not paid out', async () => {
       o3 = await buy('three', { discountCode: code });
       await adminUpdateOrder(fastify, o3.id, { paymentStatus: 'PAID' }, 'test');
       const t = new Date();
@@ -454,7 +457,6 @@ async function part2() {
       eq((await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).rateBps, 400, 'rate:');
       await tool('set_affiliate').run(ctx, { affiliate: code, commissionPercent: 5 });
       await adjustBalance(prisma, affiliateId, 1_000, 'test top-up', 'test');
-      await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '0');
       const p = await requestPayout(prisma, affiliateId);
       // The sum the team really sent has to be what it pays: never a quiet difference.
       await refused(() => tool('mark_affiliate_payout_paid').summarize!(ctx, { affiliate: code, amountRm: p.amount / 100 + 1 }), /pays RM/);
@@ -462,7 +464,6 @@ async function part2() {
       const r: any = await tool('mark_affiliate_payout_paid').run(ctx, { affiliate: code, amountRm: p.amount / 100, reference: 'ABBY1' });
       const row = await prisma.affiliatePayout.findUniqueOrThrow({ where: { id: p.id } });
       eq([r.status, row.status, row.reference, row.paidBy], ['PAID', 'PAID', 'ABBY1', 'Abby for Test']);
-      await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '7');
     });
 
     await check('affiliate emails: one at each step, to their account email', async () => {
@@ -594,6 +595,117 @@ async function part2() {
       eq(row.sales, Math.max(0, orders.reduce((s, o) => s + o.total - o.shippingFee - o.refundedAmount, 0)));
     });
 
+    await check('commission waits its 7 days from paid, per order, and only then can be asked for', async () => {
+      await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '7');
+      const age = (orderId: string, days: number) =>
+        prisma.affiliateEntry.updateMany({ where: { orderId }, data: { createdAt: new Date(Date.now() - days * 86_400_000) } });
+      // Everything earlier in this run is long out of its hold.
+      await prisma.affiliateEntry.updateMany({ where: { affiliateId }, data: { createdAt: new Date(Date.now() - 30 * 86_400_000) } });
+      const start = await affiliateBalance(prisma, affiliateId);
+      await adjustBalance(prisma, affiliateId, -Math.max(0, start.balance) + (start.balance < 0 ? -start.balance : 0), 'test: start from zero', 'test');
+
+      const young = await buy('hold-a', { discountCode: code });
+      await adminUpdateOrder(fastify, young.id, { paymentStatus: 'PAID' }, 'test');
+      const c = (await prisma.order.findUniqueOrThrow({ where: { id: young.id } })).affiliateCommission;
+      let b = await affiliateBalance(prisma, affiliateId);
+      eq([b.balance, b.held, b.available, b.payable, b.heldOrders.length], [c, c, 0, 0, 1], 'just paid:');
+      await refused(() => requestPayout(prisma, affiliateId), /still in its hold/);
+      const listed = (await listAffiliateOrders(fastify, affiliateId, {})).data.find((o) => o.id === young.id)!;
+      eq([listed.state, listed.commission, !!listed.readyAt], ['IN_HOLD', c, true], 'order row:');
+      const days = (new Date(listed.readyAt!).getTime() - Date.now()) / 86_400_000;
+      if (days < 6.99 || days > 7.01) throw new Error(`ready in ${days} days`);
+
+      // A part refund comes off what is held, so nothing is ever asked for twice.
+      await adminUpdateOrder(fastify, young.id, { refundedAmount: Math.round(young.total / 2) }, 'test');
+      b = await affiliateBalance(prisma, affiliateId);
+      const left = (await prisma.order.findUniqueOrThrow({ where: { id: young.id } })).affiliateCommission;
+      eq([b.held, b.available, b.balance], [left, 0, left], 'part refunded:');
+
+      // Day 6 still waits; day 7 it can be asked for and paid straight away.
+      await age(young.id, 6.9);
+      eq((await affiliateBalance(prisma, affiliateId)).available, 0, 'day 6:');
+      await age(young.id, 7.1);
+      b = await affiliateBalance(prisma, affiliateId);
+      eq([b.held, b.available], [0, left], 'day 7:');
+
+      // A newer order stays in hold while the older one goes out.
+      const newer = await buy('hold-b', { discountCode: code });
+      await adminUpdateOrder(fastify, newer.id, { paymentStatus: 'PAID' }, 'test');
+      const c2 = (await prisma.order.findUniqueOrThrow({ where: { id: newer.id } })).affiliateCommission;
+      const t = new Date();
+      const p = await requestPayout(prisma, affiliateId, t);
+      eq([p.amount, p.availableAt.getTime()], [left, t.getTime()], 'asks only what is out:');
+      const paid = await markPayoutPaid(prisma, p.id, { by: 'test', expected: left, now: new Date(t.getTime() + 1000) });
+      eq([paid.status, paid.paidAmount], ['PAID', left], 'paid at once:');
+      b = await affiliateBalance(prisma, affiliateId);
+      eq([b.balance, b.held, b.available], [c2, c2, 0], 'newer still held:');
+      await setSetting(AFFILIATE_SETTING_KEYS.holdDays, '0');
+      await adjustBalance(prisma, affiliateId, -c2, 'test: back to zero', 'test');
+    });
+
+    await check('the team hears what matters, once, and never a full account number', async () => {
+      const a = await prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId } });
+      const base = { fullName: a.fullName, phone: a.phone, channel: a.channel, bankName: a.bankName, bankAccountName: a.bankAccountName, bankAccountNumber: a.bankAccountNumber };
+      const count = (needle: string) => notices.filter((n) => n.includes(needle)).length;
+
+      // An applicant, start to finish.
+      const m = await prisma.member.create({ data: { email: `notice-${stamp}@example.test`, passwordHash: 'x', displayName: 'N', emailVerified: true } });
+      memberIds.push(m.id);
+      const first = `NT${stamp}A`.toUpperCase().slice(0, 14);
+      const j: any = await joinProgramme(fastify, { id: m.id, email: m.email }, { fullName: 'Nora Notice', phone: '0123999002', code: first, acceptTerms: true });
+      await updateMyAffiliate(fastify, m.id, { code: `NT${stamp}B`.toUpperCase().slice(0, 14) });
+      codeIds.push((await prisma.affiliate.findUniqueOrThrow({ where: { id: j.affiliate.id } })).discountCodeId);
+      await adminUpdateAffiliate(fastify, j.affiliate.id, { status: 'REJECTED' }, 'Test');
+      await prisma.affiliate.delete({ where: { id: j.affiliate.id } });
+
+      // Settings, a correction, and a payout through to paid.
+      await adminSaveSettings(fastify, { holdDays: 5 }, 'Test');
+      await adminSaveSettings(fastify, { holdDays: 0 }, 'Test');
+      await adminAdjust(fastify, affiliateId, { amount: 900, note: 'Test correction' }, 'Test');
+      const toldBefore = count('payout to transfer');
+      const { payout } = await requestMyPayout(fastify, member.id);
+      await sweepAffiliateNotices(fastify);
+      await sweepAffiliateNotices(fastify);
+      eq(count('payout to transfer') - toldBefore, 1, 'told once:');
+      await adminUpdateAffiliate(fastify, affiliateId, { rateBps: 400 }, 'Test');
+      await adminUpdateAffiliate(fastify, affiliateId, { rateBps: 500 }, 'Test');
+      const paying = (await affiliateBalance(prisma, affiliateId)).balance;
+      await adminMarkPayoutPaid(fastify, payout.id, { expectedAmount: Math.min(payout.amount, paying) }, 'Test');
+
+      // A burst of details changes: the first is told at once, the last by the sweep.
+      await new Promise((r) => setTimeout(r, 20));
+      await prisma.affiliateChangeRequest.updateMany({ where: { affiliateId }, data: { updatedAt: new Date(Date.now() - 3_600_000) } });
+      const before = count('Affiliate details change*');
+      await requestChange(fastify, member.id, { ...base, channel: '@one.test' });
+      await requestChange(fastify, member.id, { ...base, channel: '@two.test' });
+      await requestChange(fastify, member.id, { ...base, channel: '@three.test' });
+      await new Promise((r) => setTimeout(r, 20));
+      eq(count('Affiliate details change*') - before, 1, 'one for the burst:');
+      const held = await prisma.affiliateChangeRequest.findFirstOrThrow({ where: { affiliateId, status: 'PENDING' } });
+      eq(held.notified, false, 'last send held:');
+      const old = new Date(Date.now() - 11 * 60_000);
+      await prisma.affiliateChangeRequest.update({ where: { id: held.id }, data: { updatedAt: old } });
+      await sweepAffiliateNotices(fastify);
+      await sweepAffiliateNotices(fastify);
+      await new Promise((r) => setTimeout(r, 20));
+      eq(notices.filter((n) => n.includes('(their latest)') && n.includes('@three.test')).length, 1, 'latest once:');
+      eq((await prisma.affiliateChangeRequest.findUniqueOrThrow({ where: { id: held.id } })).updatedAt.getTime(), old.getTime(), 'version kept:');
+      await withdrawChange(fastify, member.id);
+
+      await new Promise((r) => setTimeout(r, 100));
+      const every = [
+        'New affiliate application', 'Affiliate details change*', '(their latest)', 'payout to transfer',
+        'Affiliate payout paid', 'Affiliate payout cancelled', 'Affiliate balance below zero', 'settings changed',
+      ];
+      // Cut on purpose (docs/affiliate.md): these stay out of the group.
+      const quiet = ['Affiliate approved', 'Affiliate paused', 'Affiliate updated', 'commission earned', 'Affiliate code used', 'balance adjusted', 'payout ready', 'details change approved', 'details change withdrawn', 'Applicant changed'];
+      const noisy = quiet.filter((h) => count(h));
+      if (noisy.length) throw new Error(`should stay quiet: ${noisy.join(', ')}`);
+      const missing = every.filter((h) => !count(h));
+      if (missing.length) throw new Error(`no notice for: ${missing.join(', ')}`);
+      for (const n of notices) if (n.includes(a.bankAccountNumber ?? 'none')) throw new Error(`full account number in: ${n}`);
+    });
+
     await check('programme off: codes stop working', async () => {
       await setSetting(AFFILIATE_SETTING_KEYS.enabled, 'false');
       await refused(() => validateDiscountCode(fastify, code, 10_000, { email: 'other@example.test' }), /Invalid discount code/);
@@ -650,6 +762,7 @@ async function part2() {
     await prisma.discountCode.deleteMany({ where: { id: { in: codeIds } } });
     await prisma.setting.deleteMany({ where: { key: { in: keys } } });
     for (const s of savedSettings) await setSetting(s.key, s.value);
+    captureAffiliateNotices(null);
     await prisma.$disconnect();
   }
 }

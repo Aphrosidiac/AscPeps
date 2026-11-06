@@ -38,7 +38,7 @@ Fakhrul's brief, and how each line was built:
 | Discount for the code: 5% | `affiliate_customer_discount_pct` = 5, on every affiliate code at once |
 | Possible one-time sign-up bonus: 10% | `signup_bonus_enabled` (off by default) + `signup_bonus_pct` = 10 |
 | Popups: sign-up, affiliate | Two store popups that take turns with the newsletter one, one per visit |
-| Payout: 7 days minimum after asking, so refunds land; a refund after that makes the account negative | `affiliate_payout_hold_days` = 7; balances are a ledger and may go below zero |
+| Commission waits 7 days from the order being paid, so refunds land; then it can be asked for and paid straight away. A refund after that makes the account negative | `affiliate_payout_hold_days` = 7; balances are a ledger and may go below zero |
 | Its own simple site | `frontend/src/app/affiliate`, served at affiliate.ascendpeptides.my |
 
 What it must never do: pay out money that a refund took back, let an
@@ -62,9 +62,9 @@ hasn't seen, or show an affiliate who their customers are.
  5% off, order placed ──────────► order stamped with the affiliate
  pays ──────────────────────────► COMMISSION booked (5% of the goods)
  (refund? ──────────────────────► REVERSAL booked, may go negative)
+                                  (7-day hold on that commission)
                                   Ask for a payout ──────────────────► WhatsApp notice
-                                  ◄── "payout requested" email          7-day hold, then
-                                                                        transfer + Mark paid
+                                  ◄── "payout requested" email          transfer + Mark paid
                                   ◄── "paid" email
 ```
 
@@ -80,7 +80,7 @@ revalidates the store, so every placement follows at once.
 | `affiliate_customer_discount_pct` | 5 | What every affiliate code takes off, in whole percent |
 | `affiliate_default_rate_bps` | 500 | Commission for new affiliates, in basis points (500 = 5%) |
 | `affiliate_margin_budget_pct` | 10 | Discount + any affiliate's rate must fit inside it |
-| `affiliate_payout_hold_days` | 7 | Days between asking and being payable |
+| `affiliate_payout_hold_days` | 7 | Days after an order is paid before its commission can be asked for |
 | `signup_bonus_enabled` / `signup_bonus_pct` | off / 10 | The one-time first-order code for a new confirmed account |
 | `popup_<kind>_desktop_delay` · `_mobile_delay` · `_mobile_scroll` · `_hide_days` | the old fixed behaviour | When each popup (`newsletter`, `signup`, `affiliate`) may open; the API bounds them (`utils/popup-settings.ts`) |
 | `popup_<kind>_enabled` · `_heading` · `_body` · `_cta` · `_note` | defaults in `frontend/src/lib/popup-settings.ts` | The sign-up and affiliate popups' switch and words; `{discount}`, `{commission}`, `{bonus}` fill in the live numbers |
@@ -173,15 +173,20 @@ zero; new commission pays it back first. The team can add an `ADJUSTMENT`
 
 ## Payouts
 
-1. The affiliate presses **Ask for a payout** — everything available
-   (balance less any open request). Needs bank details. One open request at
-   a time. `availableAt = now + hold days`. The team gets a WhatsApp notice;
-   the affiliate gets a receipt email.
-2. Until `availableAt` it is **in hold** — refunds land first.
+1. Each commission waits in a **hold** for `affiliate_payout_hold_days`, counted
+   from when the ledger booked it, which is when the order was paid. Worked per
+   order in `affiliateBalance`: `held` and `heldOrders` (order, amount, `readyAt`),
+   and a refund comes off that order's held amount first. The portal shows this as
+   **Available now**, **In hold** with the next date, an **In hold** state with
+   its date on each order, and a Still in hold list on Payouts.
+2. The affiliate presses **Ask for a payout** — everything out of its hold
+   (`available`: balance less held less any open request). Needs bank details. One
+   open request at a time. It can be transferred straight away, so this is when the
+   team gets the WhatsApp notice; the affiliate gets a receipt email.
 3. The team transfers from Ascend's bank, then **Mark paid** (Admin →
    Affiliates → Payouts, the affiliate's page, or Abby's
-   `mark_affiliate_payout_paid`). It pays the **smaller of the ask and the
-   balance now**; if refunds took the balance to nothing, the request is
+   `mark_affiliate_payout_paid`). It pays the **smaller of the ask and what is
+   out of its hold now**; if refunds took the balance to nothing, the request is
    cancelled instead. A reference is optional and shown to the affiliate.
    The admin sends the amount it showed; if a refund moved it since the page
    loaded, Mark paid is refused with the new figure, so nobody records a
@@ -313,7 +318,7 @@ do (no review times, no transfer times).
 | The team sets them Active the first time | Approved: the code, the share link, the dashboard |
 | Rejected while still an application | Not approved (no reason given) |
 | Active → Paused / Paused → Active | Code paused (balance kept, payout waits) / live again |
-| They ask for a payout | Request receipt: amount, bank ····last4, payable from (Malaysian time) |
+| They ask for a payout | Request receipt: amount, bank ····last4 |
 | Marked paid (admin or Abby) | Paid: amount, bank ····last4, date, reference; says so when refunds made it less than asked |
 | Cancelled by the team, or by refunds at Mark paid | Cancelled, with the reason |
 | A change of details approved / rejected | Updated (and that payouts go to the new account) / not made, with the reason |
@@ -393,12 +398,12 @@ faster checkout, which a store account doesn't give.
 
 - **Affiliates**: filter by status, search, approve in one click; sales,
   earned, balance, payout asked.
-- **Payouts**: waiting (in hold / ready to pay, bank details to copy, what it
+- **Payouts**: to transfer (bank details to copy, what it
   pays now), paid, cancelled; Mark paid, Cancel (with a reason they see).
 - **Changes**: details change requests, before → after; Approve or Reject
   with a reason.
 - **Settings**: programme on/off, customer discount, default commission,
-  margin budget, payout hold, sign-up bonus.
+  margin budget, commission hold, sign-up bonus.
 
 **One affiliate** (`/admin/affiliates/[id]`): approve / pause / reject,
 commission rate and team note, a waiting change request, balance tiles,
@@ -498,6 +503,29 @@ Fakhrul's calls during the build, so nobody undoes them as a "cleanup":
 | Affiliate promos after the products, never on product page or checkout | The store sells first; the programme is for people who already bought |
 | Emails promise nothing the system doesn't do | No review times, transfer times or "reply to this email" |
 
+## What the team hears on WhatsApp
+
+Only what needs someone, or money leaving or owed: from Abby's number, to whoever
+gets the order notices (the Ascend MY group; Routines → Order notice is the
+switch). `utils/affiliate-notify.ts`. Fakhrul asked for everything, then cut it to
+this list (6 Nov 2026) because everything was too much. Bank account numbers only
+ever show their last 4 digits.
+
+| When | Notice | Why |
+|---|---|---|
+| Someone applies | 🤝 New affiliate application | Needs approving |
+| An affiliate asks to change details | ✏️ Affiliate details change | Needs approving; bank details are how money gets misdirected |
+| An affiliate asks for a payout | 💸 Affiliate payout to transfer | Someone has to send the money |
+| Paid | ✅ Affiliate payout paid | Money left the bank; nobody transfers it twice |
+| Cancelled, by the team or because refunds took the balance | 🚫 Affiliate payout cancelled | Stops someone about to transfer it |
+| A refund after a payout leaves a balance below zero | ⚠️ Affiliate balance below zero | They now owe it back |
+| Programme, rates, hold or sign-up bonus changed, in Admin or through Abby | ⚙️ Affiliate settings changed | Changes what customers and affiliates get |
+
+Sends of a details change less than 10 minutes apart are one notice at first and
+the latest once they stop, so an affiliate can't flood the group and the team never
+approves off an old notice. That last send comes from `sweepAffiliateNotices`, on
+the two-minute timer in server.ts.
+
 ## Rules from the 6 Nov 2026 audit
 
 Each of these closed a real gap, and `test:affiliate` holds them ("audit:" checks).
@@ -509,7 +537,7 @@ Each of these closed a real gap, and `test:affiliate` holds them ("audit:" check
 | Deciding a change needs `sentAt`, the version on screen: a request is replaced in place, so the id alone isn't enough | `adminDecideChange` |
 | Approving an application needs the code that was on screen (`expectedCode`, Abby's `approvedCode`): applicants can change it until then | `adminUpdateAffiliate` |
 | Paying and cancelling take the same lock on the affiliate | `markPayoutPaid`, `cancelPayout` |
-| Text an affiliate types is one line, so it can't write lines of its own into a team notice. The team is pinged about a details change at most once in 10 minutes per affiliate; the Changes tab always has the latest | `oneLine`, `requestChange` |
+| Text an affiliate types is one line, so it can't write lines of its own into a team notice. Details changes close together reach the team as one notice, then the latest | `oneLine`, `requestChange` |
 | One sign-up bonus to an inbox for good: `signup_bonus_claims` outlives an email change or a deleted account, and its key settles a race | `mintSignupBonus` |
 | ASCEND, ADMIN, OFFICIAL, STAFF and SUPPORT anywhere in a code, and a few generic words, are the team's to give out | `isReservedCode` |
 | A rejected application lets go of its code: whoever claims it next gets it, and the rejected row gets a throwaway `RJ…` code | `resolveCode`, `releaseCode` |

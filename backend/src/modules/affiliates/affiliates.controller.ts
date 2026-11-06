@@ -17,6 +17,7 @@ import {
   pct,
   rateProblem,
   requestPayout,
+  ringgit,
   suggestCode,
   syncAffiliateOrders,
   AFFILIATE_SETTING_KEYS,
@@ -263,9 +264,11 @@ export async function listAffiliateOrders(fastify: FastifyInstance, affiliateId:
     }),
     fastify.prisma.order.count({ where }),
   ]);
+  const { heldOrders } = await affiliateBalance(fastify.prisma, affiliateId);
   return paginatedResponse(
     rows.map((o) => {
       const earned = o.affiliateCommission;
+      const hold = heldOrders.find((h) => h.orderNumber === o.orderNumber);
       const ifPaid = commissionTarget({ ...o, paymentStatus: 'PAID', refundedAmount: 0 });
       const state =
         o.status === 'CANCELLED' ? 'CANCELLED'
@@ -273,6 +276,7 @@ export async function listAffiliateOrders(fastify: FastifyInstance, affiliateId:
           : o.paymentStatus === 'FAILED' ? 'NOT_PAID'
           : o.refundedAmount >= o.total && o.total > 0 ? 'REFUNDED'
           : o.refundedAmount > 0 ? 'PART_REFUNDED'
+          : hold ? 'IN_HOLD'
           : 'EARNED';
       return {
         id: o.id,
@@ -283,6 +287,8 @@ export async function listAffiliateOrders(fastify: FastifyInstance, affiliateId:
         rate: pct(o.affiliateRateBps ?? 0),
         commission: state === 'AWAITING_PAYMENT' ? ifPaid : earned,
         state,
+        // When its commission can be asked for, while it is still waiting.
+        readyAt: hold?.readyAt ?? null,
       };
     }),
     total,
@@ -349,14 +355,13 @@ export async function requestMyPayout(fastify: FastifyInstance, memberId: string
   const a = await fastify.prisma.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { fullName: true, discountCode: { select: { code: true } } } });
   void notifyAffiliateTeam(
     fastify,
-    `💸 *Affiliate payout requested*\n${a.fullName} (${a.discountCode.code}) · RM ${(payout.amount / 100).toFixed(2)}\nTo ${payout.bankName} ····${payout.bankAccountNumber.slice(-4)} (${payout.bankAccountName}), full number in Admin\nPayable from ${payout.availableAt.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}\n\nMark it paid in Admin → Affiliates → Payouts once the transfer is done.`
+    `💸 *Affiliate payout to transfer*\n${a.fullName} (${a.discountCode.code}) · ${ringgit(payout.amount)}\nTo ${payout.bankName} ····${payout.bankAccountNumber.slice(-4)} (${payout.bankAccountName})\nTransfer it, then mark it paid in Marketing → Affiliates.`
   );
   await mailAffiliate(fastify, affiliateId, {
     kind: 'payoutRequested',
     amount: payout.amount,
     bankName: payout.bankName,
     last4: payout.bankAccountNumber.slice(-4),
-    availableAt: payout.availableAt,
   });
   return { payout };
 }
@@ -541,24 +546,23 @@ export async function adminListPayouts(fastify: FastifyInstance, query: Record<s
   const status = ['REQUESTED', 'PAID', 'CANCELLED'].includes(query.status) ? (query.status as 'REQUESTED') : 'REQUESTED';
   const payouts = await fastify.prisma.affiliatePayout.findMany({
     where: { status },
-    orderBy: status === 'REQUESTED' ? { availableAt: 'asc' } : { updatedAt: 'desc' },
+    orderBy: status === 'REQUESTED' ? { createdAt: 'asc' } : { updatedAt: 'desc' },
     take: 200,
     select: { ...PAYOUT_SELECT, paidBy: true, affiliateId: true, affiliate: { select: { fullName: true, phone: true, discountCode: { select: { code: true } } } } },
   });
-  const now = Date.now();
-  // What each would pay now: the smaller of the ask and today's balance, with
-  // any refund since booked first (the same sweep marking it paid runs).
+  // What each would pay now: the smaller of the ask and what is out of its
+  // hold today, with any refund since booked first (the same sweep marking it
+  // paid runs).
   if (status === 'REQUESTED' && payouts.length) await syncAffiliateOrders(fastify.prisma);
   const balances = new Map<string, number>();
-  for (const id of new Set(payouts.map((p) => p.affiliateId))) balances.set(id, (await affiliateBalance(fastify.prisma, id)).balance);
+  for (const id of new Set(payouts.map((p) => p.affiliateId))) balances.set(id, (await affiliateBalance(fastify.prisma, id)).payable);
   return {
     payouts: payouts.map(({ affiliate, ...p }) => ({
       ...p,
       name: affiliate.fullName,
       phone: affiliate.phone,
       code: affiliate.discountCode.code,
-      ready: p.status === 'REQUESTED' && p.availableAt.getTime() <= now,
-      payableNow: p.status === 'REQUESTED' ? Math.max(0, Math.min(p.amount, balances.get(p.affiliateId) ?? 0)) : null,
+      payableNow: p.status === 'REQUESTED' ? Math.min(p.amount, balances.get(p.affiliateId) ?? 0) : null,
     })),
   };
 }
@@ -569,7 +573,14 @@ export async function adminMarkPayoutPaid(fastify: FastifyInstance, id: string, 
     .parse(body ?? {});
   if (paidAt && paidAt.getTime() > Date.now() + 60 * 60_000) throw { statusCode: 400, message: 'The transfer date cannot be in the future.' };
   const result = await markPayoutPaid(fastify.prisma, id, { by: actor, reference: reference ?? null, paidAt, expected: expectedAmount }).catch(fail);
-  const p = await fastify.prisma.affiliatePayout.findUniqueOrThrow({ where: { id } });
+  const p = await fastify.prisma.affiliatePayout.findUniqueOrThrow({ where: { id }, include: { affiliate: { select: { fullName: true, discountCode: { select: { code: true } } } } } });
+  const who = `${p.affiliate.fullName} (${p.affiliate.discountCode.code})`;
+  void notifyAffiliateTeam(
+    fastify,
+    result.status === 'PAID'
+      ? `✅ *Affiliate payout paid*\n${who} · ${ringgit(result.paidAmount)}${result.paidAmount < p.amount ? ` of ${ringgit(p.amount)} asked` : ''}\nTo ${p.bankName} ····${p.bankAccountNumber.slice(-4)}${p.reference ? ` · ref ${p.reference}` : ''}\nBy ${actor}`
+      : `🚫 *Affiliate payout cancelled*\n${who} · ${ringgit(p.amount)} asked\n${result.note ?? ''}\nBy ${actor}`
+  );
   await mailAffiliate(
     fastify,
     p.affiliateId,
@@ -580,10 +591,14 @@ export async function adminMarkPayoutPaid(fastify: FastifyInstance, id: string, 
   return result;
 }
 
-export async function adminCancelPayout(fastify: FastifyInstance, id: string, body: unknown) {
+export async function adminCancelPayout(fastify: FastifyInstance, id: string, body: unknown, actor = 'the team') {
   const { reason } = z.object({ reason: z.string().trim().min(2).max(300) }).parse(body);
   await cancelPayout(fastify.prisma, id, reason).catch(fail);
-  const p = await fastify.prisma.affiliatePayout.findUniqueOrThrow({ where: { id }, select: { affiliateId: true, amount: true } });
+  const p = await fastify.prisma.affiliatePayout.findUniqueOrThrow({
+    where: { id },
+    select: { affiliateId: true, amount: true, affiliate: { select: { fullName: true, discountCode: { select: { code: true } } } } },
+  });
+  void notifyAffiliateTeam(fastify, `🚫 *Affiliate payout cancelled*\n${p.affiliate.fullName} (${p.affiliate.discountCode.code}) · ${ringgit(p.amount)}\nWhy: ${reason}\nBy ${actor}`);
   await mailAffiliate(fastify, p.affiliateId, { kind: 'payoutCancelled', amount: p.amount, reason });
   return { ok: true };
 }
@@ -604,9 +619,10 @@ export async function adminGetSettings(fastify: FastifyInstance) {
   return getAffiliateSettings(fastify.prisma);
 }
 
-export async function adminSaveSettings(fastify: FastifyInstance, body: unknown) {
+export async function adminSaveSettings(fastify: FastifyInstance, body: unknown, actor = 'the team') {
   const data = settingsSchema.parse(body);
-  const next = { ...(await getAffiliateSettings(fastify.prisma)), ...data };
+  const before = await getAffiliateSettings(fastify.prisma);
+  const next = { ...before, ...data };
   const problem = rateProblem(next.defaultRateBps, next);
   if (problem) throw { statusCode: 400, message: problem };
   // Every active affiliate has to fit the budget too.
@@ -635,5 +651,16 @@ export async function adminSaveSettings(fastify: FastifyInstance, body: unknown)
   ]);
   // The store reads these in its layout (the popups), cached until told.
   notifyRevalidate();
+  const onOff = (v: boolean) => (v ? 'on' : 'off');
+  const changed = [
+    next.enabled !== before.enabled && `Programme: ${onOff(before.enabled)} → ${onOff(next.enabled)}`,
+    next.defaultRateBps !== before.defaultRateBps && `Commission for new affiliates: ${pct(before.defaultRateBps)} → ${pct(next.defaultRateBps)}`,
+    next.customerDiscountPct !== before.customerDiscountPct && `Customer discount: ${before.customerDiscountPct}% → ${next.customerDiscountPct}%`,
+    next.marginBudgetPct !== before.marginBudgetPct && `Margin budget: ${before.marginBudgetPct}% → ${next.marginBudgetPct}%`,
+    next.holdDays !== before.holdDays && `Commission hold: ${before.holdDays} → ${next.holdDays} days`,
+    next.signupBonusEnabled !== before.signupBonusEnabled && `Sign-up bonus: ${onOff(before.signupBonusEnabled)} → ${onOff(next.signupBonusEnabled)}`,
+    next.signupBonusPct !== before.signupBonusPct && `Sign-up bonus: ${before.signupBonusPct}% → ${next.signupBonusPct}%`,
+  ].filter(Boolean);
+  if (changed.length) void notifyAffiliateTeam(fastify, `⚙️ *Affiliate settings changed*\n${changed.join('\n')}\nBy ${actor}`);
   return getAffiliateSettings(fastify.prisma);
 }

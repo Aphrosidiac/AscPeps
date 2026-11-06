@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog, Dialog } from '@/components/admin/Dialog';
 import { Affixed, Card, CardHeader, Field, PageHeader, TextArea, TextInput } from '@/components/admin/ui';
@@ -33,7 +32,6 @@ export default function AdminAffiliatePage() {
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const now = useNow();
   // Bumped to re-read after a change made elsewhere on the page.
   const [version, setVersion] = useState(0);
   const load = useCallback(() => setVersion((v) => v + 1), []);
@@ -55,7 +53,6 @@ export default function AdminAffiliatePage() {
   const a = d.affiliate;
   const b = d.balance;
   const open = d.payouts.find((p) => p.status === 'REQUESTED');
-  const ready = !!open && now != null && new Date(open.availableAt).getTime() <= now;
   const actions: { to: AffiliateStatus; label: string; variant: 'primary' | 'outline' | 'danger' }[] =
     a.status === 'APPLIED'
       ? [{ to: 'ACTIVE', label: 'Approve', variant: 'primary' }, { to: 'REJECTED', label: 'Reject', variant: 'outline' }]
@@ -84,7 +81,7 @@ export default function AdminAffiliatePage() {
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-            <Tile label="Balance" value={signed(b.balance)} tone={b.balance < 0 ? 'bad' : undefined} />
+            <Tile label="Balance" value={signed(b.balance)} tone={b.balance < 0 ? 'bad' : undefined} hint={b.held ? `${formatPrice(b.held)} in hold` : undefined} />
             <Tile label="Earned" value={formatPrice(b.earned - b.reversed)} hint={b.reversed ? `${formatPrice(b.reversed)} taken back` : undefined} />
             <Tile label="Paid out" value={formatPrice(b.paidOut)} />
             <Tile label="Waiting for payment" value={formatPrice(b.awaitingPayment)} hint={`${b.awaitingPaymentOrders} unpaid`} />
@@ -117,13 +114,13 @@ export default function AdminAffiliatePage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-text-primary">Payout of {formatPrice(open.amount)} asked</p>
-                    <PayoutBadge status="REQUESTED" ready={ready} />
+                    <PayoutBadge status="REQUESTED" />
                   </div>
                   <p className="text-[13px] text-text-secondary">
-                    {open.bankName} {open.bankAccountNumber} · {open.bankAccountName} · payable from {myt(open.availableAt, true)}
+                    {open.bankName} {open.bankAccountNumber} · {open.bankAccountName} · asked {myt(open.createdAt, true)}
                   </p>
                 </div>
-                <Button size="sm" disabled={!ready} onClick={() => setPaying(true)}>Mark paid</Button>
+                <Button size="sm" onClick={() => setPaying(true)}>Mark paid</Button>
               </div>
             </Card>
           ) : null}
@@ -212,7 +209,7 @@ export default function AdminAffiliatePage() {
                 {d.payouts.map((p) => (
                   <li key={p.id} className="flex items-start justify-between gap-3 px-6 py-3 text-sm">
                     <div>
-                      <PayoutBadge status={p.status} ready={p.status === 'REQUESTED' && now != null && new Date(p.availableAt).getTime() <= now} />
+                      <PayoutBadge status={p.status} />
                       <p className="mt-1 text-[12px] text-text-muted">
                         {p.status === 'PAID' && p.paidAt ? `${myt(p.paidAt)}${p.reference ? ` · ${p.reference}` : ''}` : p.status === 'CANCELLED' ? p.cancelReason : `asked ${myt(p.createdAt)}`}
                       </p>
@@ -259,7 +256,7 @@ export default function AdminAffiliatePage() {
       {paying && open ? (
         <MarkPaidDialog
           token={token}
-          payout={{ ...open, name: a.fullName, code: a.code, payableNow: Math.max(0, Math.min(open.amount, b.balance)) }}
+          payout={{ ...open, name: a.fullName, code: a.code, payableNow: Math.min(open.amount, b.payable) }}
           onDone={(note) => {
             setNotice(note);
             load();

@@ -18,8 +18,8 @@ import { affiliateBalance, getAffiliateSettings, pct, rateProblem, syncAffiliate
 /** What a waiting payout would pay right now: refunds can have lowered it. */
 async function payNow(ctx: ToolContext, affiliateId: string, asked: number) {
   await syncAffiliateOrders(ctx.prisma);
-  const { balance } = await affiliateBalance(ctx.prisma, affiliateId);
-  return Math.max(0, Math.min(asked, balance));
+  const { payable } = await affiliateBalance(ctx.prisma, affiliateId);
+  return Math.min(asked, payable);
 }
 
 /** An affiliate by code, name, phone or email — one match or a clear refusal. */
@@ -58,7 +58,7 @@ export const affiliateTools: AgentTool[] = [
       const r = await adminListAffiliates(fastify, input.status ? { status: input.status } : {});
       const s = await getAffiliateSettings(fastify.prisma);
       return {
-        programme: { on: s.enabled, customerDiscount: `${s.customerDiscountPct}%`, defaultCommission: pct(s.defaultRateBps), payoutHoldDays: s.holdDays },
+        programme: { on: s.enabled, customerDiscount: `${s.customerDiscountPct}%`, defaultCommission: pct(s.defaultRateBps), commissionHoldDays: s.holdDays },
         counts: r.counts,
         affiliates: r.affiliates.map((a) => ({
           name: a.fullName,
@@ -93,7 +93,7 @@ export const affiliateTools: AgentTool[] = [
         affiliate: { name: d.affiliate.fullName, code: d.affiliate.code, status: d.affiliate.status, commission: d.affiliate.commission, phone: d.affiliate.phone, email: d.affiliate.email, bank: d.affiliate.bankName ? `${d.affiliate.bankName} ${d.affiliate.bankAccountNumber} (${d.affiliate.bankAccountName})` : null },
         balance: { balance: money(b.balance), earned: money(b.earned), reversed: money(b.reversed), paidOut: money(b.paidOut), payoutWaiting: money(b.requested), awaitingPayment: money(b.awaitingPayment) },
         orders: d.orders.slice(0, 30).map((o) => ({ orderNumber: o.orderNumber, state: o.state, goods: rm(o.goods), commission: rm(o.commission) })),
-        payouts: d.payouts.slice(0, 10).map((p) => ({ status: p.status, asked: rm(p.amount), paid: p.paidAmount != null ? rm(p.paidAmount) : null, payableFrom: p.availableAt, paidAt: p.paidAt })),
+        payouts: d.payouts.slice(0, 10).map((p) => ({ status: p.status, asked: rm(p.amount), paid: p.paidAmount != null ? rm(p.paidAmount) : null, paidAt: p.paidAt })),
       };
     },
   },
@@ -101,7 +101,7 @@ export const affiliateTools: AgentTool[] = [
   {
     name: 'affiliate_payouts',
     description:
-      'Affiliate payouts waiting to be transferred (default), or PAID/CANCELLED history. Each waiting one shows the bank details, when it becomes payable (the hold lets refunds land first) and what it would pay now. Use for "any affiliate payouts?", "siapa nak kena bayar".',
+      'Affiliate payouts waiting to be transferred (default), or PAID/CANCELLED history. Each waiting one can be transferred now (commission waits out its hold before it can be asked for) and shows the bank details and what it would pay now. Use for "any affiliate payouts?", "siapa nak kena bayar".',
     input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['REQUESTED', 'PAID', 'CANCELLED'] } } },
     run: async ({ fastify }, input) => {
       const r = await adminListPayouts(fastify, input.status ? { status: input.status } : {});
@@ -113,8 +113,6 @@ export const affiliateTools: AgentTool[] = [
           status: p.status,
           asked: money(p.amount),
           payNow: p.payableNow != null ? money(p.payableNow) : null,
-          payableFrom: p.availableAt,
-          ready: p.ready,
           bank: `${p.bankName} ${p.bankAccountNumber} (${p.bankAccountName})`,
           paid: p.paidAmount != null ? money(p.paidAmount) : null,
           paidAt: p.paidAt,
@@ -127,7 +125,7 @@ export const affiliateTools: AgentTool[] = [
   {
     name: 'mark_affiliate_payout_paid',
     description:
-      "Record that the team has TRANSFERRED an affiliate's payout: money out of Ascend's bank, taken off their balance. Only after the transfer is done, and only once the payout is payable (its hold has passed). Pays the smaller of what was asked and their balance now. Needs the operator's yes.",
+      "Record that the team has TRANSFERRED an affiliate's payout: money out of Ascend's bank, taken off their balance. Only after the transfer is done. Pays the smaller of what was asked and their balance now. Needs the operator's yes.",
     write: true,
     destructive: true,
     input_schema: {

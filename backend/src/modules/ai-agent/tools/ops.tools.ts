@@ -1,3 +1,4 @@
+import { notifyAffiliateTeam } from '../../../utils/affiliate-notify.js';
 import type { AgentTool } from '../tool-kit.js';
 import { audited, clampLimit, truncate } from '../tool-kit.js';
 
@@ -55,7 +56,7 @@ export const opsTools: AgentTool[] = [
             : '';
       return `change setting "${input.key}" from ${from} to "${input.value}"${extra}`;
     },
-    run: async ({ prisma, revalidate }, input) => {
+    run: async ({ fastify, prisma, revalidate, actor }, input) => {
       const key = String(input.key).trim();
       const value = String(input.value);
       const before = await prisma.setting.findUnique({ where: { key } });
@@ -65,6 +66,9 @@ export const opsTools: AgentTool[] = [
         update: { value },
       });
       revalidate(['settings']);
+      if (/^(affiliate_|signup_bonus_)/.test(key)) {
+        void notifyAffiliateTeam(fastify, `⚙️ *Affiliate settings changed*\n${key}: ${before?.value ?? 'not set'} → ${value}\nBy Abby for ${actor?.name || 'an operator'}`);
+      }
       return audited({ key: row.key, from: before?.value ?? null, to: row.value }, { value: before?.value ?? null }, { value: row.value });
     },
     undo: async ({ prisma, revalidate }, { input, before }) => {

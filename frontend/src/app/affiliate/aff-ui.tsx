@@ -65,6 +65,7 @@ export function when(iso: string | Date, withTime = false) {
 
 export const STATE_TONE: Record<OrderState, string> = {
   AWAITING_PAYMENT: 'pill-warn',
+  IN_HOLD: 'pill-info',
   EARNED: 'pill-ok',
   PART_REFUNDED: 'pill-info',
   REFUNDED: 'pill-bad',

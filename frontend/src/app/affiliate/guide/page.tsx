@@ -218,7 +218,7 @@ function Start() {
     { icon: ShoppingBag, title: 'They buy', text: `${d}% off their order with your code.` },
     { icon: BadgeCheck, title: 'Order is paid', text: 'Your commission is counted.' },
     { icon: CircleDollarSign, title: 'You earn', text: `${rate} of what they paid for the goods.` },
-    { icon: Landmark, title: 'Paid to your bank', text: hold ? `Ask any time; paid after a ${hold}-day hold.` : 'Ask any time.' },
+    { icon: Landmark, title: 'Paid to your bank', text: hold ? `Ask ${hold} ${hold === 1 ? 'day' : 'days'} after the order is paid, or any time after.` : 'Ask any time.' },
   ];
   return (
     <>
@@ -427,16 +427,16 @@ function Payouts() {
   const { hold } = useNumbers();
   const href = useAffHref();
   const steps = [
-    { day: 'Day 0', title: 'You ask', text: 'Press Ask for a payout. It asks for your whole available balance.' },
+    { day: 'Day 0', title: 'Order paid', text: 'Your commission is counted, and shows as In hold.' },
     ...(hold
-      ? [{ day: `Days 1–${hold}`, title: 'On hold', text: `${hold} ${hold === 1 ? 'day' : 'days'} so any refund lands before we pay.` }]
+      ? [{ day: `Days 1–${hold}`, title: 'In hold', text: `${hold} ${hold === 1 ? 'day' : 'days'} so any refund lands before you can ask for it.` }]
       : []),
-    { day: hold ? `Day ${hold}` : 'Then', title: 'Ready to pay', text: 'We check it, and transfer it from Ascend’s bank to yours.' },
-    { day: 'Done', title: 'Paid', text: 'Marked paid here, with the transfer reference if there is one.' },
+    { day: hold ? `From day ${hold}` : 'Then', title: 'Available', text: 'Press Ask for a payout. It asks for everything available.' },
+    { day: 'Done', title: 'Paid', text: 'We check it, transfer it from Ascend’s bank to yours, and mark it paid here.' },
   ];
   return (
     <>
-      <H id="payouts" lead={`Your balance is yours to ask for whenever it's above zero. We pay it to your bank ${hold ? `after a ${hold}-day hold, so refunds land first` : 'once we have checked it'}.`}>
+      <H id="payouts" lead={hold ? `Each commission is yours to ask for ${hold} ${hold === 1 ? 'day' : 'days'} after its order is paid, so refunds land first. There's no rush: it stays available until you ask.` : `Your balance is yours to ask for whenever it's above zero.`}>
         Payouts
       </H>
 
@@ -455,20 +455,21 @@ function Payouts() {
       </ol>
 
       <div className="mt-2 grid gap-4 md:grid-cols-2">
-        <Screen caption="On Overview: the button asks for everything available.">
+        <Screen caption="On Overview: what you can ask for now, and what's still in hold.">
           <div className="panel p-5">
-            <p className="st-label">Your balance</p>
+            <p className="st-label">Available now</p>
             <p className="st-big mt-1 fg !text-[32px]">RM 22.56</p>
             <span className="btn btn-ink mt-4 pointer-events-none">Ask for a payout · RM 22.56</span>
+            <p className="mt-3 text-[13px] fg-2">In hold: RM 9.50 · next on 3 Nov</p>
           </div>
         </Screen>
         <Screen caption="Then, until it's paid.">
           <div className="panel p-5">
-            <p className="st-label">Your balance</p>
-            <p className="st-big mt-1 fg !text-[32px]">RM 22.56</p>
+            <p className="st-label">Available now</p>
+            <p className="st-big mt-1 fg !text-[32px]">RM 0.00</p>
             <div className="mt-4 rounded-[18px] px-4 py-3" style={{ background: 'var(--st-warn-soft)', color: 'var(--st-warn)' }}>
               <p className="text-[14px] font-medium">RM 22.56 payout on its way</p>
-              <p className="mt-0.5 text-[13px]">Asked 3 Nov · paid from {hold ? `${3 + hold} Nov` : '3 Nov'}</p>
+              <p className="mt-0.5 text-[13px]">Asked 3 Nov. We check it, then transfer it to your bank.</p>
             </div>
           </div>
         </Screen>
@@ -479,7 +480,7 @@ function Payouts() {
         <Point icon={Landmark} title="Bank details first">Add your bank account in Settings. We check it before it’s used.</Point>
         <Point icon={Wallet} title="One at a time">You can ask again once the last one is paid. Anything you earn meanwhile waits for the next.</Point>
         <Point icon={CircleDollarSign} title="No minimum">Ask for any amount above zero.</Point>
-        <Point icon={Ban} title="A refund in the hold comes off">We pay the smaller of what you asked and your balance on the day. If refunds take it to nothing, the payout is cancelled.</Point>
+        <Point icon={Ban} title="A refund in the hold comes off">It never reaches your available balance. If one lands after you ask, we pay the smaller of what you asked and what’s available that day; if nothing is left, the payout is cancelled.</Point>
         <Point icon={PauseCircle} title="Paused code, paused payouts">If your code is paused, payouts wait until it’s back on.</Point>
         <Point icon={Eye} title="Everything is on record">Payouts lists every payout and every change to your balance.</Point>
       </Points>
@@ -514,7 +515,7 @@ function Refunds() {
         <Point icon={Ban} title="Full refund">All of that order’s commission comes off.</Point>
         <Point icon={CircleDollarSign} title="Part refund">A tenth of the order back takes a tenth of its commission back.</Point>
         <Point icon={XCircle} title="Cancelled orders">Earn nothing; if it was counted, it comes off.</Point>
-        <Point icon={Wallet} title="Before your payout">A payout in its hold simply pays less.</Point>
+        <Point icon={Wallet} title="Before your payout">Commission in hold just comes off. A payout you already asked for pays less.</Point>
       </Points>
 
       <Sub>After a payout: your balance can go below zero</Sub>
@@ -641,7 +642,7 @@ function Faq() {
   const qs: [string, React.ReactNode][] = [
     ['How much will I earn?', `${rate} of what your customer pays for the goods, after their ${d}% off. On an RM 200 order that's ${rm(earn(20_000))}. Products shows it for every item.`],
     ['When does an order count?', 'As soon as it’s paid. Unpaid orders show what they will earn, and count once paid.'],
-    ['When do I get paid?', hold ? `Ask for a payout any time your balance is above zero. It's payable ${hold} ${hold === 1 ? 'day' : 'days'} after you ask, then we transfer it to your bank and mark it paid.` : 'Ask for a payout any time your balance is above zero; we transfer it to your bank and mark it paid.'],
+    ['When do I get paid?', hold ? `Each commission is yours to ask for ${hold} ${hold === 1 ? 'day' : 'days'} after its order is paid. Ask for a payout, we check it, then transfer it to your bank and mark it paid.` : 'Ask for a payout any time your balance is above zero; we transfer it to your bank and mark it paid.'],
     ['Is there a minimum payout?', 'No. Any balance above zero.'],
     ['Can I see who bought with my code?', 'No — only the order number, date, status and what it earned. Customers’ details stay private.'],
     ['Someone used my link but no commission shows. Why?', 'The order may be unpaid yet, used a different code, or was placed on another device without your code. If they used your link, checkout offers your code — they still have to press Apply.'],

@@ -30,6 +30,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { normalizePhone } from './phone.js';
+import { notifyAffiliateTeam, type Notifier } from './affiliate-notify.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -207,9 +208,28 @@ export async function syncAffiliateOrders(db: PrismaClient, orderIds?: string[])
       });
       return true;
     });
-    if (done) moved++;
+    if (done) {
+      moved++;
+      if (diff < 0) void noticeBelowZero(db, o, diff);
+    }
   }
   return moved;
+}
+
+/** A refund after the money went out: the affiliate now owes it back. */
+async function noticeBelowZero(db: PrismaClient, o: { orderNumber: string; affiliateId: string | null }, diff: number) {
+  const log = console as unknown as FastifyInstance['log'];
+  try {
+    const { balance } = await affiliateBalance(db, o.affiliateId as string);
+    if (balance >= 0) return;
+    const a = await db.affiliate.findUniqueOrThrow({ where: { id: o.affiliateId as string }, select: { fullName: true, discountCode: { select: { code: true } } } });
+    await notifyAffiliateTeam(
+      { prisma: db, log } as Notifier,
+      `⚠️ *Affiliate balance below zero*\n${a.fullName} (${a.discountCode.code}) · −${ringgit(-balance)}\n${ringgit(-diff)} taken back on ${o.orderNumber} after it was paid out. New commission pays it off first.`
+    );
+  } catch (err) {
+    log.error({ err }, 'affiliate balance notice failed');
+  }
 }
 
 /** Never throws: for the PAID hooks, where the sweep is the safety net. */
@@ -322,12 +342,27 @@ export async function suggestCode(db: Db, fullName: string): Promise<string> {
 
 // ── Balance ─────────────────────────────────────────────────────────────────
 
+/** One order's commission waiting out its hold. */
+export interface HeldCommission {
+  orderNumber: string;
+  amount: number;
+  readyAt: Date;
+}
+
 export interface AffiliateBalance {
   /** Everything earned less reversals, payouts and adjustments. May be negative. */
   balance: number;
   /** Already asked for and not yet paid or cancelled. */
   requested: number;
-  /** What a new payout request can ask for: balance less open requests, never below 0. */
+  /** Commission still inside its hold, net of refunds: earned, not yet asked-for-able. */
+  held: number;
+  /** When the next held commission comes out of its hold. */
+  nextReadyAt: Date | null;
+  /** Soonest first. */
+  heldOrders: HeldCommission[];
+  /** What a transfer can pay today: the balance less what is held, never below 0. */
+  payable: number;
+  /** What a new payout request can ask for: payable less open requests, never below 0. */
   available: number;
   /** Commission booked to date (before reversals). */
   earned: number;
@@ -338,14 +373,44 @@ export interface AffiliateBalance {
   awaitingPaymentOrders: number;
 }
 
-export async function affiliateBalance(db: Db, affiliateId: string): Promise<AffiliateBalance> {
-  const [sums, open, waiting] = await Promise.all([
+/**
+ * Commission waits `holdDays` from the moment its order was paid (when the
+ * ledger booked it), so refunds land before anyone can ask for it. Worked per
+ * order: a refund comes off that order's held amount first, and a commission
+ * topped up later only holds the top-up.
+ */
+async function heldCommission(db: Db, affiliateId: string, holdDays: number, now: Date) {
+  const none = { held: 0, nextReadyAt: null as Date | null, heldOrders: [] as HeldCommission[] };
+  if (!holdDays) return none;
+  const young = await db.affiliateEntry.findMany({
+    where: { affiliateId, kind: 'COMMISSION', orderId: { not: null }, createdAt: { gt: new Date(now.getTime() - holdDays * 86_400_000) } },
+    select: { orderId: true, amount: true, createdAt: true, order: { select: { orderNumber: true } } },
+  });
+  if (!young.length) return none;
+  const ids = [...new Set(young.map((e) => e.orderId as string))];
+  const nets = await db.affiliateEntry.groupBy({ by: ['orderId'], where: { affiliateId, orderId: { in: ids } }, _sum: { amount: true } });
+  const heldOrders: HeldCommission[] = [];
+  for (const id of ids) {
+    const mine = young.filter((e) => e.orderId === id);
+    const amount = Math.min(nets.find((n) => n.orderId === id)?._sum.amount ?? 0, mine.reduce((sum, e) => sum + e.amount, 0));
+    if (amount <= 0) continue;
+    const last = Math.max(...mine.map((e) => e.createdAt.getTime()));
+    heldOrders.push({ orderNumber: mine[0].order?.orderNumber ?? '', amount, readyAt: new Date(last + holdDays * 86_400_000) });
+  }
+  heldOrders.sort((x, y) => x.readyAt.getTime() - y.readyAt.getTime());
+  return { held: heldOrders.reduce((sum, h) => sum + h.amount, 0), nextReadyAt: heldOrders[0]?.readyAt ?? null, heldOrders };
+}
+
+export async function affiliateBalance(db: Db, affiliateId: string, now = new Date()): Promise<AffiliateBalance> {
+  const { holdDays } = await getAffiliateSettings(db);
+  const [sums, open, waiting, hold] = await Promise.all([
     db.affiliateEntry.groupBy({ by: ['kind'], where: { affiliateId }, _sum: { amount: true } }),
     db.affiliatePayout.aggregate({ where: { affiliateId, status: 'REQUESTED' }, _sum: { amount: true } }),
     db.order.findMany({
       where: { affiliateId, paymentStatus: 'UNPAID', status: { not: 'CANCELLED' }, deletedAt: null, isTest: false },
       select: { total: true, shippingFee: true, affiliateRateBps: true },
     }),
+    heldCommission(db, affiliateId, holdDays, now),
   ]);
   const by = (k: string) => sums.find((s) => s.kind === k)?._sum.amount ?? 0;
   const balance = sums.reduce((s, r) => s + (r._sum.amount ?? 0), 0);
@@ -357,7 +422,11 @@ export async function affiliateBalance(db: Db, affiliateId: string): Promise<Aff
   return {
     balance,
     requested,
-    available: Math.max(0, balance - requested),
+    held: hold.held,
+    nextReadyAt: hold.nextReadyAt,
+    heldOrders: hold.heldOrders,
+    payable: Math.max(0, balance - hold.held),
+    available: Math.max(0, balance - hold.held - requested),
     earned: by('COMMISSION'),
     reversed: -by('REVERSAL'),
     paidOut: -by('PAYOUT'),
@@ -374,10 +443,9 @@ export class AffiliateError extends Error {
   }
 }
 
-/** The affiliate asks for everything available. One open request at a time. */
+/** The affiliate asks for everything out of its hold. One open request at a time. */
 export async function requestPayout(db: PrismaClient, affiliateId: string, now = new Date()) {
   await syncAffiliateOrders(db, await affiliateOrderIds(db, affiliateId));
-  const settings = await getAffiliateSettings(db);
   return db.$transaction(async (tx) => {
     // Lock the affiliate row so two clicks can't open two requests.
     await tx.$queryRaw`SELECT id FROM affiliates WHERE id = ${affiliateId} FOR UPDATE`;
@@ -388,19 +456,26 @@ export async function requestPayout(db: PrismaClient, affiliateId: string, now =
     }
     const open = await tx.affiliatePayout.findFirst({ where: { affiliateId, status: 'REQUESTED' } });
     if (open) throw new AffiliateError('You already have a payout on its way.');
-    const { available } = await affiliateBalance(tx, affiliateId);
-    if (available <= 0) throw new AffiliateError('There is nothing to pay out yet.');
+    const { available, held, nextReadyAt } = await affiliateBalance(tx, affiliateId, now);
+    if (available <= 0) {
+      throw new AffiliateError(held > 0 && nextReadyAt ? `Your commission is still in its hold: the next is ready on ${myDate(nextReadyAt)}.` : 'There is nothing to pay out yet.');
+    }
     return tx.affiliatePayout.create({
       data: {
         affiliateId,
         amount: available,
-        availableAt: new Date(now.getTime() + settings.holdDays * 86_400_000),
+        // Payable as soon as it is asked for: the hold came before this.
+        availableAt: now,
         bankName: a.bankName,
         bankAccountName: a.bankAccountName,
         bankAccountNumber: a.bankAccountNumber,
       },
     });
   });
+}
+
+function myDate(d: Date): string {
+  return d.toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short' });
 }
 
 async function affiliateOrderIds(db: Db, affiliateId: string): Promise<string[]> {
@@ -439,11 +514,8 @@ export async function markPayoutPaid(
     if (owner.status !== 'ACTIVE') {
       throw new AffiliateError(`${owner.fullName} is ${owner.status.toLowerCase()}: make them active again to pay this, or cancel it.`);
     }
-    if (p.availableAt.getTime() > now.getTime()) {
-      throw new AffiliateError(`Payable from ${p.availableAt.toISOString()} — the hold lets refunds land first.`);
-    }
-    const { balance } = await affiliateBalance(tx, p.affiliateId);
-    const pay = Math.max(0, Math.min(p.amount, balance));
+    const { payable } = await affiliateBalance(tx, p.affiliateId, now);
+    const pay = Math.min(p.amount, payable);
     // Before anything is recorded, a nothing-left cancellation included: if the
     // team moved a different sum, the record must not quietly say otherwise.
     if (opts.expected !== undefined && opts.expected !== pay) {

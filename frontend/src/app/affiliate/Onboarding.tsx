@@ -31,7 +31,7 @@ import { BANKS } from './banks';
 export const TERMS = [
   'Commission is earned on the goods (after the discount, not shipping) once an order is paid.',
   'If an order is refunded or cancelled, its commission is taken back — even after it was paid out.',
-  'You can ask for a payout any time you have a balance; it is paid after a short hold so refunds land first.',
+  'Commission waits in a short hold after the order is paid, so refunds land first. After that you can ask for a payout any time.',
   'Your own orders never earn commission.',
   'Share honestly: no medical claims, no spam, no posting the code on coupon sites. We may pause a code that breaks this.',
 ];
@@ -446,7 +446,7 @@ function Preview(p: {
     },
     payouts: {
       title: 'Where we pay you.',
-      sub: p.hold ? `Ask whenever you have a balance — paid after a ${p.hold}-day hold. No minimum.` : 'Ask whenever you have a balance. No minimum.',
+      sub: p.hold ? `Commission is yours to ask for ${p.hold} ${p.hold === 1 ? 'day' : 'days'} after the order is paid. No minimum.` : 'Ask whenever you have a balance. No minimum.',
       visual: (
         <div className="w-full max-w-[460px] rounded-[22px] bg-white/[0.04] p-5 ring-1 ring-white/10">
           <div className="flex items-center gap-3 rounded-[16px] bg-white p-4 text-[#0a0a0a]">
@@ -458,7 +458,7 @@ function Preview(p: {
             <p className="text-[15px] font-semibold tabular-nums">····{p.last4 || '0000'}</p>
           </div>
           <ol className="mt-4 flex items-center gap-2 text-[12px]">
-            {['You ask', ...(p.hold ? [`${p.hold}-day hold`] : []), 'Paid'].map((t, i, all) => (
+            {['Order paid', ...(p.hold ? [`${p.hold}-day hold`] : []), 'You ask', 'Paid'].map((t, i, all) => (
               <li key={t} className="flex flex-1 items-center gap-2">
                 <span className={`flex-1 rounded-[12px] px-3 py-2 text-center font-semibold ${i === all.length - 1 ? 'bg-[#22c55e] text-[#052e16]' : 'bg-white/10'}`}>{t}</span>
                 {i < all.length - 1 ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-white/40" aria-hidden /> : null}

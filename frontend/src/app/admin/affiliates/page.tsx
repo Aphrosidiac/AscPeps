@@ -317,7 +317,7 @@ function PayoutsTab({ token, onCounts }: { token: string; onCounts: (n: number) 
         title={status === 'REQUESTED' ? 'Waiting to be paid' : status === 'PAID' ? 'Paid' : 'Cancelled'}
         description={
           status === 'REQUESTED'
-            ? 'Transfer from Ascend\'s bank, then mark it paid. Each is payable once its hold has passed, so refunds land first.'
+            ? 'Transfer from Ascend\'s bank, then mark it paid. Commission is already out of its hold by the time it can be asked for.'
             : 'History.'
         }
       />
@@ -358,7 +358,7 @@ function PayoutsTab({ token, onCounts }: { token: string; onCounts: (n: number) 
                 <div className="flex items-center gap-2">
                   <Link href={`/admin/affiliates/${p.affiliateId}`} className="font-medium text-text-primary hover:underline">{p.name}</Link>
                   <span className="text-[12px] font-medium tracking-wide text-text-secondary">{p.code}</span>
-                  <PayoutBadge status={p.status} ready={p.ready} />
+                  <PayoutBadge status={p.status} />
                 </div>
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-text-secondary">
                   {p.bankName} · <span className="font-medium text-text-primary tabular-nums">{p.bankAccountNumber}</span>
@@ -369,7 +369,7 @@ function PayoutsTab({ token, onCounts }: { token: string; onCounts: (n: number) 
                 </p>
                 <p className="mt-0.5 text-[12px] text-text-muted">
                   {p.status === 'REQUESTED'
-                    ? `Asked ${myt(p.createdAt, true)} · payable from ${myt(p.availableAt, true)}`
+                    ? `Asked ${myt(p.createdAt, true)}`
                     : p.status === 'PAID'
                       ? `Paid ${p.paidAt ? myt(p.paidAt, true) : ''}${p.reference ? ` · ref ${p.reference}` : ''}${p.paidBy ? ` · ${p.paidBy}` : ''}`
                       : p.cancelReason}
@@ -384,7 +384,7 @@ function PayoutsTab({ token, onCounts }: { token: string; onCounts: (n: number) 
               {p.status === 'REQUESTED' ? (
                 <div className="flex gap-2">
                   <Button size="sm" variant="ghost" onClick={() => setCancelling(p)}>Cancel</Button>
-                  <Button size="sm" disabled={!p.ready} title={p.ready ? undefined : 'Still in its hold'} onClick={() => setPaying(p)}>Mark paid</Button>
+                  <Button size="sm" onClick={() => setPaying(p)}>Mark paid</Button>
                 </div>
               ) : null}
             </li>
@@ -605,7 +605,7 @@ function SettingsTab({ token }: { token: string }) {
                 <input type="number" min={0} max={50} value={Number.isNaN(draft.marginBudgetPct) ? '' : draft.marginBudgetPct} onChange={(e) => set('marginBudgetPct', num(e.target.value))} />
               </Affixed>
             </Field>
-            <Field label="Payout hold" help="Days between asking and being payable, so refunds land first.">
+            <Field label="Commission hold" help="Days after an order is paid before its commission can be asked for, so refunds land first.">
               <Affixed suffix="days">
                 <input type="number" min={0} max={60} value={Number.isNaN(draft.holdDays) ? '' : draft.holdDays} onChange={(e) => set('holdDays', num(e.target.value))} />
               </Affixed>

@@ -38,7 +38,7 @@ const blank = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null
 
 // How long after an affiliate's last send the team isn't pinged again. The
 // Changes tab always shows the latest, and it is what they approve from.
-const NOTIFY_GAP_MS = 10 * 60 * 1000;
+export const NOTIFY_GAP_MS = 10 * 60 * 1000;
 
 const requestSchema = z.object({
   fullName: z.string().transform(oneLine).pipe(z.string().min(2, 'Enter your full name.').max(80)),
@@ -79,6 +79,17 @@ function pick(a: Details): Details {
 function shown(field: DetailField, v: string | null): string {
   if (v == null) return '—';
   return field === 'bankAccountNumber' ? `····${v.slice(-4)}` : v;
+}
+
+/** The notice for a change waiting on the team. `held`: the sweep sending the last of a burst. */
+export function changeNotice(
+  a: { fullName: string; discountCode: { code: string } },
+  changes: Record<string, string | null>,
+  previous: Record<string, string | null>,
+  held = false,
+): string {
+  const lines = DETAIL_FIELDS.filter((k) => k in changes).map((k) => `${LABEL[k]}: ${shown(k, previous[k] ?? null)} → ${shown(k, changes[k] ?? null)}`);
+  return `✏️ *Affiliate details change${held ? ' (their latest)' : ''}*\n${a.fullName} (${a.discountCode.code})\n${lines.join('\n')}\n\nApprove or reject in Admin → Affiliates → Changes.`;
 }
 
 export interface ChangeView {
@@ -142,17 +153,13 @@ export async function requestChange(fastify: FastifyInstance, memberId: string, 
     }
     const changes = Object.fromEntries(changed.map((k) => [k, want[k]]));
     const previous = Object.fromEntries(changed.map((k) => [k, now[k]]));
-    if (pending) await tx.affiliateChangeRequest.update({ where: { id: pending.id }, data: { changes, previous } });
-    else await tx.affiliateChangeRequest.create({ data: { affiliateId: a.id, changes, previous } });
-    return { a, changed, changes, previous, replaced: !!pending, quiet };
+    if (pending) await tx.affiliateChangeRequest.update({ where: { id: pending.id }, data: { changes, previous, notified: !quiet } });
+    else await tx.affiliateChangeRequest.create({ data: { affiliateId: a.id, changes, previous, notified: !quiet } });
+    return { a, changes, previous, quiet };
   });
+  // Held back, not lost: the sweep sends the latest once they stop.
   if (!result || result.quiet) return;
-  const { a, changed, changes, previous, replaced } = result;
-  const lines = changed.map((k) => `${LABEL[k]}: ${shown(k, previous[k] as string | null)} → ${shown(k, changes[k] as string | null)}`);
-  void notifyAffiliateTeam(
-    fastify,
-    `✏️ *Affiliate details change${replaced ? ' (sent again, replaces the last one)' : ''}*\n${a.fullName} (${a.discountCode.code})\n${lines.join('\n')}\n\nApprove or reject in Admin → Affiliates → Changes.`
-  );
+  void notifyAffiliateTeam(fastify, changeNotice(result.a, result.changes, result.previous));
 }
 
 export async function withdrawChange(fastify: FastifyInstance, memberId: string): Promise<void> {

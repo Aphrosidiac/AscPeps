@@ -58,6 +58,7 @@ export default function AffiliateOrders() {
                   <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>
                   <span className="whitespace-nowrap text-[12px] fg-3 tnum">on {rm(o.goods)} goods</span>
                 </div>
+                {o.readyAt ? <p className="mt-1.5 text-[12px] fg-2">Available {when(o.readyAt, true)}</p> : null}
               </li>
             ))}
           </ul>
@@ -82,6 +83,7 @@ export default function AffiliateOrders() {
                     <td className="hidden fg-2 sm:table-cell">{when(o.placedAt)}</td>
                     <td>
                       <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>
+                      {o.readyAt ? <span className="mt-1 block text-[12px] fg-2">Available {when(o.readyAt, true)}</span> : null}
                     </td>
                     <td className="num hidden fg-2 md:table-cell">{rm(o.goods)}</td>
                     <td className="num">
@@ -106,7 +108,7 @@ export default function AffiliateOrders() {
         ) : null}
       </section>
       <p className="mt-4 px-2 text-[12px] leading-[17px] fg-3">
-        Commission is counted once an order is paid. &quot;Awaiting payment&quot; shows what it will earn. A refund takes back the same share of the commission.
+        Commission is counted once an order is paid. &quot;Awaiting payment&quot; shows what it will earn. &quot;In hold&quot; means it is earned and waiting: you can ask for it from the date shown. A refund takes back the same share of the commission.
       </p>
     </>
   );

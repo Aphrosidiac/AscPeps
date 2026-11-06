@@ -96,7 +96,7 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
         {
           key: 'payout',
           title: 'Paid straight to your bank.',
-          sub: hold ? `Ask whenever you have a balance. No minimum. Paid after a ${hold}-day hold.` : 'Ask whenever you have a balance. No minimum.',
+          sub: hold ? `Commission is yours to ask for ${hold} ${hold === 1 ? 'day' : 'days'} after the order is paid. No minimum.` : 'Ask whenever you have a balance. No minimum.',
           visual: <PayoutVisual hold={hold} />,
         },
         {
@@ -390,7 +390,7 @@ function LinkVisual() {
 }
 
 function PayoutVisual({ hold }: { hold: number }) {
-  const steps = [{ t: 'You ask', s: 'any time' }, ...(hold ? [{ t: `${hold}-day hold`, s: 'refunds land first' }] : []), { t: 'Paid', s: 'to your bank' }];
+  const steps = [...(hold ? [{ t: `${hold}-day hold`, s: 'refunds land first' }] : []), { t: 'You ask', s: 'any time after' }, { t: 'Paid', s: 'to your bank' }];
   return (
     <div className="w-full rounded-[22px] bg-white/[0.04] p-5 ring-1 ring-white/10">
       <div className="flex flex-wrap items-end justify-between gap-4">

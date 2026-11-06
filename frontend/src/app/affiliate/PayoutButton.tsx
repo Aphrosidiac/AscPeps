@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { apiError, requestMyPayout } from '@/lib/affiliate-api';
 import { Notice, Sheet, rm, useAff, useAffHref, when } from './aff-ui';
 
-/** Ask for everything available; one payout on its way at a time. */
+/** Ask for everything out of its hold; one payout on its way at a time. */
 export function PayoutButton() {
   const { data, reload } = useAff();
   const a = data.affiliate!;
@@ -14,13 +14,12 @@ export function PayoutButton() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const hold = data.programme.holdDays;
 
   if (data.openPayout) {
     return (
       <div className="rounded-[18px] px-4 py-3" style={{ background: 'var(--st-warn-soft)', color: 'var(--st-warn)' }}>
         <p className="text-[14px] font-medium">{rm(data.openPayout.amount)} payout on its way</p>
-        <p className="mt-0.5 text-[13px] leading-[19px]">Asked {when(data.openPayout.createdAt, true)} · paid from {when(data.openPayout.availableAt, true)}</p>
+        <p className="mt-0.5 text-[13px] leading-[19px]">Asked {when(data.openPayout.createdAt, true)}. We check it, then transfer it to your bank.</p>
       </div>
     );
   }
@@ -41,14 +40,17 @@ export function PayoutButton() {
         <button type="button" className="btn btn-ink" disabled={b.available <= 0} onClick={() => (setError(''), setOpen(true))}>
           {b.available > 0 ? `Ask for a payout · ${rm(b.available)}` : 'Ask for a payout'}
         </button>
-        {b.available <= 0 ? <p className="text-[13px] fg-2">You can ask once you have a balance.</p> : null}
+        {b.available <= 0 ? (
+          <p className="text-[13px] fg-2">
+            {b.nextReadyAt ? `More becomes available on ${when(b.nextReadyAt, true)}.` : 'You can ask once commission is available.'}
+          </p>
+        ) : null}
       </div>
       {open ? (
         <Sheet title="Ask for a payout" onClose={() => !busy && setOpen(false)}>
           <p className="st-big fg">{rm(b.available)}</p>
           <p className="mt-3 text-[14px] leading-[21px] fg-2">
-            To {a.bankName} ••••{last4} ({a.bankAccountName}). We pay {hold === 0 ? 'once we have checked it' : `at least ${hold} ${hold === 1 ? 'day' : 'days'} after you ask`}, so any
-            refund lands first — if one does, it comes off this amount.
+            To {a.bankName} ••••{last4} ({a.bankAccountName}). We check it, then transfer it to your bank. If an order is refunded before the transfer, its commission comes off this amount.
           </p>
           {error ? (
             <div className="mt-4">

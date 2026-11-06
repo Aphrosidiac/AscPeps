@@ -11,6 +11,7 @@ export default function AffiliateOverview() {
   const { data } = useAff();
   const a = data.affiliate!;
   const b = data.balance!;
+  const hold = data.programme.holdDays;
   const href = useAffHref();
   const store = useStoreOrigin();
   const link = `${store.replace(/\/$/, '')}/?ref=${a.code}`;
@@ -52,10 +53,13 @@ export default function AffiliateOverview() {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         {/* Balance and the one action that matters. */}
         <section className="panel p-6 sm:p-8" aria-labelledby="bal-h" data-tour="balance">
-          <p id="bal-h" className="st-label">Your balance</p>
-          <p className="st-big mt-2 fg" style={b.balance < 0 ? { color: 'var(--st-bad)' } : undefined}>{rm(b.balance)}</p>
+          <p id="bal-h" className="st-label">Available now</p>
+          <p className="st-big mt-2 fg">{rm(b.available)}</p>
+          <p className="mt-1 text-[13px] leading-[19px] fg-2">
+            {hold ? `Commission becomes available ${hold} ${hold === 1 ? 'day' : 'days'} after the order is paid.` : 'Ready to ask for.'}
+          </p>
           {b.balance < 0 ? (
-            <p className="mt-2 text-[13px] leading-[19px] fg-2">An order was refunded after its commission was paid to you. New commission pays this off first.</p>
+            <p className="mt-2 text-[13px] leading-[19px] fg-2">Your balance is {rm(b.balance)}: an order was refunded after its commission was paid to you. New commission pays this off first.</p>
           ) : null}
           <div className="mt-6">
             <PayoutButton />
@@ -63,8 +67,9 @@ export default function AffiliateOverview() {
           {/* Three across on every screen: compact on a phone rather than a tall stack. */}
           <div className="mt-6 grid grid-cols-3 gap-2 sm:mt-8 sm:gap-3">
             <div className="tint tint-mint !p-3 sm:!p-5">
-              <p className="st-label fg-2">Earned</p>
-              <p className="st-fig mt-1 whitespace-nowrap fg !text-[16px] !leading-[22px] sm:!text-[24px] sm:!leading-[30px]">{rm(b.earned - b.reversed)}</p>
+              <p className="st-label fg-2">In hold</p>
+              <p className="st-fig mt-1 whitespace-nowrap fg !text-[16px] !leading-[22px] sm:!text-[24px] sm:!leading-[30px]">{rm(b.held)}</p>
+              <p className="mt-1 text-[12px] fg-2">{b.nextReadyAt ? `Next ${when(b.nextReadyAt, true)}` : 'Nothing waiting'}</p>
             </div>
             <div className="tint tint-butter !p-3 sm:!p-5">
               <p className="st-label fg-2">Awaiting payment</p>
@@ -123,6 +128,7 @@ export default function AffiliateOverview() {
                       <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>
                     </span>
                   </p>
+                  {o.readyAt ? <p className="mt-0.5 text-[12px] fg-2">Available {when(o.readyAt, true)}</p> : null}
                 </div>
                 <span className="hidden sm:block">
                   <span className={`pill ${STATE_TONE[o.state]}`}>{STATE_LABEL[o.state]}</span>

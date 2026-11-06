@@ -45,6 +45,7 @@ export function StatusBadge({ status }: { status: AffiliateStatus }) {
 
 const STATE_TONE: Record<OrderState, string> = {
   AWAITING_PAYMENT: 'bg-amber-100 text-amber-800',
+  IN_HOLD: 'bg-blue-50 text-blue-800',
   EARNED: 'bg-green-100 text-green-800',
   PART_REFUNDED: 'bg-blue-100 text-blue-800',
   REFUNDED: 'bg-red-100 text-red-800',
@@ -60,15 +61,15 @@ const PAYOUT_TONE: Record<PayoutStatus, string> = {
   PAID: 'bg-green-100 text-green-800',
   CANCELLED: 'bg-surface-elevated text-text-secondary',
 };
-export function PayoutBadge({ status, ready }: { status: PayoutStatus; ready?: boolean }) {
-  const label = status === 'REQUESTED' ? (ready ? 'Ready to pay' : 'In hold') : status === 'PAID' ? 'Paid' : 'Cancelled';
-  return <Badge className={cn(status === 'REQUESTED' && ready ? 'bg-primary text-white' : PAYOUT_TONE[status])}>{label}</Badge>;
+export function PayoutBadge({ status }: { status: PayoutStatus }) {
+  const label = status === 'REQUESTED' ? 'To transfer' : status === 'PAID' ? 'Paid' : 'Cancelled';
+  return <Badge className={cn(status === 'REQUESTED' ? 'bg-primary text-white' : PAYOUT_TONE[status])}>{label}</Badge>;
 }
 
 /**
  * "We transferred it." Records the payout against the affiliate's balance and
  * as money out of Ascend's bank; pays the smaller of the ask and today's
- * balance (a refund in the hold comes off).
+ * balance out of its hold (a refund since comes off).
  */
 export function MarkPaidDialog({
   token,

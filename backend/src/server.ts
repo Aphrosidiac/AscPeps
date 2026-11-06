@@ -69,6 +69,7 @@ import { processEmailOutbox } from './utils/email-worker.js';
 import { processWelcomeEmails, processCampaigns } from './utils/marketing-worker.js';
 import { sweepAbandonedCheckouts } from './utils/abandoned-checkout.js';
 import { processDueReminders } from './utils/reminder-sweep.js';
+import { sweepAffiliateNotices } from './utils/affiliate-sweep.js';
 
 const fastify = Fastify({
   // Trust exactly one hop (the nginx in front) — `true` would trust the
@@ -292,6 +293,9 @@ try {
     // failure in one can't skip the other.
     sweepAbandonedCheckouts(fastify).catch((err) =>
       fastify.log.error({ err }, 'abandoned-checkout sweep failed')
+    );
+    sweepAffiliateNotices(fastify).catch((err) =>
+      fastify.log.error({ err }, 'affiliate notice sweep failed')
     );
   }, RECONCILE_INTERVAL_MS);
   timer.unref();

@@ -13,7 +13,7 @@ export type AffiliateMail =
   | { kind: 'rejected' }
   | { kind: 'paused' }
   | { kind: 'reactivated' }
-  | { kind: 'payoutRequested'; amount: number; bankName: string; last4: string; availableAt: Date }
+  | { kind: 'payoutRequested'; amount: number; bankName: string; last4: string }
   | { kind: 'payoutPaid'; amount: number; asked: number; bankName: string; last4: string; reference: string | null; paidAt: Date }
   | { kind: 'payoutCancelled'; amount: number; reason: string }
   | { kind: 'changeApproved'; fields: string[] }
@@ -76,7 +76,7 @@ function facts(rows: [string, string][]): string {
           </table>`;
 }
 
-// Malaysian time whatever the server runs in: the hold ends at an hour, not a day.
+// Malaysian time whatever the server runs in.
 function when(d: Date, time = true): string {
   return d.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'long', year: 'numeric', ...(time ? { hour: 'numeric', minute: '2-digit' } : {}) });
 }
@@ -125,7 +125,7 @@ ${button('OPEN ASCEND AFFILIATE')}`;
       preheader = `${c.code} is live: ${c.customerDiscountPct}% off for them, ${c.rate} for you.`;
       body = `${paragraph(`Welcome to Ascend Affiliate. Your code works at checkout from now on: whoever uses it gets <strong>${c.customerDiscountPct}% off</strong>, and you earn <strong>${c.rate}</strong> of every paid order.`)}
 ${codeBlock('YOUR CODE IS LIVE', c.code, `Or share the link: <a href="${escapeHtml(c.shareUrl)}" class="muted" style="color:${MUTED};">${escapeHtml(c.shareUrl.replace(/^https?:\/\//, ''))}</a>`)}
-${paragraph('Every order and what you earned on it shows up on your dashboard, and the Guide there covers everything else: how commission is worked out, the hold before a payout, and how to ask for one.')}
+${paragraph('Every order and what you earned on it shows up on your dashboard, and the Guide there covers everything else: how commission is worked out, the hold on new commission, and how to ask for a payout.')}
 ${button('OPEN YOUR DASHBOARD')}`;
       break;
 
@@ -157,15 +157,14 @@ ${button('OPEN YOUR DASHBOARD')}`;
     case 'payoutRequested':
       subject = `Payout of ${formatRM(mail.amount)} requested — Ascend Affiliate`;
       subhead = 'your payout is on its way.';
-      preheader = `${formatRM(mail.amount)} to ${mail.bankName} ····${mail.last4}, from ${when(mail.availableAt)}.`;
-      body = `${paragraph("We've got your payout request. It's paid once the hold ends — the hold gives refunds time to land first — and we'll email you when the money is sent.")}
+      preheader = `${formatRM(mail.amount)} to ${mail.bankName} ····${mail.last4}.`;
+      body = `${paragraph("We've got your payout request. We'll check it, transfer it, and email you when the money is sent.")}
 ${facts([
   ['Amount', formatRM(mail.amount)],
   ['To', `${escapeHtml(mail.bankName)} ····${escapeHtml(mail.last4)}`],
-  ['Payable from', when(mail.availableAt)],
 ])}
 ${button('SEE YOUR PAYOUTS', '/payouts')}
-${footnote('If an order is refunded before then, its commission comes off this payout.')}`;
+${footnote('If an order is refunded before the transfer, its commission comes off this payout.')}`;
       break;
 
     case 'payoutPaid':
@@ -235,7 +234,7 @@ export function affiliateMailSamples(now = new Date()): [string, AffiliateMail][
     ['rejected', { kind: 'rejected' }],
     ['paused', { kind: 'paused' }],
     ['reactivated', { kind: 'reactivated' }],
-    ['payout-requested', { kind: 'payoutRequested', amount: 18_450, ...bank, availableAt: new Date(now.getTime() + 3 * day) }],
+    ['payout-requested', { kind: 'payoutRequested', amount: 18_450, ...bank }],
     ['payout-paid', { kind: 'payoutPaid', amount: 18_450, asked: 18_450, ...bank, reference: 'M2U 20261103-88412', paidAt: now }],
     ['payout-paid-part', { kind: 'payoutPaid', amount: 15_200, asked: 18_450, ...bank, reference: null, paidAt: now }],
     ['payout-cancelled', { kind: 'payoutCancelled', amount: 18_450, reason: 'The account name does not match the bank account. Update it in Settings and ask again.' }],

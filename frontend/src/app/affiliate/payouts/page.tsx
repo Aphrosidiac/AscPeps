@@ -10,6 +10,7 @@ const PAYOUT_LABEL = { REQUESTED: 'On its way', PAID: 'Paid', CANCELLED: 'Cancel
 export default function AffiliatePayouts() {
   const { data } = useAff();
   const b = data.balance!;
+  const hold = data.programme.holdDays;
   const [payouts, setPayouts] = useState<Payout[] | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
 
@@ -23,17 +24,34 @@ export default function AffiliatePayouts() {
     <>
       <PageHead
         title="Payouts"
-        sub={data.programme.holdDays ? `Paid to your bank at least ${data.programme.holdDays} ${data.programme.holdDays === 1 ? 'day' : 'days'} after you ask` : 'Paid to your bank once you ask'}
+        sub={hold ? `Commission becomes available ${hold} ${hold === 1 ? 'day' : 'days'} after the order is paid` : 'Paid to your bank once you ask'}
         actions={<GuideLink section="payouts">How payouts work</GuideLink>}
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="panel p-6 sm:p-8">
-          <p className="st-label">Available to ask for</p>
+          <p className="st-label">Available now</p>
           <p className="st-big mt-2 fg">{rm(b.available)}</p>
           <div className="mt-6">
             <PayoutButton />
           </div>
+          {b.heldOrders.length ? (
+            <>
+              <h2 className="st-h fg mt-10">Still in hold · {rm(b.held)}</h2>
+              <p className="st-sub mt-1">Earned, and yours to ask for from the date beside it.</p>
+              <ul className="mt-3">
+                {b.heldOrders.map((h) => (
+                  <li key={h.orderNumber} className="flex items-start justify-between gap-4 border-t py-3" style={{ borderColor: 'var(--st-hair)' }}>
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-medium fg tnum">{h.orderNumber}</p>
+                      <p className="text-[12px] leading-[17px] fg-3">Available {when(h.readyAt, true)}</p>
+                    </div>
+                    <p className="shrink-0 whitespace-nowrap text-[15px] font-medium fg tnum">{rm(h.amount)}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           <h2 className="st-h fg mt-10">Your payouts</h2>
           {payouts === null ? (
             <div className="mt-4 h-24 rounded-[18px]" style={{ background: 'var(--st-field)', opacity: 0.6 }} />
@@ -50,7 +68,7 @@ export default function AffiliatePayouts() {
                         ? `Paid ${when(p.paidAt)}${p.reference ? ` · ref ${p.reference}` : ''}`
                         : p.status === 'CANCELLED'
                           ? p.cancelReason || 'Cancelled'
-                          : `Asked ${when(p.createdAt)} · paid from ${when(p.availableAt, true)}`}
+                          : `Asked ${when(p.createdAt)} · we check it, then transfer it`}
                     </p>
                     {p.status === 'PAID' && p.paidAmount != null && p.paidAmount < p.amount ? (
                       <p className="text-[12px] leading-[17px] fg-3">You asked for {rm(p.amount)}; a refund since then came off it.</p>

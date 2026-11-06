@@ -1158,6 +1158,9 @@ model AffiliateChangeRequest {
   decidedBy    String?
   // Shown to the affiliate.
   rejectReason String?
+  // The team has heard about this version. Sends close together are held
+  // back, and the sweep tells them about the last one.
+  notified     Boolean               @default(false)
   createdAt    DateTime              @default(now())
   // When it was last sent: a new request overwrites the pending one in place.
   updatedAt    DateTime              @updatedAt
@@ -1200,8 +1203,7 @@ model AffiliateEntry {
 }
 
 enum AffiliatePayoutStatus {
-  // Asked for; can be paid once availableAt has passed (the hold that lets
-  // refunds land first).
+  // Asked for; payable from then, because commission waits out its hold first.
   REQUESTED
   PAID
   CANCELLED

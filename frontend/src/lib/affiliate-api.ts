@@ -15,7 +15,7 @@ const memberAuth = () => {
 
 export type AffiliateStatus = 'APPLIED' | 'ACTIVE' | 'PAUSED' | 'REJECTED';
 export type PayoutStatus = 'REQUESTED' | 'PAID' | 'CANCELLED';
-export type OrderState = 'AWAITING_PAYMENT' | 'EARNED' | 'PART_REFUNDED' | 'REFUNDED' | 'CANCELLED' | 'NOT_PAID';
+export type OrderState = 'AWAITING_PAYMENT' | 'IN_HOLD' | 'EARNED' | 'PART_REFUNDED' | 'REFUNDED' | 'CANCELLED' | 'NOT_PAID';
 export type EntryKind = 'COMMISSION' | 'REVERSAL' | 'PAYOUT' | 'ADJUSTMENT';
 
 export interface Programme {
@@ -46,6 +46,10 @@ export interface Affiliate {
 export interface Balance {
   balance: number;
   requested: number;
+  held: number;
+  nextReadyAt: string | null;
+  heldOrders: { orderNumber: string; amount: number; readyAt: string }[];
+  payable: number;
   available: number;
   earned: number;
   reversed: number;
@@ -107,6 +111,7 @@ export interface AffiliateOrder {
   rate: string;
   commission: number;
   state: OrderState;
+  readyAt: string | null;
 }
 
 export interface Entry {
@@ -200,7 +205,6 @@ export interface AdminPayoutRow extends Payout {
   name: string;
   phone: string;
   code: string;
-  ready: boolean;
   payableNow: number | null;
 }
 
@@ -240,6 +244,7 @@ export const adminSaveAffiliateSettings = (token: string, data: Partial<Affiliat
 
 export const STATE_LABEL: Record<OrderState, string> = {
   AWAITING_PAYMENT: 'Awaiting payment',
+  IN_HOLD: 'In hold',
   EARNED: 'Earned',
   PART_REFUNDED: 'Part refunded',
   REFUNDED: 'Refunded',

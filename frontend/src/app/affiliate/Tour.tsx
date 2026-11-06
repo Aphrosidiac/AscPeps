@@ -23,7 +23,7 @@ const doneKey = (id: string) => `ascend-aff-tour:${id}`;
 export function Tour({ affiliateId, firstName, discountPct, commission, path }: { affiliateId: string; firstName: string; discountPct: number; commission: string; path: string }) {
   const stops: Stop[] = [
     { target: null, title: `Welcome, ${firstName} — you’re live`, body: 'Your code works at checkout from now on. Here’s a quick look at where everything is.' },
-    { target: 'balance', title: 'Your balance', body: 'What you’ve earned so far. Once it’s above zero, ask for a payout right here.' },
+    { target: 'balance', title: 'Available now', body: 'What you can ask for today. New commission waits in a short hold first, then lands here.' },
     { target: 'code', title: 'Your code and link', body: `Copy either one and share it. Your people get ${discountPct}% off; you earn ${commission} of what they pay.` },
     { target: 'tab:/products', title: 'Products', body: 'Every product with what it earns you — and a link for each one.' },
     { target: 'tab:/orders', title: 'Orders', body: 'Every order made with your code and what it earned. Never who bought it.' },
