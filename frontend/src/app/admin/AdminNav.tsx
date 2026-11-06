@@ -79,6 +79,7 @@ export const NAV: Entry[] = [
     items: [
       { href: '/admin/campaigns', label: 'Campaigns' },
       { href: '/admin/subscribers', label: 'Subscribers' },
+      { href: '/admin/members', label: 'Members' },
       { href: '/admin/discounts', label: 'Discounts' },
       { href: '/admin/affiliates', label: 'Affiliates' },
       { href: '/admin/popups', label: 'Popups' },

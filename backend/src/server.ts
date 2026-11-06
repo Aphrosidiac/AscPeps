@@ -40,6 +40,7 @@ import affiliateRoutes from './modules/affiliates/affiliates.routes.js';
 import adminAffiliateRoutes from './modules/affiliates/admin-affiliates.routes.js';
 import subscriberRoutes from './modules/subscribers/subscribers.routes.js';
 import adminSubscriberRoutes from './modules/admin/admin-subscribers.routes.js';
+import adminMemberRoutes from './modules/admin/admin-members.routes.js';
 import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
 import adminGroupBuyRoutes from './modules/admin/admin-group-buys.routes.js';
 import groupBuyRoutes from './modules/group-buys/group-buys.routes.js';
@@ -189,6 +190,7 @@ await fastify.register(adminDiscountRoutes, { prefix: '/api/v1/admin/discounts' 
 await fastify.register(adminAffiliateRoutes, { prefix: '/api/v1/admin/affiliates' });
 await fastify.register(affiliateRoutes, { prefix: '/api/v1/affiliate' });
 await fastify.register(adminSubscriberRoutes, { prefix: '/api/v1/admin/subscribers' });
+await fastify.register(adminMemberRoutes, { prefix: '/api/v1/admin/members' });
 await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
 if (env.GROUP_BUY_ENABLED) {
   await fastify.register(adminGroupBuyRoutes, { prefix: '/api/v1/admin/group-buys' });

@@ -630,6 +630,40 @@ export const adminExportSubscribers = (token: string, params?: Record<string, st
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   });
 
+// --- Members (admin) -------------------------------------------------------
+
+export interface AdminMemberRow {
+  id: string;
+  email: string;
+  displayName: string;
+  emailVerified: boolean;
+  banned: boolean;
+  createdAt: string;
+  signupBonusCode: { code: string; usedCount: number } | null;
+  paidOrders: number;
+  paidTotal: number;
+}
+
+export const adminGetMembers = (token: string, params?: Record<string, string>) =>
+  api
+    .get<{
+      data: AdminMemberRow[];
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+      stats: { everyone: number; confirmed: number };
+    }>('/api/v1/admin/members', { ...auth(token), params })
+    .then((r) => r.data);
+
+// Same object-URL download as adminExportSubscribers.
+export const adminExportMembers = (token: string, params?: Record<string, string>) =>
+  api.get<Blob>('/api/v1/admin/members/export', { ...auth(token), params, responseType: 'blob' }).then((r) => {
+    const url = URL.createObjectURL(r.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ascend-members-${new Date().toLocaleDateString('en-CA')}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  });
+
 export const adminGetCampaigns = (token: string, params?: Record<string, string>) =>
   api.get('/api/v1/admin/campaigns', { ...auth(token), params }).then((r) => r.data);
 
