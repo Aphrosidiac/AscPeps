@@ -5,7 +5,7 @@ import { buildWhatsAppUrl } from '../../utils/whatsapp.js';
 import { getActiveGateway, isOnlineMethod, gatewayNameForMethod, payLink, type PaymentGateway } from '../../utils/payment-gateway.js';
 import { recordPaymentEvent, type ClientContext } from '../../utils/payment-trail.js';
 import { resolveOrderLines, linesSubtotal, stockDemand, OrderLineError, groupOrderItems, groupedLineTotal, includesText, itemName, type ResolvedLine } from '../../utils/order-lines.js';
-import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
+import { reserveDiscountUse, validateDiscountCode } from '../admin/admin-discounts.controller.js';
 import { normalizePhone } from '../../utils/phone.js';
 import { env } from '../../config/env.js';
 import { getVariantDisplayName } from '../../utils/product-addons.js';
@@ -175,6 +175,8 @@ function isOrderNumberConflict(err: unknown): boolean {
 // never name its own discount.
 export interface CreateOrderInternal {
   manualDiscount?: ManualDiscountInput;
+  // Keyed in by staff rather than placed by the customer.
+  operatorTaken?: boolean;
 }
 
 // `client` is the browser that placed the order (device, country), read by the
@@ -307,26 +309,11 @@ export async function createOrder(
     // rate they earn at, so a later rate change never moves it.
     let affiliate: { affiliateId: string; rateBps: number } | null = null;
     if (data.discountCode) {
-      const result = await validateDiscountCode(fastify, data.discountCode, subtotal, { groupBuyId: data.groupBuyId, email: data.email, phone: data.phone });
+      const result = await validateDiscountCode(fastify, data.discountCode, subtotal, { groupBuyId: data.groupBuyId, email: data.email, phone: data.phone, operatorTaken: internal.operatorTaken });
       discountAmount = result.discountAmount;
       discountCodeId = result.discount.id;
       affiliate = result.affiliate;
-      // Atomically reserve one use so concurrent orders can't push a capped code
-      // past maxUses (the read-based check above is racy on its own).
-      if (result.discount.maxUses != null) {
-        const reserved = await tx.discountCode.updateMany({
-          where: { id: discountCodeId, usedCount: { lt: result.discount.maxUses } },
-          data: { usedCount: { increment: 1 } },
-        });
-        if (reserved.count === 0) {
-          throw { statusCode: 400, message: 'This discount code has reached its usage limit' };
-        }
-      } else {
-        await tx.discountCode.update({
-          where: { id: discountCodeId },
-          data: { usedCount: { increment: 1 } },
-        });
-      }
+      await reserveDiscountUse(tx, result.discount);
     }
 
     // A discount the operator gave by hand stacks on top of any code: the two

@@ -12,6 +12,7 @@ import { MANUALPAY_GATEWAY } from '../../plugins/manualpay.js';
 import { notifyOrder } from '../../utils/order-notify.js';
 import { syncAffiliateOrdersQuietly } from '../../utils/affiliate.js';
 import { applyPaid } from '../../utils/payment-reconcile.js';
+import { reserveDiscountUse, validateDiscountCode } from './admin-discounts.controller.js';
 import { inspectAndRecord, recordPaymentEvent, refineFailureReason } from '../../utils/payment-trail.js';
 import { carryDiscount, goodsSubtotal, manualDiscountSchema, resolveManualDiscount } from '../../utils/manual-discount.js';
 import { getEffectivePrice } from '../../utils/product-pricing.js';
@@ -302,19 +303,10 @@ export async function adminUpdateOrderCosts(fastify: FastifyInstance, id: string
 // "discount": the profit came out right, but the customer's total, the
 // receipt and the revenue figure were all wrong, and the discount was invisible
 // to reporting.
-async function adminSetOrderDiscountUnsynced(fastify: FastifyInstance, id: string, body: unknown) {
-  const input = manualDiscountSchema.parse(body);
-
-  const order = await fastify.prisma.order.findUnique({
-    where: { id },
-    select: {
-      id: true, subtotal: true, shippingFee: true, discountAmount: true, total: true, gatewayFee: true,
-      paymentMethod: true, paymentStatus: true, paymentGateway: true, paymentRef: true,
-    },
-  });
-  if (!order) throw { statusCode: 404, message: 'Order not found' };
-  const subtotal = goodsSubtotal(order);
-
+// The refusals every change to an order's discount shares.
+function assertDiscountCanChange(order: {
+  total: number; paymentMethod: string; paymentStatus: string; paymentGateway: string | null; paymentRef: string | null;
+}) {
   // The customer already paid the total the gateway charged. A different
   // total now would not match the money that arrived — give some back as a
   // partial refund instead, which is what actually happens.
@@ -334,6 +326,21 @@ async function adminSetOrderDiscountUnsynced(fastify: FastifyInstance, id: strin
       message: `This order has a payment page open for RM${(order.total / 100).toFixed(2)}, which cannot be repriced. Mark it paid for what arrives and refund the difference, or cancel and re-create the order with the discount.`,
     };
   }
+}
+
+async function adminSetOrderDiscountUnsynced(fastify: FastifyInstance, id: string, body: unknown) {
+  const input = manualDiscountSchema.parse(body);
+
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    select: {
+      id: true, subtotal: true, shippingFee: true, discountAmount: true, total: true, gatewayFee: true,
+      paymentMethod: true, paymentStatus: true, paymentGateway: true, paymentRef: true,
+    },
+  });
+  if (!order) throw { statusCode: 404, message: 'Order not found' };
+  const subtotal = goodsSubtotal(order);
+  assertDiscountCanChange(order);
 
   const { amount, note } = resolveManualDiscount(input, { subtotal, shippingFee: order.shippingFee });
   const total = Math.max(subtotal + order.shippingFee - amount, 0);
@@ -349,6 +356,59 @@ async function adminSetOrderDiscountUnsynced(fastify: FastifyInstance, id: strin
     // `subtotal` is written back too: on the handful of first orders that
     // never stored one, this is the moment it gets rebuilt.
     data: { subtotal, discountAmount: amount, discountNote: note, total },
+  });
+  return adminGetOrder(fastify, id);
+}
+
+// A code the customer redeemed, added to an order already placed: staff keyed
+// the order first and the code came after. It does what checkout would have
+// done, so the code is recorded on the order, a use is taken, and an affiliate's
+// code credits them. Any hand discount already on the order stays and the two
+// stack, as they do at checkout.
+async function adminApplyOrderCodeUnsynced(fastify: FastifyInstance, id: string, rawCode: string) {
+  const order = await fastify.prisma.order.findUnique({
+    where: { id },
+    select: {
+      id: true, subtotal: true, shippingFee: true, discountAmount: true, total: true, gatewayFee: true,
+      paymentMethod: true, paymentStatus: true, paymentGateway: true, paymentRef: true,
+      status: true, deletedAt: true, email: true, phone: true,
+      discountCode: { select: { code: true } },
+    },
+  });
+  if (!order || order.deletedAt) throw { statusCode: 404, message: 'Order not found' };
+  if (order.discountCode) {
+    throw { statusCode: 400, message: `This order already used code ${order.discountCode.code}.` };
+  }
+  // Its stock and any code were already given back; a use taken now would
+  // never be released.
+  if (order.status === 'CANCELLED' || order.paymentStatus === 'FAILED') {
+    throw { statusCode: 400, message: 'This order was cancelled — a code cannot be added to it.' };
+  }
+  assertDiscountCanChange(order);
+
+  const subtotal = goodsSubtotal(order);
+  const { discount, discountAmount: codeAmount, affiliate } = await validateDiscountCode(fastify, rawCode, subtotal, {
+    email: order.email, phone: order.phone, operatorTaken: true,
+  });
+  const discountAmount = Math.min(order.discountAmount + codeAmount, subtotal + order.shippingFee);
+  const total = subtotal + order.shippingFee - discountAmount;
+  if (total < order.gatewayFee) {
+    throw {
+      statusCode: 400,
+      message: `The discount would take the total below the RM${(order.gatewayFee / 100).toFixed(2)} gateway fee already recorded.`,
+    };
+  }
+
+  await fastify.prisma.$transaction(async (tx) => {
+    const { count } = await tx.order.updateMany({
+      where: { id, discountCodeId: null },
+      data: {
+        subtotal, discountAmount, total, discountCodeId: discount.id,
+        affiliateId: affiliate?.affiliateId, affiliateRateBps: affiliate?.rateBps,
+      },
+    });
+    if (count === 0) throw { statusCode: 409, message: 'This order just had a code added.' };
+    await reserveDiscountUse(tx, discount);
   });
   return adminGetOrder(fastify, id);
 }
@@ -947,6 +1007,12 @@ export async function adminUpdateOrder(fastify: FastifyInstance, id: string, bod
 
 export async function adminSetOrderDiscount(fastify: FastifyInstance, id: string, body: unknown) {
   const result = await adminSetOrderDiscountUnsynced(fastify, id, body);
+  await syncAffiliateOrdersQuietly(fastify, [id]);
+  return result;
+}
+
+export async function adminApplyOrderCode(fastify: FastifyInstance, id: string, code: string) {
+  const result = await adminApplyOrderCodeUnsynced(fastify, id, code);
   await syncAffiliateOrdersQuietly(fastify, [id]);
   return result;
 }

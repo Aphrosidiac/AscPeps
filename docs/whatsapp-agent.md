@@ -477,6 +477,13 @@ Things worth knowing:
   on top of a discount code if one is also redeemed — two different promises,
   both kept.
 
+- **A discount code rides along too**: "discount code used: XXXXXX" goes in
+  `discountCode`, never into a hand discount, because only the code field records
+  it on the order and marks it used. Cancelling the order gives the use back. A
+  code tied to one email (a sign-up bonus) needs no email on a staff-keyed order;
+  an email that is given must match it. Such an order has no email to link it to
+  the account, so Admin → Members shows the code as used but not the order.
+
 ## Discounts on existing orders
 
 `set_order_discount` gives, changes or removes a discount on an order that
@@ -488,6 +495,11 @@ receipt, the WhatsApp summary and the revenue figure all move together.
 It is destructive — it changes what the customer owes — so it parks for a yes
 with the before and after: *"give RM 10.00 off ASC2609/0004 (Nurul) for "bulk
 order" — total goes RM 145.00 → RM 135.00"*. `discountRm: 0` removes it.
+
+A code that arrives after the order was placed goes in `discountCode` on the
+same tool. It adds to any hand discount, records the code, takes a use and
+credits an affiliate, and it parks for a yes in the same way. An order that
+already has a code, or is cancelled, refuses it.
 
 It is refused, with the reason, on an order already **paid online** (the
 gateway charged the current total — record a partial refund instead), on a

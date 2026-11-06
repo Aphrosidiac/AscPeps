@@ -8,6 +8,7 @@ import {
   adminGetOrder,
   adminResendOrderEmail,
   adminRestoreOrder,
+  adminApplyOrderCode,
   adminSetOrderDiscount,
   adminSetOrderItems,
   adminUpdateOrder,
@@ -353,7 +354,7 @@ export const orderTools: AgentTool[] = [
           description:
             'WHATSAPP (default) = customer pays by manual bank transfer and someone marks it paid later. ONLINE = creates a real payment bill at the store\'s configured gateway and returns a link; needs an email address.',
         },
-        discountCode: { type: 'string', description: 'A discount CODE the customer is redeeming. Not for a discount the operator is giving by hand — use discountRm / discountPercent for that.' },
+        discountCode: { type: 'string', description: 'A discount CODE the customer is redeeming, however the order puts it ("discount code used: XXXXXX", "kod diskaun XXXXXX"). Copy the code exactly: this records it on the order and marks it used. Never turn a code into discountRm / discountPercent, which are only for a discount the operator is giving by hand.' },
         discountRm: { type: 'number', description: 'A discount the operator is giving, in RINGGIT off the order ("give him RM10 off"). Stacks with a code if one is also used.' },
         discountPercent: { type: 'number', description: 'A discount the operator is giving, as a percentage of the goods subtotal ("15% for the bulk order"). Use this OR discountRm, not both.' },
         discountNote: { type: 'string', description: 'Why the discount was given, for the books: "bulk order", "loyalty", "replaced leaked vial". Short.' },
@@ -365,12 +366,14 @@ export const orderTools: AgentTool[] = [
       const { lines, autoAdded, subtotal, shippingFee } = await priceOrderPreview(prisma, input);
 
       let discountAmount = 0;
+      let codeText = '';
       let discountNote = '';
       if (input.discountCode) {
         try {
           // Read-only check — reserving the code happens inside createOrder.
-          const { discountAmount: amt } = await validateDiscountCode(fastify, input.discountCode, subtotal, { email: input.email, phone: input.phone });
+          const { discountAmount: amt } = await validateDiscountCode(fastify, input.discountCode, subtotal, { email: input.email, phone: input.phone, operatorTaken: true });
           discountAmount = amt;
+          codeText = ` − ${rm(amt)} code ${input.discountCode.toUpperCase().trim()}`;
         } catch (err: any) {
           discountNote = ` (discount ${input.discountCode} will be REJECTED: ${err?.message ?? 'invalid'})`;
         }
@@ -396,7 +399,7 @@ export const orderTools: AgentTool[] = [
       return [
         `create an order for ${input.customerName} (${input.phone}) — ${itemText}`,
         autoAdded.length ? `with what comes included: ${autoAdded.map((a) => `${a.quantity}x ${a.name}`).join(', ')}` : '',
-        `subtotal ${rm(subtotal)} + shipping ${rm(shippingFee)}${discountAmount && !manual ? ` − discount ${rm(discountAmount)}` : ''}${manualText} = *${rm(total)}*${discountNote}`,
+        `subtotal ${rm(subtotal)} + shipping ${rm(shippingFee)}${codeText}${manualText} = *${rm(total)}*${discountNote}`,
         `paid by ${method}`,
         `This takes the stock immediately${input.email ? ` and emails an order confirmation to ${input.email}` : ' (no email given, so no confirmation will be sent)'}`,
       ]
@@ -427,7 +430,7 @@ export const orderTools: AgentTool[] = [
         // Included add-ons are deliberately NOT passed — createOrder builds
         // them itself, and passing them too would be a second source of truth.
         items: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
-      }, { manualDiscount: manualDiscountOf(input) });
+      }, { manualDiscount: manualDiscountOf(input), operatorTaken: true });
 
       const order = result.order;
       const gateway = await activeGatewayName(prisma);
@@ -442,6 +445,7 @@ export const orderTools: AgentTool[] = [
         subtotal: money(order.subtotal),
         shippingFee: money(order.shippingFee),
         discountAmount: money(order.discountAmount),
+        discountCode: order.discountCodeId ? input.discountCode.toUpperCase().trim() : null,
         discountNote: order.discountNote ?? null,
         total: money(order.total),
         addOnsAdded: autoAdded.map((a) => `${a.quantity}x ${a.name}`),
@@ -747,7 +751,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'set_order_discount',
     description:
-      'Give (or change, or remove) a discount on an EXISTING order by hand: RM off or a percentage of the goods subtotal, with the reason. Recomputes the order total, so the receipt and the books follow. Sets the order\'s one discount figure — it replaces any earlier discount on the order rather than adding to it. Amount 0 removes the discount. Refused on an order already paid online (record a partial refund instead) or refunded.',
+      'Give (or change, or remove) a discount on an EXISTING order by hand: RM off or a percentage of the goods subtotal, with the reason. Recomputes the order total, so the receipt and the books follow. Sets the order\'s one discount figure — it replaces any earlier discount on the order rather than adding to it. Amount 0 removes the discount. A discount CODE the customer redeemed goes in discountCode instead: it adds to any hand discount, records the code and marks it used. Refused on an order already paid online (record a partial refund instead) or refunded.',
     write: true,
     // Changes what the customer owes — worth a yes before it lands.
     destructive: true,
@@ -755,16 +759,23 @@ export const orderTools: AgentTool[] = [
       type: 'object',
       properties: {
         orderRef: { type: 'string' },
+        discountCode: { type: 'string', description: 'A discount CODE the customer redeemed, when it came after the order was placed. Records it on the order and marks it used. Use this alone, not with discountRm / discountPercent.' },
         discountRm: { type: 'number', description: 'Ringgit off the order. 0 removes the discount.' },
         discountPercent: { type: 'number', description: 'Percentage of the goods subtotal. Use this OR discountRm.' },
         discountNote: { type: 'string', description: 'Why: "bulk order", "loyalty", "replaced leaked vial".' },
       },
       required: ['orderRef'],
     },
-    summarize: async ({ prisma }, input) => {
+    summarize: async ({ fastify, prisma }, input) => {
       const o = await resolveOrder(prisma, input.orderRef);
       const manual = manualDiscountOf(input);
-      if (!manual) throw new Error('Pass discountRm or discountPercent.');
+      if (input.discountCode) {
+        if (manual) throw new Error('Pass the code on its own, not with discountRm or discountPercent.');
+        const { discountAmount } = await validateDiscountCode(fastify, input.discountCode, goodsSubtotal(o), { email: o.email, phone: o.phone, operatorTaken: true });
+        const total = Math.max(o.total - discountAmount, 0);
+        return `record code ${input.discountCode.toUpperCase().trim()} on ${o.orderNumber} (${o.customerName}) and mark it used, ${rm(discountAmount)} off — total goes ${rm(o.total)} → *${rm(total)}*`;
+      }
+      if (!manual) throw new Error('Pass discountCode, discountRm or discountPercent.');
       const subtotal = goodsSubtotal(o);
       const { amount, note } = resolveManualDiscount(manual, { subtotal, shippingFee: o.shippingFee });
       const total = Math.max(subtotal + o.shippingFee - amount, 0);
@@ -776,10 +787,14 @@ export const orderTools: AgentTool[] = [
     run: async ({ fastify, prisma }, input) => {
       const o = await resolveOrder(prisma, input.orderRef);
       const manual = manualDiscountOf(input);
-      if (!manual) throw new Error('Pass discountRm or discountPercent.');
-      const updated: any = await adminSetOrderDiscount(fastify, o.id, manual);
+      if (input.discountCode && manual) throw new Error('Pass the code on its own, not with discountRm or discountPercent.');
+      if (!input.discountCode && !manual) throw new Error('Pass discountCode, discountRm or discountPercent.');
+      const updated: any = input.discountCode
+        ? await adminApplyOrderCode(fastify, o.id, input.discountCode)
+        : await adminSetOrderDiscount(fastify, o.id, manual);
       return {
         ...orderSummary(updated, await activeGatewayName(prisma)),
+        discountCode: updated.discountCode?.code ?? null,
         subtotal: money(updated.subtotal),
         shippingFee: money(updated.shippingFee),
         discountAmount: money(updated.discountAmount),

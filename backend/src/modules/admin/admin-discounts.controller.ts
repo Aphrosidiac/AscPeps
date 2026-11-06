@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPaginationParams, paginatedResponse } from '../../utils/pagination.js';
@@ -111,6 +112,10 @@ export interface DiscountContext {
   // The buyer's phone: an affiliate's code is refused on their own order by
   // email OR phone (utils/affiliate.ts).
   phone?: string | null;
+  // An order keyed in by staff. A WhatsApp order often has no email, and the
+  // operator has seen who the customer is, so a code tied to one email is
+  // accepted without one. An email that is given must still match.
+  operatorTaken?: boolean;
 }
 
 export async function validateDiscountCode(fastify: FastifyInstance, code: string, subtotal: number, ctx: DiscountContext = {}) {
@@ -125,8 +130,8 @@ export async function validateDiscountCode(fastify: FastifyInstance, code: strin
   if (discount.scope === 'STORE' && ctx.groupBuyId) throw { statusCode: 400, message: 'This code cannot be used on Group Buy orders' };
   if (discount.boundEmail) {
     const email = ctx.email?.trim().toLowerCase();
-    if (!email) throw { statusCode: 400, message: 'This code belongs to one email address: enter it above, then apply the code' };
-    if (email !== discount.boundEmail.toLowerCase()) throw { statusCode: 400, message: 'This code belongs to a different email address' };
+    if (!email && !ctx.operatorTaken) throw { statusCode: 400, message: 'This code belongs to one email address: enter it above, then apply the code' };
+    if (email && email !== discount.boundEmail.toLowerCase()) throw { statusCode: 400, message: 'This code belongs to a different email address' };
   }
   // An affiliate's code: programme on, affiliate active, not their own order.
   const affiliate = await checkAffiliateCode(fastify.prisma, discount.id, { email: ctx.email, phone: ctx.phone });
@@ -144,4 +149,27 @@ export async function validateDiscountCode(fastify: FastifyInstance, code: strin
   }
 
   return { discount, discountAmount, affiliate };
+}
+
+// Takes one use of a code inside the order's transaction, atomically, so
+// concurrent orders can't push a capped code past maxUses (the read-based check
+// in validateDiscountCode is racy on its own).
+export async function reserveDiscountUse(
+  tx: Prisma.TransactionClient,
+  discount: { id: string; maxUses: number | null }
+) {
+  if (discount.maxUses != null) {
+    const reserved = await tx.discountCode.updateMany({
+      where: { id: discount.id, usedCount: { lt: discount.maxUses } },
+      data: { usedCount: { increment: 1 } },
+    });
+    if (reserved.count === 0) {
+      throw { statusCode: 400, message: 'This discount code has reached its usage limit' };
+    }
+  } else {
+    await tx.discountCode.update({
+      where: { id: discount.id },
+      data: { usedCount: { increment: 1 } },
+    });
+  }
 }

@@ -720,6 +720,78 @@ await check('create_order (full lifecycle, rolled back)', async () => {
   }
 });
 
+await check('discount code on a manual order', async () => {
+  const variant = await prisma.productVariant.findFirstOrThrow({
+    where: { active: true, stock: { gt: 3 }, price: { gt: 2000 }, product: { active: true } },
+  });
+  const stockBefore = variant.stock;
+  const stamp = Date.now().toString(36).toUpperCase();
+  const bound = await prisma.discountCode.create({
+    data: { code: `AUDITBOUND${stamp}`, discountType: 'PERCENTAGE', discountValue: 5, maxUses: 1, boundEmail: 'owner@example.test' },
+  });
+  const plain = await prisma.discountCode.create({
+    data: { code: `AUDITPLAIN${stamp}`, discountType: 'FIXED_AMOUNT', discountValue: 1000 },
+  });
+  const buyer = {
+    customerName: 'Agent Audit Customer', phone: '0123456789', address: '1 Audit Street',
+    city: 'Shah Alam', state: 'Selangor', postcode: '40000', paymentMethod: 'WHATSAPP',
+    items: [{ code: variant.code, quantity: 1 }],
+  };
+  const orderNumbers: string[] = [];
+  const place = async (input: any) => {
+    const res: any = await run('create_order', { ...buyer, ...input });
+    orderNumbers.push(res.orderNumber);
+    return res;
+  };
+  const refusal = (p: Promise<unknown>) => p.then(() => '', (e: any) => e?.message ?? String(e));
+  const usedCount = async (id: string) => (await prisma.discountCode.findUniqueOrThrow({ where: { id } })).usedCount;
+
+  try {
+    // The preview names the code, and a code tied to one email needs no email here.
+    const preview = await getTool('create_order')!.summarize!(ctx, { ...buyer, discountCode: bound.code.toLowerCase() });
+    assert(preview.includes(`code ${bound.code}`) && !preview.includes('REJECTED'), `preview: ${preview}`);
+
+    const placed = await place({ discountCode: bound.code.toLowerCase() });
+    assert(placed.discountCode === bound.code, `result names ${placed.discountCode}`);
+    const stored = await prisma.order.findFirstOrThrow({ where: { orderNumber: placed.orderNumber } });
+    assert(stored.discountCodeId === bound.id, 'code not recorded on the order');
+    assert(stored.discountAmount === Math.round(stored.subtotal * 0.05), `discount ${stored.discountAmount}`);
+    assert((await usedCount(bound.id)) === 1, 'code not marked used');
+
+    // Single use, and an email that is given must match.
+    assert(/usage limit/.test(await refusal(place({ discountCode: bound.code }))), 'used code accepted again');
+    await prisma.discountCode.update({ where: { id: bound.id }, data: { usedCount: 0 } });
+    assert(/different email/.test(await refusal(place({ discountCode: bound.code, email: 'someone@example.test' }))), 'wrong email accepted');
+    await prisma.discountCode.update({ where: { id: bound.id }, data: { usedCount: 1 } });
+
+    // Cancelling gives the code back.
+    await run('update_order', { orderRef: placed.orderNumber, status: 'CANCELLED' });
+    assert((await usedCount(bound.id)) === 0, 'cancelling did not release the code');
+
+    // A code that came after the order, on top of a hand discount.
+    const later = await place({ discountRm: 5, discountNote: 'audit' });
+    const withCode: any = await run('set_order_discount', { orderRef: later.orderNumber, discountCode: plain.code });
+    assert(withCode.discountCode === plain.code, `result names ${withCode.discountCode}`);
+    assert(withCode.discountAmount.cents === 1500, `stacked discount ${withCode.discountAmount.cents}`);
+    assert(withCode.total.cents === later.total.cents - 1000, 'total did not move by the code');
+    assert((await usedCount(plain.id)) === 1, 'late code not marked used');
+    assert(/already used/.test(await refusal(run('set_order_discount', { orderRef: later.orderNumber, discountCode: plain.code }))), 'second code accepted');
+    assert((await usedCount(plain.id)) === 1, 'refused code still took a use');
+
+    // A cancelled order cannot take a code: nothing would ever release it.
+    const dropped = await place({});
+    await run('update_order', { orderRef: dropped.orderNumber, status: 'CANCELLED' });
+    assert(/cancelled/.test(await refusal(run('set_order_discount', { orderRef: dropped.orderNumber, discountCode: plain.code }))), 'code added to a cancelled order');
+    return `bound code with no email recorded and used, refused twice, released on cancel; late code stacked with a hand discount`;
+  } finally {
+    const orders = await prisma.order.findMany({ where: { orderNumber: { in: orderNumbers } }, select: { id: true } });
+    await prisma.emailOutbox.deleteMany({ where: { orderId: { in: orders.map((o) => o.id) } } });
+    await prisma.order.deleteMany({ where: { orderNumber: { in: orderNumbers } } });
+    await prisma.discountCode.deleteMany({ where: { id: { in: [bound.id, plain.id] } } });
+    await prisma.productVariant.update({ where: { id: variant.id }, data: { stock: stockBefore } });
+  }
+});
+
 await check('create_order refuses to oversell', async () => {
   const v = await prisma.productVariant.findFirstOrThrow({ where: { active: true, product: { active: true } } });
   try {

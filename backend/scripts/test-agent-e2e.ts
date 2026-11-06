@@ -793,6 +793,45 @@ await scenario('"mark everything shipping to delivered" moves every shipped orde
   };
 });
 
+await scenario('a discount code on a pasted manual order is recorded and used', async () => {
+  await reset();
+  const variant = await prisma.productVariant.findFirst({
+    where: { active: true, stock: { gt: 3 }, price: { gt: 2000 }, product: { active: true } },
+  });
+  if (!variant) return { ok: false, detail: 'no suitable variant in dev db' };
+  const code = await prisma.discountCode.create({
+    data: {
+      code: `WELCOME-E2E${Date.now().toString(36).toUpperCase()}`, discountType: 'PERCENTAGE', discountValue: 5,
+      maxUses: 1, boundEmail: 'owner@example.test',
+    },
+  });
+  const started = new Date();
+  let r = await send(
+    `new order\nName: Aisyah Audit\nPhone: 0123456001\nAddress: 1 Jalan Ujian, 40000 Shah Alam, Selangor\n1x ${variant.code}\nDiscount code used: ${code.code}`
+  );
+  let order = null;
+  for (let i = 0; i < 3 && !order; i++) {
+    order = await prisma.order.findFirst({ where: { customerName: 'Aisyah Audit', createdAt: { gt: started } } });
+    if (!order) r = await send('yes');
+  }
+  const after = await prisma.discountCode.findUniqueOrThrow({ where: { id: code.id } });
+  const stock = variant.stock;
+  if (order) {
+    await prisma.emailOutbox.deleteMany({ where: { orderId: order.id } });
+    await prisma.order.delete({ where: { id: order.id } });
+    await prisma.productVariant.update({ where: { id: variant.id }, data: { stock } });
+  }
+  await prisma.discountCode.delete({ where: { id: code.id } });
+  const recorded = order?.discountCodeId === code.id && !order?.discountNote;
+  return {
+    ok: !!order && recorded && after.usedCount === 1 && order.discountAmount > 0,
+    detail: order
+      ? `order discount ${order.discountAmount}, code recorded: ${recorded}, used ${after.usedCount}`
+      : 'no order was created',
+    reply: r.reply,
+  };
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log('\n' + '='.repeat(70));
