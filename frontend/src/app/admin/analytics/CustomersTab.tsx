@@ -96,7 +96,7 @@ export function CustomersTab({ report }: { report: AnalyticsReport }) {
         </TableScroll>
       </Panel>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
         <Panel eyebrow="Chase now" title="Due to reorder" description="Past their usual gap. Names open WhatsApp." flush>
           <ContactTable rows={c.dueToReorder} expected empty="Nobody is due right now." />
         </Panel>
