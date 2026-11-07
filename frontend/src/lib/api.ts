@@ -244,8 +244,8 @@ export const adminUploadImage = (token: string, file: File, onProgress?: (percen
 };
 
 // Analytics
-export const adminGetAnalytics = (token: string, days?: number | 'all') =>
-  api.get('/api/v1/admin/dashboard/analytics', { headers: { Authorization: `Bearer ${token}` }, params: { days } }).then((r) => r.data);
+export const adminGetMonthlyAnalytics = (token: string, period: { from: string; to: string }) =>
+  api.get('/api/v1/admin/dashboard/analytics/monthly', { headers: { Authorization: `Bearer ${token}` }, params: period }).then((r) => r.data);
 
 // Discounts
 export const adminGetDiscounts = (token: string, params?: Record<string, string>) =>
