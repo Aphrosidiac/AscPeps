@@ -31,7 +31,7 @@ function WhatIf({ report }: { report: AnalyticsReport }) {
   const profit = revenue * ((baseMargin + marginPts) / 100) - f.monthlySpend - spend * 100;
 
   return (
-    <Panel eyebrow="Scenario" title="What if" description={`Starts from next month’s forecast at ${Math.round(baseMargin)}% margin and ${rm0(f.monthlySpend)} running costs.`}>
+    <Panel eyebrow="Scenario" title="What if" description={`Starts from next month’s forecast at ${Math.round(baseMargin)}% margin${f.monthlySpend > 0 ? ` and ${rm0(f.monthlySpend)} running costs` : ''}.`}>
       <div className="grid gap-6 lg:grid-cols-[1fr_260px]">
         <div className="space-y-4">
           <Slider label="Orders" value={ordersPct} min={-50} max={100} step={5} unit="%" onChange={setOrders} />
@@ -88,7 +88,7 @@ export function ForecastTab({ report }: { report: AnalyticsReport }) {
         title="Next 3 months"
         description={
           monthly?.backtest
-            ? `${monthly.methodLabel}, picked because it came closest when replayed over ${monthly.backtest.folds} past months: typically ${Math.round(monthly.backtest.typicalMissPct)}% off, against ${Math.round(monthly.backtest.naiveMissPct)}% for simply repeating last month.${monthly.backtest.typicalMissPct > 50 ? ' Months have been too uneven to forecast closely, so read this as rough.' : ''}`
+            ? `${monthly.method === 'last' ? `${monthly.methodLabel}. No other method beat it` : `${monthly.methodLabel}, picked because it came closest`} over ${monthly.backtest.folds} past months: typically ${Math.round(monthly.backtest.typicalMissPct)}% off${monthly.method === 'last' ? '' : `, against ${Math.round(monthly.backtest.naiveMissPct)}% for simply repeating last month`}.${monthly.backtest.typicalMissPct > 50 ? ' Months have been too uneven to forecast closely, so read this as rough.' : ''}`
             : `${monthly?.methodLabel ?? 'No method yet'}. Not enough months to test accuracy yet, so the range is deliberately wide.`
         }
         flush
@@ -112,8 +112,8 @@ export function ForecastTab({ report }: { report: AnalyticsReport }) {
       </Panel>
 
       <Stats>
-        <Stat label="Break-even" value={f.breakEven ? rm0(f.breakEven.revenue) : '—'} note={f.breakEven ? `${f.breakEven.orders} orders a month` : 'Needs costed orders'} />
-        <Stat label="Running costs" value={rm0(f.monthlySpend)} note="Monthly, last 3 months" />
+        <Stat label="Break-even" value={f.breakEven && f.monthlySpend > 0 ? rm0(f.breakEven.revenue) : '—'} note={f.monthlySpend === 0 ? 'Needs running costs recorded' : f.breakEven ? `${f.breakEven.orders} orders a month` : 'Needs costed orders'} />
+        <Stat label="Running costs" value={f.monthlySpend > 0 ? rm0(f.monthlySpend) : '—'} note={f.monthlySpend > 0 ? 'Monthly, last 3 months' : 'None recorded, last 3 months'} />
         <Stat label="Margin" value={f.marginPct === null ? '—' : `${Math.round(f.marginPct)}%`} note="Costed orders, 90 days" />
         <Stat label="Average order" value={rm0(f.avgOrder)} note={`${Math.round(f.ordersPerMonth)} orders a month`} />
       </Stats>
