@@ -261,6 +261,26 @@ test('a repeat customer past their own gap is due to reorder', () => {
   assert.equal(r.customers.dueToReorder[0].basis, 'own');
 });
 
+test('a second order in the same period is returning revenue, even from a new customer', () => {
+  const m = report([
+    order('2026-10-02T04:00:00Z', { total: 10_000 }),
+    order('2026-10-20T04:00:00Z', { total: 30_000 }),
+    order('2026-10-21T04:00:00Z', { phone: '0177777777', total: 20_000 }),
+  ]).months[1];
+  assert.equal(m.customers.buyers, 2);
+  assert.equal(m.customers.newBuyers, 2);
+  assert.equal(m.customers.returningBuyers, 1);
+  assert.equal(m.customers.newRevenue, 30_000);
+  assert.equal(m.customers.returningRevenue, 30_000);
+  assert.equal(m.customers.returningSharePct, 50);
+});
+
+test('a fully refunded order does not count as a buyer', () => {
+  const m = report([order('2026-10-02T04:00:00Z', { paymentStatus: 'REFUNDED', refundedAmount: 10_000 })]).months[1];
+  assert.equal(m.customers.buyers, 0);
+  assert.equal(m.orders.paid, 1);
+});
+
 console.log('products and stock');
 
 test('ABC: the product that crosses 80% is still an A', () => {

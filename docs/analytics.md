@@ -21,6 +21,8 @@ revenue, and what is not costed is shown, never estimated into profit.
   gateway fees and affiliate commission. **Net** then takes off operating expenses.
   Stock bought is an INVENTORY expense, so it is shown but is not a cost until sold.
 - A customer is a normalised phone number. A repeat order the same day is not a gap.
+- New and returning revenue is judged per order: a customer's first ever order is new,
+  every order after it is returning, even in the same period.
 - A running month is compared with the same number of days of the month before. A
   whole calendar month is compared with the month before it. Any other period is
   compared with the same number of days immediately before it.

@@ -10,6 +10,7 @@ import { Change, Chip, Label, Meter, Panel, PillButton, Quiet, Stat, Stats, Tabl
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PAYMENT_LABELS: Record<string, string> = { BILLPLZ: 'Online', billplz: 'Billplz', toyyibpay: 'ToyyibPay', WHATSAPP: 'WhatsApp', CRYPTO: 'Bitcoin', btcpay: 'Bitcoin' };
+const FAILURE_LABELS: Record<string, string> = { NO_ATTEMPT: 'Never tried to pay', DECLINED: 'Declined by the bank', ABANDONED_MID_PAYMENT: 'Left during payment' };
 const TYPE_LABELS: Record<string, string> = { ORDER: 'Regular orders', PRE_ORDER: 'Pre-orders', GROUP_BUY: 'Group Buy' };
 /** Past a quarter a bar a day stops being readable, so the chart turns monthly. */
 const MAX_DAILY_DAYS = 100;
@@ -356,7 +357,7 @@ export function OverviewTab({ report, m, onOpenMonth, onForecast }: { report: An
           {m.failureReasons.length > 0 && (
             <ul className="mt-4 space-y-1 border-t border-border pt-3 text-[13px] leading-[18px] text-text-secondary">
               {m.failureReasons.map((f) => (
-                <li key={f.reason} className="flex justify-between gap-3"><span className="min-w-0 truncate">{f.reason}</span><span className="shrink-0 tabular-nums">{f.count}</span></li>
+                <li key={f.reason} className="flex justify-between gap-3"><span className="min-w-0 truncate">{FAILURE_LABELS[f.reason] ?? f.reason}</span><span className="shrink-0 tabular-nums">{f.count}</span></li>
               ))}
             </ul>
           )}

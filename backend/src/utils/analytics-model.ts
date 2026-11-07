@@ -486,7 +486,10 @@ function buildPeriod(spec: PeriodSpec, rows: readonly Row[], previous: readonly 
     profit: 0,
   }));
   const products = new Map<string, MonthProduct & { costedRevenue: number; lineCost: number }>();
-  const buyers = new Map<string, { name: string; orders: number; revenue: number; isNew: boolean }>();
+  const buyers = new Map<string, { name: string; orders: number; revenue: number; isNew: boolean; repeated: boolean }>();
+  // Per order, not per customer: a customer's second order in the same period
+  // is repeat business, or a long period would read as nearly all new.
+  let newRevenue = 0;
   const payments = new Map<string, Slice & { fees: number; failed: number }>();
   const orderTypes = new Map<string, Slice>();
   const codes = new Map<string, Slice & { amount: number }>();
@@ -546,11 +549,15 @@ function buildPeriod(spec: PeriodSpec, rows: readonly Row[], previous: readonly 
     if (o.discountAmount > 0) bump(codes, o.discountCode?.code ?? 'Keyed by hand', c.revenue, { amount: 0 }).amount += o.discountAmount;
     if (o.affiliate) bump(affiliates, o.affiliate.fullName, c.revenue, { commission: 0 }).commission += c.affiliateCommission;
 
-    const buyer = buyers.get(r.customer) ?? { name: o.customerName, orders: 0, revenue: 0, isNew: false };
-    buyer.orders++;
-    buyer.revenue += c.revenue;
-    buyer.isNew = buyer.isNew || r.firstPurchase;
-    buyers.set(r.customer, buyer);
+    if (r.bought) {
+      const buyer = buyers.get(r.customer) ?? { name: o.customerName, orders: 0, revenue: 0, isNew: false, repeated: false };
+      buyer.orders++;
+      buyer.revenue += c.revenue;
+      buyer.isNew = buyer.isNew || r.firstPurchase;
+      buyer.repeated = buyer.repeated || !r.firstPurchase;
+      buyers.set(r.customer, buyer);
+      if (r.firstPurchase) newRevenue += c.revenue;
+    }
 
     if (o.status === 'SHIPPED' || o.status === 'DELIVERED') shipped++;
     if (o.status === 'DELIVERED') delivered++;
@@ -644,7 +651,6 @@ function buildPeriod(spec: PeriodSpec, rows: readonly Row[], previous: readonly 
 
   const buyerList = [...buyers.entries()];
   const newBuyers = buyerList.filter(([, b]) => b.isNew);
-  const newRevenue = newBuyers.reduce((s, [, b]) => s + b.revenue, 0);
 
   const prior = windowOf(previous, spec.compareTo);
   const marginPct = pnl.costedRevenue > 0 ? pct(pnl.contribution, pnl.costedRevenue) : null;
@@ -691,7 +697,7 @@ function buildPeriod(spec: PeriodSpec, rows: readonly Row[], previous: readonly 
     customers: {
       buyers: buyers.size,
       newBuyers: newBuyers.length,
-      returningBuyers: buyers.size - newBuyers.length,
+      returningBuyers: buyerList.filter(([, b]) => b.repeated).length,
       newRevenue,
       returningRevenue: revenue - newRevenue,
       returningSharePct: pct(revenue - newRevenue, revenue),
