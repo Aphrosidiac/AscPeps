@@ -17,6 +17,7 @@ import {
 import { FitBox } from './AuthShowcase';
 import { Field, Notice, useAffHref } from './aff-ui';
 import { BANKS } from './banks';
+import { SharingRule } from './SharingNotice';
 
 /**
  * Onboarding (Fakhrul, 2026-11-03): the moment someone signs in without being
@@ -33,7 +34,7 @@ export const TERMS = [
   'If an order is refunded or cancelled, its commission is taken back — even after it was paid out.',
   'Commission waits in a short hold after the order is paid, so refunds land first. After that you can ask for a payout any time.',
   'Your own orders never earn commission.',
-  'Share honestly: no medical claims, no spam, no posting the code on coupon sites. We may pause a code that breaks this.',
+  'Share honestly: no medical claims, no spam. We may pause a code that breaks these rules.',
 ];
 
 type StepId = 'email' | 'you' | 'code' | 'payouts' | 'review';
@@ -256,7 +257,7 @@ export function JoinWizard({ member, programme, onJoined }: { member: Member; pr
           {step === 'review' ? (
             <>
               <h1 id="ob-h" className="aff-auth-h st-title fg !text-[30px] !leading-[36px]">Check and send</h1>
-              <dl className="mt-5 grid gap-2.5 text-[14px]">
+              <dl className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-2.5 text-[14px]">
                 {(
                   [
                     ['You', `${fullName.trim()} · ${phone.trim()}`, 'you'],
@@ -266,7 +267,7 @@ export function JoinWizard({ member, programme, onJoined }: { member: Member; pr
                 ).map(([k, v, id]) => (
                   <div key={k} className="flex items-center gap-3 rounded-[16px] px-4 py-3" style={{ background: 'var(--st-field)' }}>
                     <dt className="w-[72px] shrink-0 fg-3">{k}</dt>
-                    <dd className="min-w-0 flex-1 truncate font-medium fg">{v}</dd>
+                    <dd className="min-w-0 flex-1 font-medium [overflow-wrap:anywhere] fg">{v}</dd>
                     <button type="button" className="shrink-0 text-[13px] fg-2 underline underline-offset-4" onClick={() => goTo(id)}>Edit</button>
                   </div>
                 ))}
@@ -282,9 +283,10 @@ export function JoinWizard({ member, programme, onJoined }: { member: Member; pr
                   ))}
                 </ul>
               </details>
+              <SharingRule />
               <label className="mt-4 flex cursor-pointer items-start gap-3">
                 <input type="checkbox" className="mt-1 h-4 w-4 accent-[var(--st-solid)]" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-                <span className="text-[14px] leading-[20px] fg-2">I&apos;ve read how it works and I agree.</span>
+                <span className="text-[14px] leading-[20px] fg-2">I&apos;ve read all of this and I agree.</span>
               </label>
             </>
           ) : null}
@@ -296,7 +298,7 @@ export function JoinWizard({ member, programme, onJoined }: { member: Member; pr
           </div>
         ) : null}
 
-        <div className="mt-6 flex items-center gap-2">
+        <div className="mt-6 flex flex-wrap items-center gap-2">
           {at > 0 ? (
             <button type="button" className="btn btn-ghost" onClick={back} disabled={busy}>
               <ArrowLeft className="h-4 w-4" aria-hidden /> Back
@@ -307,7 +309,7 @@ export function JoinWizard({ member, programme, onJoined }: { member: Member; pr
             {step !== 'email' && problem[step] && problem[step] !== 'Checking…' ? problem[step] : ''}
           </p>
           {step === 'review' ? (
-            <button type="button" className="btn btn-ink h-12 px-7" disabled={busy || !!problem.review || !!problem.you || !!problem.code} onClick={submit}>
+            <button type="button" className="btn btn-ink h-12 w-full px-7 sm:w-auto" disabled={busy || !!problem.review || !!problem.you || !!problem.code} onClick={submit}>
               {busy ? 'Sending…' : 'Send my application'}
             </button>
           ) : step === 'email' ? null : (

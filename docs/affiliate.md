@@ -240,7 +240,8 @@ Locally: `http://affiliate.localhost:3399`.
 | Signed out | A six-slide showcase beside Sign in / Create account, fitted to one screen on any 16:9 window (below). Three true facts under the form |
 | Join (onboarding) | A step-by-step wizard (`Onboarding.tsx`) straight after sign-in: confirm email (only if needed; "I've confirmed it" re-checks) → about you → code (suggested, shuffle, live availability) → payouts (bank, or skip for now) → review + agree to the terms. A dark panel beside it previews what each step makes, live; the reason Continue is off shows beside it |
 | Waiting | In the queue: sent → reviewed → live → sharing; their code (changeable until approved), WhatsApp and bank; the Guide is open to read meanwhile |
-| First visit after approval | A spotlight tour (`Tour.tsx`) over Overview: balance, code, each tab, the Guide — once per affiliate per browser (`ascend-aff-tour:<id>`); **Take the tour** in the account menu (`/?tour=1`) replays it |
+| Overview | Balance and code. A **Keep Ascend out of public posts** banner sits at the top; closed (`ascend-aff-sharing-notice:<id>`, per affiliate, per browser), it becomes one line under the copy buttons that can't be closed (`SharingNotice.tsx`) |
+| First visit after approval | A spotlight tour (`Tour.tsx`) over Overview: balance, code, each tab, the Guide — once per affiliate per browser (`ascend-aff-tour:<id>`); **Take the tour** in the account menu (`/?tour=1`) replays it. Its second stop is the big red **Keep Ascend out of public posts** warning: Skip and Escape land on it, and only **I understand** gets past it. Anyone who finished the tour without it gets that stop alone, once per browser, on their next Overview visit (`ascend-aff-warning:<id>`) |
 | Overview | Balance and **Ask for a payout**; earned / waiting for payment / paid; their code and share link (copy buttons, with a hint on how to use them); latest orders; **Back to Store** |
 | Products | Every size the code works on (the store's own list and sale prices), best sellers first: price, what the customer pays with the code, what one sale earns and what N sales earn (1, 5, 10, 25, 50 or any number), search, and a copy link to each product's page with the code |
 | Orders | Order number, date, status, goods, commission — **never who bought** |
@@ -496,6 +497,7 @@ Fakhrul's calls during the build, so nobody undoes them as a "cleanup":
 |---|---|
 | Ascend kit colours, not ASC's lavender; grey canvas under white panels | It is Ascend's programme; the first pass blended into the page |
 | Keep the **pill mark** and the **round** shapes | His call over the Rising lockup and a boxier look |
+| Affiliates may talk about any product publicly, but Ascend's name, their code and their link go out by DM or private sharing only | Ascend doesn't want to go viral. A rule, not a system check: shown on Overview, on the join step above the agree box, in the first-login tour, and in Guide → Rules, and a code that breaks it can be paused by hand |
 | Codes are initials + 4 digits | Affiliates don't want their name on every post; still easy to type |
 | Details change only by request, one at a time, latest wins | A payout must never go to an account the team hasn't seen |
 | Products page sorted best-sellers first | Affiliates should push what already sells |

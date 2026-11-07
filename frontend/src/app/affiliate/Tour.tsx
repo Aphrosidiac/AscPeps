@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, TriangleAlert, X } from 'lucide-react';
 
 /**
  * The first look after approval: a spotlight over the real dashboard, one
@@ -9,22 +9,35 @@ import { ArrowLeft, ArrowRight, X } from 'lucide-react';
  * per affiliate on this browser (on Overview), and again from the account
  * menu's "Take the tour" (/?tour=1). Targets are marked with data-tour; the
  * visible one is used, so it works with the phone's second row of tabs too.
+ *
+ * The second stop is the rule about keeping Ascend out of public posts. It is
+ * the one stop that can't be skipped: Skip or Escape on the welcome lands on
+ * it, and only "I understand" gets past it. Anyone who finished the tour before
+ * that stop existed gets it once on its own (`ascend-aff-warning:<id>`).
  */
 
 interface Stop {
   target: string | null;
   title: string;
   body: string;
+  warning?: boolean;
 }
 
 const PAD = 8;
 const doneKey = (id: string) => `ascend-aff-tour:${id}`;
+const warnedKey = (id: string) => `ascend-aff-warning:${id}`;
 
 export function Tour({ affiliateId, firstName, discountPct, commission, path }: { affiliateId: string; firstName: string; discountPct: number; commission: string; path: string }) {
   const stops: Stop[] = [
     { target: null, title: `Welcome, ${firstName} — you’re live`, body: 'Your code works at checkout from now on. Here’s a quick look at where everything is.' },
+    {
+      target: null,
+      warning: true,
+      title: 'Keep Ascend out of public posts',
+      body: 'Talk about any product publicly, but never mention Ascend, your code or your link in a post, bio, comment or public group. Those go out by DM or private sharing only.',
+    },
     { target: 'balance', title: 'Available now', body: 'What you can ask for today. New commission waits in a short hold first, then lands here.' },
-    { target: 'code', title: 'Your code and link', body: `Copy either one and share it. Your people get ${discountPct}% off; you earn ${commission} of what they pay.` },
+    { target: 'code', title: 'Your code and link', body: `Copy either one and send it by DM or share it privately. Never mention Ascend, your code or your link publicly. Your people get ${discountPct}% off; you earn ${commission} of what they pay.` },
     { target: 'tab:/products', title: 'Products', body: 'Every product with what it earns you — and a link for each one.' },
     { target: 'tab:/orders', title: 'Orders', body: 'Every order made with your code and what it earned. Never who bought it.' },
     { target: 'tab:/payouts', title: 'Payouts', body: 'Your payouts, and every change to your balance.' },
@@ -34,6 +47,9 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
 
   const [on, setOn] = useState(false);
   const [i, setI] = useState(0);
+  const [understood, setUnderstood] = useState(false);
+  // Only the warning, for someone who has already had the tour.
+  const [warningOnly, setWarningOnly] = useState(false);
   // The target's box, kept with the target it belongs to.
   const [box, setBox] = useState<{ target: string; rect: DOMRect } | null>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -43,20 +59,23 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
     if (path !== '/') return;
     let asked = false;
     let seen = true;
+    let warned = true;
     try {
       asked = new URLSearchParams(window.location.search).get('tour') === '1';
       seen = localStorage.getItem(doneKey(affiliateId)) === '1';
+      warned = localStorage.getItem(warnedKey(affiliateId)) === '1';
     } catch {
       /* storage blocked: no tour rather than one every visit */
     }
-    if (!asked && seen) return;
-    const t = setTimeout(() => (setI(0), setOn(true)), 600);
+    if (!asked && seen && warned) return;
+    const onlyWarn = !asked && seen;
+    const t = setTimeout(() => (setWarningOnly(onlyWarn), setI(onlyWarn ? 1 : 0), setOn(true)), 600);
     return () => clearTimeout(t);
   }, [path, affiliateId]);
 
   // "Take the tour" while already on Overview (the URL change alone wouldn't re-run the above).
   useEffect(() => {
-    const start = () => path === '/' && (setI(0), setOn(true));
+    const start = () => path === '/' && (setWarningOnly(false), setI(0), setOn(true));
     window.addEventListener('ascend-aff-tour', start);
     return () => window.removeEventListener('ascend-aff-tour', start);
   }, [path]);
@@ -75,7 +94,20 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
     }
   }, [affiliateId]);
 
+  // Leaving early still goes through the warning.
+  const leave = useCallback(() => (understood ? finish() : setI(1)), [understood, finish]);
+
+  const understand = () => {
+    setUnderstood(true);
+    try {
+      localStorage.setItem(warnedKey(affiliateId), '1');
+    } catch {
+      /* they may see it again */
+    }
+  };
+
   const stop = stops[i];
+  const warning = !!stop.warning;
 
   // Find the visible target, bring it into view, and follow it.
   useLayoutEffect(() => {
@@ -109,13 +141,13 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
     if (!on) return;
     nextRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') finish();
-      if (e.key === 'ArrowRight') setI((n) => Math.min(n + 1, stops.length - 1));
-      if (e.key === 'ArrowLeft') setI((n) => Math.max(n - 1, 0));
+      if (e.key === 'Escape' && !warning) leave();
+      if (e.key === 'ArrowRight' && !warning) setI((n) => Math.min(n + 1, stops.length - 1));
+      if (e.key === 'ArrowLeft' && !warningOnly) setI((n) => Math.max(n - 1, 0));
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [on, i, finish, stops.length]);
+  }, [on, i, warning, warningOnly, leave, stops.length]);
 
   if (!on) return null;
   // Target not measured yet (a frame): just the dim, so the card doesn't flash in the middle.
@@ -140,7 +172,7 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
     else cardStyle = { bottom: 16, left: centred, width: W };
   } else {
     // Centred by layout (the wrapper below), not by a transform the card's fade-in would override.
-    cardStyle = { width: Math.min(420, window.innerWidth - 32) };
+    cardStyle = { width: Math.min(warning ? 480 : 420, window.innerWidth - 32), ...(warning ? { boxShadow: '0 0 0 3px var(--st-bad), var(--st-shadow-pop)' } : null) };
   }
 
   return (
@@ -166,29 +198,54 @@ export function Tour({ affiliateId, firstName, discountPct, commission, path }: 
         <div key={i} className={`aff-tour-card pop p-5 ${rect ? 'fixed' : 'relative'}`} style={cardStyle}>
           <div className="flex items-start justify-between gap-3">
             <p className="text-[12px] font-medium fg-3 tnum">
-              {i === 0 ? 'Quick tour' : `${i} of ${stops.length - 1}`}
+              {warningOnly ? 'New rule' : i === 0 ? 'Quick tour' : `${i} of ${stops.length - 1}`}
             </p>
-            <button type="button" onClick={finish} aria-label="Skip the tour" className="-mr-1 -mt-1 rounded-full p-1 fg-3 hover:fg">
-              <X className="h-4 w-4" aria-hidden />
-            </button>
+            {warning ? null : (
+              <button type="button" onClick={leave} aria-label="Skip the tour" className="-mr-1 -mt-1 rounded-full p-1 fg-3 hover:fg">
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            )}
           </div>
-          <h2 id="tour-title" className="st-h fg mt-1">{stop.title}</h2>
-          <p className="mt-1.5 text-[14px] leading-[21px] fg-2">{stop.body}</p>
+          {warning ? (
+            <>
+              <span className="mt-3 grid h-14 w-14 place-items-center rounded-full" style={{ background: 'var(--st-bad-soft)', color: 'var(--st-bad)' }}>
+                <TriangleAlert className="h-7 w-7" strokeWidth={2} aria-hidden />
+              </span>
+              <p className="mt-4 text-[14px] leading-5 font-semibold" style={{ color: 'var(--st-bad)' }}>The most important rule</p>
+              <h2 id="tour-title" className="mt-1 text-[28px] leading-[34px] font-bold tracking-[-0.01em]" style={{ color: 'var(--st-bad)' }}>{stop.title}</h2>
+              <p className="mt-3 text-[16px] leading-6 font-medium fg">{stop.body}</p>
+              <p className="mt-4 rounded-[14px] px-4 py-3 text-[14px] leading-5 font-semibold" style={{ background: 'var(--st-bad-soft)', color: 'var(--st-bad)' }}>We may pause your code if you break this.</p>
+            </>
+          ) : (
+            <>
+              <h2 id="tour-title" className="st-h fg mt-1">{stop.title}</h2>
+              <p className="mt-1.5 text-[14px] leading-[21px] fg-2">{stop.body}</p>
+            </>
+          )}
           <div className="mt-5 flex items-center gap-2">
-            {i > 0 ? (
+            {warningOnly ? null : i > 0 ? (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setI(i - 1)}>
                 <ArrowLeft className="h-4 w-4" aria-hidden /> Back
               </button>
             ) : (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={finish}>Skip</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={leave}>Skip</button>
             )}
             <div className="flex flex-1 justify-center gap-1" aria-hidden>
-              {stops.slice(1).map((_, n) => (
+              {warningOnly ? null : stops.slice(1).map((_, n) => (
                 <span key={n} className="h-1.5 w-1.5 rounded-full" style={{ background: n + 1 <= i ? 'var(--st-solid)' : 'var(--st-hair)' }} />
               ))}
             </div>
-            <button ref={nextRef} type="button" className="btn btn-ink btn-sm" onClick={() => (last ? finish() : setI(i + 1))}>
-              {i === 0 ? 'Show me' : last ? 'Done' : 'Next'} {last ? null : <ArrowRight className="h-4 w-4" aria-hidden />}
+            <button
+              ref={nextRef}
+              type="button"
+              className="btn btn-ink btn-sm"
+              onClick={() => {
+                if (warning) understand();
+                if (last || warningOnly) finish();
+                else setI(i + 1);
+              }}
+            >
+              {i === 0 ? 'Show me' : warning ? 'I understand' : last ? 'Done' : 'Next'} {last || warning ? null : <ArrowRight className="h-4 w-4" aria-hidden />}
             </button>
           </div>
         </div>

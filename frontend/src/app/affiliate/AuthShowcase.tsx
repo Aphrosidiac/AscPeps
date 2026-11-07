@@ -90,7 +90,7 @@ export function AuthShowcase({ programme, onJoin }: { programme: Programme | nul
         {
           key: 'link',
           title: 'One link does the work.',
-          sub: 'Share it anywhere. It remembers your code for 30 days and offers it at checkout in one tap.',
+          sub: 'Send it by DM or share it privately. It remembers your code for 30 days and offers it at checkout in one tap.',
           visual: <LinkVisual />,
         },
         {

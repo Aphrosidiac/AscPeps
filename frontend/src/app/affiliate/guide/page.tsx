@@ -13,6 +13,7 @@ import {
   Landmark,
   Link2,
   Lock,
+  MessageCircle,
   PauseCircle,
   Share2,
   ShoppingBag,
@@ -28,8 +29,8 @@ import { PageHead, STATE_TONE, rm, useAff, useAffHref, useStoreOrigin } from '..
  * The affiliate guide (affiliate.ascendpeptides.my/guide): everything about
  * how the programme works, one section at a time — a tab per topic, linkable
  * as /guide#payouts. Every number comes from the affiliate's own account and
- * the live programme settings, and every rule is one the system enforces
- * (docs/affiliate.md) — nothing here promises more than the code does.
+ * the live programme settings, and every rule but keeping Ascend out of public
+ * posts is one the system enforces (docs/affiliate.md) — nothing here promises more than the code does.
  */
 
 const SECTIONS = [
@@ -214,7 +215,7 @@ function useNumbers() {
 function Start() {
   const { d, rate, hold, earn } = useNumbers();
   const steps = [
-    { icon: Share2, title: 'You share', text: 'Your code or your link, anywhere you like.' },
+    { icon: Share2, title: 'You share', text: 'Your code or your link, by DM or private sharing.' },
     { icon: ShoppingBag, title: 'They buy', text: `${d}% off their order with your code.` },
     { icon: BadgeCheck, title: 'Order is paid', text: 'Your commission is counted.' },
     { icon: CircleDollarSign, title: 'You earn', text: `${rate} of what they paid for the goods.` },
@@ -617,10 +618,11 @@ function Rules() {
   const { d } = useNumbers();
   return (
     <>
-      <H id="rules" lead="A few rules keep the programme fair. Each one is built into the system, so there are no surprises.">
+      <H id="rules" lead="A few rules keep the programme fair, so there are no surprises.">
         Rules
       </H>
       <Points>
+        <Point icon={MessageCircle} title="Keep Ascend out of public posts">Talk about any product publicly, but never mention Ascend, your code or your link in a post, bio, comment or public group, or on a coupon site. Those go out by DM or private sharing only. We may pause a code that breaks this.</Point>
         <Point icon={UserX} title="Your code isn't for your own orders">
           It’s refused when the order has your email or phone number — including versions of them, like name+shop@gmail.com or a number written
           with +60.

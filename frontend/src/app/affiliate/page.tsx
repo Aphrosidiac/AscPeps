@@ -6,6 +6,7 @@ import { ArrowUpRight, BookOpen } from 'lucide-react';
 import { getMyAffiliateOrders, STATE_LABEL, type AffiliateOrder } from '@/lib/affiliate-api';
 import { CopyButton, PageHead, STATE_TONE, rm, useAff, useAffHref, useStoreOrigin, when } from './aff-ui';
 import { PayoutButton } from './PayoutButton';
+import { SharingBanner, SharingLine } from './SharingNotice';
 
 export default function AffiliateOverview() {
   const { data } = useAff();
@@ -50,6 +51,8 @@ export default function AffiliateOverview() {
         }
       />
 
+      <SharingBanner affiliateId={a.id} />
+
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         {/* Balance and the one action that matters. */}
         <section className="panel p-6 sm:p-8" aria-labelledby="bal-h" data-tour="balance">
@@ -92,6 +95,7 @@ export default function AffiliateOverview() {
             <CopyButton text={a.code} label="Copy code" className="btn btn-ink btn-sm" />
             <CopyButton text={link} label="Copy link" />
           </div>
+          <SharingLine affiliateId={a.id} />
           <div className="mt-6 rounded-[18px] px-4 py-3" style={{ background: 'var(--st-field)' }}>
             <p className="st-label">Your link</p>
             <p className="mt-1 break-all text-[13px] leading-[19px] fg">{link}</p>
