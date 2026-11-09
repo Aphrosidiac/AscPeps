@@ -399,6 +399,10 @@ await check('set_order_items qty / add / remove, stock follows', async () => {
     orderBy: { createdAt: 'asc' },
   });
   const first = o.items[0];
+  // Give the line headroom: at 0 stock a pre-order size takes the +1 as a
+  // pre-order (no stock moves), which is right but not what this checks.
+  const firstStockReal = (await prisma.productVariant.findUniqueOrThrow({ where: { id: first.variantId }, select: { stock: true } })).stock;
+  await prisma.productVariant.update({ where: { id: first.variantId }, data: { stock: { increment: 5 } } });
   const extra = await prisma.productVariant.findFirstOrThrow({
     where: { active: true, product: { active: true }, stock: { gt: 3 }, id: { notIn: o.items.map((i) => i.variantId) } },
   });
@@ -453,7 +457,7 @@ await check('set_order_items qty / add / remove, stock follows', async () => {
       await tx.orderItem.deleteMany({ where: { orderId: o.id } });
       await tx.orderItem.createMany({ data: linesBefore.map((l) => ({ ...l, orderId: o.id })) });
       await tx.order.update({ where: { id: o.id }, data: before });
-      await tx.productVariant.update({ where: { id: first.variantId }, data: { stock: firstStock0 } });
+      await tx.productVariant.update({ where: { id: first.variantId }, data: { stock: firstStockReal } });
       await tx.productVariant.update({ where: { id: extra.id }, data: { stock: extraStock0 } });
     });
   }
@@ -792,8 +796,12 @@ await check('discount code on a manual order', async () => {
   }
 });
 
-await check('create_order refuses to oversell', async () => {
-  const v = await prisma.productVariant.findFirstOrThrow({ where: { active: true, product: { active: true } } });
+await check('create_order refuses to oversell a size closed to pre-order', async () => {
+  // Only a size that does NOT allow pre-order can be oversold; a pre-order
+  // size books the shortfall as a pre-order (next check).
+  const v = await prisma.productVariant.findFirstOrThrow({ where: { active: true, product: { active: true }, stock: { lt: 50 } } });
+  const orig = { preorder: v.preorder };
+  await prisma.productVariant.update({ where: { id: v.id }, data: { preorder: false } });
   try {
     await run('create_order', {
       customerName: 'Agent Audit Customer',
@@ -802,13 +810,56 @@ await check('create_order refuses to oversell', async () => {
       city: 'Shah Alam',
       state: 'Selangor',
       postcode: '40000',
-      items: [{ code: v.code, quantity: v.stock + 500 }],
+      items: [{ code: v.code, quantity: v.stock + 1 }],
     });
   } catch (e: any) {
-    assert(/left in stock/i.test(e.message), `wrong error: ${e.message}`);
-    return 'refused an order larger than available stock';
+    assert(/insufficient stock/i.test(e.message) && /not open for pre-order/.test(e.message) && /Do not change the stock/.test(e.message), `wrong error: ${e.message}`);
+    return 'refused, and told not to work around it with stock';
+  } finally {
+    await prisma.productVariant.update({ where: { id: v.id }, data: orig });
   }
   throw new Error('allowed an order exceeding stock');
+});
+
+await check('create_order books a pre-order at 0 stock (postcode from the address)', async () => {
+  const v = await prisma.productVariant.findFirst({ where: { active: true, preorder: true, product: { active: true } } });
+  if (!v) return 'skipped (no pre-order size in this database)';
+  const stock0 = v.stock;
+  await prisma.productVariant.update({ where: { id: v.id }, data: { stock: 0 } });
+  const t = getTool('create_order')!;
+  // One-line address with the postcode inside it, and no postcode field —
+  // how operators paste a customer's details.
+  const input = {
+    customerName: 'Agent Audit Customer',
+    phone: '0123456789',
+    address: '16-4-4, Winner Court B, Jalan 2/125, W.P. Kuala Lumpur, 57100, W.P. Kuala Lumpur',
+    city: 'Kuala Lumpur',
+    state: 'W.P. Kuala Lumpur',
+    items: [{ code: v.code, quantity: 1 }],
+  };
+  let orderNumber: string | undefined;
+  try {
+    const card = await t.summarize!(ctx, input);
+    assert(/PRE-ORDER/.test(card) && /takes no stock/.test(card) && /postcode 57100/.test(card), `card: ${card}`);
+    exercised.add('create_order');
+    const res: any = unwrap(await t.run(ctx, input));
+    orderNumber = res.orderNumber;
+    const o = await prisma.order.findFirstOrThrow({ where: { orderNumber }, include: { items: true } });
+    assert(o.isPreorder && res.orderType === 'PRE_ORDER', 'not flagged as a pre-order');
+    assert(o.postcode === '57100', `postcode ${o.postcode}`);
+    assert(o.items.some((i) => i.variantId === v.id && i.preorderQty === 1), 'line has no preorderQty');
+    assert((await prisma.productVariant.findUniqueOrThrow({ where: { id: v.id } })).stock === 0, 'a pre-order took stock');
+    return `${orderNumber} booked as PRE_ORDER, stock untouched, postcode read from the address`;
+  } finally {
+    if (orderNumber) {
+      const stray = await prisma.order.findFirst({ where: { orderNumber } });
+      if (stray) {
+        await prisma.emailOutbox.deleteMany({ where: { orderId: stray.id } });
+        await prisma.order.delete({ where: { id: stray.id } });
+      }
+    }
+    await prisma.productVariant.update({ where: { id: v.id }, data: { stock: stock0 } });
+  }
 });
 
 await check('create_order rejects an unknown product', async () => {

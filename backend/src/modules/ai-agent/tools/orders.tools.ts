@@ -207,11 +207,10 @@ async function priceOrderPreview(prisma: any, input: any) {
         `No active product matches "${raw.code ?? raw.variantId}". Use search_products to find the right size and pass its variantId or code.`
       );
     }
-    if (variant.stock < quantity) {
-      throw new Error(
-        `Only ${variant.stock} of ${variant.product.name} ${variant.size ?? ''} (${variant.code}) left in stock — ${quantity} requested.`
-      );
-    }
+    // No stock check here: resolveOrderLines below decides, the same way
+    // checkout does. A size that allows pre-order is never short — what stock
+    // covers is taken and the rest becomes a pre-order; any other size short
+    // of stock is refused there.
 
     resolved.push({
       variantId: variant.id,
@@ -231,7 +230,11 @@ async function priceOrderPreview(prisma: any, input: any) {
       preorder: await getPreorderSettings(prisma),
     });
   } catch (err) {
-    if (err instanceof OrderLineError) throw new Error(err.message);
+    if (err instanceof OrderLineError) {
+      throw new Error(
+        `${err.message}. That size is not open for pre-order, so the order can only take what is in stock. Do not change the stock to get around this — tell the operator.`
+      );
+    }
     throw err;
   }
   // preorderQty > 0: that many units are bought beyond stock and ship on the restock.
@@ -247,7 +250,31 @@ async function priceOrderPreview(prisma: any, input: any) {
     ? 0
     : Math.round(parseFloat(shippingSetting?.value ?? '0') * 100) || 0;
 
-  return { lines, autoAdded, subtotal, shippingFee };
+  const preorder = await getPreorderSettings(prisma);
+  return { lines, autoAdded, subtotal, shippingFee, preorderLeadTime: preorder.leadTime };
+}
+
+// The postcode as the operator gave it, or picked out of the address when they
+// pasted it in one line ("16-4-4 Winner Court B, Jalan 2/125, KL, 57100, W.P.
+// Kuala Lumpur"). Malaysian postcodes are exactly five digits; the LAST
+// standalone five-digit run is taken, so a unit number earlier in the line
+// can't win. Throws only when there is genuinely none to find.
+export function postcodeOf(input: { postcode?: unknown; address?: unknown; city?: unknown; state?: unknown }): string {
+  const given = String(input.postcode ?? '').replace(/\s+/g, '');
+  if (/^\d{5}$/.test(given)) return given;
+  const text = [input.address, input.city, input.state, input.postcode].map((v) => String(v ?? '')).join(', ');
+  const found = text.match(/(?<![\d-])\d{5}(?![\d-])/g);
+  if (found?.length) return found[found.length - 1];
+  throw new Error('No postcode in the address — ask the operator for the 5-digit postcode.');
+}
+
+// "1x Retatrutide 30mg (RT30) RM 310.00 — PRE-ORDER, ships in 10–14 days" for
+// the confirmation card, so a pre-order can't be approved as a from-stock sale.
+function lineText(l: { quantity: number; name: string; code: string; unitPrice: number; preorderQty?: number }, leadTime: string) {
+  const base = `${l.quantity}x ${l.name} (${l.code}) ${rm(l.unitPrice * l.quantity)}`;
+  if (!l.preorderQty) return base;
+  const fromStock = l.quantity - l.preorderQty;
+  return `${base} — PRE-ORDER${fromStock ? ` for ${l.preorderQty} of them (${fromStock} from stock)` : ''}, ships in ${leadTime}`;
 }
 
 // The operator's words ("RM10 off", "15%") into the shared manual-discount
@@ -322,7 +349,7 @@ export const orderTools: AgentTool[] = [
   {
     name: 'create_order',
     description:
-      'Create an order on a customer\'s behalf — for a sale agreed over WhatsApp or in person. Prices, stock and required add-ons are all taken from the database; never pass a price. Resolve products with search_products first and pass each variant\'s id or SKU code. This reduces stock immediately and, if an email is given and store emails are on, sends the customer a real order confirmation, so it always asks you to confirm first.',
+      'Create an order or a PRE-ORDER on a customer\'s behalf — for a sale agreed over WhatsApp or in person. Prices, stock and required add-ons are all taken from the database; never pass a price. Resolve products with search_products first and pass each variant\'s id or SKU code. Pre-orders need nothing extra: a size at 0 (or short) stock that allows pre-order is booked automatically — what stock covers is taken, the rest is pre-ordered and ships on the restock, and the order lands in the Pre-orders tab, exactly like a store checkout. Never change stock to make an order go through. If an email is given and store emails are on, it sends the customer a real order confirmation, so it always asks you to confirm first.',
     write: true,
     destructive: true,
     input_schema: {
@@ -334,7 +361,7 @@ export const orderTools: AgentTool[] = [
         address: { type: 'string', description: 'Street address.' },
         city: { type: 'string' },
         state: { type: 'string' },
-        postcode: { type: 'string' },
+        postcode: { type: 'string', description: '5 digits. Leave out if it is already in the address — it is picked out of it.' },
         items: {
           type: 'array',
           description: 'One entry per product size. Required add-ons are added automatically — do not list them yourself.',
@@ -360,10 +387,11 @@ export const orderTools: AgentTool[] = [
         discountNote: { type: 'string', description: 'Why the discount was given, for the books: "bulk order", "loyalty", "replaced leaked vial". Short.' },
         notes: { type: 'string' },
       },
-      required: ['customerName', 'phone', 'address', 'city', 'state', 'postcode', 'items'],
+      required: ['customerName', 'phone', 'address', 'city', 'state', 'items'],
     },
     summarize: async ({ fastify, prisma }, input) => {
-      const { lines, autoAdded, subtotal, shippingFee } = await priceOrderPreview(prisma, input);
+      const postcode = postcodeOf(input);
+      const { lines, autoAdded, subtotal, shippingFee, preorderLeadTime } = await priceOrderPreview(prisma, input);
 
       let discountAmount = 0;
       let codeText = '';
@@ -394,14 +422,18 @@ export const orderTools: AgentTool[] = [
       const method = isOnline
         ? `online payment via ${gatewayLabel(await activeGatewayName(prisma))}`
         : 'WhatsApp / manual bank transfer';
-      const itemText = lines.map((l) => `${l.quantity}x ${l.name} (${l.code}) ${rm(l.unitPrice * l.quantity)}`).join('; ');
+      const itemText = lines.map((l) => lineText(l, preorderLeadTime)).join('; ');
+      const isPreorder = lines.some((l) => l.preorderQty);
+      const stockText = isPreorder
+        ? (lines.some((l) => l.quantity - (l.preorderQty ?? 0) > 0) ? 'This is a PRE-ORDER (Pre-orders tab): it takes only the units in stock' : 'This is a PRE-ORDER (Pre-orders tab): it takes no stock')
+        : 'This takes the stock immediately';
 
       return [
-        `create an order for ${input.customerName} (${input.phone}) — ${itemText}`,
+        `create ${isPreorder ? 'a PRE-ORDER' : 'an order'} for ${input.customerName} (${input.phone}), postcode ${postcode} — ${itemText}`,
         autoAdded.length ? `with what comes included: ${autoAdded.map((a) => `${a.quantity}x ${a.name}`).join(', ')}` : '',
         `subtotal ${rm(subtotal)} + shipping ${rm(shippingFee)}${codeText}${manualText} = *${rm(total)}*${discountNote}`,
         `paid by ${method}`,
-        `This takes the stock immediately${input.email ? ` and emails an order confirmation to ${input.email}` : ' (no email given, so no confirmation will be sent)'}`,
+        `${stockText}${input.email ? ` and emails an order confirmation to ${input.email}` : ' (no email given, so no confirmation will be sent)'}`,
       ]
         .filter(Boolean)
         .join('. ');
@@ -422,7 +454,7 @@ export const orderTools: AgentTool[] = [
         address: input.address,
         city: input.city,
         state: input.state,
-        postcode: input.postcode,
+        postcode: postcodeOf(input),
         // BILLPLZ is the stored enum for "paid online", whatever the gateway.
         paymentMethod: input.paymentMethod === 'ONLINE' || input.paymentMethod === 'BILLPLZ' ? 'BILLPLZ' : 'WHATSAPP',
         discountCode: input.discountCode || undefined,
@@ -437,6 +469,7 @@ export const orderTools: AgentTool[] = [
       return {
         orderNumber: order.orderNumber,
         orderId: order.id,
+        orderType: orderType(order),
         customer: order.customerName,
         phone: order.phone,
         status: order.status,
@@ -453,7 +486,9 @@ export const orderTools: AgentTool[] = [
         note:
           order.paymentMethod === 'BILLPLZ'
             ? `${gatewayLabel(gateway)} bill created — send the customer the paymentUrl. The order stays UNPAID until they pay and the gateway confirms.`
-            : 'Stock has been taken. The order stays UNPAID until someone confirms the transfer arrived and marks it paid.',
+            : order.isPreorder
+              ? 'Booked as a PRE-ORDER (Pre-orders tab) — pre-ordered units took no stock and ship on the restock. The order stays UNPAID until someone confirms the transfer arrived and marks it paid.'
+              : 'Stock has been taken. The order stays UNPAID until someone confirms the transfer arrived and marks it paid.',
       };
     },
   },
