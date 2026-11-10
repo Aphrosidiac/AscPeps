@@ -80,6 +80,28 @@ await check('update_variant (price in RM)', async () => {
   return 'RM 88.88 -> 8888 cents, restored';
 });
 
+await check('update_variant preorder off/on (and "false" as a string)', async () => {
+  const v = await prisma.productVariant.findFirstOrThrow();
+  const before = v.preorder;
+  await run('update_variant', { variantId: v.id, preorder: 'false' });
+  const off = await prisma.productVariant.findUniqueOrThrow({ where: { id: v.id } });
+  assert(off.preorder === false, `expected preorder false, got ${off.preorder}`);
+  assert(off.active === v.active && off.stock === v.stock, 'preorder change touched active or stock');
+  await run('update_variant', { variantId: v.id, preorder: true });
+  const on = await prisma.productVariant.findUniqueOrThrow({ where: { id: v.id } });
+  assert(on.preorder === true, 'preorder did not turn back on');
+  await prisma.productVariant.update({ where: { id: v.id }, data: { preorder: before } });
+  return 'off -> on, active/stock untouched, restored';
+});
+
+await check('update_variant names a field it does not take', async () => {
+  const v = await prisma.productVariant.findFirstOrThrow();
+  let msg = '';
+  try { await run('update_variant', { variantId: v.id, preOrder: false }); } catch (e: any) { msg = e.message; }
+  assert(/does not take preOrder/.test(msg) && /preorder/.test(msg), `expected a named-field refusal, got "${msg}"`);
+  return msg;
+});
+
 await check('adjust_stock (relative)', async () => {
   const v = await prisma.productVariant.findFirstOrThrow();
   const before = v.stock;

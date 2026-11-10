@@ -22,8 +22,25 @@ function variantView(v: any) {
     effectivePrice: money(getEffectivePrice(v)),
     stock: v.stock,
     active: v.active,
+    // Whether this size can be bought past its stock (a pre-order) — only
+    // while the store-wide `preorder_enabled` setting is on too. Without it in
+    // the view Abby could not see why a 0-stock size still sells.
+    preorder: v.preorder,
   };
 }
+
+// Models send booleans as "false" now and then (GLM did for preorder on
+// 11 Nov). Read the obvious strings rather than let `"false"` count as true.
+function bool(v: unknown): boolean | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  if (['true', 'yes', 'on', '1'].includes(s)) return true;
+  if (['false', 'no', 'off', '0'].includes(s)) return false;
+  throw new Error(`Expected true or false, got "${v}".`);
+}
+
+const VARIANT_FIELDS = ['variantId', 'priceRm', 'stock', 'size', 'imageUrl', 'active', 'preorder'];
 
 export const catalogTools: AgentTool[] = [
   {
@@ -210,7 +227,7 @@ export const catalogTools: AgentTool[] = [
   {
     name: 'update_variant',
     description:
-      'Change a single size/SKU: price, stock, size label, image, or active flag. Prices are in RINGGIT (e.g. 149.90). Use adjust_stock for relative stock changes and set_sale for sale pricing.',
+      'Change a single size/SKU: price, stock, size label, image, active flag, or whether it takes PRE-ORDERS. Prices are in RINGGIT (e.g. 149.90). "Stop pre-orders on X" / "X can\'t be pre-ordered" = preorder false on that size — it then shows sold out at 0 stock but stays listed; do not deactivate it and do not touch stock for that. preorder true opens it again. To stop pre-orders on the whole store use update_setting preorder_enabled. Use adjust_stock for relative stock changes and set_sale for sale pricing.',
     write: true,
     input_schema: {
       type: 'object',
@@ -220,17 +237,30 @@ export const catalogTools: AgentTool[] = [
         stock: { type: 'number', description: 'Absolute stock level. For "+10" style changes use adjust_stock.' },
         size: { type: 'string' },
         imageUrl: { type: 'string' },
-        active: { type: 'boolean' },
+        active: { type: 'boolean', description: 'false hides the size from the store completely. Not for "out of stock" or "no pre-orders".' },
+        preorder: {
+          type: 'boolean',
+          description: 'Whether this size can be bought past its stock as a pre-order. false = sold out at 0 stock, no pre-orders; true = pre-orders allowed (while the store-wide preorder_enabled is on).',
+        },
       },
       required: ['variantId'],
     },
     run: async ({ prisma, revalidate }, input) => {
+      // A field this tool does not take used to vanish into "Nothing to
+      // update", which Abby read as "I can't do this" (11 Nov, preorder).
+      const unknown = Object.keys(input).filter((k) => !VARIANT_FIELDS.includes(k));
+      if (unknown.length) {
+        throw new Error(`update_variant does not take ${unknown.join(', ')}. It takes: ${VARIANT_FIELDS.slice(1).join(', ')}.`);
+      }
       const data: any = {};
       if (input.priceRm !== undefined) data.price = toCents(input.priceRm);
       if (input.stock !== undefined) data.stock = Math.max(0, Math.trunc(input.stock));
       if (input.size !== undefined) data.size = input.size;
       if (input.imageUrl !== undefined) data.imageUrl = input.imageUrl;
-      if (input.active !== undefined) data.active = input.active;
+      const active = bool(input.active);
+      if (active !== undefined) data.active = active;
+      const preorder = bool(input.preorder);
+      if (preorder !== undefined) data.preorder = preorder;
       if (!Object.keys(data).length) throw new Error('Nothing to update — pass at least one field.');
 
       const before = await prisma.productVariant.findUnique({ where: { id: input.variantId } });

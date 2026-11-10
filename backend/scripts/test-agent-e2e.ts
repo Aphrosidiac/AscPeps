@@ -832,6 +832,27 @@ await scenario('a discount code on a pasted manual order is recorded and used', 
   };
 });
 
+// The Ascend MY group, 11 Nov 2026: "Can't pre order too" about a sold-out
+// size. Abby deactivated the size, put it back, then said only the dashboard
+// could do it — update_variant had no preorder field. The right move is the
+// size's preorder flag, leaving active and stock alone.
+await scenario('pre-order: "can\'t pre order" turns the size\'s preorder flag off, nothing else', async () => {
+  const v = await prisma.productVariant.findFirstOrThrow({ where: { code: 'BAC10' }, include: { product: true } });
+  const saved = { stock: v.stock, preorder: v.preorder, active: v.active };
+  await prisma.productVariant.update({ where: { id: v.id }, data: { stock: 0, preorder: true, active: true } });
+  try {
+    const r = await send(`${v.product.name} ${v.size} (BAC10) is out of stock now. It can't be pre-ordered either, it's just sold out.`);
+    const after = await prisma.productVariant.findUniqueOrThrow({ where: { id: v.id } });
+    return {
+      ok: after.preorder === false && after.active === true && after.stock === 0,
+      detail: `preorder ${after.preorder}, active ${after.active}, stock ${after.stock}`,
+      reply: r.text,
+    };
+  } finally {
+    await prisma.productVariant.update({ where: { id: v.id }, data: saved });
+  }
+});
+
 // ---------------------------------------------------------------- summary
 
 console.log('\n' + '='.repeat(70));
