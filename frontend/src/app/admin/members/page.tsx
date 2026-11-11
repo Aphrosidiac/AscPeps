@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Search, Users } from 'lucide-react';
+import { Ban, ChevronLeft, ChevronRight, Download, Search, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { adminExportMembers, adminGetMembers, type AdminMemberRow } from '@/lib/api';
+import { adminBlockMember, adminExportMembers, adminGetMembers, apiError, type AdminMemberRow } from '@/lib/api';
 import { cn, formatDate, formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/admin/ui';
@@ -65,6 +65,20 @@ export default function AdminMembersPage() {
   const onSearch = (value: string) => {
     setSearch(value);
     setPage(1);
+  };
+
+  // Blocks the account AND everything its orders carry (phones, delivery
+  // addresses): see Blocked customers.
+  const block = async (m: AdminMemberRow) => {
+    if (!token) return;
+    const reason = window.prompt(`Block ${m.displayName} (${m.email})?\n\nThis bans the account and blocks its email plus every phone and delivery address on its orders. Reason, for the team:`);
+    if (reason === null) return;
+    try {
+      await adminBlockMember(token, m.id, reason || undefined);
+      load();
+    } catch (err) {
+      window.alert(apiError(err).message);
+    }
   };
 
   const onShow = (value: Show) => {
@@ -131,6 +145,7 @@ export default function AdminMembersPage() {
                 <th className="text-left px-4 py-3 font-medium text-text-secondary hidden lg:table-cell">Sign-up bonus</th>
                 <th className="text-right px-4 py-3 font-medium text-text-secondary hidden md:table-cell">Orders</th>
                 <th className="text-left px-4 py-3 font-medium text-text-secondary hidden sm:table-cell">Signed up</th>
+                <th className="px-3 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -172,6 +187,17 @@ export default function AdminMembersPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-text-secondary whitespace-nowrap hidden sm:table-cell">{formatDate(m.createdAt)}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
+                    {/* Shown for banned accounts too: a ban (from Comments) doesn't put
+                        their email, phones or addresses on the blocklist. */}
+                    <button
+                      type="button"
+                      onClick={() => block(m)}
+                      className="inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-xs text-text-secondary hover:bg-surface-elevated hover:text-danger cursor-pointer"
+                    >
+                      <Ban className="w-3.5 h-3.5" /> Block
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

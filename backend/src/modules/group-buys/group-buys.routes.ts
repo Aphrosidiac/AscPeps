@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getGroupBuy, getGroupBuyPromo, getMyGroupBuys, listGroupBuys, signupToGroupBuy } from './group-buys.controller.js';
+import { REFUSAL, identityFrom, screen } from '../../utils/blocklist.js';
 
 export default async function groupBuyRoutes(fastify: FastifyInstance) {
   fastify.get('/', async () => listGroupBuys(fastify));
@@ -15,7 +16,12 @@ export default async function groupBuyRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { slug: string } }>(
     '/:slug/signup',
-    { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } },
-    async (request) => signupToGroupBuy(fastify, request, request.params.slug)
+    { config: { rateLimit: { max: 6, timeWindow: '1 minute' }, blocklist: 'screen' } },
+    async (request) => {
+      if (await screen(fastify, request, 'group-buy', identityFrom(request.body))) {
+        throw { statusCode: 403, message: REFUSAL };
+      }
+      return signupToGroupBuy(fastify, request, request.params.slug);
+    }
   );
 }

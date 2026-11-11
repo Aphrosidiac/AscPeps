@@ -2533,3 +2533,85 @@ model GroupBuyNotice {
   @@index([groupBuyId])
   @@map("group_buy_notices")
 }
+
+// ---------------------------------------------------------------- Blocklist
+//
+// People the team has banned from buying, signing up or otherwise using the
+// store. A person is a bundle of identifiers — emails, phones, delivery
+// addresses and the networks they were seen on — and a hit on ANY of them
+// refuses the request and adds everything else in that request to the same
+// person (utils/blocklist.ts). So an abuser who comes back with a new email
+// from a known network, or a known phone from a new network, teaches the list
+// the new identifier as well.
+//
+// Banning the member account is separate (Member.banned) and still applies:
+// it signs them out everywhere. Blocking a person bans every account whose
+// email is on their list.
+
+enum BlockKind {
+  EMAIL
+  PHONE
+  ADDRESS
+  NETWORK
+}
+
+model BlockedCustomer {
+  id        String  @id @default(cuid())
+  name      String
+  reason    String?
+  createdBy String?
+
+  // Requests refused because of this person, and the latest.
+  hits      Int       @default(0)
+  lastHitAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries  BlockEntry[]
+  attempts BlockAttempt[]
+
+  @@map("blocked_customers")
+}
+
+model BlockEntry {
+  id                String    @id @default(cuid())
+  blockedCustomerId String
+  kind              BlockKind
+  // Matching key: mailbox() for an email (Gmail dots and +tags folded),
+  // subscriber() for a phone, letters+digits of address and postcode for an
+  // address, and the /64 (IPv6) or /32 (IPv4) for a network.
+  value             String
+  // What was typed or seen, for the admin to read.
+  display           String
+  // false = typed in by the team; true = learnt from a refused request.
+  auto              Boolean   @default(false)
+  // Networks learnt automatically expire (mobile and shared addresses get
+  // reassigned); a hit pushes the date back. Null = never.
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  blockedCustomer BlockedCustomer @relation(fields: [blockedCustomerId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, value])
+  @@index([blockedCustomerId])
+  @@map("block_entries")
+}
+
+// One refused request. Kept so the team can see what the person is trying.
+model BlockAttempt {
+  id                String   @id @default(cuid())
+  blockedCustomerId String
+  // e.g. "checkout", "register", "api" (any other call from a blocked network).
+  action            String
+  ip                String?
+  // Which identifiers matched, and which were learnt from this request.
+  matched           String[]
+  learnt            String[]
+  createdAt         DateTime @default(now())
+
+  blockedCustomer BlockedCustomer @relation(fields: [blockedCustomerId], references: [id], onDelete: Cascade)
+
+  @@index([blockedCustomerId, createdAt])
+  @@map("block_attempts")
+}

@@ -13,6 +13,7 @@ import {
   updateMyAffiliate,
 } from './affiliates.controller.js';
 import { requestChange, withdrawChange } from './affiliate-changes.js';
+import { REFUSAL, identityFrom, screen } from '../../utils/blocklist.js';
 
 /** affiliate.ascendpeptides.my's API. Signed in with the store account. */
 export default async function affiliateRoutes(fastify: FastifyInstance) {
@@ -32,8 +33,12 @@ export default async function affiliateRoutes(fastify: FastifyInstance) {
   // A payout goes to a real person: the email has to be confirmed first.
   fastify.post(
     '/join',
-    { preHandler: [fastify.authenticateMember, fastify.requireVerifiedMember], config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
-    async (request) => joinProgramme(fastify, request.member!, request.body)
+    { preHandler: [fastify.authenticateMember, fastify.requireVerifiedMember], config: { rateLimit: { max: 5, timeWindow: '10 minutes' }, blocklist: 'screen' } },
+    async (request) => {
+      const who = { ...identityFrom(request.body), email: request.member!.email };
+      if (await screen(fastify, request, 'affiliate-join', who)) throw { statusCode: 403, message: REFUSAL };
+      return joinProgramme(fastify, request.member!, request.body);
+    }
   );
 
   fastify.patch(

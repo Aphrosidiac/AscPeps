@@ -12,7 +12,9 @@ import {
   confirmEmailChange,
   forgotPassword,
   resetPassword,
+  REGISTER_RESPONSE,
 } from './members.controller.js';
+import { identityFrom, screen } from '../../utils/blocklist.js';
 
 export default async function memberRoutes(fastify: FastifyInstance) {
   // Tighter than the global 100/min limiter. Signup and the resend endpoint
@@ -20,14 +22,23 @@ export default async function memberRoutes(fastify: FastifyInstance) {
   // strictest buckets; login matches the admin login's 5/min.
   fastify.post(
     '/register',
-    { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } },
-    async (request) => register(fastify, request.body)
+    { config: { rateLimit: { max: 3, timeWindow: '10 minutes' }, blocklist: 'screen' } },
+    // Blocked: the same answer as any signup, and no account, no email.
+    async (request) =>
+      (await screen(fastify, request, 'register', identityFrom(request.body)))
+        ? REGISTER_RESPONSE
+        : register(fastify, request.body)
   );
 
   fastify.post(
     '/login',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
-    async (request) => login(fastify, request.body)
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, blocklist: 'screen' } },
+    async (request) => {
+      if (await screen(fastify, request, 'login', identityFrom(request.body))) {
+        throw { statusCode: 403, message: 'This account has been suspended.' };
+      }
+      return login(fastify, request.body);
+    }
   );
 
   fastify.post(
@@ -84,8 +95,11 @@ export default async function memberRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/forgot-password',
-    { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } },
-    async (request) => forgotPassword(fastify, request.body)
+    { config: { rateLimit: { max: 3, timeWindow: '10 minutes' }, blocklist: 'screen' } },
+    async (request) =>
+      (await screen(fastify, request, 'forgot-password', identityFrom(request.body)))
+        ? { success: true, message: 'If that email has an account, a reset link is on its way.' }
+        : forgotPassword(fastify, request.body)
   );
 
   fastify.post(

@@ -56,6 +56,7 @@ export const NAV: Entry[] = [
       ...(GROUP_BUY_ENABLED ? [{ href: '/admin/group-buys', label: 'Group Buys' }] : []),
       { href: '/admin/payments', label: 'Payments' },
       { href: '/admin/delivery', label: 'Delivery' },
+      { href: '/admin/blocked', label: 'Blocked customers' },
       { href: '/admin/emails', label: 'Order emails' },
       { href: '/admin/analytics', label: 'Analytics' },
     ],

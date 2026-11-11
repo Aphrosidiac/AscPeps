@@ -653,6 +653,63 @@ export const adminGetMembers = (token: string, params?: Record<string, string>) 
     }>('/api/v1/admin/members', { ...auth(token), params })
     .then((r) => r.data);
 
+// ---- Blocked customers (backend: admin-blocklist + utils/blocklist) ----
+
+export type BlockKind = 'EMAIL' | 'PHONE' | 'ADDRESS' | 'NETWORK';
+
+export interface BlockEntryRow {
+  id: string;
+  kind: BlockKind;
+  display: string;
+  auto: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface BlockAttemptRow {
+  id: string;
+  action: string;
+  ip: string | null;
+  matched: string[];
+  learnt: string[];
+  createdAt: string;
+}
+
+export interface BlockedCustomerRow {
+  id: string;
+  name: string;
+  reason: string | null;
+  createdBy: string | null;
+  hits: number;
+  lastHitAt: string | null;
+  createdAt: string;
+  entries: BlockEntryRow[];
+  attempts: BlockAttemptRow[];
+  _count: { attempts: number };
+}
+
+export const adminGetBlocked = (token: string) =>
+  api.get<BlockedCustomerRow[]>('/api/v1/admin/blocklist', auth(token)).then((r) => r.data);
+
+export const adminCreateBlocked = (
+  token: string,
+  body: { name: string; reason?: string; emails: string[]; phones: string[]; addresses: string[]; networks: string[] }
+) => api.post<{ id: string; taken: string[]; banned: number }>('/api/v1/admin/blocklist', body, auth(token)).then((r) => r.data);
+
+export const adminBlockMember = (token: string, memberId: string, reason?: string) =>
+  api
+    .post<{ id: string; taken: string[]; banned: number; added: number }>(`/api/v1/admin/blocklist/members/${memberId}`, { reason }, auth(token))
+    .then((r) => r.data);
+
+export const adminAddBlockEntry = (token: string, id: string, kind: BlockKind, value: string) =>
+  api.post(`/api/v1/admin/blocklist/${id}/entries`, { kind, value }, auth(token)).then((r) => r.data);
+
+export const adminRemoveBlockEntry = (token: string, entryId: string) =>
+  api.delete(`/api/v1/admin/blocklist/entries/${entryId}`, auth(token)).then((r) => r.data);
+
+export const adminDeleteBlocked = (token: string, id: string) =>
+  api.delete<{ ok: true; unbanned: number }>(`/api/v1/admin/blocklist/${id}`, auth(token)).then((r) => r.data);
+
 // Same object-URL download as adminExportSubscribers.
 export const adminExportMembers = (token: string, params?: Record<string, string>) =>
   api.get<Blob>('/api/v1/admin/members/export', { ...auth(token), params, responseType: 'blob' }).then((r) => {

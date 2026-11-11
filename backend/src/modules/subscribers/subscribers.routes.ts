@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { subscribe, unsubscribeByToken } from './subscribers.controller.js';
+import { identityFrom, screen } from '../../utils/blocklist.js';
 
 export default async function subscriberRoutes(fastify: FastifyInstance) {
   // Tighter than the global 100/min. Signing up costs us an outbound welcome
@@ -7,8 +8,10 @@ export default async function subscriberRoutes(fastify: FastifyInstance) {
   // members/register guards against, so it gets a comparable bucket.
   fastify.post(
     '/',
-    { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
-    async (request) => subscribe(fastify, request.body)
+    { config: { rateLimit: { max: 5, timeWindow: '10 minutes' }, blocklist: 'screen' } },
+    // Blocked: "subscribed", like the honeypot — nothing is stored.
+    async (request) =>
+      (await screen(fastify, request, 'newsletter', identityFrom(request.body))) ? { ok: true } : subscribe(fastify, request.body)
   );
 
   // GET because a human reaches it by clicking the footer link in an email.

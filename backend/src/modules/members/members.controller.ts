@@ -33,7 +33,7 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 // oracle for which addresses hold an account. The frontend copy is phrased
 // conditionally ("if that address isn't already registered...") so this
 // doesn't read as a broken promise when no mail arrives.
-const REGISTER_RESPONSE = {
+export const REGISTER_RESPONSE = {
   success: true,
   message: "Check your inbox — if that address isn't already registered, a confirmation link is on its way.",
 };

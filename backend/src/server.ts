@@ -41,6 +41,7 @@ import adminAffiliateRoutes from './modules/affiliates/admin-affiliates.routes.j
 import subscriberRoutes from './modules/subscribers/subscribers.routes.js';
 import adminSubscriberRoutes from './modules/admin/admin-subscribers.routes.js';
 import adminMemberRoutes from './modules/admin/admin-members.routes.js';
+import adminBlocklistRoutes from './modules/admin/admin-blocklist.routes.js';
 import adminCampaignRoutes from './modules/admin/admin-campaigns.routes.js';
 import adminGroupBuyRoutes from './modules/admin/admin-group-buys.routes.js';
 import groupBuyRoutes from './modules/group-buys/group-buys.routes.js';
@@ -70,6 +71,7 @@ import { processEmailOutbox } from './utils/email-worker.js';
 import { processWelcomeEmails, processCampaigns } from './utils/marketing-worker.js';
 import { sweepAbandonedCheckouts } from './utils/abandoned-checkout.js';
 import { processDueReminders } from './utils/reminder-sweep.js';
+import { registerBlocklistHook } from './utils/blocklist.js';
 import { sweepAffiliateNotices } from './utils/affiliate-sweep.js';
 
 const fastify = Fastify({
@@ -157,6 +159,8 @@ await fastify.register(prismaPlugin);
 await fastify.register(authPlugin);
 await fastify.register(manualPayPlugin);
 await fastify.register(errorHandler);
+// Blocked customers' networks: refuses their API calls (utils/blocklist.ts).
+registerBlocklistHook(fastify);
 
 fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
@@ -191,6 +195,7 @@ await fastify.register(adminAffiliateRoutes, { prefix: '/api/v1/admin/affiliates
 await fastify.register(affiliateRoutes, { prefix: '/api/v1/affiliate' });
 await fastify.register(adminSubscriberRoutes, { prefix: '/api/v1/admin/subscribers' });
 await fastify.register(adminMemberRoutes, { prefix: '/api/v1/admin/members' });
+await fastify.register(adminBlocklistRoutes, { prefix: '/api/v1/admin/blocklist' });
 await fastify.register(adminCampaignRoutes, { prefix: '/api/v1/admin/campaigns' });
 if (env.GROUP_BUY_ENABLED) {
   await fastify.register(adminGroupBuyRoutes, { prefix: '/api/v1/admin/group-buys' });

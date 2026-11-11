@@ -4,6 +4,7 @@ import { createOrder, lookupOrders } from './orders.controller.js';
 import { clientContext } from '../../utils/payment-trail.js';
 import { getReceiptData, getReceiptPdf } from './receipt.controller.js';
 import { validateDiscountCode } from '../admin/admin-discounts.controller.js';
+import { REFUSAL, identityFrom, screen } from '../../utils/blocklist.js';
 
 // Both identifiers are mandatory — the phone is the ownership proof for the
 // (guessable, sequential) order number.
@@ -25,8 +26,11 @@ const validateDiscountSchema = z.object({
 export default async function orderRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' }, blocklist: 'screen' } },
     async (request) => {
+      if (await screen(fastify, request, 'checkout', identityFrom(request.body))) {
+        throw { statusCode: 403, message: REFUSAL };
+      }
       return createOrder(fastify, request.body, {}, clientContext(request));
     }
   );
