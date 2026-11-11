@@ -7,6 +7,7 @@ import { generateReceiptPdf } from './receipt-pdf.js';
 import { renderOrderConfirmation } from '../emails/order-confirmation.js';
 import { renderPaymentReceipt } from '../emails/payment-receipt.js';
 import { renderAbandonedCheckout } from '../emails/abandoned-checkout.js';
+import { renderPreorderUpdate } from '../emails/preorder-update.js';
 import { parsePreorderSettings } from './preorder.js';
 
 const BATCH_SIZE = 10;
@@ -62,7 +63,10 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
     order.deletedAt !== null ||
     (row.type === 'ORDER_CONFIRMATION' && order.status === 'CANCELLED') ||
     (row.type === 'ABANDONED_CHECKOUT' &&
-      (order.status === 'CANCELLED' || order.paymentStatus !== 'UNPAID'));
+      (order.status === 'CANCELLED' || order.paymentStatus !== 'UNPAID')) ||
+    // "Ships within the week" is only true of a paid order still waiting.
+    (row.type === 'PREORDER_UPDATE' &&
+      (order.paymentStatus !== 'PAID' || !['PENDING', 'CONFIRMED'].includes(order.status)));
   if (ineligible) {
     await fastify.prisma.emailOutbox.update({
       where: { id: row.id },
@@ -89,6 +93,8 @@ async function processRow(fastify: FastifyInstance, row: EmailOutbox): Promise<v
       attachments = [{ filename: `receipt-${order.orderNumber}.pdf`, content: pdf }];
     } else if (row.type === 'ABANDONED_CHECKOUT') {
       ({ subject, html } = renderAbandonedCheckout(order, reconstructPaymentUrl(order), settings));
+    } else if (row.type === 'PREORDER_UPDATE') {
+      ({ subject, html } = renderPreorderUpdate(order, settings));
     } else {
       const paymentUrl =
         (order.paymentMethod === 'WHATSAPP' && order.paymentGateway !== 'manualpaygate') || order.paymentStatus === 'PAID'

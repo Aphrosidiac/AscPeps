@@ -121,7 +121,12 @@ export interface EmailOrder {
   groupBuy?: { number: number; title: string; shipEstimate: string | null } | null;
 }
 
-export const firstName = (name: string) => escapeHtml(name.trim().split(/\s+/)[0] || name);
+/** First word of the name; an all-caps name ("ZUL") is title-cased so the greeting doesn't shout. */
+export function firstName(name: string): string {
+  const first = name.trim().split(/\s+/)[0] || name;
+  const cased = first.length > 1 && first === first.toUpperCase() ? first[0] + first.slice(1).toLowerCase() : first;
+  return escapeHtml(cased);
+}
 
 /** "Order #ASC-1042 · 11 November 2026" */
 export function orderMeta(order: EmailOrder, extra?: string): string {
@@ -139,9 +144,9 @@ export function paymentMethodLabel(order: EmailOrder): string {
 // Building blocks. Each returns a self-contained chunk for the body cell.
 // ---------------------------------------------------------------------------
 
-export function paragraph(html: string, o: { size?: number; color?: string; mb?: number } = {}): string {
+export function paragraph(html: string, o: { size?: number; color?: string; mb?: number; mt?: number } = {}): string {
   return `
-          <p style="margin:0 0 ${o.mb ?? 16}px;font-family:${FONT};font-size:${o.size ?? 15}px;line-height:1.6;color:${o.color ?? TEXT};">${html}</p>`;
+          <p style="margin:${o.mt ?? 0}px 0 ${o.mb ?? 16}px;font-family:${FONT};font-size:${o.size ?? 15}px;line-height:1.6;color:${o.color ?? TEXT};">${html}</p>`;
 }
 
 /** Small grey note, usually under a button. */

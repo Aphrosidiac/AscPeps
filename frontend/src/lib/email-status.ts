@@ -2,9 +2,13 @@ import type { OrderEmail } from '@/types';
 
 // Shared between the admin Orders page (per-order Emails block) and the
 // admin Emails ops page — keep labels/status text identical in both.
-export const EMAIL_TYPE_LABELS: Record<OrderEmail['type'], string> = {
+// Keyed by string: the outbox also carries types the order page can't resend
+// (payment reminder, pre-order update), and the Emails list shows them all.
+export const EMAIL_TYPE_LABELS: Record<string, string> = {
   ORDER_CONFIRMATION: 'Confirmation',
   PAYMENT_RECEIPT: 'Receipt',
+  ABANDONED_CHECKOUT: 'Payment reminder',
+  PREORDER_UPDATE: 'Pre-order update',
 };
 
 export function emailStatusText(email?: OrderEmail): { text: string; className: string } {

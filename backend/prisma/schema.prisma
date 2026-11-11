@@ -481,6 +481,9 @@ enum EmailType {
   // because the (orderId, type) unique key is what makes "once" true — the
   // sweep that enqueues it runs every 10 minutes and would otherwise nag.
   ABANDONED_CHECKOUT
+  // A status note to a paid pre-order still waiting to ship ("on track, ships
+  // within the week"). Queued by scripts/send-preorder-update.ts; once per order.
+  PREORDER_UPDATE
 }
 
 enum EmailStatus {

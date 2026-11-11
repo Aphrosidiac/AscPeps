@@ -28,6 +28,7 @@ import { renderSignupBonusEmail, renderResetPasswordEmail, renderConfirmNewEmail
 import { renderCampaign, loadCampaignProducts } from '../src/emails/campaign.js';
 import { renderGroupBuySignup, renderGroupBuyStage } from '../src/emails/group-buy.js';
 import { DEFAULT_STAGES } from '../src/utils/group-buy.js';
+import { renderPreorderUpdate } from '../src/emails/preorder-update.js';
 import { renderAffiliateEmail, affiliateMailSamples } from '../src/emails/affiliate.js';
 
 // Same driver adapter the app uses (src/plugins/prisma.ts) — Prisma 7 has no
@@ -84,6 +85,7 @@ async function main() {
     ['payment-receipt', renderPaymentReceipt(order, order.updatedAt, settings)],
     ['order-confirmation-preorder', renderOrderConfirmation({ ...order, paymentStatus: 'UNPAID', isPreorder: true, preorderLead: '10–14 days', items: order.items.map((it, i) => (i === 0 ? { ...it, preorderQty: it.quantity } : it)) }, 'https://example.test/pay', settings)],
     ['order-confirmation-bank', renderOrderConfirmation({ ...order, paymentStatus: 'UNPAID', paymentMethod: 'WHATSAPP', paymentGateway: 'manualpaygate' }, 'https://example.test/pay', settings)],
+    ['preorder-update', renderPreorderUpdate({ ...order, paymentStatus: 'PAID', isPreorder: true, items: order.items.map((it, i) => (i === 0 ? { ...it, preorderQty: it.quantity } : it)) }, settings)],
     ['abandoned-checkout', renderAbandonedCheckout(order, 'https://example.test/pay', settings)],
     ['welcome', renderWelcome(discount, 'https://example.test/unsub', settings)],
     ['welcome-no-discount', renderWelcome(null, 'https://example.test/unsub', settings)],
