@@ -24,62 +24,16 @@ import { renderPaymentReceipt } from '../src/emails/payment-receipt.js';
 import { renderAbandonedCheckout } from '../src/emails/abandoned-checkout.js';
 import { renderWelcome } from '../src/emails/welcome.js';
 import { renderVerifyEmail } from '../src/emails/verify-email.js';
-import { renderSignupBonusEmail } from '../src/emails/account.js';
-import { renderCampaign } from '../src/emails/campaign.js';
+import { renderSignupBonusEmail, renderResetPasswordEmail, renderConfirmNewEmail, renderEmailChangedNotice } from '../src/emails/account.js';
+import { renderCampaign, loadCampaignProducts } from '../src/emails/campaign.js';
+import { renderGroupBuySignup, renderGroupBuyStage } from '../src/emails/group-buy.js';
+import { DEFAULT_STAGES } from '../src/utils/group-buy.js';
 import { renderAffiliateEmail, affiliateMailSamples } from '../src/emails/affiliate.js';
 
 // Same driver adapter the app uses (src/plugins/prisma.ts) — Prisma 7 has no
 // implicit datasource, so a bare `new PrismaClient()` throws here.
 const prisma = new PrismaClient({ adapter: new PrismaPg(process.env.DATABASE_URL!) });
 const outDir = path.resolve(process.argv[2] || 'email-preview');
-
-/**
- * The dark-mode trap, as a check rather than as a comment.
- *
- * An inline declaration marked !important outranks a stylesheet declaration
- * marked !important — no selector wins — so any element carrying a themeable
- * class AND an inline !important on the property that class re-colours simply
- * cannot be themed. It renders correctly in light mode and silently wrong in
- * dark, which is exactly the kind of bug that survives review: it shipped once
- * on the card background and again on the welcome email's two links, where the
- * result was near-black text on a near-black card.
- *
- * Keys are the classes the dark block in emails/layout.ts re-colours; values
- * are the property each one sets. Keep them in step.
- */
-const THEMED_PROPERTY: Record<string, string> = {
-  ink: 'color',
-  'body-text': 'color',
-  muted: 'color',
-  card: 'background-color',
-  'card-outer': 'background-color',
-  'page-bg': 'background-color',
-  'border-b': 'border-bottom-color',
-  eyebrow: 'border-bottom-color',
-  btn: 'background-color',
-  'btn-a': 'color',
-  'code-box': 'border-color',
-  'thumb-empty': 'background-color',
-};
-
-function darkModeBlockers(html: string): string[] {
-  const found = new Set<string>();
-  for (const m of html.matchAll(/<(\w+)([^>]*class="([^"]+)"[^>]*)>/g)) {
-    const style = /style="([^"]*)"/.exec(m[2])?.[1];
-    if (!style) continue;
-    for (const cls of m[3].split(/\s+/)) {
-      const prop = THEMED_PROPERTY[cls];
-      if (!prop) continue;
-      for (const decl of style.split(';')) {
-        const d = decl.trim();
-        if (d.startsWith(prop) && d.includes('!important')) {
-          found.add(`<${m[1]} class="${cls}"> has inline "${d}" — dark mode can never override it`);
-        }
-      }
-    }
-  }
-  return [...found];
-}
 
 const ORDER_INCLUDE = {
   items: { include: { variant: { select: { code: true, size: true, imageUrl: true, product: { select: { name: true } } } } } },
@@ -95,12 +49,14 @@ async function main() {
 
   // Prefer an order with several lines — a one-item order hides every alignment
   // problem the item table can have.
-  const order = await prisma.order.findFirst({
+  const found = await prisma.order.findFirst({
     where: { items: { some: {} } },
     include: ORDER_INCLUDE,
     orderBy: { items: { _count: 'desc' } },
   });
-  if (!order) throw new Error('no orders in this database — nothing to render');
+  if (!found) throw new Error('no orders in this database — nothing to render');
+  // Real lines and totals; a stand-in name and address so the preview reads like a customer's.
+  const order = { ...found, customerName: 'Aisyah Rahman', address: '12, Jalan Telawi 3, Bangsar Baru', city: 'Kuala Lumpur', state: 'W.P. Kuala Lumpur', postcode: '59100' };
 
   const withPhoto = order.items.filter((i) => i.variant.imageUrl).length;
   console.log(
@@ -115,16 +71,29 @@ async function main() {
     minOrderAmount: null,
   };
 
+  const day = 864e5;
+  const batch = { number: 3, slug: 'batch-03', title: 'Batch 03: Retatrutide and Tirzepatide', closesAt: new Date(Date.now() + 9 * day), shipEstimate: 'Week of 8 December' };
+  const stages = DEFAULT_STAGES.map((st, i) => ({ ...st, doneAt: i < 4 ? new Date(Date.now() - (4 - i) * 3 * day).toISOString() : null, eta: i === 4 ? 'Around 2 December' : null, note: i === 3 ? 'Tracking from the supplier shows it clearing customs on Friday.' : null }));
+  const productIds = (await prisma.product.findMany({ where: { active: true, variants: { some: { imageUrl: { not: null }, active: true } } }, select: { id: true }, take: 5, orderBy: { createdAt: 'desc' } })).map((p) => p.id);
+  const featured = await loadCampaignProducts(prisma, productIds);
+
   const pages: [string, { subject: string; html: string }][] = [
     ['order-confirmation', renderOrderConfirmation({ ...order, paymentStatus: 'UNPAID' }, 'https://example.test/pay', settings)],
     ['order-confirmation-whatsapp', renderOrderConfirmation({ ...order, paymentMethod: 'WHATSAPP' }, undefined, settings)],
     ['order-confirmation-paid', renderOrderConfirmation({ ...order, paymentStatus: 'PAID' }, undefined, settings)],
     ['payment-receipt', renderPaymentReceipt(order, order.updatedAt, settings)],
+    ['order-confirmation-preorder', renderOrderConfirmation({ ...order, paymentStatus: 'UNPAID', isPreorder: true, preorderLead: '10–14 days', items: order.items.map((it, i) => (i === 0 ? { ...it, preorderQty: it.quantity } : it)) }, 'https://example.test/pay', settings)],
+    ['order-confirmation-bank', renderOrderConfirmation({ ...order, paymentStatus: 'UNPAID', paymentMethod: 'WHATSAPP', paymentGateway: 'manualpaygate' }, 'https://example.test/pay', settings)],
     ['abandoned-checkout', renderAbandonedCheckout(order, 'https://example.test/pay', settings)],
     ['welcome', renderWelcome(discount, 'https://example.test/unsub', settings)],
     ['welcome-no-discount', renderWelcome(null, 'https://example.test/unsub', settings)],
     ['verify-email', renderVerifyEmail('Fakhrul', 'https://example.test/verify', settings)],
     ['verify-email-bonus', renderVerifyEmail('Fakhrul', 'https://example.test/verify', settings, 10)],
+    ['reset-password', renderResetPasswordEmail('Fakhrul', 'https://example.test/reset', settings)],
+    ['confirm-new-email', renderConfirmNewEmail('Fakhrul', 'fakhrul@example.com', 'https://example.test/confirm', settings)],
+    ['email-changed', renderEmailChangedNotice('Fakhrul', 'fakhrul@example.com', settings)],
+    ['group-buy-signup', renderGroupBuySignup(batch, 'Fakhrul Fahmi', { code: 'GB03-7KQ2', type: 'PERCENTAGE', value: 5, expiresAt: batch.closesAt, minOrderAmount: null, scope: 'GROUP_BUY' }, settings)],
+    ['group-buy-stage', renderGroupBuyStage(batch, stages, 'transit', { orderNumber: order.orderNumber, customerName: order.customerName, phone: '' }, settings)],
     ['signup-bonus', renderSignupBonusEmail('Fakhrul', 'WELCOME-9D5C7D', 10, 'https://example.test/products', settings)],
     [
       'campaign',
@@ -138,6 +107,23 @@ async function main() {
           ctaUrl: 'https://example.test/products/retatrutide',
         },
         { unsubscribeUrl: 'https://example.test/unsub', settings }
+      ),
+    ],
+    [
+      'campaign-products',
+      renderCampaign(
+        {
+          name: 'November restock',
+          subject: 'New stock this week',
+          preheader: null,
+          badge: 'Restock',
+          headline: 'New stock this week',
+          subhead: 'Five compounds back on the shelf.',
+          body: 'A fresh batch landed on Monday. Everything below ships the same day if you order before 3pm.',
+          ctaLabel: 'Shop all products',
+          ctaUrl: 'https://ascendpeptides.my/products',
+        },
+        { unsubscribeUrl: 'https://example.test/unsub', settings, products: featured }
       ),
     ],
     ...affiliateMailSamples().map(([name, mail]): [string, { subject: string; html: string }] => [
@@ -166,10 +152,6 @@ async function main() {
     const flag = bytes > 102_000 ? '  ** OVER GMAIL CLIP LIMIT **' : '';
     console.log(`${name.padEnd(30)} ${(bytes / 1024).toFixed(1).padStart(6)}KB   ${subject}${flag}`);
     if (bytes > 102_000) problems++;
-    for (const bad of darkModeBlockers(html)) {
-      console.log(`  !! ${bad}`);
-      problems++;
-    }
     await writeFile(path.join(outDir, `${name}.html`), html);
     index.push(
       `<li><a href="${name}.html">${name}</a> <span>${(bytes / 1024).toFixed(1)}KB</span><br><em>${subject}</em></li>`
@@ -186,7 +168,7 @@ async function main() {
     console.log(`\n${problems} problem(s) found — see the !! lines above.`);
     process.exitCode = 1;
   } else {
-    console.log('no dark-mode blockers, nothing over the Gmail clip limit.');
+    console.log('nothing over the Gmail clip limit.');
   }
 }
 

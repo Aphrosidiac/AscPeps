@@ -478,17 +478,15 @@ function EmailListTab({
   );
 }
 
-// Editable copy behind the templates — subjects, badge labels, the payment
+// Editable copy behind the templates — subjects, the payment
 // button label, and the WhatsApp payment-instructions sentence. Reuses the
 // generic Settings GET/PUT (adminGetSettings/adminUpdateSettings) the
 // automated-sending toggle above already uses — no dedicated endpoint.
 const EMAIL_CONTENT_FIELDS: { key: string; label: string; placeholder: string }[] = [
-  { key: 'email_subject_confirmation', label: 'Confirmation email subject', placeholder: 'Order {orderNumber} received — Ascend Peptides' },
+  { key: 'email_subject_confirmation', label: 'Confirmation email subject', placeholder: 'Order {orderNumber} received — Ascend MY' },
   { key: 'email_subject_receipt', label: 'Receipt email subject', placeholder: 'Receipt for order {orderNumber}' },
-  { key: 'email_badge_confirmation', label: 'Confirmation badge label', placeholder: 'ORDER CONFIRMED' },
-  { key: 'email_badge_receipt', label: 'Receipt badge label', placeholder: 'PAYMENT RECEIVED' },
-  { key: 'email_button_label', label: 'Payment button label', placeholder: 'COMPLETE PAYMENT' },
-  { key: 'email_whatsapp_instructions', label: 'WhatsApp payment instructions', placeholder: "Manual transfer via WhatsApp. Payment is completed through our WhatsApp chat — we'll confirm your order once it's received." },
+  { key: 'email_button_label', label: 'Payment button label', placeholder: 'Complete payment' },
+  { key: 'email_whatsapp_instructions', label: 'WhatsApp payment instructions', placeholder: "Payment is completed through our WhatsApp chat. We'll confirm your order once it's received." },
 ];
 
 function EmailContentSettings({ token, onSaved }: { token: string | null; onSaved: () => void }) {

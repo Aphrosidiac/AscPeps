@@ -1,70 +1,38 @@
-// Shared email chrome: table-based layout, inline CSS only (the lowest common
-// denominator email clients actually render — no flexbox, no CSS gradients).
+// Shared email chrome and building blocks.
 //
-// The visual language is the site's OG image (public/images/og-image.png),
-// carried over properly rather than gestured at: a near-black #0A0A0A hero
-// field with the constellation motif behind it, the two-tone headline (white
-// clause + muted clause, as in "Premium Research Peptides *in Malaysia*"), the
-// rounded trust-badge row, and a single green accent used only for status.
+// Tables and inline styles only: that is what Outlook's Word engine and the
+// Gmail app (which strips <style> for non-Google accounts) both render. The
+// <style> block below only adds refinements: webfonts and phone padding.
 //
-// Three things here are load-bearing and easy to break:
-//
-//   1. The hero is dark in BOTH colour schemes. That is the point of it — a
-//      dark panel has nothing for a force-inverting client (Gmail iOS, Outlook
-//      2021) to invert, so the most brand-defining part of the email is the
-//      part that cannot be mangled.
-//   2. Outfit ships via @font-face for the clients that support it (Apple Mail,
-//      iOS Mail, Gmail web on Chrome) and falls back to Helvetica/Arial
-//      everywhere else. The MSO conditional below is not optional: Outlook's
-//      Word engine, given a font-family it cannot resolve, falls back to Times
-//      New Roman rather than to the next entry in the stack.
-//   3. Product thumbnails point at `.email.jpg`, never the stored `.webp`.
-//      WebP is missing from older Outlook desktop builds and renders as a
-//      broken-image icon. See scripts/generate-email-thumbs.mjs.
+// Look: a slim ink header carrying the Rising lockup, a plain white body,
+// sentence-case headings, one ink button, and a quiet footer under the card.
+// The header is dark on purpose: clients that force-invert light mail leave a
+// dark band alone, so the white logo stays readable everywhere.
 
 import { env } from '../config/env.js';
 import { groupOrderItems, groupedLineTotal, includesText } from '../utils/order-lines.js';
 
 export const SITE_URL = 'https://ascendpeptides.my';
 
-// Where images are fetched FROM. Always SITE_URL in production; overridable in
-// local development so the admin's Template Preview does not fetch every asset
-// from the live site (see EMAIL_ASSET_BASE_URL in config/env.ts). Link hrefs
-// deliberately keep SITE_URL — a link in a preview should still point at the
-// real site, only the images need to be local.
+// Images load from here; links always point at SITE_URL. Overridable for local
+// previews (EMAIL_ASSET_BASE_URL in config/env.ts).
 const ASSETS = env.EMAIL_ASSET_BASE_URL?.replace(/\/$/, '') || SITE_URL;
 
-// Bump this when any email asset changes. The early test sends referenced these
-// exact URLs while the assets were still 404ing (pre-deploy) — some clients'
-// image loaders cache that miss by URL rather than re-checking, so a fixed
-// unversioned path can keep showing blank indefinitely even after the file is
-// fixed server-side. A version query string forces every client to treat it as
-// a URL it has never seen before.
-const ASSET_VERSION = 3;
+// Bump when an email asset changes: some clients cache images by URL.
+const ASSET_VERSION = 4;
 
-// One token per role. The "vibe-coded" tell is three near-identical greys and
-// two near-identical borders sprinkled at random; pick one of each and stick to
-// it. Values measured from og-image.png where they have an equivalent there.
-export const INK = '#0A0A0A'; // headlines, strong values — not pure #000
-export const BODY = '#54565b'; // paragraph text
-// Labels, captions, footer. #9a9a9e was the original and measures 2.80:1 on
-// white — well under WCAG AA's 4.5:1 for text this small, and these are not
-// decoration: "30mg . Qty 1" is the variant the customer actually bought.
-// #72727a measures 4.77:1. The dark theme keeps its own lighter value, which is
-// judged against #141414 rather than against white.
-export const MUTED = '#72727a';
-export const BORDER = '#ececec';
-export const ACCENT = '#22C55E'; // matches --color-success in the site's globals.css
-export const HERO_BG = '#0A0A0A'; // the OG image's field colour, exactly
-export const HERO_SUB = '#8a8a90'; // the OG headline's second-clause grey
-export const HERO_CHIP = '#1c1c1c'; // badge chip on the dark field
-// The hero's meta line is grey on near-black, the opposite problem to MUTED, so
-// it gets its own value: darkening it to MUTED's would take it from 7.06:1 down
-// to 4.15:1 and fail in the other direction.
-export const HERO_META = '#9a9a9e';
+// Brand palette (brand/README.md).
+export const INK = '#0A0A0A';
+export const TEXT = '#262626';
+export const MUTED = '#6B6B6B'; // 5.3:1 on white
+export const LINE = '#E5E5E5'; // Mist
+export const PANEL = '#F5F5F5';
+export const PAGE = '#F0F0F0';
+export const ACCENT = '#22C55E'; // Signal Green: available / confirmed only
 
-export const FONT = "'Outfit', Helvetica, Arial, sans-serif";
-export const MONO = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
+export const FONT = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+export const DISPLAY = "'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+export const MONO = "'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace";
 
 export function escapeHtml(value: string): string {
   return value
@@ -75,56 +43,50 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-// Subject templates come from an admin-editable Setting — strip embedded
-// newlines defensively (header injection hygiene) before templating in the
-// order number. No HTML-escaping here: this is a plain email header, not markup.
+/** Subject from an admin-editable template: one line, {orderNumber} filled. */
 export function renderSubject(template: string, orderNumber: string): string {
-  const clean = template.replace(/[\r\n]+/g, ' ').trim();
-  return clean.replace('{orderNumber}', orderNumber);
+  return template.replace(/[\r\n]+/g, ' ').trim().replace('{orderNumber}', orderNumber);
 }
 
-// Same sen-to-RM formatting as receipt-pdf.ts — all money is stored in sen.
+/** Money is stored in sen. */
 export function formatRM(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
 export function formatDate(d: Date | string): string {
   return new Date(d).toLocaleDateString('en-MY', {
+    timeZone: 'Asia/Kuala_Lumpur',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
 }
 
-/**
- * Stored product image -> the email-safe JPEG sibling, absolute.
- *
- * Returns null when there is no image, so the caller renders the placeholder
- * tile rather than an <img> with an empty src (which some clients draw as a
- * broken icon and others as a 0x0 gap, neither of which lines the row up).
- */
+function assetUrl(path: string): string {
+  const abs = path.startsWith('http') ? path : `${ASSETS}${path.startsWith('/') ? '' : '/'}${path}`;
+  return `${abs}?v=${ASSET_VERSION}`;
+}
+
+/** Stored product image -> its email-safe JPEG thumb (never .webp: old Outlook can't show it). */
 export function emailThumbUrl(imageUrl?: string | null): string | null {
-  if (!imageUrl) return null;
-  const jpg = imageUrl.replace(/\.[^./]+$/, '') + '.email.jpg';
-  const abs = jpg.startsWith('http') ? jpg : `${ASSETS}${jpg.startsWith('/') ? '' : '/'}${jpg}`;
-  return `${abs}?v=${ASSET_VERSION}`;
+  return imageUrl ? assetUrl(imageUrl.replace(/\.[^./]+$/, '') + '.email.jpg') : null;
 }
 
-/** Stored product image -> the 640x512 campaign-card JPEG sibling, absolute.
- *  See writeEmailCard() in admin-upload.routes.ts. */
+/** Stored product image -> the 640x512 campaign card JPEG (writeEmailCard in admin-upload.routes.ts). */
 export function emailCardUrl(imageUrl?: string | null): string | null {
-  if (!imageUrl) return null;
-  const jpg = imageUrl.replace(/\.[^./]+$/, '') + '.card.jpg';
-  const abs = jpg.startsWith('http') ? jpg : `${ASSETS}${jpg.startsWith('/') ? '' : '/'}${jpg}`;
-  return `${abs}?v=${ASSET_VERSION}`;
+  return imageUrl ? assetUrl(imageUrl.replace(/\.[^./]+$/, '') + '.card.jpg') : null;
 }
 
-// Order shape the templates render. `imageUrl` is optional because not every
-// caller's Prisma include selects it yet, and because 12 of 69 variants have no
-// image at all — both cases fall through to the placeholder tile.
+export const whatsappUrl = (text?: string) =>
+  `https://wa.me/${env.WHATSAPP_NUMBER}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+
+// ---------------------------------------------------------------------------
+// Order shape
+// ---------------------------------------------------------------------------
+
 export interface EmailOrderItem {
   id?: string;
-  // Set on an item that came included with another line; see order-lines.ts.
+  /** Set on an item that came included with another line; see order-lines.ts. */
   parentItemId?: string | null;
   quantity: number;
   unitPrice: number;
@@ -149,11 +111,7 @@ export interface EmailOrder {
   total: number;
   paymentMethod: string;
   paymentGateway: string | null;
-  // Whether the money has actually arrived. The confirmation email is queued
-  // inside the order-creation transaction, before the gateway bill even exists,
-  // so at send time this is normally UNPAID — but a resend from the admin, or a
-  // customer who paid before the worker's next tick, lands on a PAID order. The
-  // template branches on this rather than assuming.
+  /** The confirmation is queued before payment, so this is usually UNPAID, but not always. */
   paymentStatus?: string;
   discountCode?: { code: string } | null;
   items: EmailOrderItem[];
@@ -163,424 +121,330 @@ export interface EmailOrder {
   groupBuy?: { number: number; title: string; shipEstimate: string | null } | null;
 }
 
-// ---------------------------------------------------------------------------
-// Hero
-// ---------------------------------------------------------------------------
+export const firstName = (name: string) => escapeHtml(name.trim().split(/\s+/)[0] || name);
 
-export interface HeroOptions {
-  /** Small status chip above the headline — the OG image's badge motif, carrying
-   *  real status instead of decoration. */
-  badge?: { label: string; tone?: 'neutral' | 'success' };
-  /** White clause. */
-  headline: string;
-  /** Muted second clause, the OG headline's two-tone device. Optional. */
-  subhead?: string;
-  /** Pre-rendered small line under the headline (see renderMetaLine). */
-  meta?: string;
+/** "Order #ASC-1042 · 11 November 2026" */
+export function orderMeta(order: EmailOrder, extra?: string): string {
+  return `Order #${escapeHtml(order.orderNumber)} &middot; ${formatDate(order.createdAt)}${extra ? ` &middot; ${extra}` : ''}`;
 }
 
-/**
- * The status chip. Built from nested tables (not <div>) so Outlook's Word engine
- * lays it out; border-radius simply degrades to a square corner there, which is
- * a fine trade. Colours are fixed rather than themed — it always sits on the
- * dark hero.
- */
-export function renderBadge(label: string, tone: 'neutral' | 'success' = 'neutral'): string {
-  const dotColor = tone === 'success' ? ACCENT : '#6b6b70';
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-block;">
+export function paymentMethodLabel(order: EmailOrder): string {
+  if (order.paymentMethod === 'WHATSAPP') {
+    return order.paymentGateway === 'manualpaygate' ? 'Bank transfer / DuitNow QR' : 'Manual transfer (WhatsApp)';
+  }
+  return `Online banking (${escapeHtml(order.paymentGateway || 'Billplz')})`;
+}
+
+// ---------------------------------------------------------------------------
+// Building blocks. Each returns a self-contained chunk for the body cell.
+// ---------------------------------------------------------------------------
+
+export function paragraph(html: string, o: { size?: number; color?: string; mb?: number } = {}): string {
+  return `
+          <p style="margin:0 0 ${o.mb ?? 16}px;font-family:${FONT};font-size:${o.size ?? 15}px;line-height:1.6;color:${o.color ?? TEXT};">${html}</p>`;
+}
+
+/** Small grey note, usually under a button. */
+export function note(html: string, mt = 20): string {
+  return `
+          <p style="margin:${mt}px 0 0;font-family:${FONT};font-size:13px;line-height:1.6;color:${MUTED};">${html}</p>`;
+}
+
+export function heading(text: string, mt = 32): string {
+  return `
+          <p style="margin:${mt}px 0 12px;font-family:${DISPLAY};font-size:16px;line-height:1.4;font-weight:600;color:${INK};">${text}</p>`;
+}
+
+export function spacer(h: number): string {
+  return `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td height="${h}" style="height:${h}px;font-size:0;line-height:0;">&nbsp;</td></tr></table>`;
+}
+
+export function divider(my = 28): string {
+  return `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:${my}px 0;"><tr><td height="1" style="height:1px;font-size:0;line-height:0;background-color:${LINE};">&nbsp;</td></tr></table>`;
+}
+
+/** Ink button. Table cell carries the colour so Outlook draws it too. */
+export function button(label: string, href: string, o: { mt?: number; secondary?: boolean } = {}): string {
+  const cell = o.secondary
+    ? `background-color:#ffffff;border:1px solid ${LINE};border-radius:8px;`
+    : `background-color:${INK};border-radius:8px;`;
+  return `
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:${o.mt ?? 8}px 0 0;">
             <tr>
-              <td bgcolor="${HERO_CHIP}" style="background-color:${HERO_CHIP} !important;border-radius:999px;padding:6px 13px 6px 10px;">
-                <table role="presentation" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td width="7" style="width:7px;padding-right:7px;">
-                      <table role="presentation" width="7" height="7" cellpadding="0" cellspacing="0"><tr><td width="7" height="7" bgcolor="${dotColor}" style="width:7px;height:7px;line-height:7px;font-size:0;background-color:${dotColor} !important;border-radius:50%;">&nbsp;</td></tr></table>
-                    </td>
-                    <td style="font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.06em;color:#ffffff !important;white-space:nowrap;">${escapeHtml(label)}</td>
-                  </tr>
-                </table>
+              <td bgcolor="${o.secondary ? '#ffffff' : INK}" style="${cell}">
+                <a href="${escapeHtml(href)}" target="_blank" style="display:inline-block;padding:13px 22px;font-family:${FONT};font-size:15px;line-height:1.2;font-weight:600;color:${o.secondary ? INK : '#ffffff'};text-decoration:none;white-space:nowrap;border-radius:8px;">${label}</a>
               </td>
             </tr>
           </table>`;
 }
 
-/** Order number + placed date, monospace on the number. Sits in the hero, so its
- *  colours are the hero's, not the body's. */
-export function renderMetaLine(order: EmailOrder): string {
-  return `Order <span style="font-family:${MONO};font-weight:600;color:#ffffff;">#${escapeHtml(order.orderNumber)}</span> &middot; placed ${formatDate(order.createdAt)}`;
+/** Grey rounded box. */
+export function panel(inner: string, o: { mt?: number; mb?: number; pad?: string } = {}): string {
+  return `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:${o.mt ?? 0}px 0 ${o.mb ?? 24}px;">
+            <tr>
+              <td bgcolor="${PANEL}" style="background-color:${PANEL};border-radius:10px;padding:${o.pad ?? '18px 20px'};">${inner}
+              </td>
+            </tr>
+          </table>`;
 }
 
-function renderHero(hero: HeroOptions): string {
-  const bg = `${ASSETS}/images/email-constellation.png?v=${ASSET_VERSION}`;
-  // `background=` attribute + inline background-image covers everything that
-  // supports background images at all. Outlook Windows supports neither without
-  // VML; it gets the flat HERO_BG, which is a clean degradation rather than a
-  // broken one, so the VML is deliberately not worth its weight here.
-  return `
-        <tr>
-          <td class="hero pad" background="${bg}" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;background-image:url('${bg}');background-position:top right;background-size:600px 210px;background-repeat:no-repeat;padding:26px 36px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-              <tr>
-                <td width="26" style="width:26px;padding-right:9px;"><img src="${ASSETS}/images/pill-badge-dark.png?v=${ASSET_VERSION}" width="26" height="26" alt="" style="display:block;width:26px;height:26px;"></td>
-                <td style="font-family:${FONT};font-size:17px;font-weight:700;letter-spacing:-0.01em;color:#ffffff !important;">Ascend MY</td>
-              </tr>
-            </table>${hero.badge ? `\n            ${renderBadge(hero.badge.label, hero.badge.tone)}` : ''}
-            <p class="h1" style="margin:${hero.badge ? '14px' : '0'} 0 0;font-family:${FONT};font-size:29px;line-height:1.22;font-weight:700;letter-spacing:-0.025em;color:#ffffff !important;word-break:break-word;">
-              ${hero.headline}${hero.subhead ? `<br><span style="color:${HERO_SUB} !important;">${hero.subhead}</span>` : ''}
-            </p>${
-              hero.meta
-                ? `\n            <p style="margin:12px 0 0;font-family:${FONT};font-size:13px;line-height:1.6;color:${HERO_META} !important;">${hero.meta}</p>`
-                : ''
-            }
-          </td>
-        </tr>`;
+/** A panel with a bold lead-in: pre-order, group buy, reasons. */
+export function notice(title: string, text: string, o: { mb?: number } = {}): string {
+  return panel(
+    `
+                <p style="margin:0 0 4px;font-family:${FONT};font-size:14px;line-height:1.5;font-weight:600;color:${INK};">${title}</p>
+                <p style="margin:0;font-family:${FONT};font-size:14px;line-height:1.6;color:${TEXT};">${text}</p>`,
+    { mb: o.mb }
+  );
 }
+
+/** A code to copy: discount codes, affiliate codes. */
+export function codeBox(label: string, code: string, foot?: string): string {
+  return panel(
+    `
+                <p style="margin:0 0 6px;font-family:${FONT};font-size:13px;line-height:1.5;color:${MUTED};">${label}</p>
+                <p style="margin:0;font-family:${MONO};font-size:24px;line-height:1.3;font-weight:700;letter-spacing:0.06em;color:${INK};">${escapeHtml(code)}</p>${
+                  foot ? `\n                <p style="margin:8px 0 0;font-family:${FONT};font-size:13px;line-height:1.6;color:${MUTED};">${foot}</p>` : ''
+                }`,
+    { pad: '20px 22px' }
+  );
+}
+
+/** Label / value rows. Values are trusted HTML; escape before passing. */
+export function details(rows: [string, string][], o: { mb?: number } = {}): string {
+  const cells = rows
+    .map(
+      ([k, v], i) => `
+            <tr>
+              <td valign="top" width="112" style="width:112px;padding:${i ? 12 : 0}px 16px 0 0;font-family:${FONT};font-size:14px;line-height:1.55;color:${MUTED};">${k}</td>
+              <td valign="top" style="padding:${i ? 12 : 0}px 0 0;font-family:${FONT};font-size:14px;line-height:1.55;color:${INK};">${v}</td>
+            </tr>`
+    )
+    .join('');
+  return panel(
+    `
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cells}
+                </table>`,
+    { mb: o.mb }
+  );
+}
+
+/** Plain list of links with a one-line description each. */
+export function linkList(items: { label: string; blurb: string; href: string }[]): string {
+  return items
+    .map(
+      (r, i) => `
+          <p style="margin:${i ? 14 : 0}px 0 0;font-family:${FONT};font-size:15px;line-height:1.5;">
+            <a href="${escapeHtml(r.href)}" target="_blank" style="color:${INK};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${r.label}</a><br>
+            <span style="font-size:14px;color:${MUTED};">${r.blurb}</span>
+          </p>`
+    )
+    .join('');
+}
+
+export const link = (label: string, href: string) =>
+  `<a href="${escapeHtml(href)}" target="_blank" style="color:${INK};text-decoration:underline;text-underline-offset:2px;">${label}</a>`;
 
 // ---------------------------------------------------------------------------
 // Order summary
 // ---------------------------------------------------------------------------
 
-const totalRow = (label: string, value: string, bold = false) => `
-            <tr>
-              <td class="${bold ? 'ink' : 'body-text'}" style="padding:4px 0;font-family:${FONT};font-size:13px;color:${bold ? INK : BODY};${bold ? 'font-weight:700;font-size:16px;padding-top:12px;' : ''}">${label}</td>
-              <td align="right" class="${bold ? 'ink' : 'body-text'}" style="white-space:nowrap;padding:4px 0;font-family:${FONT};font-size:13px;color:${bold ? INK : BODY};${bold ? 'font-weight:700;font-size:16px;padding-top:12px;' : ''}">${value}</td>
-            </tr>`;
-
-/**
- * 56px thumbnail, or a neutral tile of the same footprint so rows stay aligned
- * whether or not a variant has a photo.
- *
- * The <img> is nested inside that same tile rather than standing alone, because
- * "no photo" is not the only way this ends up empty: Outlook desktop blocks
- * remote images by default, plenty of readers never load them, and an
- * undeployed asset 404s. In all of those the browser draws its own broken-image
- * glyph on whatever sits behind it — which, on a bare <img>, was a hardcoded
- * light square sitting in an otherwise dark-mode email.
- *
- * Nesting it means every one of those cases degrades to exactly the placeholder
- * tile, in the right colour for the reader's theme. alt is deliberately empty:
- * the product name is already the next cell, and alt text inside a 56px box
- * just overflows into the row.
- */
-/**
- * Which line-art glyph stands in for a product with no photograph.
- *
- * Matched on the product name rather than on its category, because the
- * categories do not carry this distinction: everything here is filed under
- * "Supplies", but a syringe, a foil swab and a bottle of bacteriostatic water
- * are three different objects and one shared icon for them would be noise.
- * Every peptide, whatever its category, ships as a vial — so that is the
- * default rather than a special case.
- *
- * This matters more than it looks: 53 of the last 80 order lines had no photo,
- * because accessories ride along on nearly every order.
- */
+// Line-art stand-ins for products with no photo, matched on the name: the
+// categories don't separate a syringe from a swab.
 const FALLBACK_ICONS: [RegExp, string][] = [
   [/syringe/i, 'syringe'],
   [/swab|wipe/i, 'swab'],
   [/water|solvent|bacteriostatic/i, 'droplet'],
 ];
 
-function fallbackIcon(productName: string): string {
-  const hit = FALLBACK_ICONS.find(([re]) => re.test(productName));
-  return `${ASSETS}/images/email-icons/${hit ? hit[1] : 'vial'}.png?v=${ASSET_VERSION}`;
-}
-
-function renderThumb(item: EmailOrderItem): string {
+function thumb(item: EmailOrderItem): string {
   const src = emailThumbUrl(item.variant.imageUrl);
+  const icon = FALLBACK_ICONS.find(([re]) => re.test(item.variant.product.name))?.[1] ?? 'vial';
+  // The image sits inside a grey tile, so a blocked or missing image still
+  // leaves a tidy square.
   const inner = src
-    ? `<img src="${escapeHtml(src)}" width="56" height="56" alt="" style="display:block;width:56px;height:56px;border-radius:8px;">`
-    : // Drawn in a single midtone grey so ONE asset reads on the #f4f4f4 tile
-      // and the #262626 dark one — no display:none image swapping, which
-      // Outlook does not honour. With images off it simply vanishes and the
-      // row falls back to the empty tile, which is the same place we were.
-      `<img src="${fallbackIcon(item.variant.product.name)}" width="28" height="28" alt="" style="display:block;width:28px;height:28px;margin:14px auto;">`;
-  return `<table role="presentation" width="56" height="56" cellpadding="0" cellspacing="0"><tr><td width="56" height="56" bgcolor="#f4f4f4" class="thumb-empty" style="width:56px;height:56px;background-color:#f4f4f4;border-radius:8px;font-size:0;line-height:0;">${inner}</td></tr></table>`;
+    ? `<img src="${escapeHtml(src)}" width="52" height="52" alt="" style="display:block;width:52px;height:52px;border-radius:8px;">`
+    : `<img src="${assetUrl(`/images/email-icons/${icon}.png`)}" width="24" height="24" alt="" style="display:block;width:24px;height:24px;margin:14px auto;">`;
+  return `<table role="presentation" width="52" cellpadding="0" cellspacing="0"><tr><td width="52" height="52" bgcolor="${PANEL}" style="width:52px;height:52px;background-color:${PANEL};border-radius:8px;font-size:0;line-height:0;">${inner}</td></tr></table>`;
 }
 
-export function renderOrderSummary(order: EmailOrder): string {
-  // One row per product the customer chose; what came included with it (a
-  // syringe, a swab, a vial) is named under it, and a priced include is added
-  // to its row's amount. Orders from before bundles list their RM0 supplies
-  // as their own lines — those are shown as one "Included" row instead.
+const sumRow = (label: string, value: string, total = false) => `
+            <tr>
+              <td style="padding:${total ? '14px 0 0' : '3px 0'};${total ? `border-top:1px solid ${LINE};` : ''}font-family:${FONT};font-size:${total ? 16 : 14}px;line-height:1.5;${total ? `font-weight:600;color:${INK};` : `color:${MUTED};`}">${label}</td>
+              <td align="right" style="padding:${total ? '14px 0 0' : '3px 0'};${total ? `border-top:1px solid ${LINE};` : ''}font-family:${FONT};font-size:${total ? 16 : 14}px;line-height:1.5;white-space:nowrap;${total ? `font-weight:600;color:${INK};` : `color:${TEXT};`}">${value}</td>
+            </tr>`;
+
+/** Items, totals, then where it ships and how it was paid. */
+export function renderOrderSummary(order: EmailOrder, o: { title?: string } = {}): string {
   const { lines, looseIncludes } = groupOrderItems(order.items);
-  const itemRows = lines
-    .map(({ item, includes }) => {
-      const size = item.variant.size ? `${escapeHtml(item.variant.size)} &middot; ` : '';
-      const included = includes.length
-        ? `<br><span class="muted" style="font-size:12px;color:${MUTED};">Includes ${escapeHtml(includesText(includes))}</span>`
+  const rows = lines
+    .map(({ item, includes }, i) => {
+      const qty =
+        item.packSize && item.packSize > 1
+          ? `${item.quantity / item.packSize} kit${item.quantity / item.packSize === 1 ? '' : 's'} &middot; ${item.quantity} vials`
+          : `Qty ${item.quantity}`;
+      const sub = [item.variant.size ? escapeHtml(item.variant.size) : '', qty].filter(Boolean).join(' &middot; ');
+      const pre =
+        !order.groupBuy && item.preorderQty && item.preorderQty > 0
+          ? `<br><span style="font-size:13px;color:${INK};">Pre-order${item.preorderQty < item.quantity ? ` &middot; ${item.preorderQty} of ${item.quantity}` : ''}</span>`
+          : '';
+      const inc = includes.length
+        ? `<br><span style="font-size:13px;color:${MUTED};">Includes ${escapeHtml(includesText(includes))}</span>`
         : '';
-      const qty = item.packSize && item.packSize > 1
-        ? `${item.quantity / item.packSize} kit${item.quantity / item.packSize === 1 ? '' : 's'} &middot; ${item.quantity} vials`
-        : `Qty ${item.quantity}`;
-      const pre = !order.groupBuy && item.preorderQty && item.preorderQty > 0
-        ? `<br><span style="font-size:12px;font-weight:600;color:${INK};">Pre-order${item.preorderQty < item.quantity ? ` &middot; ${item.preorderQty} of ${item.quantity}` : ''}</span>`
-        : '';
+      const top = i ? `border-top:1px solid ${LINE};` : '';
       return `
             <tr>
-              <td width="68" valign="top" class="border-b" style="width:68px;padding:14px 12px 14px 0;border-bottom:1px solid ${BORDER};">${renderThumb(item)}</td>
-              <td valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;color:${INK};">
-                <span style="font-weight:600;">${escapeHtml(item.variant.product.name)}</span><br><span class="muted" style="font-size:12px;color:${MUTED};">${size}${qty}</span>${pre}${included}
+              <td width="64" valign="top" style="width:64px;padding:14px 12px 14px 0;${top}">${thumb(item)}</td>
+              <td valign="top" style="padding:14px 0;${top}font-family:${FONT};font-size:15px;line-height:1.45;color:${INK};">
+                <span style="font-weight:500;">${escapeHtml(item.variant.product.name)}</span><br><span style="font-size:13px;color:${MUTED};">${sub}</span>${pre}${inc}
               </td>
-              <td align="right" valign="top" class="border-b ink" style="padding:14px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:14px;font-weight:600;color:${INK};white-space:nowrap;">${formatRM(groupedLineTotal({ item, includes }))}</td>
+              <td align="right" valign="top" style="padding:14px 0 14px 12px;${top}font-family:${FONT};font-size:15px;line-height:1.45;color:${INK};white-space:nowrap;">${formatRM(groupedLineTotal({ item, includes }))}</td>
             </tr>`;
     })
-    .join('') + (looseIncludes.length
-      ? `
+    .join('');
+  const loose = looseIncludes.length
+    ? `
             <tr>
-              <td colspan="3" class="border-b muted" style="padding:12px 0;border-bottom:1px solid ${BORDER};font-family:${FONT};font-size:12px;color:${MUTED};">Included: ${escapeHtml(includesText(looseIncludes))}</td>
+              <td colspan="3" style="padding:12px 0;border-top:1px solid ${LINE};font-family:${FONT};font-size:13px;line-height:1.5;color:${MUTED};">Included: ${escapeHtml(includesText(looseIncludes))}</td>
             </tr>`
-      : '');
+    : '';
 
-  const discountLabel = order.discountCode
-    ? `Discount (${escapeHtml(order.discountCode.code)})`
-    : 'Discount';
+  const discountLabel = order.discountCode ? `Discount (${escapeHtml(order.discountCode.code)})` : 'Discount';
+  const shipTo = `${escapeHtml(order.customerName)}<br>${escapeHtml(order.address)}<br>${escapeHtml(order.postcode)} ${escapeHtml(order.city)}, ${escapeHtml(order.state)}`;
 
-  return `${renderShipNotice(order)}
-          <p class="eyebrow muted" style="margin:0 0 0;padding-bottom:12px;border-bottom:2px solid ${INK};font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${MUTED};">YOUR ITEMS</p>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${itemRows}
+  return `${renderShipNotice(order)}${heading(o.title ?? 'Order summary', 0)}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${LINE};border-bottom:1px solid ${LINE};">${rows}${loose}
           </table>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">${totalRow('Subtotal', formatRM(order.subtotal))}${
-            order.discountAmount > 0 ? totalRow(discountLabel, `-${formatRM(order.discountAmount)}`) : ''
-          }${totalRow('Shipping', order.shippingFee ? formatRM(order.shippingFee) : 'Free')}${totalRow('Total', formatRM(order.total), true)}
-          </table>
-          <p class="eyebrow muted" style="margin:30px 0 7px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${MUTED};">SHIPPING TO</p>
-          <p class="body-text" style="margin:0;font-family:${FONT};font-size:13px;line-height:1.65;color:${BODY};">
-            ${escapeHtml(order.customerName)}<br>
-            ${escapeHtml(order.address)}<br>
-            ${escapeHtml(order.city)}, ${escapeHtml(order.state)} ${escapeHtml(order.postcode)}
-          </p>`;
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0 28px;">${sumRow('Subtotal', formatRM(order.subtotal))}${
+            order.discountAmount > 0 ? sumRow(discountLabel, `&minus;${formatRM(order.discountAmount)}`) : ''
+          }${sumRow('Shipping', order.shippingFee ? formatRM(order.shippingFee) : 'Free')}${sumRow('Total', formatRM(order.total), true)}
+          </table>${details([
+            ['Shipping to', shipTo],
+            ['Payment', paymentMethodLabel(order)],
+          ], { mb: 0 })}`;
 }
 
-/**
- * A boxed line above the items when the order does not ship straight away: a
- * pre-order (ships on restock) or a Group Buy order (ships with its batch).
- */
+/** Above the items when the order does not ship straight away. */
 export function renderShipNotice(order: EmailOrder): string {
-  let title: string;
-  let text: string;
   if (order.groupBuy) {
-    title = `GROUP BUY &middot; BATCH ${String(order.groupBuy.number).padStart(2, '0')}`;
-    text = `This order ships with the batch once it closes and the stock arrives${order.groupBuy.shipEstimate ? ` (estimated: ${escapeHtml(order.groupBuy.shipEstimate)})` : ''}. We'll email you at every step.`;
-  } else if (order.isPreorder) {
-    title = 'PRE-ORDER';
-    text = `Part of this order is on pre-order and ships in ${escapeHtml(order.preorderLead || '10–14 days')}, together with the rest of your items.`;
-  } else {
-    return '';
+    const est = order.groupBuy.shipEstimate ? ` Estimated: ${escapeHtml(order.groupBuy.shipEstimate)}.` : '';
+    return notice(
+      `Group Buy, Batch ${String(order.groupBuy.number).padStart(2, '0')}`,
+      `This order ships with the batch once it closes and the stock arrives.${est} We&#39;ll email you at every step.`,
+      { mb: 28 }
+    );
   }
-  return `
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;">
-            <tr>
-              <td style="padding:14px 16px;border:1px solid ${INK};border-radius:10px;">
-                <p class="ink" style="margin:0 0 4px;font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${INK};">${title}</p>
-                <p class="body-text" style="margin:0;font-family:${FONT};font-size:13px;line-height:1.6;color:${BODY};">${text}</p>
-              </td>
-            </tr>
-          </table>`;
+  if (order.isPreorder) {
+    return notice(
+      'Pre-order',
+      `Part of this order ships in ${escapeHtml(order.preorderLead || '10–14 days')}, together with the rest of your items.`,
+      { mb: 28 }
+    );
+  }
+  return '';
 }
 
-/** Bulletproof button: table + solid-bg <td> + anchor, not a styled <a> alone —
- *  the pattern that survives Outlook's Word rendering engine. */
-export function renderButton(label: string, href: string): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0">
-            <tr>
-              <td bgcolor="${INK}" class="btn" style="background-color:${INK};border-radius:9px;">
-                <a href="${escapeHtml(href)}" class="btn-a" style="display:inline-block;padding:15px 30px;font-family:${FONT};font-size:13px;font-weight:700;letter-spacing:0.05em;color:#ffffff;text-decoration:none;border-radius:9px;">${label}</a>
-              </td>
-            </tr>
-          </table>`;
-}
-
-// The OG image's trust-badge row, reused verbatim as a footer strip. Costs one
-// table and no images, and it is the cheapest way to make a receipt feel like
-// it came from this brand rather than from a mail platform.
-const TRUST_BADGES = ['99%+ Purity', 'Third-Party Tested', 'Fast Shipping'];
-
-function renderTrustStrip(): string {
-  const cells = TRUST_BADGES.map(
-    (label) => `<td style="padding:0 8px;">
-                      <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-                        <td width="6" style="width:6px;padding-right:6px;"><table role="presentation" width="6" height="6" cellpadding="0" cellspacing="0"><tr><td width="6" height="6" bgcolor="${ACCENT}" style="width:6px;height:6px;line-height:6px;font-size:0;background-color:${ACCENT} !important;border-radius:50%;">&nbsp;</td></tr></table></td>
-                        <td style="font-family:${FONT};font-size:11px;font-weight:700;color:#ffffff !important;">${label}</td>
-                      </tr></table>
-                    </td>`
-  ).join('');
-  return `
-        <tr>
-          <td class="card pad" style="padding:32px 36px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;border-radius:11px;">
-              <tr>
-                <td align="center" style="padding:15px 12px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0"><tr>${cells}</tr></table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>`;
-}
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 const DEFAULT_DISCLAIMER = 'All products are for research and laboratory use only.';
 
-// Hidden preview text: the line an inbox shows next to the subject. Without
-// this, clients fall back to whatever text starts the body (often "View in
-// browser" or raw whitespace).
-function renderPreheader(text: string): string {
-  return `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#ffffff;opacity:0;">
-    ${escapeHtml(text)}${'&nbsp;&zwnj;'.repeat(60)}
-  </div>`;
-}
-
-/**
- * The visible unsubscribe line. Marketing mail only — transactional mail must
- * NOT carry one, because an order confirmation is not something a customer can
- * opt out of and offering it there just invites people to unsubscribe from
- * their own receipts.
- *
- * Deliberately plain and underlined in the footer's own muted colour: an
- * unsubscribe link styled to hide is the thing that earns a spam complaint
- * instead of a quiet opt-out, and a complaint costs far more.
- */
 export const UNSUBSCRIBE_REASON_SIGNUP = "You're receiving this because you signed up for Ascend MY updates.";
 
-function renderUnsubscribe(url: string, reason: string): string {
-  return `<p class="muted" style="margin:12px 0 0;font-family:${FONT};font-size:11px;line-height:1.6;color:${MUTED};">
-              ${escapeHtml(reason)}<br>
-              <a href="${escapeHtml(url)}" class="muted" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>
-            </p>`;
-}
-
 export interface LayoutOptions {
-  hero: HeroOptions;
+  /** Small line above the headline (campaign label). Plain text, escaped by the caller. */
+  eyebrow?: string;
+  /** Escaped HTML. */
+  headline: string;
+  /** Grey line under the headline: order number and date, a batch name. */
+  meta?: string;
   body: string;
+  /** The inbox preview line next to the subject. Plain text. */
   preheader: string;
   settings: Record<string, string>;
-  /** Marketing mail only. See renderUnsubscribe. */
+  /** Marketing mail only: transactional mail carries no unsubscribe. */
   unsubscribeUrl?: string;
-  /** Why this person is on the list, said truthfully above the unsubscribe
-   *  link — someone added from an order never signed up for anything. */
   unsubscribeReason?: string;
-  /** The trust strip above the footer. On by default; off for mail where it
-   *  would read as a sales pitch (the email verification mail, mainly). */
-  trust?: boolean;
 }
 
 export function renderLayout(o: LayoutOptions): string {
   const disclaimer = escapeHtml(o.settings.receipt_footer_note || DEFAULT_DISCLAIMER);
+  const logo = assetUrl('/images/email/ascend-my-on-dark.png');
+  const foot = `margin:0;font-family:${FONT};font-size:12px;line-height:1.7;color:${MUTED};`;
+  const footLink = `color:${MUTED};text-decoration:underline;`;
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="light dark">
-<meta name="supported-color-schemes" content="light dark">
-<!-- The webfont lives in a <style> block of its OWN, and this is not tidiness.
-     Gmail discards an ENTIRE style block the moment it finds anything in it it
-     objects to, and @import is high on that list. Kept separate, a Gmail
-     rejection costs the webfont — which Gmail was never going to load anyway —
-     instead of taking the dark theme and the responsive rules down with it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
+<title>${escapeHtml(o.preheader)}</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600&display=swap');
 </style>
 <style>
-/* Client resets. text-size-adjust stops iOS Mail and the Gmail app inflating
-   small text on their own; the mso-table rules stop Word inserting a gap
-   around every nested table, which is what makes an Outlook render drift a few
-   pixels wider than every other client. */
 body, table, td, p, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
 table { border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt; }
 img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
-
-/* Link colour has to be stated per scheme rather than inline. Inline is where
-   it used to live, with !important to beat the blue some clients force on every
-   <a> — but an inline !important cannot be overridden by a stylesheet, so dark
-   mode could never repaint it and the two links in the welcome email came out
-   near-black on near-black. Note a.ink (0,1,1) outranks .ink (0,1,0): the dark
-   block below needs its own a.ink or this rule wins there too. */
-a.ink { color:#0A0A0A !important; }
-
-/* Apple Mail, iOS Mail, Outlook.com. The hero is intentionally absent from
-   every rule here: it is already dark and must stay exactly as it is.
-
-   NOTE: nothing these rules target may carry !important on the matching
-   inline style. An inline declaration marked important outranks a stylesheet
-   declaration marked important — there is no selector that wins — so an inline
-   background-color:#ffffff !important silently defeats the whole dark theme
-   and leaves light-mode text on a light card. Backgrounds that are meant to
-   stay fixed (the hero, the badges, the trust strip) keep their inline
-   !important on purpose; the themeable ones rely on the bgcolor attribute for
-   the Outlook fallback instead. */
-@media (prefers-color-scheme: dark) {
-  .page-bg    { background-color:#0a0a0a !important; }
-  /* colour as well as background: text that inherits from the card instead of
-     carrying its own class would otherwise stay near-black on near-black. */
-  .card       { background-color:#141414 !important; color:#f5f5f5 !important; }
-  .card-outer { background-color:#141414 !important; border-color:#262626 !important; }
-  .ink        { color:#f5f5f5 !important; }
-  a.ink       { color:#f5f5f5 !important; }
-  .body-text  { color:#b8b8bd !important; }
-  .muted      { color:#8a8a90 !important; }
-  .border-b   { border-bottom-color:#262626 !important; }
-  .border-t   { border-top-color:#262626 !important; }
-  .eyebrow    { border-bottom-color:#f5f5f5 !important; }
-  .btn        { background-color:#f5f5f5 !important; }
-  .btn-a      { color:#0A0A0A !important; }
-  .code-box   { border-color:#f5f5f5 !important; }
-  .thumb-empty{ background-color:#262626 !important; }
-  .tile       { background-color:#1c1c1c !important; }
-}
-/* Outlook.com and Outlook for Android rewrite the document and prefix it with
-   these attributes instead of honouring the media query above. */
-[data-ogsc] .page-bg    { background-color:#0a0a0a !important; }
-[data-ogsc] .card       { background-color:#141414 !important; color:#f5f5f5 !important; }
-[data-ogsc] .card-outer { background-color:#141414 !important; border-color:#262626 !important; }
-[data-ogsc] .ink        { color:#f5f5f5 !important; }
-[data-ogsc] a.ink       { color:#f5f5f5 !important; }
-[data-ogsc] .body-text  { color:#b8b8bd !important; }
-[data-ogsc] .muted      { color:#8a8a90 !important; }
-[data-ogsc] .border-b   { border-bottom-color:#262626 !important; }
-[data-ogsc] .border-t   { border-top-color:#262626 !important; }
-[data-ogsc] .btn        { background-color:#f5f5f5 !important; }
-[data-ogsc] .btn-a      { color:#0A0A0A !important; }
-[data-ogsc] .eyebrow    { border-bottom-color:#f5f5f5 !important; }
-[data-ogsc] .code-box   { border-color:#f5f5f5 !important; }
-[data-ogsc] .thumb-empty{ background-color:#262626 !important; }
-[data-ogsc] .tile       { background-color:#1c1c1c !important; }
-
-/* Refinement only — never the thing standing between the layout and a phone.
-   The Gmail app renders mail from non-Google accounts with <style> stripped
-   entirely, so no rule in this file reaches a sizeable share of readers. The
-   base layout has to survive a 320px screen on its own; these just buy back
-   some breathing room where they do run. */
+a[x-apple-data-detectors] { color:inherit !important; text-decoration:none !important; }
 @media only screen and (max-width:620px) {
-  .pad { padding-left:20px !important; padding-right:20px !important; }
-  .h1  { font-size:25px !important; }
+  .pad  { padding-left:24px !important; padding-right:24px !important; }
+  .outer { padding:0 !important; }
+  .card { border-radius:0 !important; }
+  .h1   { font-size:24px !important; }
 }
 </style>
-<!--[if mso]>
-<style>
-  /* Word cannot resolve Outfit and falls back to Times New Roman rather than to
-     the next font in the stack, so it is told explicitly. */
-  * { font-family: Helvetica, Arial, sans-serif !important; }
-</style>
-<![endif]-->
+<!--[if mso]><style>* { font-family: Arial, Helvetica, sans-serif !important; }</style><![endif]-->
 </head>
-<body class="page-bg" style="margin:0;padding:0;background-color:#f4f4f4;" bgcolor="#f4f4f4">
-${renderPreheader(o.preheader)}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4f4" class="page-bg" style="background-color:#f4f4f4;padding:28px 0;">
+<body style="margin:0;padding:0;background-color:${PAGE};" bgcolor="${PAGE}">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${PAGE};opacity:0;">${escapeHtml(o.preheader)}${'&#8199;&#847;'.repeat(60)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAGE}" style="background-color:${PAGE};">
   <tr>
-    <td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" class="card-outer" style="max-width:600px;background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid ${BORDER};">
-${renderHero(o.hero)}
+    <td align="center" class="outer" style="padding:32px 12px;">
+      <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card" bgcolor="#ffffff" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
         <tr>
-          <td class="card pad" bgcolor="#ffffff" style="background-color:#ffffff;padding:34px 36px 0;font-family:${FONT};font-size:14px;line-height:1.65;color:${INK};">
-${o.body}
+          <td class="pad" bgcolor="${INK}" style="background-color:${INK};padding:22px 40px;">
+            <a href="${SITE_URL}" target="_blank" style="text-decoration:none;"><img src="${logo}" width="140" height="20" alt="Ascend MY" style="display:block;width:140px;height:20px;border:0;font-family:${DISPLAY};font-size:18px;font-weight:600;color:#ffffff;"></a>
           </td>
-        </tr>${o.trust === false ? '' : renderTrustStrip()}
+        </tr>
         <tr>
-          <td class="card pad" bgcolor="#ffffff" style="background-color:#ffffff;padding:28px 36px 32px;text-align:center;">
-            <p class="muted" style="margin:0;font-family:${FONT};font-size:11px;line-height:1.7;color:${MUTED};">
-              ${disclaimer}<br>
-              <a href="${SITE_URL}" class="muted" style="color:${MUTED};text-decoration:underline;">ascendpeptides.my</a>
-            </p>${o.unsubscribeUrl ? renderUnsubscribe(o.unsubscribeUrl, o.unsubscribeReason ?? UNSUBSCRIBE_REASON_SIGNUP) : ''}
+          <td class="pad" style="padding:40px 40px 44px;">${
+            o.eyebrow
+              ? `
+            <p style="margin:0 0 10px;font-family:${FONT};font-size:14px;line-height:1.4;font-weight:600;color:${MUTED};">${o.eyebrow}</p>`
+              : ''
+          }
+            <h1 class="h1" style="margin:0;font-family:${DISPLAY};font-size:28px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:${INK};">${o.headline}</h1>${
+              o.meta
+                ? `
+            <p style="margin:8px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:${MUTED};">${o.meta}</p>`
+                : ''
+            }
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td height="28" style="height:28px;font-size:0;line-height:0;">&nbsp;</td></tr></table>${o.body}
+          </td>
+        </tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+        <tr>
+          <td class="pad" align="center" style="padding:24px 40px 8px;">
+            <p style="${foot}">Questions? <a href="${whatsappUrl()}" target="_blank" style="${footLink}">Message us on WhatsApp</a> or reply to this email.</p>
+            <p style="${foot}margin-top:12px;">${disclaimer}<br>Ascend MY &middot; <a href="${SITE_URL}" target="_blank" style="${footLink}">ascendpeptides.my</a></p>${
+              o.unsubscribeUrl
+                ? `
+            <p style="${foot}margin-top:12px;">${escapeHtml(o.unsubscribeReason ?? UNSUBSCRIBE_REASON_SIGNUP)}<br><a href="${escapeHtml(o.unsubscribeUrl)}" target="_blank" style="${footLink}">Unsubscribe</a></p>`
+                : ''
+            }
           </td>
         </tr>
       </table>

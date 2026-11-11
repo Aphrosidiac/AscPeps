@@ -1,18 +1,18 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import {
   renderLayout,
-  renderButton,
+  button,
+  heading,
   escapeHtml,
   emailCardUrl,
   SITE_URL,
   UNSUBSCRIBE_REASON_SIGNUP,
   FONT,
-  BODY,
+  DISPLAY,
+  TEXT,
   INK,
   MUTED,
-  ACCENT,
-  HERO_BG,
-  HERO_META,
+  PANEL,
 } from './layout.js';
 import { getEffectivePrice, isSaleActive } from '../utils/product-pricing.js';
 
@@ -147,49 +147,31 @@ const productUrl = (p: CampaignProduct, tag: string) => tagUrl(`${SITE_URL}/prod
 // Pieces
 // ---------------------------------------------------------------------------
 
-/** "RM 135", or "RM 137.50" — a whole-ringgit price with ".00" on it reads as
- *  a receipt, not a shop. */
+/** "RM 135", or "RM 137.50". */
 function rm(sen: number): string {
   return sen % 100 === 0 ? `RM ${sen / 100}` : `RM ${(sen / 100).toFixed(2)}`;
 }
 
-function priceHtml(p: CampaignProduct, size: number): string {
-  const from = p.priceVaries ? `<span class="muted" style="font-size:${size - 4}px;font-weight:400;color:${MUTED};">from </span>` : '';
-  const was =
-    p.regularPrice > p.price
-      ? ` <span class="muted" style="font-size:${size - 3}px;font-weight:400;color:${MUTED};text-decoration:line-through;">${rm(p.regularPrice)}</span>`
-      : '';
+function priceHtml(p: CampaignProduct): string {
+  const from = p.priceVaries ? `<span style="font-weight:400;color:${MUTED};">From </span>` : '';
+  const was = p.regularPrice > p.price ? ` <span style="font-weight:400;color:${MUTED};text-decoration:line-through;">${rm(p.regularPrice)}</span>` : '';
   return `${from}${rm(p.price)}${was}`;
 }
 
-/**
- * Stock status, worded from the real number. Green means available — the one
- * meaning the brand gives it — so a sold-out product gets no dot at all rather
- * than a red one shouting from a marketing email.
- */
-function stockHtml(p: CampaignProduct): string {
-  if (p.stock <= 0) {
-    return `<span class="muted" style="color:${MUTED};">Sold out</span>`;
-  }
-  const label = p.stock <= 5 ? `Only ${p.stock} left` : 'In stock';
-  return `<span style="color:${ACCENT};">&#9679;</span>&nbsp;<span class="ink" style="color:${INK};">${label}</span>`;
+/** Worded from the real stock number; plain text, no traffic-light dots. */
+function stockText(p: CampaignProduct): string {
+  return p.stock <= 0 ? 'Sold out' : p.stock <= 5 ? `Only ${p.stock} left` : 'In stock';
 }
 
-/**
- * Stand-in for a product with no photograph: the vial label, set in type on
- * the hero's black. Deliberately not a grey box with an icon — a featured
- * product (the newest one, often, which is exactly the one without a photo
- * yet) should still look like it was meant to be there.
- */
-function labelTile(p: CampaignProduct, nameSize: number, padY: number): string {
-  const size = p.sizes.length === 1 ? p.sizes[0] : p.sizes.length > 1 ? `${p.sizes.length} sizes` : '';
+const sizeText = (p: CampaignProduct) => (p.sizes.length === 1 ? p.sizes[0] : p.sizes.length > 1 ? `${p.sizes.length} sizes` : '');
+
+/** Stand-in for a product with no photograph: its name set in type on ink. */
+function labelTile(p: CampaignProduct, nameSize: number, padY: number, radius: string): string {
+  const size = sizeText(p);
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-              <td align="center" bgcolor="${HERO_BG}" style="background-color:${HERO_BG} !important;padding:${padY}px 16px;border-radius:inherit;">
-                <p style="margin:0;font-family:${FONT};font-size:9px;font-weight:700;letter-spacing:0.14em;color:${HERO_META} !important;">FOR RESEARCH PURPOSES ONLY</p>
-                <p style="margin:10px 0 0;font-family:${FONT};font-size:${nameSize}px;line-height:1.15;font-weight:700;letter-spacing:-0.02em;color:#ffffff !important;">${escapeHtml(p.name)}</p>${
-                  size
-                    ? `\n                <p style="margin:8px 0 0;font-family:${FONT};font-size:12px;color:${HERO_META} !important;">${escapeHtml(size)}</p>`
-                    : ''
+              <td align="center" valign="middle" bgcolor="${INK}" style="background-color:${INK};padding:${padY}px 16px;border-radius:${radius};">
+                <p style="margin:0;font-family:${DISPLAY};font-size:${nameSize}px;line-height:1.15;font-weight:600;letter-spacing:-0.02em;color:#ffffff;">${escapeHtml(p.name)}</p>${
+                  size ? `\n                <p style="margin:8px 0 0;font-family:${FONT};font-size:13px;color:#A3A3A3;">${escapeHtml(size)}</p>` : ''
                 }
               </td>
             </tr></table>`;
@@ -199,25 +181,23 @@ function spotlight(p: CampaignProduct, tag: string): string {
   const href = escapeHtml(productUrl(p, tag));
   const card = emailCardUrl(p.imageUrl);
   const picture = card
-    ? `<a href="${href}" style="display:block;"><img src="${escapeHtml(card)}" width="528" alt="${escapeHtml(p.name)}" style="display:block;width:100%;max-width:528px;height:auto;border-radius:14px 14px 0 0;"></a>`
-    : `<a href="${href}" style="display:block;text-decoration:none;">${labelTile(p, 30, 64)}</a>`;
-  const sizes = p.sizes.map(escapeHtml).join(' &middot; ');
+    ? `<a href="${href}" target="_blank" style="display:block;"><img src="${escapeHtml(card)}" width="520" alt="${escapeHtml(p.name)}" style="display:block;width:100%;max-width:520px;height:auto;border-radius:10px;background-color:${PANEL};"></a>`
+    : `<a href="${href}" target="_blank" style="display:block;text-decoration:none;">${labelTile(p, 30, 72, '10px')}</a>`;
+  const sub = [p.sizes.map(escapeHtml).join(' &middot; '), stockText(p)].filter(Boolean).join(' &middot; ');
 
   return `
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f2f2f4" class="tile" style="margin:10px 0 0;background-color:#f2f2f4;border-radius:14px;">
-            <tr><td style="font-size:0;line-height:0;border-radius:14px 14px 0 0;overflow:hidden;">${picture}</td></tr>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0 0;">
+            <tr><td style="font-size:0;line-height:0;">${picture}</td></tr>
             <tr>
-              <td style="padding:20px 24px 24px;">
-                <p style="margin:0;font-family:${FONT};font-size:12px;font-weight:600;">${stockHtml(p)}</p>
-                <p style="margin:6px 0 0;font-family:${FONT};font-size:23px;line-height:1.2;font-weight:700;letter-spacing:-0.02em;"><a href="${href}" class="ink" style="color:${INK};text-decoration:none;">${escapeHtml(p.name)}</a></p>${
-                  sizes
-                    ? `\n                <p class="muted" style="margin:4px 0 0;font-family:${FONT};font-size:13px;color:${MUTED};">${sizes}</p>`
-                    : ''
-                }
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;">
+              <td style="padding:16px 0 0;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td valign="middle" class="ink" style="font-family:${FONT};font-size:19px;font-weight:700;color:${INK};white-space:nowrap;">${priceHtml(p, 19)}</td>
-                    <td valign="middle" align="right">${renderButton('SHOP NOW', productUrl(p, tag))}</td>
+                    <td valign="top" style="font-family:${FONT};">
+                      <p style="margin:0;font-family:${DISPLAY};font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-0.01em;"><a href="${href}" target="_blank" style="color:${INK};text-decoration:none;">${escapeHtml(p.name)}</a></p>
+                      <p style="margin:4px 0 0;font-size:14px;line-height:1.5;color:${MUTED};">${sub}</p>
+                      <p style="margin:6px 0 0;font-size:16px;line-height:1.5;font-weight:600;color:${INK};">${priceHtml(p)}</p>
+                    </td>
+                    <td valign="bottom" align="right" width="1" style="padding-left:12px;">${button('Shop now', productUrl(p, tag), { mt: 0 })}</td>
                   </tr>
                 </table>
               </td>
@@ -225,20 +205,19 @@ function spotlight(p: CampaignProduct, tag: string): string {
           </table>`;
 }
 
-/** The picture half of a grid card: the photo, or the label tile on black. */
+/** The picture half of a grid card: the photo, or the label tile. */
 function gridPicture(p: CampaignProduct, tag: string): string {
   const href = escapeHtml(productUrl(p, tag));
   const card = emailCardUrl(p.imageUrl);
   if (card) {
-    return `<td width="48%" valign="top" bgcolor="#f2f2f4" class="tile" style="width:48%;background-color:#f2f2f4;border-radius:12px 12px 0 0;font-size:0;line-height:0;"><a href="${href}" style="display:block;"><img src="${escapeHtml(card)}" width="258" alt="${escapeHtml(p.name)}" style="display:block;width:100%;max-width:258px;height:auto;border-radius:12px 12px 0 0;"></a></td>`;
+    return `<td width="48%" valign="top" style="width:48%;font-size:0;line-height:0;"><a href="${href}" target="_blank" style="display:block;"><img src="${escapeHtml(card)}" width="250" alt="${escapeHtml(p.name)}" style="display:block;width:100%;max-width:250px;height:auto;border-radius:10px;background-color:${PANEL};"></a></td>`;
   }
-  const size = p.sizes.length === 1 ? p.sizes[0] : p.sizes.length > 1 ? `${p.sizes.length} sizes` : '';
-  return `<td width="48%" valign="middle" align="center" bgcolor="${HERO_BG}" style="width:48%;background-color:${HERO_BG} !important;border-radius:12px 12px 0 0;padding:18px 12px;">
-                <a href="${href}" style="text-decoration:none;display:block;">
-                  <span style="display:block;font-family:${FONT};font-size:8px;font-weight:700;letter-spacing:0.14em;color:${HERO_META} !important;">FOR RESEARCH PURPOSES ONLY</span>
-                  <span style="display:block;margin-top:8px;font-family:${FONT};font-size:17px;line-height:1.15;font-weight:700;letter-spacing:-0.02em;color:#ffffff !important;">${escapeHtml(p.name)}</span>${
+  const size = sizeText(p);
+  return `<td width="48%" valign="middle" align="center" bgcolor="${INK}" style="width:48%;background-color:${INK};border-radius:10px;padding:18px 12px;">
+                <a href="${href}" target="_blank" style="text-decoration:none;display:block;">
+                  <span style="display:block;font-family:${DISPLAY};font-size:17px;line-height:1.15;font-weight:600;letter-spacing:-0.02em;color:#ffffff;">${escapeHtml(p.name)}</span>${
                     size ? `
-                  <span style="display:block;margin-top:6px;font-family:${FONT};font-size:11px;color:${HERO_META} !important;">${escapeHtml(size)}</span>` : ''
+                  <span style="display:block;margin-top:6px;font-family:${FONT};font-size:12px;color:#A3A3A3;">${escapeHtml(size)}</span>` : ''
                   }
                 </a>
               </td>`;
@@ -247,39 +226,28 @@ function gridPicture(p: CampaignProduct, tag: string): string {
 /** The text half of a grid card: name, price, stock. */
 function gridDetails(p: CampaignProduct, tag: string): string {
   const href = escapeHtml(productUrl(p, tag));
-  return `<td width="48%" valign="top" bgcolor="#f2f2f4" class="tile" style="width:48%;background-color:#f2f2f4;border-radius:0 0 12px 12px;padding:12px 14px 14px;font-family:${FONT};">
-                <p style="margin:0;font-size:14px;line-height:1.3;font-weight:700;"><a href="${href}" class="ink" style="color:${INK};text-decoration:none;">${escapeHtml(p.name)}</a></p>
-                <p class="ink" style="margin:5px 0 0;font-size:13px;font-weight:700;color:${INK};">${priceHtml(p, 13)}</p>
-                <p style="margin:6px 0 0;font-size:11px;font-weight:600;">${stockHtml(p)}</p>
+  return `<td width="48%" valign="top" style="width:48%;padding:10px 0 0;font-family:${FONT};">
+                <p style="margin:0;font-size:15px;line-height:1.35;font-weight:600;"><a href="${href}" target="_blank" style="color:${INK};text-decoration:none;">${escapeHtml(p.name)}</a></p>
+                <p style="margin:3px 0 0;font-size:14px;line-height:1.4;color:${INK};">${priceHtml(p)}</p>
+                <p style="margin:2px 0 0;font-size:13px;line-height:1.4;color:${MUTED};">${stockText(p)}</p>
               </td>`;
 }
 
-// 48 + 4 + 48. A fixed-pixel gutter between two 50% halves is the one cell
-// a browser is allowed to squeeze, and it squeezed it to nothing.
 const EMPTY_HALF = '<td width="48%" style="width:48%;">&nbsp;</td>';
 const GUTTER = '<td width="4%" style="width:4%;font-size:0;line-height:0;">&nbsp;</td>';
 
 /**
- * Two-up grid as a plain fixed table, 50/50, that never stacks.
- *
- * The usual "hybrid" stacking columns lean on a media query, and the Gmail
- * app strips <style> entirely for non-Google accounts — there it would stay
- * two-up anyway, at whatever width it landed on. Designing the two-up for a
- * 320px phone (each card ~140px) is the version that holds everywhere,
- * Outlook's Word engine included.
- *
- * Each pair is two table rows — pictures, then details — rather than two
- * self-contained cards side by side. A table row is the one layout tool every
- * client honours for "make these the same height": a product with no photo
- * gets its label tile stretched to exactly the photo's height next to it, at
- * any width, with no fixed pixel heights to fall out of step on a phone.
+ * Two-up grid that never stacks (the Gmail app drops media queries for
+ * non-Google accounts, so it has to hold at 320px anyway). Each pair is two
+ * rows, pictures then details, so a label tile stretches to its neighbour's
+ * photo height.
  */
 function grid(products: CampaignProduct[], tag: string): string {
   const rows: string[] = [];
   for (let i = 0; i < products.length; i += 2) {
     const [a, b] = [products[i], products[i + 1]];
     if (i > 0) rows.push(`
-            <tr><td colspan="3" height="12" style="height:12px;font-size:0;line-height:0;">&nbsp;</td></tr>`);
+            <tr><td colspan="3" height="24" style="height:24px;font-size:0;line-height:0;">&nbsp;</td></tr>`);
     rows.push(`
             <tr>
               ${gridPicture(a, tag)}
@@ -292,8 +260,7 @@ function grid(products: CampaignProduct[], tag: string): string {
               ${b ? gridDetails(b, tag) : EMPTY_HALF}
             </tr>`);
   }
-  return `
-          <p class="eyebrow muted" style="margin:34px 0 14px;padding-bottom:12px;border-bottom:2px solid ${INK};font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.09em;color:${MUTED};">MORE PICKS</p>
+  return `${heading('More picks', 40)}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.join('')}
           </table>`;
 }
@@ -314,7 +281,7 @@ function renderBody(text: string): string {
     .filter(Boolean)
     .map(
       (para) =>
-        `<p class="body-text" style="margin:0 0 16px;font-family:${FONT};font-size:15px;line-height:1.65;color:${BODY};">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
+        `<p style="margin:0 0 16px;font-family:${FONT};font-size:15px;line-height:1.6;color:${TEXT};">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
     )
     .join('');
 }
@@ -371,11 +338,7 @@ export function renderCampaign(
   // a URL with no label is a button nobody can read — either way the safe
   // outcome is no button, not a broken one in every inbox.
   const ctaUrl = campaign.ctaLabel && campaign.ctaUrl ? tagUrl(campaign.ctaUrl, tag) : null;
-  const cta = ctaUrl
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:${products.length ? '22px' : '8px'} 0 0;">
-            <tr><td align="${products.length ? 'center' : 'left'}">${renderButton(escapeHtml(campaign.ctaLabel!).toUpperCase(), ctaUrl)}</td></tr>
-          </table>`
-    : '';
+  const cta = ctaUrl ? button(escapeHtml(campaign.ctaLabel!), ctaUrl, { mt: products.length ? 32 : 8 }) : '';
 
   const [first, ...rest] = products;
   const body = `${renderBody(campaign.body)}${first ? spotlight(first, tag) : ''}${rest.length ? grid(rest, tag) : ''}${cta}`;
@@ -386,20 +349,14 @@ export function renderCampaign(
   return {
     subject: campaign.subject,
     html: renderLayout({
-      hero: {
-        badge: campaign.badge?.trim() ? { label: campaign.badge.trim().toUpperCase(), tone: 'success' } : undefined,
-        headline: escapeHtml(headline),
-        subhead: campaign.subhead?.trim() ? escapeHtml(campaign.subhead.trim()) : undefined,
-      },
-      body,
+      eyebrow: campaign.badge?.trim() ? escapeHtml(campaign.badge.trim()) : undefined,
+      headline: escapeHtml(headline),
+      body: `${campaign.subhead?.trim() ? `
+          <p style="margin:-12px 0 24px;font-family:${FONT};font-size:17px;line-height:1.5;color:${MUTED};">${escapeHtml(campaign.subhead.trim())}</p>` : ''}${body}`,
       preheader: campaign.preheader?.trim() || derivePreheader(campaign.body),
       settings: o.settings,
       unsubscribeUrl: o.unsubscribeUrl,
       unsubscribeReason: reason,
-      // With products on show, the purity/testing/shipping strip is the
-      // reassurance a buyer looks for next. A text-only broadcast keeps it
-      // off — there it would read as a pitch bolted onto a note.
-      trust: products.length > 0,
     }),
     text: renderText(campaign, products, tag, ctaUrl, o.unsubscribeUrl, reason, disclaimer),
   };

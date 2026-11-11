@@ -1,42 +1,35 @@
-import { renderLayout, renderButton, escapeHtml, FONT, INK, BODY, MUTED } from './layout.js';
+import { renderLayout, paragraph, button, note, escapeHtml } from './layout.js';
 
-const SUBJECT = 'Confirm your email — Ascend Peptides';
+const SUBJECT = 'Confirm your email — Ascend MY';
 
 /**
- * One-off account-confirmation email. Unlike the order mails this is NOT
- * queued through EmailOutbox: that table is keyed to an order (orderId is a
- * required FK), and a signup has no order. A failed send here is recoverable
- * by the member themselves via "resend confirmation", so the delivery
- * guarantee the outbox provides isn't needed.
+ * Account confirmation. Sent directly, not through EmailOutbox (that table
+ * needs an order); a lost one is fixed by "resend confirmation".
  */
 export function renderVerifyEmail(
   displayName: string,
   verifyUrl: string,
   settings: Record<string, string>,
-  /** The sign-up bonus this confirmation unlocks, when there is one for them. */
+  /** The sign-up bonus this confirmation unlocks, when there is one. */
   bonusPct: number | null = null
 ): { subject: string; html: string } {
-  const name = escapeHtml(displayName);
-
-  const body = `
-          <p class="body-text" style="margin:0 0 24px;font-family:${FONT};font-size:14px;line-height:1.65;color:${BODY};">
-            Confirm this address to finish setting up your Ascend MY account.${bonusPct ? ` Confirming also unlocks your <strong class="ink" style="color:${INK};">${bonusPct}% first-order code</strong> — we'll email it to you straight away.` : ''} Once confirmed you'll be able to comment on Insights articles.
-          </p>
-${renderButton('CONFIRM EMAIL', verifyUrl)}
-          <p class="muted" style="margin:26px 0 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${MUTED};">
-            This link expires in 24 hours. If you didn't create an Ascend MY account, you can ignore this email — nothing will happen.
-          </p>`;
+  const bonus = bonusPct
+    ? ` Confirming also unlocks your <strong>${bonusPct}% first-order code</strong>, which we&#39;ll email you straight away.`
+    : '';
 
   return {
     subject: SUBJECT,
     html: renderLayout({
-      hero: { headline: `Hi ${name},`, subhead: 'confirm your email.' },
-      body,
-      preheader: "One click and you're in — the link expires in 24 hours.",
+      headline: 'Confirm your email',
+      body: `${paragraph(`Hi ${escapeHtml(displayName)},`)}${paragraph(
+        `Confirm this address to finish setting up your Ascend MY account.${bonus}`,
+        { mb: 8 }
+      )}${button('Confirm email', verifyUrl)}${note(
+        "This link expires in 24 hours. If you didn't create an Ascend MY account, you can ignore this email.",
+        24
+      )}`,
+      preheader: 'Confirm your email to finish setting up your account. The link expires in 24 hours.',
       settings,
-      // Purity and shipping claims have no business on an account-confirmation
-      // mail — nothing has been bought.
-      trust: false,
     }),
   };
 }
