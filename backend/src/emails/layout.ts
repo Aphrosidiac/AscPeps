@@ -19,7 +19,7 @@ export const SITE_URL = 'https://ascendpeptides.my';
 const ASSETS = env.EMAIL_ASSET_BASE_URL?.replace(/\/$/, '') || SITE_URL;
 
 // Bump when an email asset changes: some clients cache images by URL.
-const ASSET_VERSION = 4;
+const ASSET_VERSION = 5;
 
 // Brand palette (brand/README.md).
 export const INK = '#0A0A0A';
