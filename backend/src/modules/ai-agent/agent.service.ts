@@ -216,6 +216,10 @@ const NEGATIVE =
 // parked mark-paid was cancelled, and Abby asked a second time. Quoting the
 // confirmation and saying yes approves it; otherwise it is asked once, in
 // code, rather than dropped.
+// "yes to all", "just do it": a yes said as a sentence. Narrow on purpose —
+// "do all today's orders" is a new request, not an answer. Swearing around it is fine (11 Nov 2026:
+// "Bodo ape just fucking do it yes to all" was read as a new request).
+const ALL_OF_THEM = /\byes\b[^?]{0,20}\b(all|semua|both|everything)\b|\bjust\b(\s+\w+){0,2}\s+do it\b/i;
 const YES_LED = /^(y|ya|yes|yep|yeah|yup|ok|okay|okey|confirm|confirmed|go ahead|do it|proceed|betul|boleh|sure)\b/i;
 
 // ------------------------------------------------------------- mentions
@@ -475,42 +479,53 @@ async function runWhatsAppTurn(fastify: FastifyInstance, msg: InboundMessage, ac
   // "you were waiting for a yes" across turns is exactly the kind of state it
   // loses, and the failure mode is executing a delete that was never confirmed.
   const pending = await livePendingActions(fastify, thread.id);
-  const mine = pending.find((p) => p.actorPhone === actor.phone) ?? null;
+  // Every confirmation goes out in one message, so one answer settles all of
+  // them. On 11 Nov 2026 three pre-order switches were parked together, a
+  // "yes" ran one, the next message cancelled one and the third was lost.
+  // Your own first; with none, a yes or no from any operator who can write
+  // answers what is waiting in the chat (Fakhrul answering for Asywa —
+  // before, his "yes to all" was not even seen as an answer). Moving on only
+  // drops your own, never what someone else is still deciding.
+  const own = pending.filter((p) => p.actorPhone === actor.phone);
+  const answering = own.length ? own : actor.canWrite ? pending : [];
+  const mine = answering[0] ?? null;
+  const oldestFirst = [...answering].reverse();
   let droppedPending: string | null = null;
 
-  if (mine) {
-    if (AFFIRMATIVE.test(text)) {
+  const approveAll = async (): Promise<AgentOutcome> => {
+    const failed: string[] = [];
+    for (const [i, p] of oldestFirst.entries()) {
       try {
-        await approveAction(fastify, mine.id, opts);
+        await approveAction(fastify, p.id, opts, i === oldestFirst.length - 1);
       } catch (err: any) {
-        return { action: 'reply', text: `Couldn't do it: ${err?.message ?? String(err)}` };
+        failed.push(`${p.summary ?? p.tool}: ${err?.message ?? String(err)}`);
       }
-      return { action: 'reply', text: await relay(thread.id, directory) };
     }
+    if (failed.length === oldestFirst.length) return { action: 'reply', text: `Couldn't do it: ${failed.join('; ')}` };
+    const text = await relay(thread.id, directory);
+    return { action: 'reply', text: failed.length ? `${text}\n\nCouldn't do: ${failed.join('; ')}` : text };
+  };
+
+  if (mine) {
+    if (AFFIRMATIVE.test(text) || (ALL_OF_THEM.test(text) && !text.includes("?"))) return approveAll();
     if (YES_LED.test(text) && !text.includes('?')) {
-      const summary = mine.summary ?? mine.tool;
-      const quotesIt = !!msg.quoted?.fromBot && msg.quoted.text.includes(`About to ${summary}`);
-      if (quotesIt) {
-        try {
-          await approveAction(fastify, mine.id, opts);
-        } catch (err: any) {
-          return { action: 'reply', text: `Couldn't do it: ${err?.message ?? String(err)}` };
-        }
-        return { action: 'reply', text: await relay(thread.id, directory) };
-      }
-      return { action: 'reply', text: `Is that a yes to: ${summary}?\n\n${CONFIRM_SUFFIX}` };
+      const quotesIt = !!msg.quoted?.fromBot && answering.some((p) => msg.quoted!.text.includes(`About to ${p.summary ?? p.tool}`));
+      if (quotesIt) return approveAll();
+      const what = answering.map((p) => p.summary ?? p.tool).join('; ');
+      return { action: 'reply', text: `Is that a yes to: ${what}?\n\n${CONFIRM_SUFFIX}` };
     }
     if (NEGATIVE.test(text)) {
       // No model turn on a decline: "Cancelled" needs no narration, and the
       // operator on a phone wants the acknowledgement, not a paragraph.
-      await declineAction(fastify, mine.id, opts, undefined, false);
+      for (const p of answering) await declineAction(fastify, p.id, opts, undefined, false);
       return { action: 'reply', text: 'Cancelled — nothing was changed.' };
     }
-    // Neither yes nor no: they have moved on. Decline it rather than leaving
-    // it armed for a later, unrelated "ok" — and tell the model, so the reply
-    // can say so instead of leaving the operator to assume it is still queued.
-    await declineAction(fastify, mine.id, opts, 'the operator moved on without answering', false);
-    droppedPending = mine.summary ?? mine.tool;
+    // Neither yes nor no: they have moved on. Decline their own rather than
+    // leaving them armed for a later, unrelated "ok" — and tell the model, so
+    // the reply can say so instead of leaving the operator to assume they are
+    // still queued.
+    for (const p of own) await declineAction(fastify, p.id, opts, 'the operator moved on without answering', false);
+    if (own.length) droppedPending = own.map((p) => p.summary ?? p.tool).join('; ');
   } else if (NEGATIVE.test(text)) {
     return { action: 'reply', text: "Nothing was pending, so nothing has changed. Tell me what you'd like me to do." };
   }

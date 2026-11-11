@@ -32,6 +32,7 @@ await fastify.register(prismaPlugin);
 const prisma = fastify.prisma;
 
 const PHONE = '60100000777';
+const PHONE2 = '60100000778';
 const GROUP = '999000777000@g.us';
 const variant = await prisma.productVariant.findFirstOrThrow({ where: { active: true }, orderBy: { createdAt: 'asc' } });
 const originalStock = variant.stock;
@@ -41,6 +42,15 @@ await prisma.whatsAppOperator.upsert({
   create: { phone: normalizePhone(PHONE), name: 'Approval Test', canWrite: true, morningBrief: false },
   update: { active: true, canWrite: true },
 });
+await prisma.whatsAppOperator.upsert({
+  where: { phone: normalizePhone(PHONE2) },
+  create: { phone: normalizePhone(PHONE2), name: 'Second Operator', canWrite: true, morningBrief: false },
+  update: { active: true, canWrite: true },
+});
+// Three sizes for the "three parked at once" cases, their pre-order flags restored at the end.
+const trio = await prisma.productVariant.findMany({ where: { active: true }, orderBy: { createdAt: 'asc' }, take: 3 });
+const trioSaved = trio.map((v) => ({ id: v.id, preorder: v.preorder }));
+const restoreTrio = () => Promise.all(trioSaved.map((v) => prisma.productVariant.update({ where: { id: v.id }, data: { preorder: v.preorder } })));
 await prisma.whatsAppGroup.upsert({
   where: { groupJid: GROUP },
   create: { groupJid: GROUP, subject: 'Approval test', requireMention: false },
@@ -100,11 +110,11 @@ async function check(name: string, fn: () => Promise<string>) {
   }
 }
 
-const say = async (text: string, quoted?: string): Promise<string> => {
+const say = async (text: string, quoted?: string, from = PHONE): Promise<string> => {
   const msg: InboundMessage = {
     kind: 'group',
-    senderPhone: PHONE,
-    senderName: 'Approval Test',
+    senderPhone: from,
+    senderName: from === PHONE ? 'Approval Test' : 'Second Operator',
     text,
     groupJid: GROUP,
     groupSubject: 'Approval test',
@@ -123,17 +133,17 @@ const pendingCount = async () => {
 };
 
 // A web page read `ago` ms before now, as the browser tool leaves it.
-async function webRead(agoMs: number) {
+async function webRead(agoMs: number, url = 'https://example.com') {
   await say('hi');
   const thread = await prisma.agentThread.findUniqueOrThrow({ where: { chatKey: `group:${GROUP}` } });
   const max = await prisma.agentMessage.aggregate({ where: { threadId: thread.id }, _max: { seq: true } });
   const seq = (max._max.seq ?? 0) + 1;
   const at = new Date(Date.now() - agoMs);
   await prisma.agentMessage.create({
-    data: { threadId: thread.id, seq, role: 'assistant', createdAt: at, content: { toolCalls: [{ id: 'web1', name: 'browser_navigate', input: { url: 'https://example.com' } }] } },
+    data: { threadId: thread.id, seq, role: 'assistant', createdAt: at, content: { toolCalls: [{ id: 'web1', name: 'browser_navigate', input: { url } }] } },
   });
   await prisma.agentMessage.create({
-    data: { threadId: thread.id, seq: seq + 1, role: 'tool', createdAt: at, content: { toolResults: [{ id: 'web1', name: 'browser_navigate', output: { text: '- Page URL: https://example.com' } }] } },
+    data: { threadId: thread.id, seq: seq + 1, role: 'tool', createdAt: at, content: { toolResults: [{ id: 'web1', name: 'browser_navigate', output: { page: `### Page\n- Page URL: ${url}\n- Page Title: x` } }] } },
   });
 }
 
@@ -243,6 +253,73 @@ await check('quoting an OLD confirmation does not approve a different one', asyn
   return 'asked which, nothing changed';
 });
 
+// ---------------------------------------------------------------- 11 Nov 2026
+
+await check('own site page (admin login) does not hold changes', async () => {
+  queue.push({ text: 'Hello.' });
+  await webRead(60_000, `${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/login`);
+  queue.push(setStock, { text: `Done — stock is now ${target}.` });
+  const reply = await say('set the stock');
+  assert(!reply.includes(CONFIRM_SUFFIX), `asked for a yes anyway: ${reply.slice(0, 160)}`);
+  assert((await stock()) === target, `stock is ${await stock()}, expected ${target}`);
+  return 'ran straight away';
+});
+
+/** Web page read, then three pre-order switches parked in one turn. */
+async function threeParked(): Promise<string> {
+  queue.push({ text: 'Hello.' });
+  await webRead(60_000);
+  for (const v of trio) queue.push({ tool: 'update_variant', args: { variantId: v.id, preorder: false } });
+  queue.push(ASKED);
+  const reply = await say('turn off pre-orders on all three');
+  assert((await pendingCount()) === 3, `expected 3 parked, got ${await pendingCount()}`);
+  return reply;
+}
+const preordersOff = async () => (await prisma.productVariant.findMany({ where: { id: { in: trio.map((v) => v.id) } } })).filter((v) => !v.preorder).length;
+
+await check('three parked: one "yes" carries out all three', async () => {
+  await prisma.productVariant.updateMany({ where: { id: { in: trio.map((v) => v.id) } }, data: { preorder: true } });
+  await threeParked();
+  queue.push({ text: 'Done, all three are off.' });
+  await say('yes');
+  const off = await preordersOff();
+  await restoreTrio();
+  assert(off === 3, `${off} of 3 carried out`);
+  assert((await pendingCount()) === 0, 'something still parked');
+  return '3 of 3, one resumed turn';
+});
+
+await check('three parked: another operator\'s "yes to all" approves them', async () => {
+  await prisma.productVariant.updateMany({ where: { id: { in: trio.map((v) => v.id) } }, data: { preorder: true } });
+  await threeParked();
+  queue.push({ text: 'Done, all three are off.' });
+  await say('Bodo ape just fucking do it yes to all', undefined, PHONE2);
+  const off = await preordersOff();
+  await restoreTrio();
+  assert(off === 3, `${off} of 3 carried out`);
+  return '3 of 3 on the other operator\'s word';
+});
+
+await check('another operator moving on leaves the parked change alone', async () => {
+  await parkedChange();
+  queue.push({ text: 'It is 3pm.' });
+  await say('what time is it', undefined, PHONE2);
+  assert((await pendingCount()) === 1, 'the other operator cancelled it');
+  queue.push({ text: `Done ✅ stock is now ${target}.` });
+  await say('yes');
+  assert((await stock()) === target, 'not carried out');
+  return 'still parked, then approved';
+});
+
+await check('"Done" fallback drops the "(asked because …)" tail', async () => {
+  await parkedChange();
+  queue.push({ text: '' }, { text: '' });
+  const reply = await say('yes');
+  assert(/approved and carried out/i.test(reply), `does not say it was done: ${reply}`);
+  assert(!/asked because/.test(reply), `kept the reason: ${reply}`);
+  return reply.slice(0, 70);
+});
+
 // ---------------------------------------------------------------- done
 
 scriptCompletions(null);
@@ -250,6 +327,8 @@ await cleanThread();
 await prisma.productVariant.update({ where: { id: variant.id }, data: { stock: originalStock } });
 await prisma.whatsAppGroup.delete({ where: { groupJid: GROUP } });
 await prisma.whatsAppOperator.delete({ where: { phone: normalizePhone(PHONE) } });
+await prisma.whatsAppOperator.delete({ where: { phone: normalizePhone(PHONE2) } });
+await restoreTrio();
 const restored = await stock();
 console.log('='.repeat(96));
 console.log(`${pass} passed, ${fail} failed · stock restored to ${restored} (was ${originalStock})`);

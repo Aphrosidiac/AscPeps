@@ -171,6 +171,38 @@ export interface TurnOutcome {
 const runs = new Map<string, Run>();
 // How long a web page read keeps changes waiting for a yes.
 export const WEB_TAINT_MS = 2 * 60 * 60 * 1000;
+
+// Does this tool result put someone else's writing in front of the model?
+// Pages on the shop's own site don't: on 11 Nov 2026 Abby opened
+// ascendpeptides.my/admin/login and every change in the group waited for a
+// yes for two hours after. A result with no page address, or any page off
+// the site (a redirect included — the address is where it landed), still does.
+const PAGE_URL = /Page URL:\s*([^\s\\"]+)/g;
+function siteHost(): string {
+  try {
+    return new URL(env.FRONTEND_URL).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+export function webTaints(name: string, output: unknown): boolean {
+  if (!isWebTool(name)) return false;
+  const text = typeof output === 'string' ? output : JSON.stringify(output ?? '');
+  const urls = [...text.matchAll(PAGE_URL)].map((m) => m[1]);
+  if (!urls.length) return true;
+  const site = siteHost();
+  return urls.some((u) => {
+    try {
+      const host = new URL(u).hostname;
+      return !site || (host !== site && !host.endsWith(`.${site}`));
+    } catch {
+      return true;
+    }
+  });
+}
+
+// The parked summary carries why it waited; once done, that is noise.
+const doneLine = (a: { summary: string | null; tool: string }) => (a.summary ?? a.tool).replace(/ \(asked because [^)]*\)$/, '');
 const STILL_WAITING = /\b(waiting (on|for) (your )?(\*?yes\*?|approval|go-ahead)|reply \*?yes\*?|needs? (a )?(fresh )?approval)/i;
 const MAX_STEPS = 16;
 const OUTPUT_BUDGET = 30_000;
@@ -590,7 +622,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       m.role === 'tool' &&
       m.createdAt.getTime() >= taintFrom &&
       'toolResults' in (m.content as MessageContent) &&
-      (m.content as Extract<MessageContent, { toolResults: unknown }>).toolResults.some((t) => isWebTool(t.name))
+      (m.content as Extract<MessageContent, { toolResults: unknown }>).toolResults.some((t) => webTaints(t.name, t.output))
   );
   // A compaction summary was written by a model from that same data.
   for (const r of rows) if (r.role === 'system' && 'replaces' in r.content) untrustedSeen.push(r.content.summary);
@@ -757,7 +789,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       // Still empty after the nudge. If an approved action ran, say so —
       // "nothing to report back" after a write that went through read as
       // if it had not happened.
-      const carriedOut = approved.map((a) => a.summary ?? a.tool);
+      const carriedOut = approved.map(doneLine);
       let text =
         result.text.trim() ||
         (carriedOut.length
@@ -979,7 +1011,7 @@ async function runTurn(fastify: FastifyInstance, run: Run, outcome: TurnOutcome)
       else {
         untrustedSeen.push(serialised);
         if (isWebTool(r.name)) {
-          webSeen = true;
+          if (webTaints(r.name, r.output)) webSeen = true;
           if (!r.isError) browsed++;
         }
         else shopSeen.push(serialised);
@@ -1315,7 +1347,7 @@ async function recordGroundingEvent(
 
 // Runs a parked destructive call. The result becomes a system row the model
 // reads when the thread resumes, and the thread resumes.
-export async function approveAction(fastify: FastifyInstance, actionId: string, by: TurnOptions): Promise<ActionView> {
+export async function approveAction(fastify: FastifyInstance, actionId: string, by: TurnOptions, resume = true): Promise<ActionView> {
   const action = await fastify.prisma.agentAction.findUnique({ where: { id: actionId } });
   if (!action) throw httpError('Action not found', 404);
   if (action.status !== 'pending') throw httpError('This action is not waiting for approval', 409);
@@ -1366,7 +1398,7 @@ export async function approveAction(fastify: FastifyInstance, actionId: string, 
     },
     by.actor
   );
-  await continueTurn(fastify, action.threadId, by);
+  if (resume) await continueTurn(fastify, action.threadId, by);
   return actionView(updated);
 }
 
