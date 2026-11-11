@@ -294,10 +294,12 @@ The templates in [`backend/src/emails/`](backend/src/emails) — order
 confirmation, payment receipt, abandoned checkout, welcome, verification,
 campaign, the account-security mails, Group Buy notices and Ascend
 Affiliate's mails ([affiliate.md](docs/affiliate.md#emails-and-notices)) —
-share the site's own visual language: a near-black hero with the
-constellation motif, the two-tone headline, one green used only for status.
-Order mails go through an outbox worker; account and affiliate mails are sent
-directly, because they have no order to hang off.
+share one layout (`emails/layout.ts`): an ink header with the Rising lockup,
+a plain headline, one ink button, grey panels and a quiet footer, light only.
+Order mails, including the payment reminder and the pre-order update, go
+through an outbox worker. Account and affiliate mails are sent directly,
+because they have no order to hang off. Every email, its trigger, switches,
+previews and deploy order are in [docs/emails.md](docs/emails.md).
 
 What is load-bearing and easy to undo:
 
@@ -652,6 +654,7 @@ approve / decline / undo, memory, routines, model settings — are listed in
 | [whatsapp-agent.md](docs/whatsapp-agent.md) | the WhatsApp door and the incident log that shaped the guards |
 | [bookkeeping.md](docs/bookkeeping.md) | every figure Ascend Money shows and how it is derived, including the bank |
 | [documents.md](docs/documents.md) | the document store and why it is not under `/uploads` |
+| [emails.md](docs/emails.md) | every email the store sends: the shared design, triggers and switches, the outbox, the pre-order update, images, previewing, shipping a change |
 | [email-campaigns.md](docs/email-campaigns.md) | campaign template, product cards, audiences and exclusions, switches, sending quota |
 | [shadow-skus.md](docs/shadow-skus.md) | the generalised names products carry on internal paperwork, and how they are resolved |
 | [posthog.md](docs/posthog.md) | what is captured, and the region trap that drops every event silently |

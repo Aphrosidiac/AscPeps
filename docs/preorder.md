@@ -27,8 +27,8 @@ them and ships together. The checkout, payment and books are exactly the store's
 ## Where it shows
 
 Product page (size card "Pre-order", button "Pre-order", lead-time note), product
-cards, JSON-LD (`schema.org/PreOrder`), cart, checkout summary, order emails (boxed
-"PRE-ORDER" note + per-line marker), /track, WhatsApp order notice (⏳), admin order
+cards, JSON-LD (`schema.org/PreOrder`), cart, checkout summary, order emails (grey
+"Pre-order" note + per-line marker), /track, WhatsApp order notice (⏳), admin order
 order page badge, Abby's `create_order` preview and her checkout playbook.
 
 ## Orders and Pre-orders are separate
@@ -54,3 +54,19 @@ playbook has her report the two apart and never call a waiting pre-order late.
 
 Pre-ordered units are owed to customers already: when the stock arrives, pack the
 pre-orders first. They are all on the Pre-orders tab.
+
+## Telling waiting customers
+
+To reassure paid pre-orders that haven't shipped ("on track, ships within the
+next week"), send the pre-order update email:
+
+```bash
+# on the box, from backend/: list first, then send
+npx tsx scripts/send-preorder-update.ts
+npx tsx scripts/send-preorder-update.ts --eta "within the next week" --send
+```
+
+It goes once per order, only to PAID orders still PENDING or CONFIRMED.
+Orders with no email are listed so the team can WhatsApp them. Detail and the
+first send (11 Nov 2026, 9 delivered) are in
+[emails.md](emails.md#pre-order-update).

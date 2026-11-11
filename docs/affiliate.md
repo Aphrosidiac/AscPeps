@@ -329,8 +329,9 @@ programme is open (`affiliateLine` in `emails/payment-receipt.ts`): "Share
 Ascend. Give friends 5% off with your own code and earn 5% of every paid
 order they make, paid to your bank. Become an affiliate".
 
-`scripts/preview-emails.ts` renders one of each next to the order mails and
-fails on dark-mode blockers.
+`scripts/preview-emails.ts` renders one of each next to the order mails (see
+[emails.md](emails.md#previewing)). They use the shared email layout, so they
+look like every other Ascend MY email.
 
 ## Promoting it on the store
 

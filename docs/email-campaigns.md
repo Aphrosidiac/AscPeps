@@ -31,7 +31,7 @@ that backlog first. Subscribers with source `ORDER` never get a welcome.
 | Field | Where it shows |
 |---|---|
 | `subject`, `preheader` | Inbox line. A blank preheader falls back to the opening of the body. |
-| `badge`, `headline`, `subhead` | The black hero. A blank `headline` falls back to the subject. |
+| `badge`, `headline`, `subhead` | Top of the email: `badge` is a small grey line above the headline (as typed, not upper-cased), `subhead` a larger grey line under it. A blank `headline` falls back to the subject. |
 | `body` | Plain text. Blank lines become paragraphs. It is escaped, so no HTML can reach a bulk send. |
 | `ctaLabel` + `ctaUrl` | One button. Both halves are needed, otherwise no button. |
 | `productIds` | Featured products in order. The first is the large spotlight card; the rest form a two-up grid. Max 7. |
@@ -50,21 +50,22 @@ of 6,337 cold emails. They are guidance, never enforced.
 
 ## The template (`backend/src/emails/campaign.ts`)
 
-Built on the shared table layout in `emails/layout.ts`: the dark hero, the
-dark-mode rules, and the Outlook-safe button.
+Built on the shared layout in `emails/layout.ts`, the same as every other
+email: ink header with the Rising lockup, plain headline, ink button, light
+only. See [emails.md](emails.md#the-design).
 
-- **Spotlight:** full-width photo, stock line, name, sizes, price, and a SHOP
-  NOW button.
+- **Spotlight:** full-width photo, then name, sizes and stock, price, and a
+  "Shop now" button.
 - **Grid:** a fixed 48% / 4% / 48% table that never stacks, so it holds even
   in the Gmail app for non-Google accounts, which strips `<style>`. Each pair
   is two table rows (pictures, then details), so the cells in a row are equal
   height in every client.
-- **No photo:** a typeset label tile on black ("FOR RESEARCH PURPOSES ONLY",
-  name, size), stretched to the neighbouring photo's height by the table row.
+- **No photo:** the product name and size set in white on an ink tile,
+  stretched to the neighbouring photo's height by the table row.
 - **Stock wording** comes from the real number: "In stock", "Only N left"
-  (5 or fewer), or "Sold out" (no green dot).
-- **Trust strip** (purity / tested / shipping) is shown when products are
-  featured.
+  (5 or fewer), or "Sold out", as plain grey text.
+- **More picks** heading over the grid; the campaign's own button sits under
+  the products.
 - **Footer** says truthfully why the person is on the list: "signed up for
   updates", or "you've ordered from Ascend MY" for `ORDER` subscribers. Then
   the visible unsubscribe link.
