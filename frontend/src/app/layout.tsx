@@ -12,6 +12,7 @@ import { OrganizationJsonLd, WebSiteJsonLd } from '@/components/JsonLd';
 import { PostHogPageView } from '@/components/PostHogPageView';
 import { getCategoriesServer, getSettingsServer, getProductsServer, getGroupBuyPromoServer, getResearchListServer } from '@/lib/server-api';
 import { popupConfig } from '@/lib/popup-settings';
+import { FF_BEACON } from '@/lib/ff-analytics-beacon';
 import './globals.css';
 
 const inter = Inter({
@@ -156,6 +157,8 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-4PHY1Z9BHD');`}
         </Script>
+        {/* FF Analytics (FF Ops): confirms a real browser ran the page; nginx answers /_e. */}
+        <Script id="ff-analytics" strategy="afterInteractive">{FF_BEACON}</Script>
         {/* PostHog's automatic $pageview is suppressed by this project's
             remote config — see the component. Renders nothing. */}
         <PostHogPageView />
